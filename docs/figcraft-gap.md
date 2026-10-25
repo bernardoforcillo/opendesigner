@@ -23,6 +23,7 @@ and which it did not.
   angular / diamond (SVG patterns) gradients in code. The Leptos output passes `cargo check`; `trunk build`
   and the generated Playwright tests were not run (no wasm target or browser here).
 - **Vector** (docs/vector.md): variable-width strokes (width profile, presets, tool, panel, SVG as a filled outline) and the shape builder tool.
+- **MCP parity of editor features** (docs/layout.md, docs/vector.md, docs/flows.md, docs/handoff.md): the context menu's group / ungroup / arrange / duplicate, the shape builder (Go port, areas golden-tested against the editor), the Present device frame as a document setting, and read-only plugin API / validation / language list tools. Running plugins and switching the language stay editor-only (per-person browser state).
 - **Type and effects** (docs/typography.md, docs/effects.md): text case, super/subscript, lists, indent,
   OpenType features, vertical alignment and inset, horizontal text scale (also in rich-text runs and in
   paragraph / character styles), progressive blur, noise, texture and glass.

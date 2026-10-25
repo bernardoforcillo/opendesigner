@@ -22,6 +22,14 @@ language from preferences or the browser, plural forms), written from scratch fo
 - **Pickers**: the document menu section Language (`ui/shell/DocMenu.tsx`) and the select on the Home
   (`i18n/LanguageSelect.tsx`). Each language shows in its own name, and a draft says so.
 
+## Editor only
+
+The language is a **per-person browser setting** (`od.language` in `localStorage`, or the browser's languages for
+`system`), not part of the document, so MCP cannot switch it and an agent never sees a translated interface. MCP has
+one read-only tool, `list_ui_languages` (code, own name, whether the catalog is still a machine draft), kept in step
+with `LANGUAGES` by a test. Document content (layer names, text) is never translated, and what the server or MCP
+returns stays English.
+
 ## Languages and their status
 
 | Code | Language | Status |

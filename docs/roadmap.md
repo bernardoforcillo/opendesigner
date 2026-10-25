@@ -27,6 +27,7 @@ Legend: [x] done · [ ] to do
 - [x] Auto layout: baseline alignment on the cross axis of a row (estimated from font size and line height)
 - [x] Auto layout: grid mode (rows / columns tracks with fixed, hug and fr sizes, gaps, cell spans; panel, MCP `set_grid_cell`, `display:grid` export, SwiftUI `Grid` and Compose `DesignGrid` export); see docs/layout.md
 - [x] Context menu (right click on the canvas or a layer): swap, reset overrides, detach, go to main component, group / ungroup, bring forward / back, duplicate, delete; see docs/layout.md
+- [x] MCP twins of the context menu commands that had none: `group_nodes`, `ungroup_nodes`, `arrange_nodes`, `duplicate_nodes`; see docs/layout.md
 - [x] Constraints and responsive resize (min/max/stretch/center/scale per axis, recursive, exact undo); see docs/layout.md
 - [x] Variants and component properties: component sets with axes, instances that choose a variant, boolean (show/hide) and text properties, editor dialog and instance controls, MCP tools, exported code; see docs/components.md
 - [x] Instance swap (carrying over the overrides that fit), detach instance, reset overrides (all / per layer), go to main component; see docs/components.md
@@ -52,6 +53,7 @@ Legend: [x] done · [ ] to do
 - [x] Prototyping: animated transitions between frames (dissolve, slide, push, smart animate) with duration and easing, and `auto` transitions after a delay; see docs/flows.md
 - [ ] Prototyping: hover and drag interactions, overlays, scroll, component state changes in the player
 - [x] Present: device frames (generic, phone, tablet, desktop browser, none) and hotspot hints (flash on a missed click, a "Show hotspots" toggle); see docs/flows.md
+- [x] Present device frame as a document setting (`DocSettings.present_device`, `set_document_settings`, "Make default" in the player), the person's pick kept as an override; see docs/flows.md
 - [x] Prototype variables with expressions (`count = count + 1`, `count >= 3 || paid`) and an `else` guard for if / else on a hotspot; see docs/flows.md
 - [x] Ordered if / else if / else chains in prototypes: `Transition.order` (proto), evaluated in sequence by the player, a Chain row in the Flows panel, MCP `set_transition` `order`, analysis rules (`else_orphan`, `shadowed`); docs/flows.md
 - [x] Multiple artboards (frames), smart guides and snapping to nodes, layout grids on frames (columns, rows, square grid) that guide and snap; see docs/layout.md
@@ -66,6 +68,7 @@ Legend: [x] done · [ ] to do
 - [x] Variable-width strokes on vectors (width points with a left and right width along the path, presets, a Variable width tool and panel; canvas, GPU, SVG as a filled outline, outline stroke, MCP `set_stroke`); see docs/vector.md
 - [x] Advanced strokes: brushes (stretch and scatter brushes with dot, dash, square, diamond and leaf tips, spacing, scatter, size and angle jitter and a seed; chalk, marker, dots and leaves presets; stamps placed by arc length with a seeded RNG; canvas, GPU, SVG as a filled path, panel, MCP `set_stroke`); see docs/vector.md. Pen pressure and user-defined tips are not done
 - [x] Shape builder tool: click or drag across the regions of overlapping shapes to merge them into one vector (Alt removes); see docs/vector.md
+- [x] Shape builder over MCP (`list_shape_builder_faces`, `shape_builder`; Go port of the arrangement, areas golden-tested against the editor); see docs/vector.md
 - [x] Gradient mesh (a color grid blended over the box; the points do not move; code export uses the average color)
 - [x] SVG export and PDF (the SVG through the browser's print dialog, Save as PDF)
 - [x] PDF import (editable text with embedded fonts and shared text styles, shapes and images, one page per PDF page), and export of all pages as PDF or EPUB (fixed layout); see docs/pdf-epub.md
@@ -149,6 +152,7 @@ Output
 - [x] Diamond gradient exact in CSS (four quadrant layers) and angular / diamond as SVG patterns in vector code (was a circle / the first stop); docs/shapes.md
 - [x] Ready for dev: frames marked ready (with a server-side snapshot), a ready list with focus view, colour-coded annotations on layers shown in Develop and written into the exported code, Compare changes (property-level diff against the snapshot); RPC `CompareReady`, MCP tools; see docs/handoff.md
 - [x] Plugin API (sandboxed scripts with a read/write bridge; docs/handoff.md)
+- [x] Plugin API for agents: `describe_plugin_api`, `validate_plugin`, `list_ui_languages` (read-only; running plugins and switching language stay editor-only); see docs/handoff.md, docs/localization.md
 - [x] WebAssembly plugins (import-free modules run in a terminable Worker, capped memory, commands through the same bridge, one undo step; docs/handoff.md)
 - [x] Tokens in and out: W3C Design Tokens (DTCG) JSON and CSS custom properties, with modes; import of a DTCG file as collections (variables dialog); see docs/handoff.md
 - [ ] Syncing components with the code

@@ -155,6 +155,19 @@ each one gesture = one undo step:
 The menu closes on Escape, a click elsewhere, scroll, resize or after an entry runs; arrows move, Right opens a
 submenu, Left closes it.
 
+**Over MCP** every entry has a tool: `swap_instance`, `reset_instance_overrides`, `detach_instance`,
+`get_main_component` (instances); `group_nodes`, `ungroup_nodes`, `arrange_nodes` (`mode`: `front`, `forward`,
+`backward`, `back`), `duplicate_nodes` and `delete_node` (`internal/mcp/arrange.go`). They run the editor's algorithms
+(`tools/grouping.ts`, `arrange.ts`, `clipboard.ts`): a group is born right above the topmost grouped node and the
+nodes move into it in draw order keeping their place on screen; ungrouping puts the children back in the group's slot
+and bakes its translation into them; arranging only writes `order_key`s, computed with `core.OrderKeyBetween`, the Go
+twin of `store/orderKey.ts` (golden-tested against it). Two differences from the editor: the ops are computed first
+(an error is reported before anything is sent) but there is no multi-op transaction on the wire, so they arrive one
+after the other instead of as one gesture (an MCP session has no undo stack, so nothing is lost; other peers see the ops
+in turn); and `duplicate_nodes` copies each node's whole subtree (by reading the code, the editor's Ctrl+D copies only the selected nodes and not their
+children; that was not run in a browser, and the quirk is not reproduced) and puts the copy on top of its siblings
+(the editor puts it on top of the whole document), with the editor's 16 unit offset (`offset` changes it).
+
 ## Constraints
 
 A frame **without** auto layout keeps its children where their x/y put them, and when it
