@@ -42,6 +42,7 @@ hotspot.
 | `element_id` | optional: the node INSIDE `from` that triggers (the hotspot) |
 | `guard` | condition under which the edge can be taken: free text ("cart not empty"), or a condition the player evaluates (`user=guest`, `count >= 3`, `else`; see "Variables, expressions and if / else in the player") |
 | `effect` | what the edge changes: free text ("order created"), or assignments the player runs (`cart=full; count = count + 1`) |
+| `order` | position in the hotspot's **if / else if / else chain** (1, 2, 3...; `0` = not in a chain, an independent branch). The player tries the chain in this order and the first guard that holds wins; see "Variables, expressions and if / else in the player" |
 
 ## Node metadata conventions
 
@@ -72,7 +73,9 @@ tool) report, with messages that name the screen:
 | `no_start` | it has transitions but no start screen |
 | `unreachable` | a screen is not reachable from the entry |
 | `dead_end` | a reachable screen has no exits and is not `end` |
-| `ambiguous` | two exits of the same screen have the same trigger and element and no `guard` telling them apart (or an identical `guard`) |
+| `ambiguous` | two exits of the same screen have the same trigger and element and no `guard` telling them apart (or an identical `guard`), unless an `order` tells them apart; or two chain branches with the same `order` |
+| `else_orphan` | a transition whose `guard` is `else` where no other transition shares its screen, trigger and element |
+| `shadowed` | a branch of an ordered if / else if chain that can never fire (an earlier branch has no condition, or the same condition) |
 
 It also lists the **paths** from the entry to a final screen or to a cycle
 (an edge that returns to a screen already in the path: the path stops there,
@@ -234,7 +237,18 @@ Pay button  --[ total > 50 && total <= 100 ]----> Standard checkout    (the "els
 Pay button  --[ else ]--------------------------> Basic checkout
 ```
 
-On a hotspot the branch that holds is the one that can be clicked; the branches that do not apply are not drawn as locked (they are simply the other side of the if), while a hotspot with nothing enabled still shows its lock and why. **What the model does not have** is an order between transitions: ids are random, so an "else if" cannot mean "if the earlier ones failed". Write the conditions so they do not overlap (or let the player enable more than one). A real ordered chain would need a `priority` / `order` integer on `Transition` (proto field, `SetTransition` validation, golden fixtures on both sides, the Flows panel to reorder, and the analysis to flag an `else` with nothing to be the else of); a nested "if inside an action" would need the transition to carry a list of actions instead of one `effect`. Neither was done: the generated code and tests still treat `guard` and `effect` as comments (`// guard: ...`), exactly as before.
+On a hotspot the branch that holds is the one that can be clicked; the branches that do not apply are not drawn as locked (they are simply the other side of the if), while a hotspot with nothing enabled still shows its lock and why.
+
+**Ordered chains (`order`).** Conditions that do not overlap work, but the overlap is the natural way to write an else if (`total >= 100`, then `total >= 50`, then `else`). `Transition.order` (proto field 20, 0..1000) makes the order explicit: the transitions of one hotspot (the same flow, screen, trigger and element) with `order > 0` form a **chain**, evaluated by `order` (ties broken by id). The first one whose guard holds applies; a later one whose guard also holds gives way ("Not when total >= 100"), is not enabled and is not drawn as locked. Rules:
+
+- the first branch is the `if`, the following ones the `else if`s; a branch with an empty guard always holds, so it works as the final `else` and shadows what comes after it;
+- an `else` guard keeps its meaning (it holds when no other transition of the hotspot does) wherever it sits in the chain, so it is always the last resort;
+- transitions with `order` 0 stay outside the chain and independent of each other, exactly as before (older documents behave the same);
+- following a branch that gave way does nothing, and the winner's `effect` runs as usual.
+
+The Flows panel has a **Chain** row in the transition editor: *Add to if / else chain* puts it at the end of its hotspot's chain, *Earlier* / *Later* swap it with its neighbour (the others are renumbered 1..n in the same undo step) and *Leave* takes it out. The MCP tool `set_transition` takes `order`; `get_flow` shows it. The analysis (panel, CLI, MCP `analyze_flows`) reports `else_orphan` (an `else` on a hotspot where no other transition shares the trigger and element: nothing to be the else of), `shadowed` (a chain branch that can never fire: an earlier one has no condition or the very same condition) and, as `ambiguous`, two branches with the same position. The spec, the generated tests and the exported code mention the position in their `guard` comments. Validation (a negative order or one above 1000 rejects the op) is tested from both sides in `testdata/golden/transition_order.json`.
+
+A nested "if inside an action" would still need the transition to carry a list of actions instead of one `effect`; that was not done. The generated code and tests still treat `guard` and `effect` as comments (`// guard: ...`), exactly as before.
 
 ## Present: device frames and hotspot hints
 

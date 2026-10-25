@@ -73,6 +73,9 @@ func writeFlowSpec(b *strings.Builder, g *graph, rep *opendesignerv1.FlowReport)
 		if t.GetGuard() != "" {
 			extra = append(extra, "guard: "+oneLine(t.GetGuard()))
 		}
+		if t.GetOrder() > 0 {
+			extra = append(extra, fmt.Sprintf("if / else if chain, position %d", t.GetOrder()))
+		}
 		if t.GetEffect() != "" {
 			extra = append(extra, "effect: "+oneLine(t.GetEffect()))
 		}

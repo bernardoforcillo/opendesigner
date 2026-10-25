@@ -51,6 +51,11 @@ describe("file grouping", () => {
     ["app/src/main/kotlin/design/generated/components/Button2.kt", "compose", "components"],
     ["app/src/main/kotlin/design/generated/MainActivity.kt", "compose", "app"],
     ["app/src/main/res/drawable-nodpi/img_a.png", "compose", "assets"],
+    ["src/screens/home.rs", "leptos", "screens"],
+    ["src/components/button.rs", "leptos", "components"],
+    ["src/app.rs", "leptos", "app"],
+    ["Cargo.toml", "leptos", "config"],
+    ["public/assets/ab.png", "leptos", "assets"],
   ])("%s (%s) -> %s", (path, target, want) => expect(groupOf(path, target)).toBe(want));
 
   it("groups come out in the order Screens, App, Configuration, Test, Assets, with sorted files; empty groups disappear", () => {

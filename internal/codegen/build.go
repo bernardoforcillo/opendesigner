@@ -789,8 +789,13 @@ func boxPaint(el *Element, n *opendesignerv1.Node, isFrame, isEllipse bool, mul 
 				}
 			}
 		} else if f.grad != nil {
-			if g, ok := fillGradientCSS(f, w, h, mul); ok {
-				el.addStyle("background-image", g)
+			if props, ok := fillBackground(f, w, h, mul); ok {
+				for _, p := range props {
+					el.addStyle(p.Name, p.Value)
+				}
+				if f.diamond {
+					el.NativeBG, _ = fillGradientCSS(f, w, h, mul)
+				}
 			} else {
 				el.addStyle("background-color", colorCSS(f.color, mul))
 			}
@@ -896,9 +901,13 @@ func (b *builder) textElement(n, eff *opendesignerv1.Node, c bctx) *Element {
 	placement(el, n, c)
 	f := resolvedFill(eff.GetFills())
 	gradient := ""
+	var gradientProps []Prop
 	if f.grad != nil {
-		if g, ok := fillGradientCSS(f, eff.GetWidth(), eff.GetHeight(), 1); ok {
-			gradient = g
+		if props, ok := fillBackground(f, eff.GetWidth(), eff.GetHeight(), 1); ok {
+			gradient, gradientProps = props[0].Value, props
+			if f.diamond {
+				el.NativeBG, _ = fillGradientCSS(f, eff.GetWidth(), eff.GetHeight(), 1)
+			}
 		}
 	}
 	if eff.GetWidth() > 0 {
@@ -941,7 +950,9 @@ func (b *builder) textElement(n, eff *opendesignerv1.Node, c bctx) *Element {
 	}
 	textExtras(el, st, size, lh, eff.GetHeight(), c.bind[n.GetId()].text == "", rotates(eff.GetRotation()))
 	if gradient != "" {
-		el.addStyle("background-image", gradient)
+		for _, p := range gradientProps {
+			el.addStyle(p.Name, p.Value)
+		}
 		el.addStyle("background-clip", "text")
 		el.addStyle("-webkit-background-clip", "text")
 		el.addStyle("color", "transparent")
@@ -1264,8 +1275,11 @@ func subpathData(sp *opendesignerv1.SubPath) string {
 // like export/svg.ts::gradientRef.
 func vectorGradient(id string, f fill, w, h float64) (*Element, string) {
 	g := f.grad
-	if len(g.GetStops()) < 2 || f.angular {
-		return nil, "" // SVG has no conic gradient: the flat first-stop colour
+	if f.angular || f.diamond {
+		return vectorPattern(id, f, w, h) // SVG has neither: a pattern of wedges / quadrants (gradientsvg.go)
+	}
+	if len(g.GetStops()) < 2 {
+		return nil, ""
 	}
 	x1, y1 := g.GetX1()*w, g.GetY1()*h
 	x2, y2 := g.GetX2()*w, g.GetY2()*h
@@ -1275,11 +1289,7 @@ func vectorGradient(id string, f fill, w, h float64) (*Element, string) {
 	}
 	gr := &Element{Tag: "linearGradient"}
 	gr.addAttr("id", id)
-	if f.diamond {
-		// Approximation: a circle through the diamond's edge midpoints (see fillGradientCSS).
-		length /= math.Sqrt2
-	}
-	if f.radial || f.diamond {
+	if f.radial {
 		gr.Tag = "radialGradient"
 		gr.addAttr("cx", num(x1))
 		gr.addAttr("cy", num(y1))

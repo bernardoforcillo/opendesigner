@@ -283,6 +283,36 @@ describe("FlowPanel: transitions", () => {
     expect(useScene.getState().scene!.transitions.t2).toBeDefined();
   });
 
+  it("the if / else chain: add to it, move within it, leave it (one gesture each)", () => {
+    install(withFlows(baseScene(), [flowOf("f1", "A", "Pay")], [
+      transition("p1", "f1", "A", "B", { label: "Big", elementId: "btn", guard: "total > 100" }),
+      transition("p2", "f1", "A", "C", { label: "Mid", elementId: "btn", guard: "total > 50" }),
+    ]));
+    render(<FlowPanel />);
+    fireEvent.click(screen.getByRole("button", { name: "Transition A to B" }));
+    fireEvent.click(screen.getByRole("button", { name: "Add to if / else chain" }));
+    expect(useScene.getState().scene!.transitions.p1.order).toBe(1);
+    expect(screen.getByLabelText("Chain position")).toHaveTextContent("if, 1 of 1");
+    // The second transition joins after the first.
+    fireEvent.click(screen.getByRole("button", { name: "Transition A to C" }));
+    fireEvent.click(screen.getByRole("button", { name: "Add to if / else chain" }));
+    expect(useScene.getState().scene!.transitions.p2.order).toBe(2);
+    expect(screen.getByLabelText("Chain position")).toHaveTextContent("else if, 2 of 2");
+    expect(screen.getByRole("button", { name: "Later in the chain" })).toBeDisabled();
+    // Moving it earlier swaps the two (two ops, ONE undo entry).
+    sync.sent = [];
+    fireEvent.click(screen.getByRole("button", { name: "Earlier in the chain" }));
+    expect(sync.sent.map((o) => o.kind.case)).toEqual(["setTransition", "setTransition"]);
+    expect(useScene.getState().scene!.transitions.p2.order).toBe(1);
+    expect(useScene.getState().scene!.transitions.p1.order).toBe(2);
+    useScene.getState().undo();
+    expect(useScene.getState().scene!.transitions.p2.order).toBe(2);
+    // Leaving the chain makes it independent again and renumbers the rest.
+    fireEvent.click(screen.getByRole("button", { name: "Leave the chain" }));
+    expect(useScene.getState().scene!.transitions.p2.order).toBeUndefined();
+    expect(useScene.getState().scene!.transitions.p1.order).toBe(1);
+  });
+
   it("a flow without transitions says so", () => {
     install(withFlows(baseScene(), [flowOf("f1", "A")], []));
     render(<FlowPanel />);

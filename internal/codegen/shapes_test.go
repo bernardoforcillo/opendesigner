@@ -92,8 +92,50 @@ func TestAngularAndDiamondGradientCSS(t *testing.T) {
 	if !strings.Contains(html, "conic-gradient(from 90deg at 50px 50px") {
 		t.Errorf("no conic gradient:\n%s", html)
 	}
-	if !strings.Contains(html, "radial-gradient(circle 35.355px at 50px 50px") {
-		t.Errorf("no diamond approximation:\n%s", html)
+	// The diamond is four quadrant layers (exact), not the old radial approximation.
+	if !strings.Contains(html, "linear-gradient(45deg,#f00 0%,#00f 50%),linear-gradient(135deg") || !strings.Contains(html, "background-size: 50px 50px,50px 50px,50px 50px,50px 50px") {
+		t.Errorf("no diamond layers:\n%s", html)
+	}
+	if strings.Contains(html, "radial-gradient") {
+		t.Errorf("the diamond still uses the radial approximation:\n%s", html)
+	}
+	// SwiftUI and Compose parse the CSS back and keep the approximation.
+	swift := string(file(t, gen(t, screenDoc(func(b *B, s string) {
+		b.Add("d", s, "Diamond", 150, 10, 100, 100, Fill(&opendesignerv1.Paint{Kind: &opendesignerv1.Paint_Diamond{Diamond: gradient(0.5, 0.5, 1, 0.5, stops)}}))
+	}), codegen.TargetSwiftUI, nil), "Sources/Screens/Screen.swift"))
+	if !strings.Contains(swift, "RadialGradient") {
+		t.Errorf("swiftui lost the diamond fill:\n%s", swift)
+	}
+}
+
+func TestVectorAngularAndDiamondArePatterns(t *testing.T) {
+	tri := Vector(Sub(true, Pt(0, 0, 0, 0, 0, 0), Pt(100, 0, 0, 0, 0, 0), Pt(50, 80, 0, 0, 0, 0)))
+	stops := []Stop{S(0, C(1, 0, 0)), S(1, C(0, 0, 1))}
+	html := shapeHTML(t, func(b *B, s string) {
+		b.Add("a", s, "Angular", 10, 10, 100, 80, tri, Fill(&opendesignerv1.Paint{Kind: &opendesignerv1.Paint_Angular{Angular: gradient(0.5, 0.5, 1, 0.5, stops)}}))
+		b.Add("d", s, "Diamond", 150, 10, 100, 80, tri, Fill(&opendesignerv1.Paint{Kind: &opendesignerv1.Paint_Diamond{Diamond: gradient(0.5, 0.5, 1, 0.5, stops)}}))
+	})
+	// No more flat first-stop fallback: both fill their path with a pattern.
+	if strings.Count(html, `fill="url(#g-a)"`) != 1 || strings.Count(html, `fill="url(#g-d)"`) != 1 {
+		t.Fatalf("paths should reference the patterns:\n%s", html)
+	}
+	if strings.Count(html, "<pattern") != 2 {
+		t.Errorf("want two patterns:\n%s", html)
+	}
+	// Angular: 120 wedges. Diamond: 4 quadrant gradients and 4 rects.
+	if got := strings.Count(html, "<path d=\"M50 40L"); got != 120 {
+		t.Errorf("angular wedges = %d, want 120", got)
+	}
+	if got := strings.Count(html, "<linearGradient"); got != 4 {
+		t.Errorf("diamond gradients = %d, want 4", got)
+	}
+	// The first wedge starts pointing along +x (P2 is to the right of P1), red; the last ends near blue.
+	if !strings.Contains(html, `<path d="M50 40L`) || !strings.Contains(html, `fill="#fe0001"`) {
+		t.Errorf("first wedge should be nearly the first stop:\n%s", html)
+	}
+	// Diamond ramps: the top right quadrant runs from the centre toward (cx+L/2, cy-L/2).
+	if !strings.Contains(html, `x1="50" y1="40" x2="75" y2="15"`) {
+		t.Errorf("top right ramp missing:\n%s", html)
 	}
 }
 

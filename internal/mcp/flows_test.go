@@ -148,6 +148,60 @@ func TestFlowToolsEndToEnd(t *testing.T) {
 	}
 }
 
+// An ordered if / else if / else chain through set_transition: the order is stored, shown by
+// get_flow, kept on a partial update, and the analysis flags an else with nothing to be the else of.
+func TestFlowToolsOrderedChain(t *testing.T) {
+	url := serveInMemory(t)
+	docID := newDoc(t, odmcp.NewClient(url))
+	s := startSession(t, url, docID, "agent")
+	ctx := context.Background()
+	cart, big, basic, btn := frame(t, s, "Cart"), frame(t, s, "Big"), frame(t, s, "Basic"), frame(t, s, "Pay")
+	f, err := s.CreateFlow(ctx, odmcp.CreateFlowInput{Name: "Checkout", StartId: cart})
+	if err != nil {
+		t.Fatal(err)
+	}
+	first, err := s.SetTransition(ctx, odmcp.SetTransitionInput{FlowId: f.FlowId, FromId: cart, ToId: big, ElementId: ptr(btn), Guard: ptr("total > 100"), Order: ptr(int32(1))})
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := s.SetTransition(ctx, odmcp.SetTransitionInput{FlowId: f.FlowId, FromId: cart, ToId: basic, ElementId: ptr(btn), Guard: ptr("else"), Order: ptr(int32(2))})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// A partial update keeps the order.
+	if _, err := s.SetTransition(ctx, odmcp.SetTransitionInput{Id: first.TransitionId, Label: ptr("Pay")}); err != nil {
+		t.Fatal(err)
+	}
+	got, _ := s.GetFlow(ctx, odmcp.GetFlowInput{Id: f.FlowId})
+	orders := map[string]int32{}
+	for _, tr := range got.Transitions {
+		orders[tr.Id] = tr.Order
+	}
+	if orders[first.TransitionId] != 1 || orders[second.TransitionId] != 2 {
+		t.Errorf("orders = %v", orders)
+	}
+	for _, to := range []string{big, basic} {
+		if _, err := s.SetTransition(ctx, odmcp.SetTransitionInput{FlowId: f.FlowId, FromId: to, ToId: cart}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if an, _ := s.AnalyzeFlows(ctx, odmcp.AnalyzeFlowsInput{FlowId: f.FlowId}); an.Issues != 0 {
+		t.Errorf("a clean chain has issues: %+v", an)
+	}
+	// Taking the if away leaves an orphan else.
+	if _, err := s.DeleteTransition(ctx, odmcp.NodeIdInput{Id: first.TransitionId}); err != nil {
+		t.Fatal(err)
+	}
+	an, _ := s.AnalyzeFlows(ctx, odmcp.AnalyzeFlowsInput{FlowId: f.FlowId})
+	orphan := false
+	for _, i := range an.Reports[0].Issues {
+		orphan = orphan || (i.Kind == "else_orphan" && i.TransitionId == second.TransitionId)
+	}
+	if !orphan {
+		t.Errorf("orphan else not reported: %+v", an)
+	}
+}
+
 func TestFlowToolValidation(t *testing.T) {
 	url := serveInMemory(t)
 	docID := newDoc(t, odmcp.NewClient(url))
@@ -190,6 +244,14 @@ func TestFlowToolValidation(t *testing.T) {
 			_, err := s.SetTransition(ctx, odmcp.SetTransitionInput{FlowId: f.FlowId, FromId: a, ToId: b, ElementId: ptr("zz")})
 			return err
 		}, "elementId"},
+		{"order out of range", func() error {
+			_, err := s.SetTransition(ctx, odmcp.SetTransitionInput{FlowId: f.FlowId, FromId: a, ToId: b, Order: ptr(int32(1001))})
+			return err
+		}, "order must be"},
+		{"negative order", func() error {
+			_, err := s.SetTransition(ctx, odmcp.SetTransitionInput{FlowId: f.FlowId, FromId: a, ToId: b, Order: ptr(int32(-1))})
+			return err
+		}, "order must be"},
 		{"update of an unknown id", func() error {
 			_, err := s.SetTransition(ctx, odmcp.SetTransitionInput{Id: "zz", Label: ptr("x")})
 			return err

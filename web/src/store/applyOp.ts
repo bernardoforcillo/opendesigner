@@ -3,7 +3,7 @@ import { NodeSchema } from "../gen/opendesigner/v1/opendesigner_pb";
 import type { Node as PbNode, Op } from "../gen/opendesigner/v1/opendesigner_pb";
 import { isValidEasing } from "../animation/engine";
 import { isValidClip } from "../animation/validate";
-import { type SceneState, type ClipLite, toPaintStyleDefLite, toEffectStyleDefLite, toComponentPropertyLite, toComponentSetLite, toCollectionLite, toVariableLite, toFontLite, toTextStyleDefLite, type NodeLite, type TransitionLite, TRANSITION_ANIMATIONS, toFlowLite, toClipLite, toTransitionLite, toAnnotationLite, toReadyLite, toCommentLite, toNodeLite, toTextStyleLite, toSubPathsLite, toInstanceOverrideLite, toInstanceLite } from "./types";
+import { type SceneState, type ClipLite, toPaintStyleDefLite, toEffectStyleDefLite, toComponentPropertyLite, toComponentSetLite, toCollectionLite, toVariableLite, toFontLite, toTextStyleDefLite, type NodeLite, type TransitionLite, TRANSITION_ANIMATIONS, MAX_TRANSITION_ORDER, toFlowLite, toClipLite, toTransitionLite, toAnnotationLite, toReadyLite, toCommentLite, toNodeLite, toTextStyleLite, toSubPathsLite, toInstanceOverrideLite, toInstanceLite } from "./types";
 import { type MaskPath, isMaskPath } from "./maskPaths";
 import { layoutTargets, relayout, resizeChildren } from "./layout";
 import { recordDelta } from "./sceneDelta";
@@ -516,6 +516,7 @@ function applyOpRaw(state: SceneState, op: Op): SceneState {
       // ErrTransitionAnim: a closed animation set and sane timing (parity with core.applySetTransition).
       if (t.animation !== "" && !(TRANSITION_ANIMATIONS as readonly string[]).includes(t.animation)) return state;
       if (t.durationMs < 0 || t.durationMs > 10000 || t.delayMs < 0 || t.delayMs > 60000 || !isValidEasing(t.easing)) return state;
+      if (t.order < 0 || t.order > MAX_TRANSITION_ORDER) return state;      // ErrTransitionOrder
       return { ...state, transitions: { ...state.transitions, [t.id]: toTransitionLite(t) } };
     }
     case "deleteTransition": {

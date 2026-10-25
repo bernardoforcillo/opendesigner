@@ -218,6 +218,9 @@ func flowComments(t Trigger) []string {
 	if t.Guard != "" {
 		lines = append(lines, "guard: "+safe(t.Guard))
 	}
+	if t.Order > 0 {
+		lines = append(lines, fmt.Sprintf("chain: position %d (if / else if / else)", t.Order))
+	}
 	if t.Effect != "" {
 		lines = append(lines, "effect: "+safe(t.Effect))
 	}

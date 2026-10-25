@@ -49,6 +49,10 @@ const (
 	// TargetCompose: Kotlin sources for a Jetpack Compose app (composables,
 	// components with parameters, a NavHost).
 	TargetCompose Target = "compose"
+	// TargetLeptos: a Leptos (Rust, client-side rendered, Trunk) project: view! macros
+	// with the IR's inline CSS, components with props, leptos_router routes and the
+	// flows' Playwright tests.
+	TargetLeptos Target = "leptos"
 )
 
 // native reports whether the target is a native UI one (swiftui, compose).
@@ -90,8 +94,8 @@ func Generate(doc *opendesignerv1.Document, opts Options, assets AssetSource) (*
 	if opts.Target == "" {
 		opts.Target = TargetReact
 	}
-	if opts.Target != TargetHTML && opts.Target != TargetReact && !opts.Target.native() {
-		return nil, fmt.Errorf("unknown target %q: use %q, %q, %q or %q", opts.Target, TargetReact, TargetHTML, TargetSwiftUI, TargetCompose)
+	if opts.Target != TargetHTML && opts.Target != TargetReact && opts.Target != TargetLeptos && !opts.Target.native() {
+		return nil, fmt.Errorf("unknown target %q: use %q, %q, %q, %q or %q", opts.Target, TargetReact, TargetHTML, TargetSwiftUI, TargetCompose, TargetLeptos)
 	}
 	if opts.FlowID != "" {
 		if _, ok := doc.GetFlows()[opts.FlowID]; !ok {
@@ -135,6 +139,10 @@ func Generate(doc *opendesignerv1.Document, opts Options, assets AssetSource) (*
 		renderSwiftUI(d, b, screens, opts, files, &out.Warnings)
 	case TargetCompose:
 		renderCompose(d, b, screens, opts, files, &out.Warnings)
+	case TargetLeptos:
+		if err := renderLeptos(d, b, screens, opts, files, &out.Warnings, fontCSS); err != nil {
+			return nil, err
+		}
 	default:
 		if err := renderReact(d, b, screens, opts, files, &out.Warnings, fontCSS); err != nil {
 			return nil, err
@@ -293,7 +301,7 @@ func assignNames(d *opendesignerv1.Document, screens []*Screen, opts Options) {
 			base = n.GetName()
 		}
 		name := pascal(base)
-		if reservedNames[name] || (opts.Target == TargetSwiftUI && swiftReservedTypes[name]) || (opts.Target == TargetCompose && kotlinReservedTypes[name]) {
+		if reservedNames[name] || (opts.Target == TargetSwiftUI && swiftReservedTypes[name]) || (opts.Target == TargetCompose && kotlinReservedTypes[name]) || (opts.Target == TargetLeptos && leptosReservedTypes[name]) {
 			name += "Screen"
 		}
 		s.Name = dedupe(compUsed, name, "")
@@ -347,7 +355,7 @@ func wireFlows(d *opendesignerv1.Document, screens []*Screen, opts Options, b *b
 		for _, t := range perScreen[s.NodeID] {
 			tr := Trigger{
 				TransitionID: t.GetId(), FlowID: t.GetFlowId(), Label: t.GetLabel(), Kind: t.GetTrigger(),
-				Guard: t.GetGuard(), Effect: t.GetEffect(), Dest: byNode[t.GetToId()],
+				Guard: t.GetGuard(), Effect: t.GetEffect(), Order: int(t.GetOrder()), Dest: byNode[t.GetToId()],
 			}
 			if tr.Dest == nil && tr.Kind != "back" {
 				*warnings = append(*warnings, fmt.Sprintf("transition %s: the destination %q is not an exported screen", t.GetId(), nameOrID(d, t.GetToId())))

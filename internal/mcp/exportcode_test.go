@@ -79,6 +79,14 @@ func TestExportCodeTool(t *testing.T) {
 	if err != nil || !strings.Contains(string(loginKt), `onNavigate("Home")`) {
 		t.Errorf("Login.kt without the wiring (%v):\n%s", err, loginKt)
 	}
+	rsDir := filepath.Join(t.TempDir(), "leptos")
+	if out, err := s.ExportCode(ctx, odmcp.ExportCodeInput{OutDir: rsDir, Target: "leptos"}); err != nil || out.Target != "leptos" {
+		t.Fatalf("leptos: %+v %v", out, err)
+	}
+	loginRs, err := os.ReadFile(filepath.Join(rsDir, "src/screens/login.rs"))
+	if err != nil || !strings.Contains(string(loginRs), `navigate("/home"`) {
+		t.Errorf("login.rs without the wiring (%v):\n%s", err, loginRs)
+	}
 	// Clear errors.
 	if _, err := s.ExportCode(ctx, odmcp.ExportCodeInput{}); err == nil {
 		t.Error("empty outDir accepted")

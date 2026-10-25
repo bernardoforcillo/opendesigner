@@ -66,6 +66,7 @@ type TransitionView struct {
 	DurationMs int32  `json:"durationMs,omitempty"`
 	Easing     string `json:"easing,omitempty"`
 	DelayMs    int32  `json:"delayMs,omitempty"`
+	Order      int32  `json:"order,omitempty"`
 }
 
 type GetFlowInput struct {
@@ -121,6 +122,7 @@ func transitionView(doc *opendesignerv1.Document, t *opendesignerv1.Transition) 
 		Label: t.GetLabel(), Trigger: t.GetTrigger(), ElementId: t.GetElementId(),
 		Guard: t.GetGuard(), Effect: t.GetEffect(),
 		Animation: t.GetAnimation(), DurationMs: t.GetDurationMs(), Easing: t.GetEasing(), DelayMs: t.GetDelayMs(),
+		Order: t.GetOrder(),
 	}
 }
 
@@ -278,12 +280,13 @@ type SetTransitionInput struct {
 	Label      *string `json:"label,omitempty" jsonschema:"text of the triggering element (e.g. the button); used by the generated tests as a fallback for test.id/test.text"`
 	Trigger    *string `json:"trigger,omitempty" jsonschema:"click (default), submit, auto, key, back or free text; with key the label is the key"`
 	ElementId  *string `json:"elementId,omitempty" jsonschema:"optional: the node INSIDE fromId that triggers (the hotspot); its meta test.id/test.text give the test locator"`
-	Guard      *string `json:"guard,omitempty" jsonschema:"condition under which the edge can be taken: free text, or one the prototype player evaluates (user=guest, count >= 3 && !paid, a || b; else = when no other edge on the same trigger+element holds)"`
+	Guard      *string `json:"guard,omitempty" jsonschema:"condition under which the edge can be taken: free text, or one the prototype player evaluates (user=guest, count >= 3 && !paid, a || b; else = when no other edge on the same trigger+element holds; see order for an ordered if / else if / else chain)"`
 	Effect     *string `json:"effect,omitempty" jsonschema:"what the edge changes, free text"`
 	Animation  *string `json:"animation,omitempty" jsonschema:"how the player goes to toId: dissolve, slide-left|right|up|down, push-left|right|up|down, smart (matching names move into place); empty = cut"`
 	DurationMs *int32  `json:"durationMs,omitempty" jsonschema:"0..10000; 0 = the player's default (300)"`
 	Easing     *string `json:"easing,omitempty" jsonschema:"linear, easeIn, easeOut, easeInOut, spring or cubic-bezier(x1,y1,x2,y2); empty = easeInOut"`
 	DelayMs    *int32  `json:"delayMs,omitempty" jsonschema:"trigger auto only: wait on the screen this long (0..60000) before following"`
+	Order      *int32  `json:"order,omitempty" jsonschema:"position (1, 2, 3...) in the if / else if / else chain of this trigger+element on the same screen: the player tries the chain in this order and the first guard that holds wins, so the guards may overlap; give the last branch the guard 'else' (or none). 0 = not in a chain (independent branch, as before). 0..1000"`
 }
 
 type SetTransitionOutput struct {
@@ -306,6 +309,7 @@ func (s *Session) SetTransition(ctx context.Context, in SetTransitionInput) (Set
 			Label: old.GetLabel(), Trigger: old.GetTrigger(), ElementId: old.GetElementId(),
 			Guard: old.GetGuard(), Effect: old.GetEffect(),
 			Animation: old.GetAnimation(), DurationMs: old.GetDurationMs(), Easing: old.GetEasing(), DelayMs: old.GetDelayMs(),
+			Order: old.GetOrder(),
 		}
 	} else {
 		s.mu.Unlock()
@@ -347,6 +351,9 @@ func (s *Session) SetTransition(ctx context.Context, in SetTransitionInput) (Set
 	if in.DelayMs != nil {
 		t.DelayMs = *in.DelayMs
 	}
+	if in.Order != nil {
+		t.Order = *in.Order
+	}
 	err := validateTransition(s.doc, t)
 	s.mu.Unlock()
 	if err != nil {
@@ -385,6 +392,9 @@ func validateTransition(doc *opendesignerv1.Document, t *opendesignerv1.Transiti
 	}
 	if t.GetDurationMs() < 0 || t.GetDurationMs() > 10000 || t.GetDelayMs() < 0 || t.GetDelayMs() > 60000 || !core.ValidEasing(t.GetEasing()) {
 		return errors.New("set_transition: durationMs must be 0..10000, delayMs 0..60000 and easing a known easing")
+	}
+	if t.GetOrder() < 0 || t.GetOrder() > core.MaxTransitionOrder {
+		return fmt.Errorf("set_transition: order must be 0..%d (the position in the if / else if / else chain; 0 = not in a chain)", core.MaxTransitionOrder)
 	}
 	return nil
 }

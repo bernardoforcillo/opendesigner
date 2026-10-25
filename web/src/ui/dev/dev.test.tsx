@@ -180,6 +180,10 @@ describe("ShipPanel", () => {
     fireEvent.click(screen.getByRole("button", { name: /^or t-compose\.zip \(Jetpack Compose\)$/ }));
     await waitFor(() => expect(downloads).toHaveLength(2));
     expect(spy).toHaveBeenCalledWith("doc", "compose", expect.anything());
+    fireEvent.click(screen.getByRole("button", { name: /^or t-leptos\.zip \(Leptos \(Rust\)\)$/ }));
+    await waitFor(() => expect(downloads).toHaveLength(3));
+    expect(downloads[2].name).toBe("t-leptos.zip");
+    expect(spy).toHaveBeenCalledWith("doc", "leptos", expect.anything());
   });
 
   it("without screens the zip button is disabled", () => {

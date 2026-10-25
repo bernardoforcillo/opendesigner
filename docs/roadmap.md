@@ -50,7 +50,8 @@ Legend: [x] done · [ ] to do
 - [x] Prototyping: animated transitions between frames (dissolve, slide, push, smart animate) with duration and easing, and `auto` transitions after a delay; see docs/flows.md
 - [ ] Prototyping: hover and drag interactions, overlays, scroll, component state changes in the player
 - [x] Present: device frames (generic, phone, tablet, desktop browser, none) and hotspot hints (flash on a missed click, a "Show hotspots" toggle); see docs/flows.md
-- [x] Prototype variables with expressions (`count = count + 1`, `count >= 3 || paid`) and an `else` guard for if / else on a hotspot; an ORDERED else-if chain is not there (needs a transition order field), see docs/flows.md
+- [x] Prototype variables with expressions (`count = count + 1`, `count >= 3 || paid`) and an `else` guard for if / else on a hotspot; see docs/flows.md
+- [x] Ordered if / else if / else chains in prototypes: `Transition.order` (proto), evaluated in sequence by the player, a Chain row in the Flows panel, MCP `set_transition` `order`, analysis rules (`else_orphan`, `shadowed`); docs/flows.md
 - [x] Multiple artboards (frames), smart guides and snapping to nodes, layout grids on frames (columns, rows, square grid) that guide and snap; see docs/layout.md
 - [x] Snap to a pixel grid (document menu: 1 / 4 / 8 px, per person) and spacing guides (equal gaps between neighbours, drawn while dragging)
 
@@ -142,7 +143,8 @@ Output
 ## 3. Handoff and ecosystem
 - [x] Dev mode: CSS/Tailwind/React and measurements (size, position, gaps to parent and siblings of the selection, in the Ship panel)
 - [x] SwiftUI and Jetpack Compose code (screens, auto layout, fills, gradients, strokes, shadows, text, vectors, images, components with properties as parameters, flows as navigation); format picker in Develop and Ship, `export_code` target; docs/codegen.md
-- [ ] Leptos (Rust) code target
+- [x] Leptos (Rust) code target (view! macros with the IR's inline CSS, components with props, `leptos_router` routes, flows as `use_navigate`, the react target's Playwright tests; format picker in Develop and Ship, `export_code` target, CLI; type-checked with `cargo check`); docs/codegen.md
+- [x] Diamond gradient exact in CSS (four quadrant layers) and angular / diamond as SVG patterns in vector code (was a circle / the first stop); docs/shapes.md
 - [x] Ready for dev: frames marked ready (with a server-side snapshot), a ready list with focus view, colour-coded annotations on layers shown in Develop and written into the exported code, Compare changes (property-level diff against the snapshot); RPC `CompareReady`, MCP tools; see docs/handoff.md
 - [x] Plugin API (sandboxed scripts with a read/write bridge; docs/handoff.md)
 - [x] WebAssembly plugins (import-free modules run in a terminable Worker, capped memory, commands through the same bridge, one undo step; docs/handoff.md)

@@ -1,0 +1,17 @@
+# Exported by opendesigner (opendesigner export): Cargo manifest of document "Shop" (shop). DO NOT edit by hand:
+# regenerate with `opendesigner export`. The data-node-id attribute ties every element to its design node.
+[package]
+name = "shop"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+console_error_panic_hook = "0.1"
+leptos = { version = "0.8", features = ["csr"] }
+leptos_router = "0.8"
+web-sys = { version = "0.3", features = ["History", "KeyboardEvent"] }
+
+[profile.release]
+opt-level = "s"
+lto = true
+codegen-units = 1

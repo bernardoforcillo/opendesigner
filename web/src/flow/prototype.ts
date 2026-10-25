@@ -208,16 +208,46 @@ export interface Option {
   superseded?: boolean;
 }
 
+/** True when two transitions share a hotspot: the same flow, screen, trigger and element. */
+export function sameHotspot(a: TransitionLite, b: TransitionLite): boolean {
+  return a.flowId === b.flowId && a.fromId === b.fromId && a.trigger === b.trigger && a.elementId === b.elementId;
+}
+
+/**
+ * The ordered if / else if / else chain `t` belongs to: the transitions of its hotspot with
+ * `order > 0`, in evaluation order (order, then id so the result never depends on map order).
+ * Empty when `t` is not in a chain.
+ */
+export function chainOf(scene: SceneState, t: TransitionLite): TransitionLite[] {
+  if (!(t.order && t.order > 0)) return [];
+  return Object.values(scene.transitions)
+    .filter((o) => !!o.order && o.order > 0 && sameHotspot(o, t))
+    .sort((a, b) => (a.order! - b.order!) || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+}
+
 /**
  * The guard of `t` in the current state. Like evalGuard, except for `else`, which is the
  * "otherwise" of an if / else on one trigger: it holds when none of the OTHER transitions that
  * leave the same screen on the same trigger and the same element (the same hotspot) does. There
- * is no order between transitions, so an "else if" is written as a condition that does not overlap
- * the others (`n > 1 && n <= 2`); when several hold the options simply are all enabled.
+ * order between transitions is `order`: the members of an ordered CHAIN (order 1, 2, 3...) are
+ * evaluated in sequence, the first whose guard holds applies and the later ones give way to it
+ * (if / else if / else). Transitions without an order are independent branches: write the
+ * conditions so they do not overlap, or when several hold the options are all enabled.
  */
 export function guardFor(scene: SceneState, state: ProtoState, t: TransitionLite): GuardResult {
   const g = evalGuard(t.guard, state.vars);
-  if (!g.otherwise) return g;
+  if (!g.otherwise) {
+    if (!g.ok || !(t.order && t.order > 0)) return g;
+    // A member of an ordered chain: an earlier member that holds takes the click.
+    for (const o of chainOf(scene, t)) {
+      if (o.id === t.id) break;
+      if (ELSE.test(o.guard.trim()) || !scene.nodes.has(o.toId)) continue;
+      if (evalGuard(o.guard, state.vars).ok) {
+        return { ok: false, parsed: true, reason: `Not when ${o.guard.trim() === "" ? "an earlier branch" : o.guard.trim()}` };
+      }
+    }
+    return g;
+  }
   for (const o of Object.values(scene.transitions)) {
     if (o.id === t.id || o.flowId !== t.flowId || o.fromId !== t.fromId || o.trigger !== t.trigger || o.elementId !== t.elementId) continue;
     if (ELSE.test(o.guard.trim()) || !scene.nodes.has(o.toId)) continue;
@@ -257,6 +287,8 @@ export function optionsFrom(scene: SceneState, flowId: string, state: ProtoState
     const la = a.transition.label || a.transition.trigger;
     const lb = b.transition.label || b.transition.trigger;
     if (la !== lb) return la < lb ? -1 : 1;
+    const oa = a.transition.order ?? 0, ob = b.transition.order ?? 0;
+    if (oa !== ob) return oa - ob;
     return a.transition.id < b.transition.id ? -1 : 1;
   });
   return out;

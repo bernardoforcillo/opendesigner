@@ -274,6 +274,14 @@ func (n *nbox) parseShadows(v string) {
 	}
 }
 
+// bgImage: the gradient string the native targets parse (NativeBG, else background-image).
+func (e *Element) bgImage() string {
+	if e.NativeBG != "" {
+		return e.NativeBG
+	}
+	return e.style("background-image")
+}
+
 // parseNative reads an element's CSS back into an nbox.
 func parseNative(e *Element) *nbox {
 	n := &nbox{opacity: 1, main: "start", cross: "start"}
@@ -336,7 +344,7 @@ func parseNative(e *Element) *nbox {
 	} else if r != "" {
 		n.radius, _ = cssNum(r)
 	}
-	if g := parseGradient(e.style("background-image")); g != nil {
+	if g := parseGradient(e.bgImage()); g != nil {
 		n.fill = &nfill{g: g}
 		if len(g.stops) > 0 {
 			n.fill.c = g.stops[0].c
@@ -401,7 +409,7 @@ func parseText(e *Element) ntext {
 	if w := e.style("width"); w != "" {
 		t.width, t.hasWidth = cssNum(w)
 	}
-	if g := parseGradient(e.style("background-image")); g != nil && len(g.stops) > 0 {
+	if g := parseGradient(e.bgImage()); g != nil && len(g.stops) > 0 {
 		t.color, t.gradientTxt = g.stops[0].c, true
 	} else if c, ok := parseColor(e.style("color")); ok {
 		t.color = c

@@ -1,0 +1,229 @@
+{
+ "_comment": [
+  "Transition.order is the position in an if / else if / else chain: 0..1000 is stored (0 = not in a chain and is omitted); a negative order or one above 1000 rejects the op (scene unchanged, an existing transition keeps its value). Run from BOTH sides."
+ ],
+ "docId": "doc1",
+ "expected": {
+  "id": "doc1",
+  "name": "Untitled",
+  "schemaVersion": 1,
+  "pages": [
+   {
+    "id": "page1",
+    "name": "Page 1"
+   }
+  ],
+  "nodes": {
+   "s1": {
+    "id": "s1",
+    "parentId": "page1",
+    "orderKey": "a1",
+    "name": "s1",
+    "visible": true,
+    "opacity": 1,
+    "x": 0,
+    "y": 0,
+    "width": 50,
+    "height": 50,
+    "rect": {
+     "cornerRadius": 0
+    }
+   },
+   "s2": {
+    "id": "s2",
+    "parentId": "page1",
+    "orderKey": "a2",
+    "name": "s2",
+    "visible": true,
+    "opacity": 1,
+    "x": 100,
+    "y": 0,
+    "width": 50,
+    "height": 50,
+    "rect": {
+     "cornerRadius": 0
+    }
+   }
+  },
+  "flows": {
+   "f1": {
+    "id": "f1",
+    "name": "F",
+    "startId": "s1"
+   }
+  },
+  "transitions": {
+   "t1": {
+    "id": "t1",
+    "flowId": "f1",
+    "fromId": "s1",
+    "toId": "s2",
+    "trigger": "click",
+    "guard": "total > 100",
+    "order": 1
+   },
+   "t2": {
+    "id": "t2",
+    "flowId": "f1",
+    "fromId": "s1",
+    "toId": "s2",
+    "trigger": "click",
+    "guard": "else",
+    "order": 1000
+   },
+   "t3": {
+    "id": "t3",
+    "flowId": "f1",
+    "fromId": "s1",
+    "toId": "s2",
+    "trigger": "click"
+   }
+  }
+ },
+ "ops": [
+  {
+   "opId": "o0",
+   "docId": "doc1",
+   "createNode": {
+    "node": {
+     "id": "s1",
+     "parentId": "page1",
+     "orderKey": "a1",
+     "name": "s1",
+     "visible": true,
+     "opacity": 1,
+     "x": 0,
+     "y": 0,
+     "width": 50,
+     "height": 50,
+     "rect": {
+      "cornerRadius": 0
+     }
+    }
+   }
+  },
+  {
+   "opId": "o1",
+   "docId": "doc1",
+   "createNode": {
+    "node": {
+     "id": "s2",
+     "parentId": "page1",
+     "orderKey": "a2",
+     "name": "s2",
+     "visible": true,
+     "opacity": 1,
+     "x": 100,
+     "y": 0,
+     "width": 50,
+     "height": 50,
+     "rect": {
+      "cornerRadius": 0
+     }
+    }
+   }
+  },
+  {
+   "opId": "o2",
+   "docId": "doc1",
+   "setFlow": {
+    "flow": {
+     "id": "f1",
+     "name": "F",
+     "startId": "s1"
+    }
+   }
+  },
+  {
+   "opId": "o3",
+   "docId": "doc1",
+   "setTransition": {
+    "transition": {
+     "id": "t1",
+     "flowId": "f1",
+     "fromId": "s1",
+     "toId": "s2",
+     "trigger": "click",
+     "guard": "total > 100",
+     "order": 1
+    }
+   }
+  },
+  {
+   "opId": "o4",
+   "docId": "doc1",
+   "setTransition": {
+    "transition": {
+     "id": "t2",
+     "flowId": "f1",
+     "fromId": "s1",
+     "toId": "s2",
+     "trigger": "click",
+     "guard": "else",
+     "order": 1000
+    }
+   }
+  },
+  {
+   "opId": "o5",
+   "docId": "doc1",
+   "setTransition": {
+    "transition": {
+     "id": "t3",
+     "flowId": "f1",
+     "fromId": "s1",
+     "toId": "s2",
+     "trigger": "click"
+    }
+   }
+  },
+  {
+   "opId": "o6",
+   "docId": "doc1",
+   "setTransition": {
+    "transition": {
+     "id": "t4",
+     "flowId": "f1",
+     "fromId": "s1",
+     "toId": "s2",
+     "trigger": "click",
+     "order": 1001
+    }
+   }
+  },
+  {
+   "opId": "o7",
+   "docId": "doc1",
+   "setTransition": {
+    "transition": {
+     "id": "t5",
+     "flowId": "f1",
+     "fromId": "s1",
+     "toId": "s2",
+     "trigger": "click",
+     "order": -1
+    }
+   }
+  },
+  {
+   "opId": "o8",
+   "docId": "doc1",
+   "setTransition": {
+    "transition": {
+     "id": "t1",
+     "flowId": "f1",
+     "fromId": "s1",
+     "toId": "s2",
+     "trigger": "click",
+     "guard": "total > 100",
+     "order": 5000
+    }
+   }
+  }
+ ],
+ "rejected": [
+  6,
+  7,
+  8
+ ]
+}

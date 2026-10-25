@@ -18,6 +18,10 @@ and which it did not.
 - **Dev Mode and code** (docs/codegen.md, docs/handoff.md, docs/flows.md): SwiftUI and Jetpack Compose
   export, ready-for-dev and annotations, compare changes, device frames and hotspot hints in Present,
   prototype expressions and `else` guards.
+- **Leptos export, ordered else-if, exact gradients** (docs/codegen.md, docs/flows.md, docs/shapes.md): a Leptos
+  (Rust) code target, `Transition.order` for if / else if / else chains, and the diamond (CSS layers) and
+  angular / diamond (SVG patterns) gradients in code. The Leptos output passes `cargo check`; `trunk build`
+  and the generated Playwright tests were not run (no wasm target or browser here).
 - **Vector** (docs/vector.md): variable-width strokes (width profile, presets, tool, panel, SVG as a filled outline) and the shape builder tool.
 - **Type and effects** (docs/typography.md, docs/effects.md): text case, super/subscript, lists, indent,
   OpenType features, vertical alignment and inset, horizontal text scale (also in rich-text runs and in
@@ -27,7 +31,6 @@ and which it did not.
 
 ## Not ported
 
-- Leptos code export; ordered `else if` chains in prototypes.
 - Vector-network editing tools, noise/glass refraction.
 - Accessibility tree, accounts and teams.
 - Variables from `.fig` files (only a warning counts the layers that use them), live connector ends, table structure beyond frames, real-file `.fig` fidelity, Display P3, `.fig` export.
@@ -35,4 +38,4 @@ and which it did not.
 ## Unverified
 
 The CanvasKit (GPU) paths, canvas pixels and the browser UI were type-checked and unit-tested only;
-run `pnpm parity` on a machine with a GPU. Generated Swift and Kotlin were never compiled.
+run `pnpm parity` on a machine with a GPU. Generated Swift and Kotlin were never compiled; the Leptos output was checked with `cargo check`.

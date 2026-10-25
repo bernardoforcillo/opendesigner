@@ -21,6 +21,7 @@ package flow
 
 import (
 	"sort"
+	"strings"
 
 	opendesignerv1 "github.com/bernardoforcillo/opendesigner/gen/opendesigner/v1"
 )
@@ -52,7 +53,18 @@ const (
 	IssueUnreachable = "unreachable"
 	IssueDeadEnd     = "dead_end"
 	IssueAmbiguous   = "ambiguous"
+	// IssueElseOrphan: an `else` guard on a hotspot where no other transition can be the "if".
+	IssueElseOrphan = "else_orphan"
+	// IssueShadowed: a branch of an ordered if / else if chain that can never be reached.
+	IssueShadowed = "shadowed"
 )
+
+// IsElseGuard reports whether a guard is the `else` / `otherwise` branch (the player's reading:
+// it holds when no other transition of the same hotspot does).
+func IsElseGuard(guard string) bool {
+	g := strings.ToLower(strings.TrimSpace(guard))
+	return g == "else" || g == "otherwise"
+}
 
 // Limits of the path enumeration: beyond them, the report is `paths_truncated`.
 const (

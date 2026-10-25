@@ -427,7 +427,12 @@ export interface TransitionLite {
   label: string; trigger: string; elementId: string; guard: string; effect: string;
   // Animation to the destination (see Transition.animation); absent = a cut.
   animation?: string; durationMs?: number; easing?: string; delayMs?: number;
+  // Position in the hotspot's if / else if / else chain (see proto Transition.order); absent = not in a chain.
+  order?: number;
 }
+
+/** Transition.order is 0..MAX_TRANSITION_ORDER (parity with core.MaxTransitionOrder). */
+export const MAX_TRANSITION_ORDER = 1000;
 
 /** The closed set of Transition.animation values (parity with core.TransitionAnimations). */
 export const TRANSITION_ANIMATIONS = [
@@ -1214,6 +1219,7 @@ export function toTransitionLite(t: PbTransition): TransitionLite {
     ...(t.durationMs !== 0 ? { durationMs: t.durationMs } : {}),
     ...(t.easing !== "" ? { easing: t.easing } : {}),
     ...(t.delayMs !== 0 ? { delayMs: t.delayMs } : {}),
+    ...(t.order !== 0 ? { order: t.order } : {}),
   };
 }
 export function toPbFlow(f: FlowLite): PbFlow {
@@ -1223,7 +1229,7 @@ export function toPbTransition(t: TransitionLite): PbTransition {
   return create(TransitionSchema, {
     id: t.id, flowId: t.flowId, fromId: t.fromId, toId: t.toId, label: t.label,
     trigger: t.trigger, elementId: t.elementId, guard: t.guard, effect: t.effect,
-    animation: t.animation ?? "", durationMs: t.durationMs ?? 0, easing: t.easing ?? "", delayMs: t.delayMs ?? 0,
+    animation: t.animation ?? "", durationMs: t.durationMs ?? 0, easing: t.easing ?? "", delayMs: t.delayMs ?? 0, order: t.order ?? 0,
   });
 }
 
