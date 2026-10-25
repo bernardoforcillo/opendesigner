@@ -283,6 +283,7 @@ func convert(msg map[string]any, images map[string][]byte, opt Options) (*Result
 		}
 	}
 	c := &converter{opt: opt, images: images, blobs: blobs, counters: map[string]int{}, seenAssets: map[string]string{}, skipped: map[string]int{}, imported: map[string]int{}}
+	c.byKey = byKey
 	c.readVariables(all)
 
 	name := strings.TrimSpace(opt.Name)
@@ -368,7 +369,8 @@ type converter struct {
 	warnings   []string
 	skipped    map[string]int
 	imported   map[string]int
-	vt         varTable // the file's variable collections and variables (variables.go)
+	byKey      map[string]*fnode // every node of the file by guid
+	vt         varTable          // the file's variable collections and variables (variables.go)
 	seenAssets map[string]string
 	instances  int
 }
@@ -463,6 +465,7 @@ func (c *converter) convertNode(f *fnode, parent string) {
 	w, h := num(size, "x", 0), num(size, "y", 0)
 
 	var shape any
+	var ends *connEnds
 	switch typ {
 	case "FRAME", "SECTION", "COMPONENT", "COMPONENT_SET", "SYMBOL", "INSTANCE":
 		if typ == "INSTANCE" {
@@ -494,7 +497,15 @@ func (c *converter) convertNode(f *fnode, parent string) {
 			shape = &opendesignerv1.Node_Rect{Rect: &opendesignerv1.RectNode{}}
 		}
 	case "CONNECTOR":
-		shape = c.connector(f.raw, w, h)
+		ends = c.connectorEnds(f)
+		if ends != nil && len(c.geometry(c.savedPaths(f.raw))) == 0 {
+			// The ends decide the line, so they decide the box: the saved size and place of a connector
+			// are not trusted over them (FigCraft's reader does the same).
+			w, h = ends.w, ends.h
+		} else {
+			ends = nil
+		}
+		shape = c.connector(f.raw, w, h, ends)
 	case "TABLE", "TABLE_CELL", "SLIDE", "SLIDE_ROW", "SLIDE_GRID", "STICKY", "SHAPE_WITH_TEXT", "CODE_BLOCK":
 		// Layers with no counterpart come in as the closest frame; the text they carry becomes a text layer.
 		c.warn("%s layers were imported as frames (their special behaviour is not kept)", strings.ToLower(strings.ReplaceAll(typ, "_", " ")))
@@ -520,6 +531,9 @@ func (c *converter) convertNode(f *fnode, parent string) {
 	n.Rotation = round2(math.Atan2(m10, m00) * 180 / math.Pi)
 	if math.Abs(n.Rotation) < 0.005 {
 		n.Rotation = 0
+	}
+	if ends != nil {
+		n.X, n.Y, n.Rotation = round2(ends.x), round2(ends.y), 0
 	}
 	n.IsMask = boolOf(f.raw, "mask", false)
 	n.ConstraintX = constraint(asStr(f.raw["horizontalConstraint"]))
@@ -972,36 +986,107 @@ func (c *converter) label(n *opendesignerv1.Node, f *fnode) {
 	t.Fills = []*opendesignerv1.Paint{solidPaint(0, 0, 0)}
 }
 
-// connector draws a connector between its ends. A saved path (strokeGeometry, an outline) is kept as the
-// vector it is. Without one the line is rebuilt from the style: the ends are taken to be the opposite
-// corners of the layer's box, (0,0) and (w,h), a straight line, an elbow (across, along, across, with the
-// bend half way) or a curve (a cubic with horizontal tangents).
-func (c *converter) connector(raw map[string]any, w, h float64) any {
-	if sub := c.geometry(raw["strokeGeometry"]); len(sub) > 0 {
+// connector draws a connector between its ends. A saved path (an outline) is kept as the vector it is.
+// Without one the line is rebuilt from the style between the two ends (a to b, in the layer's own
+// coordinates): a straight line, an elbow (across, along, across, with the bend half way) or a curve (a
+// cubic with horizontal tangents). When the file does not give both ends they are taken to be the opposite
+// corners of the layer's box, (0,0) and (w,h).
+func (c *converter) connector(raw map[string]any, w, h float64, ends *connEnds) any {
+	if sub := c.geometry(c.savedPaths(raw)); len(sub) > 0 {
 		return &opendesignerv1.Node_Vector{Vector: &opendesignerv1.VectorNode{Subpaths: sub}}
 	}
 	style := asStr(raw["connectorLineStyle"])
+	ax, ay, bx, by := 0.0, 0.0, w, h
+	if ends != nil {
+		ax, ay, bx, by = ends.ax-ends.x, ends.ay-ends.y, ends.bx-ends.x, ends.by-ends.y
+	}
 	a := func(x, y float64) *opendesignerv1.Anchor { return &opendesignerv1.Anchor{X: x, Y: y} }
 	var anchors []*opendesignerv1.Anchor
 	switch {
-	case style == "ELBOWED" && w != 0 && h != 0:
-		anchors = []*opendesignerv1.Anchor{a(0, 0), a(w/2, 0), a(w/2, h), a(w, h)}
-	case style == "CURVED" && w != 0 && h != 0:
-		anchors = []*opendesignerv1.Anchor{{X: 0, Y: 0, OutX: w / 2}, {X: w, Y: h, InX: -w / 2}}
+	case style == "ELBOWED" && ax != bx && ay != by:
+		anchors = []*opendesignerv1.Anchor{a(ax, ay), a((ax+bx)/2, ay), a((ax+bx)/2, by), a(bx, by)}
+	case style == "CURVED" && ax != bx && ay != by:
+		anchors = []*opendesignerv1.Anchor{{X: ax, Y: ay, OutX: (bx - ax) / 2}, {X: bx, Y: by, InX: -(bx - ax) / 2}}
 	default:
-		anchors = []*opendesignerv1.Anchor{a(0, 0), a(w, h)}
+		anchors = []*opendesignerv1.Anchor{a(ax, ay), a(bx, by)}
 	}
 	if style == "ELBOWED" || style == "CURVED" {
-		c.warn("elbowed and curved connectors without a saved path were redrawn between the corners of their box")
+		if ends != nil {
+			c.warn("elbowed and curved connectors without a saved path were redrawn between their ends, not along the route Figma saved")
+		} else {
+			c.warn("elbowed and curved connectors without a saved path were redrawn between the corners of their box")
+		}
 	}
 	return &opendesignerv1.Node_Vector{Vector: &opendesignerv1.VectorNode{Subpaths: []*opendesignerv1.SubPath{{Anchors: anchors}}}}
+}
+
+// connEnds are a connector's two ends in its parent's coordinates (a: connectorStart, b: connectorEnd) and
+// the box they span (x, y, w, h).
+type connEnds struct{ ax, ay, bx, by, x, y, w, h float64 }
+
+// connectorEnds places both ends, as FigCraft's reader does: an end attached to a sibling layer
+// (endpointNodeID) is that layer's transform applied to its relativePosition in the layer's size (the
+// middle by default); a free end is its position. Nil when either end cannot be placed.
+func (c *converter) connectorEnds(f *fnode) *connEnds {
+	parent := guidKey(asMap(f.raw["parentIndex"])["guid"])
+	end := func(key string) (x, y float64, ok bool) {
+		e := asMap(f.raw[key])
+		if e == nil {
+			return 0, 0, false
+		}
+		if id := guidKey(e["endpointNodeID"]); id != "" && id != noStyle {
+			n := c.byKey[id]
+			// Only siblings share the connector's coordinates.
+			if n == nil || guidKey(asMap(n.raw["parentIndex"])["guid"]) != parent {
+				return 0, 0, false
+			}
+			size, tr, rel := asMap(n.raw["size"]), asMap(n.raw["transform"]), asMap(e["relativePosition"])
+			px, py := num(size, "x", 0)*num(rel, "x", 0.5), num(size, "y", 0)*num(rel, "y", 0.5)
+			x = num(tr, "m00", 1)*px + num(tr, "m01", 0)*py + num(tr, "m02", 0)
+			y = num(tr, "m10", 0)*px + num(tr, "m11", 1)*py + num(tr, "m12", 0)
+			return x, y, !math.IsNaN(x+y) && !math.IsInf(x+y, 0)
+		}
+		pos := asMap(e["position"])
+		x, okx := pos["x"].(float64)
+		y, oky := pos["y"].(float64)
+		return x, y, okx && oky && !math.IsNaN(x+y) && !math.IsInf(x+y, 0)
+	}
+	ax, ay, oka := end("connectorStart")
+	bx, by, okb := end("connectorEnd")
+	if !oka || !okb {
+		return nil
+	}
+	x, y := math.Min(ax, bx), math.Min(ay, by)
+	return &connEnds{ax: ax, ay: ay, bx: bx, by: by, x: x, y: y, w: math.Abs(ax - bx), h: math.Abs(ay - by)}
+}
+
+// savedPaths is the list of {commandsBlob} entries holding a connector's saved path: its own strokeGeometry,
+// else the stroke or fill outline of the generated line Figma keeps in derivedImmutableFrameData (the row
+// whose guidPath is the single template guid 40000000:0, as FigCraft's reader finds it).
+func (c *converter) savedPaths(raw map[string]any) any {
+	if len(c.geometry(raw["strokeGeometry"])) > 0 {
+		return raw["strokeGeometry"]
+	}
+	for _, r := range asList(asMap(raw["derivedImmutableFrameData"])["overrides"]) {
+		row := asMap(r)
+		guids := asList(asMap(row["guidPath"])["guids"])
+		if len(guids) != 1 || guidKey(guids[0]) != "40000000:0" {
+			continue
+		}
+		for _, k := range []string{"strokeGeometry", "fillGeometry"} {
+			if len(c.geometry(row[k])) > 0 {
+				return row[k]
+			}
+		}
+	}
+	return nil
 }
 
 // connectorPaint: a drawn connector is a stroke; a saved path is the stroke's outline, so it is filled
 // with the stroke's colour instead.
 // It returns the strokePaints index of each fill it ends up with (variable bindings translate by it).
 func (c *converter) connectorPaint(n *opendesignerv1.Node, raw map[string]any) (fillSrc []int) {
-	if len(c.geometry(raw["strokeGeometry"])) > 0 {
+	if len(c.geometry(c.savedPaths(raw))) > 0 {
 		n.Fills, fillSrc = c.paintsWithSrc(raw["strokePaints"], false)
 		n.Strokes = nil
 	} else {

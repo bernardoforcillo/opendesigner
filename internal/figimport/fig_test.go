@@ -202,7 +202,10 @@ func testDefs() []td {
 		{"TextData", kindMessage, []tf{{"characters", "string", false, 1}}},
 		{"FontName", kindMessage, []tf{{"family", "string", false, 1}, {"style", "string", false, 2}}},
 		{"ArcData", kindMessage, []tf{{"startingAngle", "float", false, 1}, {"endingAngle", "float", false, 2}, {"innerRadius", "float", false, 3}}},
-		{"ConnectorEnd", kindMessage, []tf{{"magnet", "string", false, 1}}},
+		{"ConnectorEnd", kindMessage, []tf{{"endpointNodeID", "GUID", false, 1}, {"position", "Vector", false, 2}, {"relativePosition", "Vector", false, 3}}},
+		{"GUIDPath", kindMessage, []tf{{"guids", "GUID", true, 1}}},
+		{"FrameRow", kindMessage, []tf{{"guidPath", "GUIDPath", false, 1}, {"fillGeometry", "Geometry", true, 2}, {"strokeGeometry", "Geometry", true, 3}}},
+		{"DerivedFrame", kindMessage, []tf{{"version", "float", false, 1}, {"overrides", "FrameRow", true, 2}}},
 		{"Geometry", kindMessage, []tf{{"commandsBlob", "uint", false, 1}}},
 		{"NodeChange", kindMessage, []tf{
 			{"guid", "GUID", false, 1}, {"parentIndex", "ParentIndex", false, 2}, {"type", "NodeType", false, 3}, {"name", "string", false, 4},
@@ -214,6 +217,7 @@ func testDefs() []td {
 			{"connectorLineStyle", "string", false, 25}, {"strokeGeometry", "Geometry", true, 26}, {"connectorStart", "ConnectorEnd", false, 27}, {"variableConsumptionMap", "VariableDataMap", false, 28},
 			{"variableSetModes", "SetMode", true, 29}, {"variableSetID", "VariableID", false, 30}, {"variableResolvedType", "ResolvedType", false, 31}, {"variableDataValues", "Values", false, 32},
 			{"variableModeBySetMap", "ModeMap", false, 33}, {"key", "string", false, 34}, {"version", "string", false, 35}, {"isSoftDeleted", "bool", false, 36}, {"sortPosition", "string", false, 37},
+			{"connectorEnd", "ConnectorEnd", false, 38}, {"derivedImmutableFrameData", "DerivedFrame", false, 39},
 		}},
 		{"Blob", kindMessage, []tf{{"bytes", "byte", true, 1}}},
 		{"Message", kindMessage, []tf{{"nodeChanges", "NodeChange", true, 1}, {"blobs", "Blob", true, 2}}},
@@ -246,10 +250,10 @@ func deflateRaw(b []byte) []byte {
 	return buf.Bytes()
 }
 
-func zstdCompress(b []byte) []byte {
-	w, _ := zstd.NewWriter(nil)
-	return w.EncodeAll(b, nil)
-}
+// zstdWriter is shared: EncodeAll can be called again, and a new encoder per call is the slow part.
+var zstdWriter, _ = zstd.NewWriter(nil, zstd.WithEncoderConcurrency(1))
+
+func zstdCompress(b []byte) []byte { return zstdWriter.EncodeAll(b, nil) }
 
 func zipOf(files map[string][]byte) []byte {
 	var buf bytes.Buffer
@@ -532,7 +536,7 @@ func tailFixture() map[string]any {
 			change(1, 0, "a", "CANVAS", "Page 1", nil),
 			change(2, 1, "a", "CONNECTOR", "Elbow", map[string]any{
 				"size": map[string]any{"x": 100, "y": 60}, "transform": mat(0, 0), "strokePaints": []any{solid(0, 0, 1)}, "strokeWeight": 2,
-				"connectorLineStyle": "ELBOWED", "connectorStart": map[string]any{"magnet": "RIGHT"},
+				"connectorLineStyle": "ELBOWED", "connectorStart": map[string]any{"endpointNodeID": guid(1, 999)},
 			}),
 			change(3, 1, "b", "CONNECTOR", "Curve", map[string]any{
 				"size": map[string]any{"x": 80, "y": 40}, "transform": mat(0, 100), "strokePaints": []any{solid(1, 0, 0)}, "strokeWeight": 1, "connectorLineStyle": "CURVED",
@@ -629,5 +633,72 @@ func TestStraightConnectorHasNoWarning(t *testing.T) {
 	a := find(res, "Line").GetVector().Subpaths[0].Anchors
 	if len(a) != 2 || a[1].X != 50 || len(res.Warnings) != 0 {
 		t.Fatalf("line = %v, warnings %v", a, res.Warnings)
+	}
+}
+
+func connectorFile(over map[string]any, sibling ...any) map[string]any {
+	nodes := []any{
+		map[string]any{"guid": guid(1, 0), "type": "DOCUMENT", "name": "Document"},
+		change(1, 0, "a", "CANVAS", "P", nil),
+		change(2, 1, "a", "CONNECTOR", "Wire", over),
+	}
+	return map[string]any{"nodes": append(nodes, sibling...), "blobs": []any{map[string]any{"bytes": cmd(1, 0.0, 0.0, 2, 40.0, 0.0, 2, 40.0, 5.0, 2, 0.0, 5.0, 0)}}}
+}
+
+func importConnector(t *testing.T, f map[string]any) (*Result, *opendesignerv1.Node) {
+	t.Helper()
+	res, err := Import(buildCanvas(t, map[string]any{"nodeChanges": f["nodes"], "blobs": f["blobs"]}, deflateRaw), Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return res, find(res, "Wire")
+}
+
+// The ends the file gives decide the line, in either direction, with a free end or one attached to a
+// sibling (its transform applied to the relative position in its size).
+func TestConnectorEndsPlaceTheLine(t *testing.T) {
+	// From the lower right to the upper left: the box is spanned by the ends and the anchors keep the direction.
+	res, wire := importConnector(t, connectorFile(map[string]any{
+		"size": map[string]any{"x": 1, "y": 1}, "transform": mat(500, 500), "strokePaints": []any{solid(0, 0, 0)}, "strokeWeight": 1, "connectorLineStyle": "ELBOWED",
+		"connectorStart": map[string]any{"position": map[string]any{"x": 100, "y": 90}},
+		"connectorEnd":   map[string]any{"endpointNodeID": guid(1, 3), "relativePosition": map[string]any{"x": 0.5, "y": 1}},
+	}, change(3, 1, "b", "RECTANGLE", "Target", map[string]any{"size": map[string]any{"x": 40, "y": 20}, "transform": mat(20, 30)})))
+	// End b = (20+40*.5, 30+20*1) = (40, 50); a = (100, 90): box (40,50) 60x40.
+	a := wire.GetVector().Subpaths[0].Anchors
+	if wire.Width != 60 || wire.Height != 40 || len(a) != 4 || a[0].X != 60 || a[0].Y != 40 || a[1].X != 30 || a[1].Y != 40 || a[2].X != 30 || a[2].Y != 0 || a[3].X != 0 || a[3].Y != 0 {
+		t.Fatalf("wire = %v %v %v / %v", wire.Width, wire.Height, a, res.Warnings)
+	}
+	if !strings.Contains(strings.Join(res.Warnings, "|"), "redrawn between their ends") {
+		t.Fatalf("warnings = %v", res.Warnings)
+	}
+	// An end attached to a layer that is not a sibling, or missing, cannot be placed: the old corner rule applies.
+	_, wire = importConnector(t, connectorFile(map[string]any{
+		"size": map[string]any{"x": 30, "y": 20}, "transform": mat(0, 0), "strokePaints": []any{solid(0, 0, 0)}, "strokeWeight": 1,
+		"connectorStart": map[string]any{"endpointNodeID": guid(1, 77)}, "connectorEnd": map[string]any{"position": map[string]any{"x": 1, "y": 1}},
+	}))
+	if a := wire.GetVector().Subpaths[0].Anchors; wire.Width != 30 || a[1].X != 30 || a[1].Y != 20 {
+		t.Fatalf("fallback wire = %v %v", wire.Width, a)
+	}
+}
+
+// A connector's saved line can sit in the generated row of derivedImmutableFrameData instead of the layer.
+func TestConnectorSavedPathInDerivedFrameData(t *testing.T) {
+	row := func(id int, key string) map[string]any {
+		return map[string]any{"guidPath": map[string]any{"guids": []any{guid(40000000, id)}}, key: []any{map[string]any{"commandsBlob": 0}}}
+	}
+	over := func(rows ...any) map[string]any {
+		return map[string]any{
+			"size": map[string]any{"x": 40, "y": 5}, "transform": mat(0, 0), "strokePaints": []any{solid(0, 1, 0)}, "strokeWeight": 3, "connectorLineStyle": "STRAIGHT",
+			"derivedImmutableFrameData": map[string]any{"version": 1, "overrides": rows},
+		}
+	}
+	// The row of the template guid 40000000:0 counts; another row (the label, 40000000:1) does not.
+	_, wire := importConnector(t, connectorFile(over(row(1, "fillGeometry"), row(0, "fillGeometry"))))
+	if wire.GetVector() == nil || len(wire.GetVector().Subpaths[0].Anchors) != 4 || len(wire.Strokes) != 0 || len(wire.Fills) != 1 || wire.Fills[0].GetSolid().GetColor().G != 1 {
+		t.Fatalf("wire = %v", wire)
+	}
+	_, wire = importConnector(t, connectorFile(over(row(1, "fillGeometry"))))
+	if len(wire.GetVector().Subpaths[0].Anchors) != 2 || len(wire.Strokes) != 1 {
+		t.Fatalf("a row that is not the line's must not be used: %v", wire)
 	}
 }

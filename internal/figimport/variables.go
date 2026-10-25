@@ -49,6 +49,7 @@ type figVar struct {
 	typ           opendesignerv1.VariableType
 	vals          map[string]*figVal // by Figma mode key
 	aliasOf       *figVar            // set when every mode aliases the same variable
+	depth         int                // hops along aliasOf to a variable that holds values
 }
 
 type varTable struct {
@@ -293,13 +294,31 @@ func (vt *varTable) linkAliases() {
 			v.aliasOf = target
 		}
 	}
-	// A cycle is broken at the first variable (in file order) that closes it.
-	for _, v := range vt.varList {
-		for cur, i := v.aliasOf, 0; cur != nil && i <= len(vt.varList); cur, i = cur.aliasOf, i+1 {
-			if cur == v {
-				v.aliasOf = nil
-				break
+	// Each chain is walked once. A cycle is broken where the walk comes back to itself, and a chain
+	// longer than the document follows (core.maxAliasDepth) is cut: those variables keep resolved values.
+	done := map[*figVar]bool{}
+	for _, start := range vt.varList {
+		var path []*figVar
+		onPath := map[*figVar]bool{}
+		for cur := start; cur != nil && !done[cur] && !onPath[cur]; cur = cur.aliasOf {
+			path = append(path, cur)
+			onPath[cur] = true
+		}
+		if len(path) == 0 {
+			continue
+		}
+		if last := path[len(path)-1]; last.aliasOf != nil && onPath[last.aliasOf] {
+			last.aliasOf = nil
+		}
+		for i := len(path) - 1; i >= 0; i-- {
+			v := path[i]
+			if v.aliasOf != nil {
+				v.depth = v.aliasOf.depth + 1
+				if v.depth > maxAliasChain-2 {
+					v.aliasOf, v.depth = nil, 0
+				}
 			}
+			done[v] = true
 		}
 	}
 	for _, v := range vt.varList {
@@ -351,15 +370,8 @@ func (vt *varTable) output() ([]*opendesignerv1.VariableCollection, []*opendesig
 		}
 		cols = append(cols, pc)
 	}
-	depth := func(v *figVar) int {
-		d := 0
-		for cur := v.aliasOf; cur != nil && d <= len(vt.varList); cur = cur.aliasOf {
-			d++
-		}
-		return d
-	}
 	ordered := append([]*figVar(nil), vt.varList...)
-	sort.SliceStable(ordered, func(i, j int) bool { return depth(ordered[i]) < depth(ordered[j]) })
+	sort.SliceStable(ordered, func(i, j int) bool { return ordered[i].depth < ordered[j].depth })
 	var out []*opendesignerv1.Variable
 	for _, v := range ordered {
 		pv := &opendesignerv1.Variable{Id: v.id, CollectionId: v.coll.id, Name: v.name, Type: v.typ}
