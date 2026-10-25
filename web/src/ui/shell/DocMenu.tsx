@@ -5,6 +5,7 @@ import { useRenderer } from "../../store/rendererChoice";
 import { useViewPrefs } from "../../store/viewPrefs";
 import { useScene } from "../../store/store";
 import { useTheme } from "./theme";
+import { LANGUAGES, useLanguage, useT, type LanguageChoice } from "../../i18n";
 import { useDocNameEditing } from "./DocName";
 import { pickSvgFile } from "../../tools/svgImport";
 import { importFigFile, pickFigFile } from "../../fig/importFig";
@@ -59,6 +60,8 @@ export { renameOpenDocument } from "./DocName";
 
 export function DocMenu({ onNewDocument }: { onNewDocument: () => void }) {
   const navigate = useAppNavigate();
+  const { t } = useT();
+  const langChoice = useLanguage((s) => s.choice);
   const theme = useTheme((s) => s.choice);
   const setTheme = useTheme((s) => s.set);
   const renderer = useRenderer((s) => s.choice);
@@ -92,7 +95,7 @@ export function DocMenu({ onNewDocument }: { onNewDocument: () => void }) {
   return (
     <>
     <MenuTrigger isOpen={open} onOpenChange={setOpen}>
-      <RacButton aria-label="Document menu" className="flex h-9 w-9 items-center justify-center rounded-lg outline-none hover:bg-surface-3 focus-visible:shadow-[var(--ring)]">
+      <RacButton aria-label={t("Document menu")} className="flex h-9 w-9 items-center justify-center rounded-lg outline-none hover:bg-surface-3 focus-visible:shadow-[var(--ring)]">
         <Logo />
       </RacButton>
       <Popover placement="bottom start" offset={10} className="z-50 min-w-[220px] rounded-xl bg-raised p-1 text-[13px] text-fg shadow-pop">
@@ -165,29 +168,30 @@ export function DocMenu({ onNewDocument }: { onNewDocument: () => void }) {
           else if (k === "pixel-snap") useViewPrefs.getState().cyclePixelSnap();
           else if (k === "renderer") setRenderer(renderer === "gpu" ? "cpu" : "gpu");
           else if (k === "system" || k === "light" || k === "dark") setTheme(k);
+          else if (typeof k === "string" && k.startsWith("lang:")) useLanguage.getState().set(k.slice("lang:".length) as LanguageChoice);
         }}>
               <MenuItem id="home" className={ITEM}>
-                <Icon name="page" size={14} /> Home
+                <Icon name="page" size={14} /> {t("Home")}
               </MenuItem>
               <MenuItem id="new" className={ITEM}>
-                <Icon name="plus" size={14} /> New document
+                <Icon name="plus" size={14} /> {t("New document")}
               </MenuItem>
               <MenuItem id="rename" className={ITEM}>
-                <Icon name="pen" size={14} /> Rename document
+                <Icon name="pen" size={14} /> {t("Rename document")}
               </MenuItem>
               <MenuItem id="import-svg" className={ITEM}>
-                <Icon name="image" size={14} /> Import SVG…
+                <Icon name="image" size={14} /> {t("Import SVG…")}
               </MenuItem>
               {show("import-fig") && (
                 <MenuItem id="import-fig" className={ITEM}>
-                <Icon name="image" size={14} /> Import .fig file… <span className="ml-auto text-[11px] text-fg-subtle">experimental</span>
+                <Icon name="image" size={14} /> {t("Import .fig file…")} <span className="ml-auto text-[11px] text-fg-subtle">{t("experimental")}</span>
               </MenuItem>
               )}
               <MenuItem id="import-pdf" className={ITEM}>
-                <Icon name="page" size={14} /> Import PDF… <span className="ml-auto text-[11px] text-fg-subtle">editable text and shapes</span>
+                <Icon name="page" size={14} /> {t("Import PDF…")} <span className="ml-auto text-[11px] text-fg-subtle">{t("editable text and shapes")}</span>
               </MenuItem>
               <MenuItem id="import-pdf-image" className={ITEM}>
-                <Icon name="image" size={14} /> Import PDF as pictures…
+                <Icon name="image" size={14} /> {t("Import PDF as pictures…")}
               </MenuItem>
               <MenuItem id="import-idml" className={ITEM}>
                 <Icon name="page" size={14} /> Import InDesign IDML… <span className="ml-auto text-[11px] text-fg-subtle">shapes and text</span>
@@ -205,16 +209,16 @@ export function DocMenu({ onNewDocument }: { onNewDocument: () => void }) {
                 <Icon name="download" size={14} /> Export as InDesign IDML
               </MenuItem>
               <MenuItem id="export-pdf" className={ITEM}>
-                <Icon name="download" size={14} /> Export all pages as PDF…
+                <Icon name="download" size={14} /> {t("Export all pages as PDF…")}
               </MenuItem>
               {show("export-pdf-bleed") && (
                 <MenuItem id="export-pdf-bleed" className={ITEM}>
-                  <Icon name="download" size={14} /> Export PDF for print (options, preflight)…
+                  <Icon name="download" size={14} /> {t("Export PDF for print (with bleed)…")}
                 </MenuItem>
               )}
               {show("export-epub") && (
                 <MenuItem id="export-epub" className={ITEM}>
-                  <Icon name="download" size={14} /> Export all pages as EPUB (fixed layout)
+                  <Icon name="download" size={14} /> {t("Export all pages as EPUB")}
                 </MenuItem>
               )}
               {show("export-epub") && (
@@ -224,27 +228,27 @@ export function DocMenu({ onNewDocument }: { onNewDocument: () => void }) {
               )}
               {show("page-setup") && (
                 <MenuItem id="page-setup" className={ITEM}>
-                  <Icon name="page" size={14} /> Page setup…
+                  <Icon name="page" size={14} /> {t("Page setup…")}
                 </MenuItem>
               )}
               <MenuItem id="diagram" className={ITEM}>
-                <Icon name="plus" size={14} /> Diagram (Mermaid, UML)…
+                <Icon name="plus" size={14} /> {t("Diagram (Mermaid, UML)…")}
               </MenuItem>
               {show("board") && (
                 <MenuItem id="board" className={ITEM}>
-                <Icon name="plus" size={14} /> Whiteboard (sticky, table, kanban…)…
+                <Icon name="plus" size={14} /> {t("Whiteboard (sticky, table, kanban…)…")}
               </MenuItem>
               )}
               {show("variables") && (
                 <MenuItem id="variables" className={ITEM}>
-                <Icon name="plus" size={14} /> Variables…
+                <Icon name="plus" size={14} /> {t("Variables…")}
               </MenuItem>
               )}
               <MenuItem id="fonts" className={ITEM}>
-                <Icon name="plus" size={14} /> Fonts…
+                <Icon name="plus" size={14} /> {t("Fonts…")}
               </MenuItem>
               <MenuItem id="styles" className={ITEM}>
-                <Icon name="plus" size={14} /> Styles (paragraph, character)…
+                <Icon name="plus" size={14} /> {t("Styles (paragraph, character)…")}
               </MenuItem>
               <MenuItem id="swatches" className={ITEM}>
                 <Icon name="grid" size={14} /> Swatches and colour mode…
@@ -293,28 +297,28 @@ export function DocMenu({ onNewDocument }: { onNewDocument: () => void }) {
                 </>
               )}
               <MenuItem id="versions" className={ITEM}>
-                <Icon name="page" size={14} /> Versions…
+                <Icon name="page" size={14} /> {t("Versions…")}
               </MenuItem>
               <MenuItem id="share" className={ITEM}>
-                <Icon name="share" size={14} /> Share…
+                <Icon name="share" size={14} /> {t("Share…")}
               </MenuItem>
               {show("plugins") && (
                 <MenuItem id="plugins" className={ITEM}>
-                <Icon name="code" size={14} /> Plugins…
+                <Icon name="code" size={14} /> {t("Plugins…")}
               </MenuItem>
               )}
               <Separator className="my-1 h-px bg-line" />
               <MenuItem id="pixel-snap" className={ITEM}>
-                <Icon name="plus" size={14} /> Pixel snap {pixelSnap > 0 ? `${pixelSnap} px` : "off"}
-                <span className="ml-auto text-[11px] text-fg-subtle">cycles 1 / 4 / 8 / off</span>
+                <Icon name="plus" size={14} /> {pixelSnap > 0 ? t("Pixel snap {n} px", { n: pixelSnap }) : t("Pixel snap off")}
+                <span className="ml-auto text-[11px] text-fg-subtle">{t("cycles 1 / 4 / 8 / off")}</span>
               </MenuItem>
               <MenuItem id="renderer" className={ITEM}>
-                <Icon name="bolt" size={14} /> Renderer {renderer === "gpu" ? "GPU" : "CPU"}
-                <span className="ml-auto text-[11px] text-fg-subtle">switch to {renderer === "gpu" ? "CPU" : "GPU"}</span>
+                <Icon name="bolt" size={14} /> {t("Renderer {name}", { name: renderer === "gpu" ? "GPU" : "CPU" })}
+                <span className="ml-auto text-[11px] text-fg-subtle">{t("switch to {name}", { name: renderer === "gpu" ? "CPU" : "GPU" })}</span>
               </MenuItem>
               <Separator className="my-1 h-px bg-line" />
               <MenuSection>
-              <Header className="px-2 pb-0.5 pt-1.5 text-[11px] font-semibold uppercase tracking-[0.06em] text-fg-subtle">Document type</Header>
+              <Header className="px-2 pb-0.5 pt-1.5 text-[11px] font-semibold uppercase tracking-[0.06em] text-fg-subtle">{t("Document type")}</Header>
               {VERTICAL_LIST.map((v) => (
                 <MenuItem key={v.id} id={`vertical:${v.id}`} className={ITEM}>
                   <Icon name={v.icon} size={14} /> {v.name}
@@ -324,11 +328,26 @@ export function DocMenu({ onNewDocument }: { onNewDocument: () => void }) {
               </MenuSection>
               <Separator className="my-1 h-px bg-line" />
               <MenuSection>
-              <Header className="px-2 pb-0.5 pt-1.5 text-[11px] font-semibold uppercase tracking-[0.06em] text-fg-subtle">Theme</Header>
+              <Header className="px-2 pb-0.5 pt-1.5 text-[11px] font-semibold uppercase tracking-[0.06em] text-fg-subtle">{t("Theme")}</Header>
               {([["system", "System", "cpu"], ["light", "Light", "sun"], ["dark", "Dark", "moon"]] as const).map(([id, label, icon]) => (
                 <MenuItem key={id} id={id} className={ITEM}>
-                  <Icon name={icon} size={14} /> {label}
+                  <Icon name={icon} size={14} /> {t(label)}
                   {theme === id && <Icon name="check" size={14} className="ml-auto text-accent" />}
+                </MenuItem>
+              ))}
+              </MenuSection>
+              <Separator className="my-1 h-px bg-line" />
+              <MenuSection>
+              <Header className="px-2 pb-0.5 pt-1.5 text-[11px] font-semibold uppercase tracking-[0.06em] text-fg-subtle">{t("Language")}</Header>
+              <MenuItem id="lang:system" className={ITEM}>
+                <Icon name="cpu" size={14} /> {t("System")}
+                {langChoice === "system" && <Icon name="check" size={14} className="ml-auto text-accent" />}
+              </MenuItem>
+              {LANGUAGES.map((l) => (
+                <MenuItem key={l.code} id={`lang:${l.code}`} className={ITEM} textValue={l.name}>
+                  <span lang={l.code}>{l.name}</span>
+                  {l.draft && <span className="text-[11px] text-fg-subtle">{t("machine draft")}</span>}
+                  {langChoice === l.code && <Icon name="check" size={14} className="ml-auto text-accent" />}
                 </MenuItem>
               ))}
               </MenuSection>

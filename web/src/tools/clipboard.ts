@@ -13,7 +13,9 @@ import {
   type StrokeLite,
   type TextAlignLite,
   type TextLite,
+  type TextStyleLite,
 } from "../store/types";
+import { isValidFontFeatures } from "../store/typography";
 import { makeCreateNodeOp, uuid } from "./ops";
 import { isTextField } from "./toolManager";
 import { importSvgAt, looksLikeSvg, viewportCenter } from "./svgImport";
@@ -72,6 +74,8 @@ const UNSUPPORTED_NOTICE =
 const KNOWN_KINDS: Record<NodeLite["kind"], boolean> = {
   rect: true,
   ellipse: true,
+  polygon: true,
+  star: true,
   text: true,
   image: true,
   vector: false,
@@ -151,6 +155,28 @@ function toEffects(v: unknown): EffectLite[] {
       });
     } else if (e.kind === "layerBlur") {
       out.push({ kind: "layerBlur", radius: Math.max(0, num(e.radius, 0)) });
+    } else if (e.kind === "progressiveBlur") {
+      out.push({
+        kind: "progressiveBlur", startRadius: Math.max(0, num(e.startRadius, 0)), endRadius: Math.max(0, num(e.endRadius, 0)),
+        x1: num(e.x1, 0.5), y1: num(e.y1, 0), x2: num(e.x2, 0.5), y2: num(e.y2, 1), background: e.background === true,
+      });
+    } else if (e.kind === "noise") {
+      const rgba = (v: unknown, d: number) => {
+        const c = (v ?? {}) as Record<string, unknown>;
+        return { r: num(c.r, d), g: num(c.g, d), b: num(c.b, d), a: num(c.a, 1) };
+      };
+      const mode = e.mode === "duo" || e.mode === "multi" ? e.mode : "mono";
+      out.push({
+        kind: "noise", mode, size: Math.max(0, num(e.size, 1)), density: Math.min(1, Math.max(0, num(e.density, 0.5))),
+        opacity: Math.min(1, Math.max(0, num(e.opacity, 0.25))), color: rgba(e.color, 0), color2: rgba(e.color2, 1), seed: Math.max(0, Math.round(num(e.seed, 1))),
+      });
+    } else if (e.kind === "texture") {
+      out.push({ kind: "texture", scale: Math.max(0, num(e.scale, 8)), intensity: Math.min(1, Math.max(0, num(e.intensity, 0.4))), seed: Math.max(0, Math.round(num(e.seed, 1))) });
+    } else if (e.kind === "glass") {
+      out.push({
+        kind: "glass", frost: Math.max(0, num(e.frost, 12)), light: Math.min(1, Math.max(0, num(e.light, 0.5))),
+        lightAngle: num(e.lightAngle, 45), noise: Math.min(1, Math.max(0, num(e.noise, 0.25))),
+      });
     }
   }
   return out;
@@ -159,7 +185,7 @@ function toEffects(v: unknown): EffectLite[] {
 function toGradient(v: unknown): GradientLite | undefined {
   if (typeof v !== "object" || v === null) return undefined;
   const o = v as Record<string, unknown>;
-  if ((o.kind !== "linear" && o.kind !== "radial") || !Array.isArray(o.stops)) return undefined;
+  if ((o.kind !== "linear" && o.kind !== "radial" && o.kind !== "angular" && o.kind !== "diamond") || !Array.isArray(o.stops)) return undefined;
   const stops = o.stops.map((st) => {
     const so = (st ?? {}) as Record<string, unknown>;
     const c = (so.color ?? {}) as Record<string, unknown>;
@@ -210,6 +236,26 @@ function toAlign(v: unknown): TextAlignLite {
 // written or truncated payload, and an EMPTY text is the honest reconstruction (the
 // same default that toTextStyleLite gives an absent style). Rejecting here
 // would mean throwing away the healthy nodes next to it as well.
+// The type extras of a pasted style: only well-formed values survive (same shapes as store/types.ts).
+function pickTextExtras(s: Record<string, unknown>): Partial<TextStyleLite> {
+  const oneOf = <T extends string>(v: unknown, allowed: readonly T[]): T | undefined =>
+    allowed.includes(v as T) ? (v as T) : undefined;
+  const textCase = oneOf(s.textCase, ["upper", "lower", "title", "smallCaps"] as const);
+  const textScript = oneOf(s.textScript, ["super", "sub"] as const);
+  const listKind = oneOf(s.listKind, ["bullet", "numbered"] as const);
+  const verticalAlign = oneOf(s.verticalAlign, ["middle", "bottom"] as const);
+  return {
+    ...(textCase ? { textCase } : {}),
+    ...(textScript ? { textScript } : {}),
+    ...(listKind ? { listKind } : {}),
+    ...(verticalAlign ? { verticalAlign } : {}),
+    ...(typeof s.indent === "number" && s.indent > 0 && Number.isFinite(s.indent) ? { indent: s.indent } : {}),
+    ...(typeof s.inset === "number" && s.inset > 0 && Number.isFinite(s.inset) ? { inset: s.inset } : {}),
+    ...(typeof s.textScale === "number" && s.textScale >= 1 && s.textScale <= 1000 ? { textScale: s.textScale } : {}),
+    ...(typeof s.fontFeatures === "string" && isValidFontFeatures(s.fontFeatures) && s.fontFeatures !== "" ? { fontFeatures: s.fontFeatures } : {}),
+  };
+}
+
 function toText(v: unknown): TextLite {
   const o = (v ?? {}) as Record<string, unknown>;
   const s = (o.style ?? {}) as Record<string, unknown>;
@@ -223,6 +269,7 @@ function toText(v: unknown): TextLite {
       lineHeight: num(s.lineHeight, zero.lineHeight),
       align: toAlign(s.align),
       ...(s.italic === true ? { italic: true } : {}),
+      ...pickTextExtras(s),
     },
   };
 }
@@ -273,6 +320,7 @@ export function parseClipboard(text: string): ClipboardParse {
       ...(toEffects(n.effects).length > 0 ? { effects: toEffects(n.effects) } : {}),
       kind,
       cornerRadius: num(n.cornerRadius, 0),
+      ...parametricShape(kind, n),
       // Always false: KNOWN_KINDS rejects frames wholesale (this side does not
       // reconstruct containers), so here `kind` is only rect/ellipse/text/image.
       clipsContent: false,
@@ -287,6 +335,32 @@ export function parseClipboard(text: string): ClipboardParse {
     });
   }
   return { ok: true, nodes };
+}
+
+// The parametric shape fields (docs/shapes.md) a payload may carry, re-read defensively: a missing or
+// crooked one falls back to the shape's default.
+function parametricShape(kind: NodeLite["kind"], n: Record<string, unknown>): Partial<NodeLite> {
+  const obj = (v: unknown) => (typeof v === "object" && v !== null ? (v as Record<string, unknown>) : {});
+  const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
+  if (kind === "polygon") return { sides: clamp(Math.round(num(n.sides, 3)), 3, 60) };
+  if (kind === "star") return { points: clamp(Math.round(num(n.points, 5)), 3, 60), innerRatio: clamp(num(n.innerRatio, 0.5), 0.05, 0.95) };
+  if (kind === "ellipse") {
+    const out: Partial<NodeLite> = {};
+    if (num(n.arcStart, 0) !== 0) out.arcStart = num(n.arcStart, 0);
+    if (num(n.arcSweep, 0) !== 0) out.arcSweep = clamp(num(n.arcSweep, 0), -360, 360);
+    if (num(n.innerRatio, 0) > 0) out.innerRatio = clamp(num(n.innerRatio, 0), 0, 0.99);
+    return out;
+  }
+  if (kind === "rect") {
+    const out: Partial<NodeLite> = {};
+    if (num(n.cornerSmoothing, 0) > 0) out.cornerSmoothing = clamp(num(n.cornerSmoothing, 0), 0, 1);
+    if (n.radii) {
+      const r = obj(n.radii);
+      out.radii = { topLeft: Math.max(0, num(r.topLeft, 0)), topRight: Math.max(0, num(r.topRight, 0)), bottomRight: Math.max(0, num(r.bottomRight, 0)), bottomLeft: Math.max(0, num(r.bottomLeft, 0)) };
+    }
+    return out;
+  }
+  return {};
 }
 
 // --- the paste ops ----------------------------------------------------------

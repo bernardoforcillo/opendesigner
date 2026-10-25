@@ -4,8 +4,11 @@
 //   { "name": "Number the layers", "version": "1.0.0", "description": "...",
 //     "permissions": ["read", "write"], "code": "const sel = await od.selection(); ..." }
 //
-// `code` is the BODY of an async function that receives `od`. Plugins are stored in the browser
+// `code` is the BODY of an async function that receives `od`. Instead of `code` a plugin may carry
+// `wasm`, a WebAssembly module in base64 (plugins/wasm.ts says what it may do). Plugins are stored in the browser
 // (like preferences) and never leave it: they are the person's tools, not part of the document.
+
+import { bytesFromBase64, validateWasm, WasmError } from "./wasm";
 
 export type Permission = "read" | "write";
 
@@ -16,6 +19,8 @@ export interface Plugin {
   description: string;
   permissions: Permission[];
   code: string;
+  /** A WebAssembly plugin: the module, base64. `code` is empty then. */
+  wasm?: string;
 }
 
 export const MAX_CODE_BYTES = 200_000;
@@ -29,8 +34,15 @@ export function parsePlugin(text: string, newId: () => string = () => crypto.ran
   const o = raw as Record<string, unknown>;
   const name = typeof o.name === "string" ? o.name.trim() : "";
   if (name === "" || name.length > 80) return { error: "A plugin needs a name (up to 80 characters)." };
-  if (typeof o.code !== "string" || o.code.trim() === "") return { error: "A plugin needs `code`." };
-  if (new Blob([o.code]).size > MAX_CODE_BYTES) return { error: "The plugin's code is too long." };
+  const isWasm = o.wasm !== undefined;
+  if (isWasm) {
+    const bytes = typeof o.wasm === "string" ? bytesFromBase64(o.wasm) : null;
+    if (!bytes) return { error: "`wasm` must be the module in base64." };
+    try { validateWasm(bytes); } catch (e) { return { error: e instanceof WasmError ? `The WebAssembly module was refused: ${e.message}.` : "The WebAssembly module was refused." }; }
+  } else {
+    if (typeof o.code !== "string" || o.code.trim() === "") return { error: "A plugin needs `code`." };
+    if (new Blob([o.code]).size > MAX_CODE_BYTES) return { error: "The plugin's code is too long." };
+  }
   const perms = o.permissions === undefined ? ["read"] : o.permissions;
   if (!Array.isArray(perms) || !perms.every((p): p is Permission => PERMISSIONS.includes(p as Permission))) {
     return { error: "`permissions` can only contain \"read\" and \"write\"." };
@@ -42,7 +54,8 @@ export function parsePlugin(text: string, newId: () => string = () => crypto.ran
       version: typeof o.version === "string" ? o.version.slice(0, 20) : "0.0.0",
       description: typeof o.description === "string" ? o.description.slice(0, 300) : "",
       permissions: [...new Set(perms)],
-      code: o.code,
+      code: isWasm ? "" : (o.code as string),
+      ...(isWasm ? { wasm: o.wasm as string } : {}),
     },
   };
 }

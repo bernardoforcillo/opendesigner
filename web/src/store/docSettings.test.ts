@@ -8,7 +8,7 @@ import { isValidDocSettings, isValidPageSetup, pageColumns, pageTextArea, setupO
 import { emptyScene, type SceneState } from "./types";
 
 const op = (kind: Op["kind"]): Op => create(OpSchema, { opId: "o", docId: "d", kind });
-const settings = (s: Partial<{ vertical: string; baselineIncrement: number; baselineStart: number }>) =>
+const settings = (s: Partial<{ vertical: string; baselineIncrement: number; baselineStart: number; presentDevice: string }>) =>
   op({ case: "setDocSettings", value: { settings: { vertical: "", baselineIncrement: 0, baselineStart: 0, ...s } } } as Op["kind"]);
 const createPage = (page: object) => op({ case: "createPage", value: { page } } as Op["kind"]);
 const updatePage = (page: object) => op({ case: "updatePage", value: { page } } as Op["kind"]);
@@ -32,6 +32,21 @@ describe("document settings", () => {
     const back = applyOp(next, invertOp(next, settings({ vertical: "design" }))![0]);
     expect(back.settings).toEqual(next.settings);
     expect(applyOp(next, invertOp(s, o)![0]).settings).toBeUndefined();
+  });
+
+  it("keeps the Present device frame: generic is stored as nothing, an unknown device is rejected, undo restores it", () => {
+    const s = emptyScene("d", "d");
+    expect(applyOp(s, settings({ presentDevice: "generic" })).settings).toBeUndefined();
+    const phone = settings({ presentDevice: "phone" });
+    const next = applyOp(s, phone);
+    expect(next.settings).toEqual({ presentDevice: "phone" });
+    // A later write of other fields in the same upsert keeps the device only if it carries it (absolute upsert).
+    expect(applyOp(next, settings({ vertical: "design" })).settings).toEqual({ vertical: "design" });
+    expect(applyOp(next, invertOp(s, phone)![0]).settings).toBeUndefined();
+    const back = applyOp(next, invertOp(next, settings({ presentDevice: "tablet" }))![0]);
+    expect(back.settings).toEqual({ presentDevice: "phone" });
+    expect(applyOp(s, settings({ presentDevice: "watch" }))).toBe(s);
+    expect(invertOp(s, settings({ presentDevice: "watch" }))).toBeNull();
   });
 
   it("rejects what the Go core rejects, with no inverse", () => {

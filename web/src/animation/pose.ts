@@ -25,7 +25,7 @@ import { sampleClip, type NodeAnim } from "./engine";
 
 /** The node types on which `draw` makes sense (they have a path): parity with core.validTrack. */
 export function canDraw(n: Pick<NodeLite, "kind">): boolean {
-  return n.kind === "vector" || n.kind === "rect" || n.kind === "ellipse" || n.kind === "frame";
+  return n.kind === "vector" || n.kind === "rect" || n.kind === "ellipse" || n.kind === "frame" || n.kind === "polygon" || n.kind === "star";
 }
 
 /** Merges `src` into `dst`: the properties of `src` win (later clips overwrite). */

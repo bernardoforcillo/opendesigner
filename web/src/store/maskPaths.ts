@@ -98,12 +98,36 @@ export const MASK_PATHS = [
   "constraint_y",
   "layout_sizing_x",
   "layout_sizing_y",
+  // Size limits (finite, >= 0; 0 clears) clamped by the auto layout engine, and the opt-out of
+  // the flow of an auto layout parent (closed enum).
+  "min_width",
+  "max_width",
+  "min_height",
+  "max_height",
+  "layout_positioning",
+  // The cell of a grid auto layout parent (docs/layout.md): column / row / spans, each 0..1000.
+  "grid_cell",
   // Blend mode against what is behind the node. Closed enum: out of range is rejected.
   "blend_mode",
   // Mask: the node is not drawn, its outline clips the siblings above it.
   "is_mask",
   // Layout grids of a frame (replaces the list; frames only).
   "layout_grids",
+  // Parametric shape fields (docs/shapes.md), each inside the `shape` oneof and valid only on the shapes
+  // that own it (Go: ErrNotRectNode / ErrNotEllipse / ErrNotPolygon / ErrNotStar, whole op rejected):
+  // rectangles take corner_smoothing and radii; ellipses arc_start, arc_sweep and inner_ratio (the ring's
+  // hole); polygons sides; stars points and inner_ratio (the notch depth).
+  "corner_smoothing",
+  "radii",
+  "arc_start",
+  "arc_sweep",
+  "inner_ratio",
+  "sides",
+  "points",
+  // Shared paint / effect styles a node draws with (empty detaches; otherwise the style must exist).
+  "fill_style_id",
+  "stroke_style_id",
+  "effect_style_id",
 ] as const;
 
 // The ONLY type a mask path can have at an op's construction points

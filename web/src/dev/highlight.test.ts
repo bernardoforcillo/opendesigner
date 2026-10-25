@@ -8,8 +8,52 @@ const kinds = (code: string, lang: Lang, k: TokenKind) =>
 describe("langOf", () => {
   it.each([
     ["src/App.tsx", "tsx"], ["vite.config.ts", "tsx"], ["index.html", "html"], ["src/index.css", "css"],
-    ["package.json", "json"], ["README.md", "md"], ["Makefile", "text"], ["a.PNG", "text"],
+    ["Sources/Screens/Home.swift", "swift"], ["screens/Home.kt", "kotlin"], ["src/screens/home.rs", "rust"], ["package.json", "json"], ["README.md", "md"], ["Makefile", "text"], ["a.PNG", "text"],
   ])("%s -> %s", (p, l) => expect(langOf(p)).toBe(l));
+});
+
+describe("highlight: swift and kotlin", () => {
+  const swift = [
+    "// Exported",
+    "import SwiftUI",
+    "struct Home: View {",
+    "    var body: some View {",
+    '        Text("Hello")',
+    "            .opacity(0.5)",
+    "    }",
+    "}",
+  ].join("\n");
+  const kotlin = ["package design.generated", "@Composable", "fun Home() {", '    Text(text = "Hi")', "}"].join("\n");
+
+  it("colours keywords, strings, comments and types, and gives back the source", () => {
+    expect(kinds(swift, "swift", "kw")).toEqual(expect.arrayContaining(["import", "struct", "var", "some"]));
+    expect(kinds(swift, "swift", "str")).toEqual(['"Hello"']);
+    expect(kinds(swift, "swift", "com")).toEqual(["// Exported"]);
+    expect(kinds(swift, "swift", "type")).toEqual(expect.arrayContaining(["SwiftUI", "Home", "View"]));
+    expect(kinds(kotlin, "kotlin", "kw")).toEqual(expect.arrayContaining(["package", "fun"]));
+    expect(flat(highlight(swift, "swift"))).toBe(swift);
+    expect(flat(highlight(kotlin, "kotlin"))).toBe(kotlin);
+  });
+
+  it("rust: keywords, strings, comments, the view! macro's attributes, and the source comes back", () => {
+    const rust = [
+      "// Exported",
+      "use leptos::prelude::*;",
+      "#[component]",
+      "pub fn Home() -> impl IntoView {",
+      '    let label = "Hi".to_string();',
+      '    view! { <div style="color: red">{label.clone()}</div> }',
+      "}",
+    ].join("\n");
+    expect(kinds(rust, "rust", "kw")).toEqual(expect.arrayContaining(["use", "pub", "fn", "let"]));
+    expect(kinds(rust, "rust", "com")).toEqual(["// Exported"]);
+    expect(kinds(rust, "rust", "str")).toEqual(expect.arrayContaining(['"Hi"', '"color: red"']));
+    expect(flat(highlight(rust, "rust"))).toBe(rust);
+  });
+
+  it("'a < b' is never a tag", () => {
+    expect(kinds("if a < b { }", "swift", "tag")).toEqual([]);
+  });
 });
 
 describe("highlight: tsx", () => {

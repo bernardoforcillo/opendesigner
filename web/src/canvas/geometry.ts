@@ -1,4 +1,5 @@
 import type { NodeLite, StrokeLite } from "../store/types";
+import { brushReach } from "../vector/brushSpec";
 import { type Camera, worldToScreen } from "./camera";
 import { rotatedAabb } from "./transform";
 
@@ -41,8 +42,14 @@ export function worldAabbOfNode(n: NodeLite): Bounds {
 // box SMALLER than the node must not come out).
 export function strokeOutset(s: StrokeLite): number {
   if (!(s.weight > 0)) return 0;
+  // A variable-width stroke reaches (its widest side multiple) * weight / 2 from the path, always centred.
+  // A brush reaches as far as its stamps stray and its tips extend, always centred.
+  if (s.brush) return brushReach(s.brush, s.weight);
+  if (s.widthProfile && s.widthProfile.length > 0) return Math.max(...s.widthProfile.map((p) => Math.max(p.left, p.right))) * s.weight / 2;
   if (s.align === "inside") return 0;
-  return s.align === "outside" ? s.weight : s.weight / 2;
+  // Per-side weights: the widest side overhangs the most.
+  const w = s.sides ? Math.max(s.sides.top, s.sides.right, s.sides.bottom, s.sides.left) : s.weight;
+  return s.align === "outside" ? w : w / 2;
 }
 
 // The node's overhang: the MAXIMUM among its strokes, not the sum. Strokes

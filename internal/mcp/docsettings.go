@@ -27,6 +27,7 @@ type SetDocumentSettingsInput struct {
 	FacingPages       *bool           `json:"facingPages,omitempty" jsonschema:"pages are laid out as spreads (odd page numbers on the right): margins left/right become inside/outside"`
 	Conditions        *[]ConditionIO  `json:"conditions,omitempty" jsonschema:"conditional text: the document's conditions, replacing the list. Text between [?name] and [/?] is hidden everywhere (canvas, exports, contents, index) while the condition name is not visible; a name not listed is visible"`
 	TableStyles       *[]TableStyleIO `json:"tableStyles,omitempty" jsonschema:"table styles, replacing the list; give one to a table with apply_table_style"`
+	PresentDevice     *string         `json:"presentDevice,omitempty" jsonschema:"the device frame Present mode draws around the prototype by default: generic | phone | tablet | desktop | none. A person's own pick in the player (kept in their browser) overrides it for them"`
 	Book              *BookIO         `json:"book,omitempty" jsonschema:"the document's bibliographic record (ONIX); replaces the whole record, an empty object clears it. Feeds the ONIX export in the editor and the EPUB / PDF metadata"`
 }
 
@@ -109,6 +110,14 @@ func (b *BookIO) toProto() *opendesignerv1.BookMetadata {
 	return out
 }
 
+// presentDeviceName is the name the tools report: an unset device is "generic".
+func presentDeviceName(d string) string {
+	if d == "" {
+		return "generic"
+	}
+	return d
+}
+
 // SetDocumentSettings changes the vertical and / or the baseline grid; fields left out keep their value.
 func (s *Session) SetDocumentSettings(ctx context.Context, in SetDocumentSettingsInput) (SeqOutput, error) {
 	s.mu.Lock()
@@ -143,6 +152,13 @@ func (s *Session) SetDocumentSettings(ctx context.Context, in SetDocumentSetting
 	if in.FacingPages != nil {
 		next.FacingPages = *in.FacingPages
 	}
+	if in.PresentDevice != nil {
+		d := *in.PresentDevice
+		if d == "generic" {
+			d = "" // the default is stored as nothing
+		}
+		next.PresentDevice = d
+	}
 	if in.Book != nil {
 		next.Book = in.Book.toProto()
 	}
@@ -170,5 +186,5 @@ func (s *Session) SetDocumentSettings(ctx context.Context, in SetDocumentSetting
 }
 
 func registerDocSettingsTools(srv *mcp.Server, s *Session) {
-	addTool(srv, "set_document_settings", "Set the document's vertical (publishing | design | product: it shapes which modes, tools and menu entries the editor offers) and its baseline grid. Page size, margins, columns and bleed are set per page with create_page / update_page.", s.SetDocumentSettings)
+	addTool(srv, "set_document_settings", "Set the document's vertical (publishing | design | product: it shapes which modes, tools and menu entries the editor offers) and its baseline grid. Also the document's default Present device frame (presentDevice: generic | phone | tablet | desktop | none; the player starts on it unless the person chose another one in their own browser). Page size, margins, columns and bleed are set per page with create_page / update_page.", s.SetDocumentSettings)
 }

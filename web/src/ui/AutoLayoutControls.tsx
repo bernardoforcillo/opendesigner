@@ -2,10 +2,12 @@ import { useScene } from "../store/store";
 import type { Op } from "../gen/opendesigner/v1/opendesigner_pb";
 import type { LayoutAlignLite } from "../store/types";
 import { wrapSelectionInFrame } from "../tools/wrapFrame";
-import { IconButton, Section } from "./ds";
+import { cls, IconButton, Section } from "./ds";
 import { SegButtons, type SegOption } from "./ds/props-controls";
 import { NumberField } from "./fields/NumberField";
 import { autoLayoutOps } from "./autoLayoutOps";
+import { withTrackAdded, withTrackChanged, type GridAxis } from "./gridTrackOps";
+import type { AutoLayoutLite } from "../store/types";
 
 const lookup = (id: string) => useScene.getState().scene?.nodes.at(id);
 
@@ -27,6 +29,14 @@ function aligns(rotate: boolean): SegOption<LayoutAlignLite>[] {
   ];
 }
 
+const MODES: SegOption<"flex" | "grid">[] = [
+  { value: "flex", label: "Flex" },
+  { value: "grid", label: "Grid" },
+];
+
+// In a grid the main alignment is horizontal and the cross one vertical, whatever the direction.
+const CELL_ALIGNS = (rotate: boolean): SegOption<LayoutAlignLite>[] => aligns(rotate).filter((a) => a.value !== "space-between");
+
 const checkbox = "size-3.5 shrink-0 cursor-pointer rounded accent-accent";
 
 /**
@@ -36,6 +46,44 @@ const checkbox = "size-3.5 shrink-0 cursor-pointer rounded accent-accent";
  * so every change is ONE undo step. What results (the children's
  * positions) is computed by the server.
  */
+type RunAutoLayout = (patch: Parameters<typeof autoLayoutOps>[2]) => void;
+
+/** The tracks of one axis of a grid: kind, size (fixed px / fr weight) and a remove button each, and an add button. */
+function TrackList({ axis, al, patch }: { axis: GridAxis; al: AutoLayoutLite; patch: RunAutoLayout }) {
+  const title = axis === "columns" ? "Column" : "Row";
+  const tracks = al[axis] ?? [];
+  return (
+    <div className="flex flex-col gap-1">
+      <div className="flex items-center justify-between">
+        <span className="text-[11px] font-medium text-fg-subtle">{title}s</span>
+        <IconButton icon="plus" label={`Add ${title.toLowerCase()}`} size={24} onPress={() => patch({ [axis]: withTrackAdded(al, axis) })} />
+      </div>
+      {tracks.map((t, i) => (
+        <div key={i} className="grid grid-cols-[1fr_1fr_auto] items-end gap-1.5">
+          <label className="flex flex-col gap-0.5">
+            <span className={cls.label}>{title} {i + 1}</span>
+            <select
+              aria-label={`${title} ${i + 1} kind`} className={cls.select} value={t.kind}
+              onChange={(e) => patch({ [axis]: withTrackChanged(al, axis, i, { kind: e.target.value as "fixed" | "hug" | "fr", size: e.target.value === "fr" ? 1 : t.size }) })}
+            >
+              <option value="fixed">Fixed</option>
+              <option value="hug">Hug</option>
+              <option value="fr">Fraction</option>
+            </select>
+          </label>
+          {t.kind === "hug" ? <span /> : (
+            <NumberField
+              label={t.kind === "fr" ? "Weight" : "Size"} value={t.size} minValue={0}
+              onCommit={(v) => patch({ [axis]: withTrackChanged(al, axis, i, { size: v }) })}
+            />
+          )}
+          <IconButton icon="minus" label={`Remove ${title.toLowerCase()} ${i + 1}`} size={24} onPress={() => patch({ [axis]: withTrackChanged(al, axis, i, null) })} />
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export function AutoLayoutControls({ run }: { run: (build: (ids: readonly string[]) => Op[]) => void }) {
   const first = useScene((s) => (s.selection[0] ? s.scene?.nodes.at(s.selection[0]) : undefined));
   const al = first?.autoLayout;
@@ -47,6 +95,8 @@ export function AutoLayoutControls({ run }: { run: (build: (ids: readonly string
   );
   // Horizontal direction: the main axis is x, the cross axis y.
   const horizontal = al?.direction !== "vertical";
+  const grid = al?.mode === "grid";
+  const patch: RunAutoLayout = (p) => run((ids) => autoLayoutOps(ids, lookup, p));
   return (
     <Section
       title="Auto layout"
@@ -67,11 +117,25 @@ export function AutoLayoutControls({ run }: { run: (build: (ids: readonly string
     >
       {al && (
         <div className="flex flex-col gap-2">
-          <SegButtons
-            label="Direction" value={al.direction} options={DIRECTIONS}
-            onPick={(direction) => run((ids) => autoLayoutOps(ids, lookup, { direction }))}
-          />
-          {num("spacing", "Spacing")}
+          <SegButtons label="Layout mode" value={grid ? "grid" : "flex"} options={MODES} onPick={(mode) => patch({ mode })} />
+          {grid ? (
+            <>
+              <TrackList axis="columns" al={al} patch={patch} />
+              <TrackList axis="rows" al={al} patch={patch} />
+              <div className="grid grid-cols-2 gap-1.5">
+                <NumberField label="Column gap" value={al.columnGap ?? 0} minValue={0} onCommit={(v) => patch({ columnGap: v })} />
+                <NumberField label="Row gap" value={al.rowGap ?? 0} minValue={0} onCommit={(v) => patch({ rowGap: v })} />
+              </div>
+            </>
+          ) : (
+            <>
+              <SegButtons
+                label="Direction" value={al.direction} options={DIRECTIONS}
+                onPick={(direction) => run((ids) => autoLayoutOps(ids, lookup, { direction }))}
+              />
+              {num("spacing", "Spacing")}
+            </>
+          )}
           <div className="flex flex-col gap-1">
             <span className="text-[11px] font-medium text-fg-subtle">Padding</span>
             <div className="grid grid-cols-2 gap-1.5">
@@ -81,16 +145,29 @@ export function AutoLayoutControls({ run }: { run: (build: (ids: readonly string
               {num("paddingBottom", "Bottom")}
             </div>
           </div>
-          <SegButtons
-            label="Main alignment" showLabel value={al.mainAlign} options={aligns(!horizontal)}
-            onPick={(mainAlign) => run((ids) => autoLayoutOps(ids, lookup, { mainAlign }))}
-          />
-          <SegButtons
-            label="Cross alignment" showLabel value={al.crossAlign}
-            options={aligns(horizontal).filter((a) => a.value !== "space-between")}
-            onPick={(crossAlign) => run((ids) => autoLayoutOps(ids, lookup, { crossAlign }))}
-          />
-          <div className="flex flex-col gap-1.5">
+          {grid ? (
+            <>
+              <SegButtons label="Horizontal alignment" showLabel value={al.mainAlign} options={CELL_ALIGNS(false)} onPick={(mainAlign) => patch({ mainAlign })} />
+              <SegButtons label="Vertical alignment" showLabel value={al.crossAlign} options={CELL_ALIGNS(true)} onPick={(crossAlign) => patch({ crossAlign })} />
+            </>
+          ) : (
+            <>
+              <SegButtons
+                label="Main alignment" showLabel value={al.mainAlign} options={aligns(!horizontal)}
+                onPick={(mainAlign) => run((ids) => autoLayoutOps(ids, lookup, { mainAlign }))}
+              />
+              <SegButtons
+                label="Cross alignment" showLabel value={al.crossAlign}
+                options={[
+                  ...aligns(horizontal).filter((a) => a.value !== "space-between"),
+                  // Baselines only line up in a row.
+                  ...(horizontal ? [] : [{ value: "baseline" as const, label: "Baseline", icon: "alignBaseline" as const }]),
+                ]}
+                onPick={(crossAlign) => run((ids) => autoLayoutOps(ids, lookup, { crossAlign }))}
+              />
+            </>
+          )}
+          {!grid && <div className="flex flex-col gap-1.5">
             <label className="flex cursor-pointer items-center gap-1.5 text-[12px] text-fg-muted">
               <input
                 type="checkbox" className={checkbox} checked={al.wrap === true}
@@ -104,7 +181,7 @@ export function AutoLayoutControls({ run }: { run: (build: (ids: readonly string
                 onCommit={(v) => run((ids) => autoLayoutOps(ids, lookup, { crossSpacing: v }))}
               />
             )}
-          </div>
+          </div>}
           <div className="flex gap-4 text-[12px] text-fg-muted">
             <label className="flex cursor-pointer items-center gap-1.5">
               <input

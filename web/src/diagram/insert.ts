@@ -57,9 +57,10 @@ const createOp = (docId: string, node: Node): Op =>
  * Inserts the nodes of a drawn diagram. `at` is the CENTER (world
  * coordinates). With `replaceId` the indicated diagram is redrawn in its place (same
  * parent, same position, same name) in the same gesture. Returns the root's id,
- * or null if it cannot be done (no document, gesture in progress).
+ * or null if it cannot be done (no document, gesture in progress). `leading` ops (a .fig import's
+ * collections and variables) go first in the same gesture, so the nodes' bindings find their targets.
  */
-export function insertDiagram(res: Pick<RenderDiagramResponse, "nodes" | "width" | "height">, at: { x: number; y: number }, replaceId?: string): string | null {
+export function insertDiagram(res: Pick<RenderDiagramResponse, "nodes" | "width" | "height">, at: { x: number; y: number }, replaceId?: string, leading: Op[] = []): string | null {
   const st = useScene.getState();
   const scene = st.scene;
   if (!scene || st.gesture || res.nodes.length === 0) return null;
@@ -79,7 +80,7 @@ export function insertDiagram(res: Pick<RenderDiagramResponse, "nodes" | "width"
   }
   root.orderKey = nextOrderKey(scene);
 
-  const ops: Op[] = [];
+  const ops: Op[] = [...leading];
   if (old) ops.push(create(OpSchema, { opId: crypto.randomUUID(), docId: scene.id, kind: { case: "deleteNode", value: { id: old.id } } }));
   ops.push(createOp(scene.id, root));
   for (const n of res.nodes.slice(1)) ops.push(createOp(scene.id, create(NodeSchema, n)));

@@ -32,12 +32,21 @@ type Trigger struct {
 	Kind         string // click | submit | auto | key | back | free text
 	Guard        string
 	Effect       string
+	// Order: position in the hotspot's if / else if / else chain (0 = not in one).
+	Order int
 	// Dest is the destination screen (nil if the destination is not among the
 	// generated screens: the link stays a comment).
 	Dest *Screen
 }
 
 // Element is a node of the IR tree.
+// GridCell is an Element's place in its grid parent: 0-based column and row, the spans, and the
+// position and size the core computed (the last-resort absolute fallback of the SwiftUI export).
+type GridCell struct {
+	Col, Row, ColSpan, RowSpan int
+	X, Y, W, H                 float64
+}
+
 type Element struct {
 	Tag   string
 	Attrs []Attr
@@ -53,6 +62,10 @@ type Element struct {
 	NodeID   string
 	NodeName string
 	Meta     map[string]string
+
+	// Notes: the developer annotations attached to the node, and for a screen its
+	// ready-for-dev mark, as comment lines (devnotes.go). Empty for the majority.
+	Notes []string
 
 	// Triggers: transitions fired by THIS element (click). Empty for the
 	// majority.
@@ -71,6 +84,10 @@ type Element struct {
 	// distinct from the fill path.
 	StrokePath bool
 
+	// Cell: the resolved grid cell of an in-flow child of a GRID auto layout (nil elsewhere). The CSS
+	// leaves auto-placement to the browser; the native targets need it spelled out (native_grid.go).
+	Cell *GridCell
+
 	// Use: this element is an INSTANCE of a component that exports as a React
 	// component. The React target renders it as `<Button size="L" />` inside this
 	// element instead of its inline Children (which stay filled for the HTML target).
@@ -83,6 +100,10 @@ type Element struct {
 	TextProp string
 	// Dyn: inline style entries driven by a component prop (a number attribute).
 	Dyn []DynStyle
+	// NativeBG: a single-string CSS gradient the native targets read instead of
+	// background-image, where that one is a layered gradient they cannot parse back (the
+	// diamond: four quadrant layers in html/react, a radial approximation here).
+	NativeBG string
 	// SwapProp: this nested instance is replaceable through the prop of that
 	// property name; it (or its Use) is the default content.
 	SwapProp string

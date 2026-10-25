@@ -72,6 +72,13 @@ export function overlay(base: TextStyleLite, over: TextStyleLite): TextStyleLite
   if (over.italic || base.italic) out.italic = true;
   if (over.underline || base.underline) out.underline = true;
   if (over.strikethrough || base.strikethrough) out.strikethrough = true;
+  // The type extras (case, script, list, indent, features, vertical alignment, inset, scale): "unset" inherits.
+  const extra = {
+    textCase: over.textCase ?? base.textCase, textScript: over.textScript ?? base.textScript, listKind: over.listKind ?? base.listKind,
+    indent: over.indent || base.indent, fontFeatures: over.fontFeatures || base.fontFeatures,
+    verticalAlign: over.verticalAlign ?? base.verticalAlign, inset: over.inset || base.inset, textScale: over.textScale || base.textScale,
+  };
+  for (const [k, v] of Object.entries(extra)) if (v !== undefined && v !== "") (out as unknown as Record<string, unknown>)[k] = v;
   if (over.smallCaps || base.smallCaps) out.smallCaps = true;
   const script = over.script ?? base.script;
   if (script) out.script = script;
@@ -80,7 +87,6 @@ export function overlay(base: TextStyleLite, over: TextStyleLite): TextStyleLite
   if (over.noKerning || base.noKerning) out.noKerning = true;
   const color = over.color ?? base.color;
   if (color) out.color = color;
-  if (over.fontFeatures || base.fontFeatures) out.fontFeatures = over.fontFeatures || base.fontFeatures;
   if (over.fontVariations || base.fontVariations) out.fontVariations = over.fontVariations || base.fontVariations;
   return out;
 }
@@ -266,7 +272,7 @@ export function resolveRich(state: SceneState, t: TextLite, base: TextStyleLite,
   if (!any && runs.length === 0 && !base.smallCaps && !base.script && exclusions.length === 0 && inlines.length === 0) return null;
   // The baseline grid matters only to paragraphs that ask for it, and only when the document has one.
   const inc = state.settings?.baselineIncrement ?? 0;
-  const grid = inc > 0 && paragraphs.some((p) => p.alignToGrid) ? { increment: inc, start: state.settings?.baselineStart ?? 0, boxY } : undefined;
+  const grid = inc > 0 && paragraphs.some((p) => p.alignToGrid) ? { increment: inc, start: state.settings?.baselineStart ?? 0, boxY: boxY + (base.inset ?? 0) } : undefined;
   return { paragraphs, runs, ...(grid ? { grid } : {}), ...(exclusions.length > 0 ? { exclusions: exclusions.map((e) => ({ ...e })) } : {}), ...(inlines.length > 0 ? { inlines } : {}) };
 }
 

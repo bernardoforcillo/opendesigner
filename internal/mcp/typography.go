@@ -46,9 +46,9 @@ type TextStyleBody struct {
 	IndentLeft    float64 `json:"indentLeft,omitempty" jsonschema:"px of indent on every line"`
 	LetterSpacing float64 `json:"letterSpacing,omitempty" jsonschema:"tracking: px added after every character; negative tightens"`
 	AlignToGrid   bool    `json:"alignToGrid,omitempty" jsonschema:"paragraph styles only: the lines sit on the document's baseline grid (set_document_settings)"`
-	// Typesetting (see docs/rich-text.md).
+	TextFormat
+	// Typesetting (see docs/rich-text.md). script and fontFeatures live in the embedded TextFormat.
 	SmallCaps       bool        `json:"smallCaps,omitempty" jsonschema:"lowercase letters drawn as smaller capitals"`
-	Script          string      `json:"script,omitempty" jsonschema:"superscript | subscript (smaller, raised / lowered); empty = normal"`
 	HorizontalScale float64     `json:"horizontalScale,omitempty" jsonschema:"glyph width multiplier 0.1..10; 0 = 1"`
 	NoKerning       bool        `json:"noKerning,omitempty" jsonschema:"switch the font's pair kerning off"`
 	Color           *RGBA       `json:"color,omitempty" jsonschema:"text colour of the style; absent = the node's fill"`
@@ -62,7 +62,6 @@ type TextStyleBody struct {
 	DropCapChars    uint32      `json:"dropCapChars,omitempty" jsonschema:"how many characters make the drop cap (default 1)"`
 	NestedStyles    []NestedIO  `json:"nestedStyles,omitempty" jsonschema:"paragraph styles: character styles applied to the start of every paragraph"`
 	OutlineLevel    uint32      `json:"outlineLevel,omitempty" jsonschema:"paragraph styles: 1..9 = a heading (table of contents, running heads, PDF bookmarks); 0 = body"`
-	FontFeatures    string      `json:"fontFeatures,omitempty" jsonschema:"OpenType features, e.g. liga off, onum, ss01 2"`
 	FontVariations  string      `json:"fontVariations,omitempty" jsonschema:"variable-font axes, e.g. wght 650, wdth 90 (drawn in SVG and the editing field; kept everywhere)"`
 	// Paragraph look (see docs/rich-text.md).
 	KeepWithNext      bool    `json:"keepWithNext,omitempty" jsonschema:"paragraph styles: never the last paragraph of a threaded frame unless the next one starts there too"`
@@ -191,15 +190,16 @@ func textStyleViews(doc *opendesignerv1.Document) []TextStyleView {
 		out = append(out, TextStyleView{Id: id, TextStyleBody: TextStyleBody{
 			Name: d.GetName(), FontFamily: st.GetFontFamily(), FontSize: st.GetFontSize(), FontWeight: st.GetFontWeight(),
 			LineHeight: st.GetLineHeight(), Italic: st.GetItalic(), Align: alignName(st.GetAlign()),
-			Underline: st.GetUnderline(), Strikethrough: st.GetStrikethrough(), Kind: kindName(d.GetKind()),
+			TextFormat: formatOf(st),
+			Underline:  st.GetUnderline(), Strikethrough: st.GetStrikethrough(), Kind: kindName(d.GetKind()),
 			BasedOn: d.GetBasedOn(), NextStyleId: d.GetNextStyleId(), SpaceBefore: d.GetSpaceBefore(), SpaceAfter: d.GetSpaceAfter(),
 			IndentFirst: d.GetIndentFirst(), IndentLeft: d.GetIndentLeft(),
 			LetterSpacing: st.GetLetterSpacing(), AlignToGrid: d.GetAlignToGrid(),
-			SmallCaps: st.GetSmallCaps(), Script: scriptName(st.GetScript()), HorizontalScale: st.GetHorizontalScale(), NoKerning: st.GetNoKerning(),
+			SmallCaps: st.GetSmallCaps(), HorizontalScale: st.GetHorizontalScale(), NoKerning: st.GetNoKerning(),
 			Color: rgbaOf(st.GetColor()), Hyphenate: d.GetHyphenate(), ListKind: listKindName(d.GetListKind()), ListMarker: d.GetListMarker(),
 			ListNumberStyle: d.GetListNumberStyle(), ListIndent: d.GetListIndent(), TabStops: tabStopViews(d.GetTabStops()),
 			DropCapLines: d.GetDropCapLines(), DropCapChars: d.GetDropCapChars(), NestedStyles: nestedViews(d.GetNestedStyles()),
-			OutlineLevel: d.GetOutlineLevel(), FontFeatures: st.GetFontFeatures(), FontVariations: st.GetFontVariations(),
+			OutlineLevel: d.GetOutlineLevel(), FontVariations: st.GetFontVariations(),
 			KeepWithNext: d.GetKeepWithNext(), KeepLinesTogether: d.GetKeepLinesTogether(), KeepFirstLines: d.GetKeepFirstLines(), KeepLastLines: d.GetKeepLastLines(),
 			RuleAbove: ruleView(d.GetRuleAbove()), RuleBelow: ruleView(d.GetRuleBelow()), Shading: rgbaOf(d.GetShading()), ShadingOffset: d.GetShadingOffset(),
 			BorderColor: rgbaOf(d.GetBorderColor()), BorderWeight: d.GetBorderWeight(), OpticalMargin: d.GetOpticalMargin(),
@@ -224,10 +224,6 @@ func (b TextStyleBody) toProto(id string) (*opendesignerv1.TextStyleDef, error) 
 	default:
 		return nil, fmt.Errorf("kind must be paragraph or character, got %q", b.Kind)
 	}
-	script, err := scriptEnum(b.Script)
-	if err != nil {
-		return nil, err
-	}
 	listKind, err := listKindEnum(b.ListKind)
 	if err != nil {
 		return nil, err
@@ -235,8 +231,8 @@ func (b TextStyleBody) toProto(id string) (*opendesignerv1.TextStyleDef, error) 
 	d := &opendesignerv1.TextStyleDef{Id: id, Name: b.Name, Style: &opendesignerv1.TextStyle{
 		FontFamily: b.FontFamily, FontSize: b.FontSize, FontWeight: b.FontWeight, LineHeight: b.LineHeight, Italic: b.Italic, Align: align,
 		Underline: b.Underline, Strikethrough: b.Strikethrough, LetterSpacing: b.LetterSpacing,
-		SmallCaps: b.SmallCaps, Script: script, HorizontalScale: b.HorizontalScale, NoKerning: b.NoKerning,
-		FontFeatures: b.FontFeatures, FontVariations: b.FontVariations,
+		SmallCaps: b.SmallCaps, HorizontalScale: b.HorizontalScale, NoKerning: b.NoKerning,
+		FontVariations: b.FontVariations,
 	}, AlignToGrid: b.AlignToGrid, Kind: kind, BasedOn: b.BasedOn, NextStyleId: b.NextStyleId, SpaceBefore: b.SpaceBefore, SpaceAfter: b.SpaceAfter,
 		IndentFirst: b.IndentFirst, IndentLeft: b.IndentLeft,
 		Hyphenate: b.Hyphenate, ListKind: listKind, ListMarker: b.ListMarker, ListNumberStyle: b.ListNumberStyle, ListIndent: b.ListIndent,
@@ -244,6 +240,9 @@ func (b TextStyleBody) toProto(id string) (*opendesignerv1.TextStyleDef, error) 
 		KeepWithNext: b.KeepWithNext, KeepLinesTogether: b.KeepLinesTogether, KeepFirstLines: b.KeepFirstLines, KeepLastLines: b.KeepLastLines,
 		RuleAbove: rulePb(b.RuleAbove), RuleBelow: rulePb(b.RuleBelow), Shading: colorPb(b.Shading), ShadingOffset: b.ShadingOffset,
 		BorderColor: colorPb(b.BorderColor), BorderWeight: b.BorderWeight, OpticalMargin: b.OpticalMargin}
+	if err := b.TextFormat.apply(d.Style); err != nil {
+		return nil, err
+	}
 	if b.Color != nil {
 		d.Style.Color = &opendesignerv1.Color{R: float32(b.Color.R), G: float32(b.Color.G), B: float32(b.Color.B), A: float32(b.Color.A)}
 	}

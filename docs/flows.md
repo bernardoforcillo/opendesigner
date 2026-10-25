@@ -40,8 +40,9 @@ hotspot.
 | `label` | text of the triggering element (e.g. the "Sign in" button) |
 | `trigger` | `click` (default), `submit`, `auto`, `key`, `back` or free text. With `key` the `label` is the key to press |
 | `element_id` | optional: the node INSIDE `from` that triggers (the hotspot) |
-| `guard` | condition under which the edge can be taken, free text ("cart not empty") |
-| `effect` | what the edge changes, free text ("order created") |
+| `guard` | condition under which the edge can be taken: free text ("cart not empty"), or a condition the player evaluates (`user=guest`, `count >= 3`, `else`; see "Variables, expressions and if / else in the player") |
+| `effect` | what the edge changes: free text ("order created"), or assignments the player runs (`cart=full; count = count + 1`) |
+| `order` | position in the hotspot's **if / else if / else chain** (1, 2, 3...; `0` = not in a chain, an independent branch). The player tries the chain in this order and the first guard that holds wins; see "Variables, expressions and if / else in the player" |
 
 ## Node metadata conventions
 
@@ -72,7 +73,9 @@ tool) report, with messages that name the screen:
 | `no_start` | it has transitions but no start screen |
 | `unreachable` | a screen is not reachable from the entry |
 | `dead_end` | a reachable screen has no exits and is not `end` |
-| `ambiguous` | two exits of the same screen have the same trigger and element and no `guard` telling them apart (or an identical `guard`) |
+| `ambiguous` | two exits of the same screen have the same trigger and element and no `guard` telling them apart (or an identical `guard`), unless an `order` tells them apart; or two chain branches with the same `order` |
+| `else_orphan` | a transition whose `guard` is `else` where no other transition shares its screen, trigger and element |
+| `shadowed` | a branch of an ordered if / else if chain that can never fire (an earlier branch has no condition, or the same condition) |
 
 It also lists the **paths** from the entry to a final screen or to a cycle
 (an edge that returns to a screen already in the path: the path stops there,
@@ -210,3 +213,47 @@ A transition can animate how the player (**Present**) goes from its source scree
 **Smart animate** matches nodes of the two screens by name along the same path (`card` inside `A` with `card` inside `B`; several nodes with the same name match in order). Matched nodes move, resize, turn, fade and change fill color from the source's values to the destination's; nodes only in the destination fade in and nodes only in the source fade out in place.
 
 The values are validated by the core (an unknown animation, a duration or delay out of range or a bad easing rejects the op; golden fixture `testdata/golden/transition_anim.json`). They are edited in the Flows panel (transition editor) or with the MCP tool `set_transition` (`animation`, `durationMs`, `easing`, `delayMs`). Exported code does not animate screen changes.
+
+## Variables, expressions and if / else in the player
+
+The player (**Present**) keeps **variables** while you click through a flow. They are strings at rest; a transition's `effect` writes them and its `guard` reads them. Beyond the plain `k=v` forms (still meaning exactly what they did), both take **expressions** (`web/src/flow/expr.ts`, pure and tested; the model did not change: a guard and an effect are still text on the transition).
+
+| In | You can write | Means |
+|---|---|---|
+| `effect` | `cart=full` | text: `cart` becomes `full` (a bare word, a number or a quoted string on the right is text, never a variable) |
+| `effect` | `count = count + 1; total = total * 1.5` | arithmetic `+ - * / %`, parentheses, `"Hi " + name` (`+` joins text when an operand is not a number). Assignments run in order, so `a=1; b=a+1` sees the new `a`. A variable never set is `0` in arithmetic. A right side that cannot be computed (`name * 2`, `1 / 0`) leaves the variable alone |
+| `guard` | `user=guest`, `user!=admin`, `paid`, `!paid` | as before |
+| `guard` | `count >= 3`, `total <= 50 && total > 10`, `count + 1 > limit` | comparisons `== != = < <= > >=` (numbers compare as numbers: `3` equals `3.0`; two words compare as text), arithmetic, parentheses, `true` / `false` |
+| `guard` | `user=admin \|\| count > 5` | `\|\|` between alternatives, `&&` inside each one |
+| `guard` | `else` (or `otherwise`) | holds when **no other transition on the same screen, trigger and element** (hotspot) holds |
+
+A guard with a term nobody can evaluate (`cart not empty`, `count >`, an unclosed parenthesis) makes the whole guard unevaluable: the option is disabled with the reason, never silently true. Variable names inside expressions are letters, digits, `_` and `.` (a name with `-` still works in the plain forms, not in arithmetic, where `a-1` is `a` minus 1).
+
+**If / else if / else** is several transitions on the same hotspot with different guards, and an `else` transition for the rest:
+
+```
+Pay button  --[ total > 100 ]-------------------> Premium checkout
+Pay button  --[ total > 50 && total <= 100 ]----> Standard checkout    (the "else if": a condition that does not overlap)
+Pay button  --[ else ]--------------------------> Basic checkout
+```
+
+On a hotspot the branch that holds is the one that can be clicked; the branches that do not apply are not drawn as locked (they are simply the other side of the if), while a hotspot with nothing enabled still shows its lock and why.
+
+**Ordered chains (`order`).** Conditions that do not overlap work, but the overlap is the natural way to write an else if (`total >= 100`, then `total >= 50`, then `else`). `Transition.order` (proto field 20, 0..1000) makes the order explicit: the transitions of one hotspot (the same flow, screen, trigger and element) with `order > 0` form a **chain**, evaluated by `order` (ties broken by id). The first one whose guard holds applies; a later one whose guard also holds gives way ("Not when total >= 100"), is not enabled and is not drawn as locked. Rules:
+
+- the first branch is the `if`, the following ones the `else if`s; a branch with an empty guard always holds, so it works as the final `else` and shadows what comes after it;
+- an `else` guard keeps its meaning (it holds when no other transition of the hotspot does) wherever it sits in the chain, so it is always the last resort;
+- transitions with `order` 0 stay outside the chain and independent of each other, exactly as before (older documents behave the same);
+- following a branch that gave way does nothing, and the winner's `effect` runs as usual.
+
+The Flows panel has a **Chain** row in the transition editor: *Add to if / else chain* puts it at the end of its hotspot's chain, *Earlier* / *Later* swap it with its neighbour (the others are renumbered 1..n in the same undo step) and *Leave* takes it out. The MCP tool `set_transition` takes `order`; `get_flow` shows it. The analysis (panel, CLI, MCP `analyze_flows`) reports `else_orphan` (an `else` on a hotspot where no other transition shares the trigger and element: nothing to be the else of), `shadowed` (a chain branch that can never fire: an earlier one has no condition or the very same condition) and, as `ambiguous`, two branches with the same position. The spec, the generated tests and the exported code mention the position in their `guard` comments. Validation (a negative order or one above 1000 rejects the op) is tested from both sides in `testdata/golden/transition_order.json`.
+
+A nested "if inside an action" would still need the transition to carry a list of actions instead of one `effect`; that was not done. The generated code and tests still treat `guard` and `effect` as comments (`// guard: ...`), exactly as before.
+
+## Present: device frames and hotspot hints
+
+**Present** shows the screen inside a device frame, chosen in the bottom bar (the **document's** default, or the person's own pick): **Generic** (the plain bezel it always had), **Phone** (rounded body, a dynamic-island pill and a home bar over the screen), **Tablet** (a thicker bezel with a camera), **Desktop** (a browser window: title bar with the three buttons and an address bar showing the screen's name) or **No frame**. The frame is presentation only: the prototype plays at the frame's own size and the geometry is computed by `web/src/flow/devices.ts`.
+
+**Two levels.** The document carries a default (`DocSettings.present_device`, empty = generic), so a prototype opens in the frame its author meant for everyone who plays it. A person's own pick in the bar is remembered in this browser (`od.protoDevice`) and overrides the document's for them; *Reset* (shown when the pick differs from the document's) goes back to following the document, and *Make default* (shown when the frame on screen differs from the document's) writes it into the document as one undo step and drops the personal override. Over MCP: `set_document_settings { presentDevice }` (`generic`, `phone`, `tablet`, `desktop` or `none`; an unknown device is refused by the server) and `get_document` reports `presentDevice`. It is a document setting, not a per-flow one: all flows of a document open in the same frame unless a person chose another.
+
+**Hotspot hints.** The clickable areas flash when a screen appears. Clicking anywhere else on the screen flashes them again ("where can I click?"), and **Show hotspots** in the bottom bar keeps them lit until turned off.

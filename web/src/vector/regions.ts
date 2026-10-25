@@ -4,6 +4,7 @@ import { applyTransform, compose, invertTransform, localTransformOf, worldTransf
 import { childrenOf } from "../store/tree";
 import { flattenSubpath, subpathFills } from "../store/vectorGeometry";
 import type { NodeLite, SceneState, SubPathLite } from "../store/types";
+import { flattenCommands, hasComputedOutline, outlineCommands } from "../renderer/shapeGeometry";
 
 // The PURE geometry of boolean operations: the region a node fills, and the result of an
 // operation over regions. No store, no ops -- the derived scene (store/booleans.ts) and the
@@ -24,7 +25,7 @@ export function booleanOpOf(n: NodeLite): BooleanOp | null {
 const CORNER_STEPS = 12;
 const ELLIPSE_STEPS = 96;
 
-const KINDS = new Set(["rect", "ellipse", "vector", "frame"]);
+const KINDS = new Set(["rect", "ellipse", "vector", "frame", "polygon", "star"]);
 
 /** True if the node is a shape a boolean operation can take (or a group of them). */
 export function isBooleanSource(scene: SceneState, n: NodeLite): boolean {
@@ -61,8 +62,16 @@ function ellipseRing(w: number, h: number): Pt[] {
   return out;
 }
 
+// A polygon, star, arc / ring or smoothed / independent-corner rectangle: its computed outline, flattened,
+// in the node's LOCAL space (renderer/shapeGeometry.ts).
+function computedRings(n: NodeLite): Pt[][] {
+  const cmds = outlineCommands({ ...n, x: 0, y: 0 });
+  return (cmds ? flattenCommands(cmds, CORNER_STEPS) : []).map((ring) => ring.map(([x, y]) => ({ x, y })));
+}
+
 /** Every outline of a node (closed or not) as polylines in its LOCAL space. */
 export function localOutlines(n: NodeLite, tol: number): { points: Pt[]; closed: boolean }[] {
+  if (hasComputedOutline(n)) return computedRings(n).map((points) => ({ points, closed: true }));
   switch (n.kind) {
     case "rect": return [{ points: rectRing(n.width, n.height, n.cornerRadius), closed: true }];
     case "frame": return [{ points: rectRing(n.width, n.height, 0), closed: true }];
@@ -75,6 +84,7 @@ export function localOutlines(n: NodeLite, tol: number): { points: Pt[]; closed:
 
 // The closed rings a node fills, in its LOCAL space.
 function localRings(n: NodeLite): Pt[][] {
+  if (hasComputedOutline(n)) return computedRings(n);
   switch (n.kind) {
     case "rect": return [rectRing(n.width, n.height, n.cornerRadius)];
     case "frame": return [rectRing(n.width, n.height, 0)];

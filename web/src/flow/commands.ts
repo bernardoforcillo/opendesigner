@@ -4,6 +4,7 @@ import type { FlowLite, NodeLite, SceneState, TransitionLite } from "../store/ty
 import { makeDeleteFlowOp, makeDeleteTransitionOp, makeSetFlowOp, makeSetPropsOp, makeSetTransitionOp, uuid } from "../tools/ops";
 import { resolveFlow } from "../store/flowUi";
 import { withMeta } from "./meta";
+import { chainOf } from "./prototype";
 
 // THE FLOW COMMANDS: from the user's intentions to ops. The `...Ops` functions
 // are pure (scene -> ops, testable without the store); `submit` is the only
@@ -120,6 +121,49 @@ export function editTransitionAnimationOp(
   if (patch.delayMs !== undefined) set("delayMs", Math.min(60000, Math.max(0, Math.round(patch.delayMs))));
   const same = (["animation", "durationMs", "easing", "delayMs"] as const).every((k) => (next[k] ?? "") === (t[k] ?? ""));
   return same ? null : makeSetTransitionOp(next);
+}
+
+// --- if / else if / else chains (Transition.order) --------------------------------------
+
+/** `t` with its order set (1..n) or cleared (undefined): the optional field is dropped, never written as 0. */
+function withOrder(t: TransitionLite, order: number | undefined): TransitionLite {
+  const next = { ...t };
+  if (order === undefined) delete next.order; else next.order = order;
+  return next;
+}
+
+/** Rewrites the chain with the transitions in `members` order as 1..n; only the ones that change get an op. */
+function renumberChain(members: TransitionLite[]): Op[] {
+  const ops: Op[] = [];
+  members.forEach((m, i) => {
+    if ((m.order ?? 0) !== i + 1) ops.push(makeSetTransitionOp(withOrder(m, i + 1)));
+  });
+  return ops;
+}
+
+/** Puts `t` at the end of its hotspot's chain (the "else if" / "else" position). Empty if it is already in one. */
+export function joinChainOps(scene: SceneState, t: TransitionLite): Op[] {
+  if (t.order) return [];
+  const peers = chainOf(scene, { ...t, order: 1 }).filter((o) => o.id !== t.id);
+  return renumberChain([...peers, withOrder(t, undefined)]);
+}
+
+/** Takes `t` out of its chain (it becomes an independent branch); the others are numbered 1..n again. */
+export function leaveChainOps(scene: SceneState, t: TransitionLite): Op[] {
+  if (!t.order) return [];
+  const rest = chainOf(scene, t).filter((o) => o.id !== t.id);
+  return [makeSetTransitionOp(withOrder(t, undefined)), ...renumberChain(rest)];
+}
+
+/** Moves `t` one place earlier (-1) or later (+1) in its chain. Empty at either end or outside a chain. */
+export function moveInChainOps(scene: SceneState, t: TransitionLite, dir: -1 | 1): Op[] {
+  const chain = chainOf(scene, t);
+  const at = chain.findIndex((o) => o.id === t.id);
+  const to = at + dir;
+  if (at < 0 || to < 0 || to >= chain.length) return [];
+  const next = [...chain];
+  [next[at], next[to]] = [next[to], next[at]];
+  return renumberChain(next);
 }
 
 export function deleteTransitionOp(id: string): Op {

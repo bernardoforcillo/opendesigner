@@ -6,7 +6,7 @@ import { slugOf } from "./readiness";
 // agents. All pure text (and the zip), so the view stays thin and the commands
 // can be tested without mounting anything.
 
-/** `<doc>-react.zip` / `<doc>-html.zip`: the document's name as a slug (ASCII, no spaces). */
+/** `<doc>-react.zip` / `<doc>-swiftui.zip` / ...: the document's name as a slug (ASCII, no spaces). */
 export function zipName(docName: string, target: CodeTarget): string {
   return `${slugOf(docName.trim() === "" ? "design" : docName)}-${target}.zip`;
 }
@@ -51,7 +51,7 @@ export function shipScript(steps: readonly CommandStep[]): string {
 /** The MCP tools for an agent, with what they are for. */
 export const AGENT_TOOLS: readonly { name: string; hint: string }[] = [
   { name: "get_flow_spec", hint: "the flows' Markdown spec, to use as a requirement" },
-  { name: "export_code", hint: "generates the project (react or html) in a folder" },
+  { name: "export_code", hint: "generates the project (react, html, swiftui, compose or leptos) in a folder" },
   { name: "analyze_flows", hint: "flow issues and paths" },
 ];
 

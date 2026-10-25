@@ -26,11 +26,13 @@ type ColorIO struct {
 }
 
 // ValueIO is the value of a variable in one mode: a color for a color variable,
-// a number for a number variable, a text for a string variable (exactly one).
+// a number for a number variable, a text for a string variable, a boolean for a boolean
+// variable (exactly one).
 type ValueIO struct {
-	Color  *ColorIO `json:"color,omitempty"`
-	Number *float64 `json:"number,omitempty"`
-	Text   *string  `json:"text,omitempty"`
+	Color   *ColorIO `json:"color,omitempty"`
+	Number  *float64 `json:"number,omitempty"`
+	Text    *string  `json:"text,omitempty"`
+	Boolean *bool    `json:"boolean,omitempty"`
 }
 
 type ModeView struct {
@@ -41,7 +43,7 @@ type ModeView struct {
 type VariableView struct {
 	Id     string             `json:"id"`
 	Name   string             `json:"name"`
-	Type   string             `json:"type" jsonschema:"color | number | string"`
+	Type   string             `json:"type" jsonschema:"color | number | string | boolean"`
 	Values map[string]ValueIO `json:"values" jsonschema:"mode id -> value; a mode with no entry resolves to the first mode's value. Empty for an alias"`
 	// AliasOf is set when the variable is an alias: it reads the value of that variable.
 	AliasOf string `json:"aliasOf,omitempty" jsonschema:"id of the variable this one is an alias of; its value is the target's"`
@@ -59,9 +61,9 @@ type ListVariablesOutput struct {
 }
 
 // variablesConventions is the manual every variables tool repeats in brief.
-const variablesConventions = " Variables (design tokens): a COLLECTION has MODES (e.g. Light, Dark; the first is the default); a VARIABLE belongs to one collection, is a color, a number or a string and has a value per mode, or is an ALIAS of another variable of the same type (aliasOf: a semantic token over a primitive; it reads the target's value in the same mode id, else in the target's first mode, and may live in another collection). " +
+const variablesConventions = " Variables (design tokens): a COLLECTION has MODES (e.g. Light, Dark; the first is the default); a VARIABLE belongs to one collection, is a color, a number, a string or a boolean and has a value per mode, or is an ALIAS of another variable of the same type (aliasOf: a semantic token over a primitive; it reads the target's value in the same mode id, else in the target's first mode, and may live in another collection). " +
 	"A node BINDS a property to a variable and then takes its value from the variable for the node's active mode, instead of its own literal. " +
-	"Bindable properties: fills.N and strokes.N (color; N is the paint's index, 0 = the first), opacity, rotation, corner_radius, strokes.N.weight (number); on text nodes font_size (number) and text (string, the content). " +
+	"Bindable properties: fills.N and strokes.N (color; N is the paint's index, 0 = the first), opacity, rotation, corner_radius, strokes.N.weight (number); on text nodes font_size (number) and text (string, the content); visible (boolean: show/hide, a hidden node leaves its auto layout); on auto layout frames spacing, cross_spacing, padding_left, padding_top, padding_right, padding_bottom (number; the layout reads them in the frame's active mode, so a mode can be a density). " +
 	"The active mode of a collection is the one pinned by the nearest ancestor frame (set_node_mode) or, with none, the collection's first mode. " +
 	"Deleting a variable unbinds it everywhere and deletes its aliases; deleting a collection deletes its variables."
 
@@ -71,6 +73,8 @@ func typeName(t opendesignerv1.VariableType) string {
 		return "color"
 	case opendesignerv1.VariableType_VARIABLE_TYPE_STRING:
 		return "string"
+	case opendesignerv1.VariableType_VARIABLE_TYPE_BOOLEAN:
+		return "boolean"
 	}
 	return "number"
 }
@@ -86,6 +90,9 @@ func valueView(v *opendesignerv1.VariableValue) ValueIO {
 	case *opendesignerv1.VariableValue_Text:
 		t := k.Text
 		return ValueIO{Text: &t}
+	case *opendesignerv1.VariableValue_Boolean:
+		b := k.Boolean
+		return ValueIO{Boolean: &b}
 	}
 	return ValueIO{}
 }
@@ -192,7 +199,7 @@ type SetVariableInput struct {
 	Id           string             `json:"id,omitempty" jsonschema:"id of an existing variable to REPLACE; omit to create a new one"`
 	CollectionId string             `json:"collectionId" jsonschema:"the collection the variable belongs to (see list_variables)"`
 	Name         string             `json:"name" jsonschema:"e.g. color/primary; '/' groups variables in the UI"`
-	Type         string             `json:"type" jsonschema:"color | number | string (cannot change on an existing variable)"`
+	Type         string             `json:"type" jsonschema:"color | number | string | boolean (cannot change on an existing variable)"`
 	Values       map[string]ValueIO `json:"values,omitempty" jsonschema:"mode id OR mode name -> value. Give the first (default) mode at least. Omit for an alias"`
 	AliasOf      string             `json:"aliasOf,omitempty" jsonschema:"make this variable an alias of that variable (same type, no cycle, any collection); then give no values"`
 }
@@ -217,8 +224,10 @@ func (in SetVariableInput) toProto(doc *opendesignerv1.Document, id string) (*op
 		v.Type = opendesignerv1.VariableType_VARIABLE_TYPE_NUMBER
 	case "string":
 		v.Type = opendesignerv1.VariableType_VARIABLE_TYPE_STRING
+	case "boolean":
+		v.Type = opendesignerv1.VariableType_VARIABLE_TYPE_BOOLEAN
 	default:
-		return nil, fmt.Errorf("type must be \"color\", \"number\" or \"string\", got %q", in.Type)
+		return nil, fmt.Errorf("type must be \"color\", \"number\", \"string\" or \"boolean\", got %q", in.Type)
 	}
 	for key, val := range in.Values {
 		mode := modeIDFor(col, key)
@@ -226,15 +235,17 @@ func (in SetVariableInput) toProto(doc *opendesignerv1.Document, id string) (*op
 			return nil, fmt.Errorf("mode %q not found in collection %q", key, col.GetName())
 		}
 		switch {
-		case val.Text != nil && val.Color == nil && val.Number == nil:
+		case val.Boolean != nil && val.Color == nil && val.Number == nil && val.Text == nil:
+			v.Values[mode] = &opendesignerv1.VariableValue{Kind: &opendesignerv1.VariableValue_Boolean{Boolean: *val.Boolean}}
+		case val.Text != nil && val.Color == nil && val.Number == nil && val.Boolean == nil:
 			v.Values[mode] = &opendesignerv1.VariableValue{Kind: &opendesignerv1.VariableValue_Text{Text: *val.Text}}
-		case val.Color != nil && val.Number == nil && val.Text == nil:
+		case val.Color != nil && val.Number == nil && val.Text == nil && val.Boolean == nil:
 			v.Values[mode] = &opendesignerv1.VariableValue{Kind: &opendesignerv1.VariableValue_Color{Color: &opendesignerv1.Color{
 				R: float32(val.Color.R), G: float32(val.Color.G), B: float32(val.Color.B), A: float32(val.Color.A)}}}
-		case val.Number != nil && val.Color == nil && val.Text == nil:
+		case val.Number != nil && val.Color == nil && val.Text == nil && val.Boolean == nil:
 			v.Values[mode] = &opendesignerv1.VariableValue{Kind: &opendesignerv1.VariableValue_Number{Number: *val.Number}}
 		default:
-			return nil, fmt.Errorf("value for mode %q must have exactly one of color, number or text", key)
+			return nil, fmt.Errorf("value for mode %q must have exactly one of color, number, text or boolean", key)
 		}
 	}
 	return v, nil
@@ -296,7 +307,7 @@ func (s *Session) DeleteVariable(ctx context.Context, in IdInput) (SeqOutput, er
 
 type BindVariableInput struct {
 	NodeIds    []string `json:"nodeIds" jsonschema:"the nodes to bind (see list_nodes)"`
-	Property   string   `json:"property" jsonschema:"fills.N | strokes.N (color), opacity | rotation | corner_radius | strokes.N.weight | font_size (number), text (string); font_size and text on text nodes"`
+	Property   string   `json:"property" jsonschema:"fills.N | strokes.N (color), opacity | rotation | corner_radius | strokes.N.weight | font_size (number), text (string), visible (boolean), spacing | cross_spacing | padding_left | padding_top | padding_right | padding_bottom (number; auto layout frames); font_size and text on text nodes"`
 	VariableId string   `json:"variableId,omitempty" jsonschema:"the variable to bind; empty detaches the property (its literal value applies again)"`
 }
 

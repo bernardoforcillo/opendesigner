@@ -1,6 +1,6 @@
 import "@testing-library/jest-dom/vitest";
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { render, screen, fireEvent, cleanup, within } from "@testing-library/react";
+import { act, render, screen, fireEvent, cleanup, within } from "@testing-library/react";
 import { PrototypePlayer } from "./PrototypePlayer";
 import { useScene } from "../store/store";
 import { useFlowUi } from "../store/flowUi";
@@ -241,5 +241,107 @@ describe("PrototypePlayer", () => {
     render(<PrototypePlayer onClose={() => {}} />);
     expect(screen.getByRole("button", { name: "Broken" })).toBeDisabled();
     expect(screen.getByText(/no longer exists/)).toBeInTheDocument();
+  });
+});
+
+describe("PrototypePlayer: device frames and hotspot hints", () => {
+  beforeEach(() => {
+    install(demo());
+    try { localStorage.clear(); } catch { /* */ }
+  });
+
+  const pulses = () => document.querySelectorAll(".od-pulse").length;
+
+  it("the screen sits in a generic device frame until another is chosen, and the choice is remembered", () => {
+    const { unmount } = render(<PrototypePlayer onClose={() => {}} />);
+    expect(document.querySelector('[data-device="generic"]')).not.toBeNull();
+    const select = screen.getByRole("combobox", { name: "Device frame" });
+    expect(within(select).getAllByRole("option").map((o) => o.textContent)).toEqual(["Generic", "Phone", "Tablet", "Desktop", "No frame"]);
+
+    fireEvent.change(select, { target: { value: "phone" } });
+    expect(document.querySelector('[data-device="phone"]')).not.toBeNull();
+    expect(document.querySelector('[data-device="generic"]')).toBeNull();
+    unmount();
+
+    render(<PrototypePlayer onClose={() => {}} />);
+    expect(screen.getByRole("combobox", { name: "Device frame" })).toHaveValue("phone");
+  });
+
+  it("the document's device frame is the default; a person's own pick overrides it; Reset goes back", () => {
+    install({ ...demo(), settings: { presentDevice: "tablet" } });
+    render(<PrototypePlayer onClose={() => {}} />);
+    expect(document.querySelector('[data-device="tablet"]')).not.toBeNull();
+    const select = screen.getByRole("combobox", { name: "Device frame" });
+    expect(select).toHaveValue("tablet");
+    expect(screen.queryByRole("button", { name: "Use the document's device frame" })).toBeNull();
+
+    fireEvent.change(select, { target: { value: "phone" } });
+    expect(document.querySelector('[data-device="phone"]')).not.toBeNull();
+    expect(localStorage.getItem("od.protoDevice")).toBe("phone");
+    fireEvent.click(screen.getByRole("button", { name: "Use the document's device frame" }));
+    expect(document.querySelector('[data-device="tablet"]')).not.toBeNull();
+    expect(localStorage.getItem("od.protoDevice")).toBeNull();
+  });
+
+  it("Make default writes the choice into the document settings and drops the personal override", () => {
+    render(<PrototypePlayer onClose={() => {}} />);
+    expect(screen.queryByRole("button", { name: "Make this the document's device frame" })).toBeNull();
+    fireEvent.change(screen.getByRole("combobox", { name: "Device frame" }), { target: { value: "desktop" } });
+    fireEvent.click(screen.getByRole("button", { name: "Make this the document's device frame" }));
+    expect(useScene.getState().scene?.settings?.presentDevice).toBe("desktop");
+    expect(localStorage.getItem("od.protoDevice")).toBeNull();
+    expect(document.querySelector('[data-device="desktop"]')).not.toBeNull();
+    expect(screen.queryByRole("button", { name: "Make this the document's device frame" })).toBeNull();
+  });
+
+  it("a desktop frame shows the screen's name in its address bar; no frame draws no body", () => {
+    render(<PrototypePlayer onClose={() => {}} />);
+    const select = screen.getByRole("combobox", { name: "Device frame" });
+    fireEvent.change(select, { target: { value: "desktop" } });
+    expect(document.querySelector('[data-device="desktop"]')).toHaveTextContent("A");
+    fireEvent.change(select, { target: { value: "none" } });
+    expect(document.querySelector("[data-device]")).toBeNull();
+  });
+
+  it("the canvas is clipped with the device's screen radius", () => {
+    render(<PrototypePlayer onClose={() => {}} />);
+    const canvas = screen.getByLabelText("Screen A");
+    expect(canvas.style.clipPath).toContain("round 14px");
+    fireEvent.change(screen.getByRole("combobox", { name: "Device frame" }), { target: { value: "phone" } });
+    expect(canvas.style.clipPath).toContain("round 34px");
+  });
+
+  it("clicking outside every hotspot flashes them again after the first hint has faded", () => {
+    vi.useFakeTimers();
+    try {
+      render(<PrototypePlayer onClose={() => {}} />);
+      expect(pulses()).toBe(1); // the hint on entering the screen
+      act(() => { vi.advanceTimersByTime(5000); });
+      expect(pulses()).toBe(0);
+      fireEvent.click(screen.getByLabelText("Screen A"));
+      expect(pulses()).toBe(1);
+      act(() => { vi.advanceTimersByTime(5000); });
+      expect(pulses()).toBe(0);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("«Show hotspots» keeps them lit until it is turned off", () => {
+    vi.useFakeTimers();
+    try {
+      render(<PrototypePlayer onClose={() => {}} />);
+      const toggle = screen.getByRole("button", { name: "Show hotspots" });
+      expect(toggle).toHaveAttribute("aria-pressed", "false");
+      fireEvent.click(toggle);
+      expect(toggle).toHaveAttribute("aria-pressed", "true");
+      act(() => { vi.advanceTimersByTime(10000); });
+      expect(pulses()).toBe(1);
+      fireEvent.click(toggle);
+      act(() => { vi.advanceTimersByTime(10000); });
+      expect(pulses()).toBe(0);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

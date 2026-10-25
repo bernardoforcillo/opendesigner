@@ -14,7 +14,7 @@ import (
 
 const exportUsage = `usage: opendesigner export [options]
 
-Exports the design as code (React + Tailwind or HTML), with the flows
+Exports the design as code (React + Tailwind, HTML, SwiftUI, Jetpack Compose or Leptos), with the flows
 wired and the Playwright tests of the paths.
 
 options:
@@ -22,7 +22,7 @@ options:
   -doc ID|NAME     document, by id or exact name (may be omitted if it is the only one)
   -json FILE       instead of the workspace: a Document in protojson
   -assets DIR      with -json: assets directory (files named after the hash)
-  -target react|html   what to generate (default react)
+  -target react|html|swiftui|compose|leptos   what to generate (default react)
   -out DIR         destination directory (default ./export)
   -flow ID         wire (and test) a single flow (default: all)
   -force           allow a non-empty destination directory
@@ -39,7 +39,7 @@ func runExport(args []string, stdout, stderr io.Writer) int {
 	docRef := fs.String("doc", "", "document id or exact name")
 	jsonFile := fs.String("json", "", "protojson Document file (instead of the workspace)")
 	assetsDir := fs.String("assets", "", "with -json: assets directory")
-	target := fs.String("target", "react", "react or html")
+	target := fs.String("target", "react", "react, html, swiftui, compose or leptos")
 	out := fs.String("out", "export", "output directory")
 	flowID := fs.String("flow", "", "flow id (default: all)")
 	force := fs.Bool("force", false, "allow a non-empty output directory")

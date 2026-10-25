@@ -1,0 +1,359 @@
+{
+ "_comment": [
+  "Swapping and resetting an instance with setInstance: the swap keeps the overrides that name nodes of the new master. Rejected: an override on a node of the old master, an unknown component, a node that is not an instance, and an instance that would show a component that contains it."
+ ],
+ "docId": "doc1",
+ "expected": {
+  "components": {
+   "c1": {
+    "name": "Button",
+    "rootNodeId": "m1"
+   },
+   "c3": {
+    "name": "Card",
+    "rootNodeId": "m3"
+   }
+  },
+  "id": "doc1",
+  "name": "Untitled",
+  "nodes": {
+   "extra3": {
+    "height": 20,
+    "id": "extra3",
+    "name": "extra",
+    "opacity": 1,
+    "orderKey": "extra3",
+    "parentId": "m3",
+    "rect": {},
+    "visible": true,
+    "width": 20
+   },
+   "i": {
+    "height": 60,
+    "id": "i",
+    "instance": {
+     "componentId": "c3"
+    },
+    "name": "i",
+    "opacity": 1,
+    "orderKey": "i",
+    "parentId": "page1",
+    "visible": true,
+    "width": 100
+   },
+   "label": {
+    "height": 20,
+    "id": "label",
+    "name": "label",
+    "opacity": 1,
+    "orderKey": "label",
+    "parentId": "m1",
+    "text": {
+     "content": "Button",
+     "style": {
+      "fontSize": 14
+     }
+    },
+    "visible": true,
+    "width": 80
+   },
+   "label3": {
+    "height": 20,
+    "id": "label3",
+    "name": "label",
+    "opacity": 1,
+    "orderKey": "label3",
+    "parentId": "m3",
+    "text": {
+     "content": "Card"
+    },
+    "visible": true,
+    "width": 100
+   },
+   "m1": {
+    "frame": {},
+    "height": 60,
+    "id": "m1",
+    "name": "m",
+    "opacity": 1,
+    "orderKey": "m1",
+    "parentId": "page1",
+    "visible": true,
+    "width": 100
+   },
+   "m3": {
+    "frame": {},
+    "height": 80,
+    "id": "m3",
+    "name": "m",
+    "opacity": 1,
+    "orderKey": "m3",
+    "parentId": "page1",
+    "visible": true,
+    "width": 120
+   },
+   "nested": {
+    "height": 60,
+    "id": "nested",
+    "instance": {
+     "componentId": "c1"
+    },
+    "name": "nested",
+    "opacity": 1,
+    "orderKey": "nested",
+    "parentId": "m3",
+    "visible": true,
+    "width": 100
+   }
+  },
+  "pages": [
+   {
+    "id": "page1",
+    "name": "Page 1"
+   }
+  ],
+  "schemaVersion": 1
+ },
+ "ops": [
+  {
+   "createNode": {
+    "node": {
+     "frame": {},
+     "height": 60,
+     "id": "m1",
+     "name": "m",
+     "opacity": 1,
+     "orderKey": "m1",
+     "parentId": "page1",
+     "visible": true,
+     "width": 100
+    }
+   },
+   "docId": "doc1",
+   "opId": "op1"
+  },
+  {
+   "createNode": {
+    "node": {
+     "height": 20,
+     "id": "label",
+     "name": "label",
+     "opacity": 1,
+     "orderKey": "label",
+     "parentId": "m1",
+     "text": {
+      "content": "Button",
+      "style": {
+       "fontSize": 14
+      }
+     },
+     "visible": true,
+     "width": 80
+    }
+   },
+   "docId": "doc1",
+   "opId": "op2"
+  },
+  {
+   "createNode": {
+    "node": {
+     "frame": {},
+     "height": 80,
+     "id": "m3",
+     "name": "m",
+     "opacity": 1,
+     "orderKey": "m3",
+     "parentId": "page1",
+     "visible": true,
+     "width": 120
+    }
+   },
+   "docId": "doc1",
+   "opId": "op3"
+  },
+  {
+   "createNode": {
+    "node": {
+     "height": 20,
+     "id": "label3",
+     "name": "label",
+     "opacity": 1,
+     "orderKey": "label3",
+     "parentId": "m3",
+     "text": {
+      "content": "Card"
+     },
+     "visible": true,
+     "width": 100
+    }
+   },
+   "docId": "doc1",
+   "opId": "op4"
+  },
+  {
+   "createNode": {
+    "node": {
+     "height": 20,
+     "id": "extra3",
+     "name": "extra",
+     "opacity": 1,
+     "orderKey": "extra3",
+     "parentId": "m3",
+     "rect": {},
+     "visible": true,
+     "width": 20
+    }
+   },
+   "docId": "doc1",
+   "opId": "op5"
+  },
+  {
+   "createComponent": {
+    "componentId": "c1",
+    "name": "Button",
+    "rootNodeId": "m1"
+   },
+   "docId": "doc1",
+   "opId": "op6"
+  },
+  {
+   "createComponent": {
+    "componentId": "c3",
+    "name": "Card",
+    "rootNodeId": "m3"
+   },
+   "docId": "doc1",
+   "opId": "op7"
+  },
+  {
+   "createNode": {
+    "node": {
+     "height": 60,
+     "id": "i",
+     "instance": {
+      "componentId": "c1"
+     },
+     "name": "i",
+     "opacity": 1,
+     "orderKey": "i",
+     "parentId": "page1",
+     "visible": true,
+     "width": 100
+    }
+   },
+   "docId": "doc1",
+   "opId": "op8"
+  },
+  {
+   "docId": "doc1",
+   "opId": "op9",
+   "setInstanceOverride": {
+    "instanceId": "i",
+    "override": {
+     "masterNodeId": "label",
+     "text": "Pay",
+     "textPresent": true
+    }
+   }
+  },
+  {
+   "docId": "doc1",
+   "opId": "op10",
+   "setInstance": {
+    "instance": {
+     "componentId": "c3",
+     "overrides": [
+      {
+       "masterNodeId": "label3",
+       "text": "Pay",
+       "textPresent": true
+      }
+     ]
+    },
+    "instanceId": "i"
+   }
+  },
+  {
+   "docId": "doc1",
+   "opId": "op11",
+   "setInstance": {
+    "instance": {
+     "componentId": "c3",
+     "overrides": [
+      {
+       "masterNodeId": "label",
+       "text": "x",
+       "textPresent": true
+      }
+     ]
+    },
+    "instanceId": "i"
+   }
+  },
+  {
+   "docId": "doc1",
+   "opId": "op12",
+   "setInstance": {
+    "instance": {
+     "componentId": "nope"
+    },
+    "instanceId": "i"
+   }
+  },
+  {
+   "docId": "doc1",
+   "opId": "op13",
+   "setInstance": {
+    "instance": {
+     "componentId": "c1"
+    },
+    "instanceId": "label"
+   }
+  },
+  {
+   "createNode": {
+    "node": {
+     "height": 60,
+     "id": "nested",
+     "instance": {
+      "componentId": "c1"
+     },
+     "name": "nested",
+     "opacity": 1,
+     "orderKey": "nested",
+     "parentId": "m3",
+     "visible": true,
+     "width": 100
+    }
+   },
+   "docId": "doc1",
+   "opId": "op14"
+  },
+  {
+   "docId": "doc1",
+   "opId": "op15",
+   "setInstance": {
+    "instance": {
+     "componentId": "c3"
+    },
+    "instanceId": "nested"
+   }
+  },
+  {
+   "docId": "doc1",
+   "opId": "op16",
+   "setInstance": {
+    "instance": {
+     "componentId": "c3"
+    },
+    "instanceId": "i"
+   }
+  }
+ ],
+ "rejected": [
+  10,
+  11,
+  12,
+  14
+ ]
+}

@@ -66,6 +66,24 @@ var definitionKinds = []definition{
 			return &opendesignerv1.Op{Kind: &opendesignerv1.Op_DeleteTextStyleDef{DeleteTextStyleDef: &opendesignerv1.DeleteTextStyleDef{Id: id}}}
 		},
 		func(m proto.Message) string { return m.(*opendesignerv1.TextStyleDef).GetName() }},
+	{"paint_style",
+		func(d *opendesignerv1.Document) map[string]proto.Message { return msgs(d.GetPaintStyles()) },
+		func(m proto.Message) *opendesignerv1.Op {
+			return &opendesignerv1.Op{Kind: &opendesignerv1.Op_SetPaintStyleDef{SetPaintStyleDef: &opendesignerv1.SetPaintStyleDef{PaintStyle: m.(*opendesignerv1.PaintStyleDef)}}}
+		},
+		func(id string) *opendesignerv1.Op {
+			return &opendesignerv1.Op{Kind: &opendesignerv1.Op_DeletePaintStyleDef{DeletePaintStyleDef: &opendesignerv1.DeletePaintStyleDef{Id: id}}}
+		},
+		func(m proto.Message) string { return m.(*opendesignerv1.PaintStyleDef).GetName() }},
+	{"effect_style",
+		func(d *opendesignerv1.Document) map[string]proto.Message { return msgs(d.GetEffectStyles()) },
+		func(m proto.Message) *opendesignerv1.Op {
+			return &opendesignerv1.Op{Kind: &opendesignerv1.Op_SetEffectStyleDef{SetEffectStyleDef: &opendesignerv1.SetEffectStyleDef{EffectStyle: m.(*opendesignerv1.EffectStyleDef)}}}
+		},
+		func(id string) *opendesignerv1.Op {
+			return &opendesignerv1.Op{Kind: &opendesignerv1.Op_DeleteEffectStyleDef{DeleteEffectStyleDef: &opendesignerv1.DeleteEffectStyleDef{Id: id}}}
+		},
+		func(m proto.Message) string { return m.(*opendesignerv1.EffectStyleDef).GetName() }},
 	{"object_style",
 		func(d *opendesignerv1.Document) map[string]proto.Message { return msgs(d.GetObjectStyles()) },
 		func(m proto.Message) *opendesignerv1.Op {

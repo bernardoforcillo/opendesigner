@@ -1,0 +1,99 @@
+{
+  "_comment": [
+    "Stroke.brush (field 40). Run from BOTH sides: internal/core/golden_test.go and web/src/store/golden.test.ts.",
+    "",
+    " op0 -- a vector with a scatter brush: every parameter is kept, the seed included (it is what makes",
+    "        the marks the same on every client).",
+    " op1 -- setProps replaces the brush by a stretch one with a different tip.",
+    " op2 -- a spacing below 0.05 is REJECTED and the stroke stays as op1 left it.",
+    " op3 -- an angle jitter above 180 is REJECTED on creation: the node never exists.",
+    " op4 -- a NONE brush is the plain stroke and its parameters are not read, so even a negative spacing",
+    "        is kept as sent (the validators of both sides must agree on this edge too).",
+    " op5 -- a brush with an unknown tip is REJECTED.",
+    "Note proto3: dot (0) and DOT tip / NONE kind are the defaults, so they do not appear in `expected`."
+  ],
+  "docId": "doc1",
+  "rejected": [2, 3, 5],
+  "ops": [
+    { "opId": "op0", "docId": "doc1", "createNode": { "node": {
+      "id": "v1", "parentId": "page1", "orderKey": "a0", "name": "Brushed",
+      "visible": true, "opacity": 1, "x": 0, "y": 0, "width": 100, "height": 40,
+      "strokes": [
+        { "paint": { "solid": { "color": { "r": 0, "g": 0, "b": 0, "a": 1 } } }, "weight": 6,
+          "brush": { "kind": "BRUSH_KIND_SCATTER", "tip": "BRUSH_TIP_LEAF", "spacing": 1.5, "scatter": 0.8,
+                     "sizeJitter": 0.4, "angleJitter": 60, "seed": 4 } }
+      ],
+      "vector": { "subpaths": [ { "anchors": [ { "x": 0, "y": 20 }, { "x": 100, "y": 20 } ], "closed": false } ] }
+    } } },
+
+    { "opId": "op1", "docId": "doc1", "setProps": {
+      "id": "v1", "mask": "strokes",
+      "patch": { "strokes": [
+        { "paint": { "solid": { "color": { "r": 0, "g": 0, "b": 0, "a": 1 } } }, "weight": 6,
+          "brush": { "kind": "BRUSH_KIND_STRETCH", "tip": "BRUSH_TIP_DASH", "spacing": 0.6, "sizeJitter": 0.2, "seed": 2 } }
+      ] }
+    } },
+
+    { "opId": "op2", "docId": "doc1", "setProps": {
+      "id": "v1", "mask": "strokes",
+      "patch": { "strokes": [
+        { "paint": { "solid": { "color": { "r": 0, "g": 0, "b": 0, "a": 1 } } }, "weight": 6,
+          "brush": { "kind": "BRUSH_KIND_SCATTER", "spacing": 0.01 } }
+      ] }
+    } },
+
+    { "opId": "op3", "docId": "doc1", "createNode": { "node": {
+      "id": "v2", "parentId": "page1", "orderKey": "a1", "name": "Too turned",
+      "visible": true, "opacity": 1, "x": 0, "y": 50, "width": 100, "height": 10,
+      "strokes": [
+        { "paint": { "solid": { "color": { "r": 0, "g": 0, "b": 0, "a": 1 } } }, "weight": 6,
+          "brush": { "kind": "BRUSH_KIND_SCATTER", "spacing": 1, "angleJitter": 200 } }
+      ],
+      "vector": { "subpaths": [ { "anchors": [ { "x": 0, "y": 5 }, { "x": 100, "y": 5 } ], "closed": false } ] }
+    } } },
+
+    { "opId": "op4", "docId": "doc1", "createNode": { "node": {
+      "id": "v3", "parentId": "page1", "orderKey": "a2", "name": "Plain",
+      "visible": true, "opacity": 1, "x": 0, "y": 70, "width": 100, "height": 10,
+      "strokes": [
+        { "paint": { "solid": { "color": { "r": 0, "g": 0, "b": 0, "a": 1 } } }, "weight": 6,
+          "brush": { "spacing": -5 } }
+      ],
+      "vector": { "subpaths": [ { "anchors": [ { "x": 0, "y": 5 }, { "x": 100, "y": 5 } ], "closed": false } ] }
+    } } },
+
+    { "opId": "op5", "docId": "doc1", "createNode": { "node": {
+      "id": "v4", "parentId": "page1", "orderKey": "a3", "name": "Odd tip",
+      "visible": true, "opacity": 1, "x": 0, "y": 90, "width": 100, "height": 10,
+      "strokes": [
+        { "paint": { "solid": { "color": { "r": 0, "g": 0, "b": 0, "a": 1 } } }, "weight": 6,
+          "brush": { "kind": "BRUSH_KIND_STRETCH", "tip": 9, "spacing": 1 } }
+      ],
+      "vector": { "subpaths": [ { "anchors": [ { "x": 0, "y": 5 }, { "x": 100, "y": 5 } ], "closed": false } ] }
+    } } }
+  ],
+  "expected": {
+    "id": "doc1", "name": "Untitled", "schemaVersion": 1,
+    "pages": [{ "id": "page1", "name": "Page 1" }],
+    "nodes": {
+      "v1": {
+        "id": "v1", "parentId": "page1", "orderKey": "a0", "name": "Brushed",
+        "visible": true, "opacity": 1, "x": 0, "y": 0, "width": 100, "height": 40,
+        "strokes": [
+          { "paint": { "solid": { "color": { "r": 0, "g": 0, "b": 0, "a": 1 } } }, "weight": 6,
+            "brush": { "kind": "BRUSH_KIND_STRETCH", "tip": "BRUSH_TIP_DASH", "spacing": 0.6, "sizeJitter": 0.2, "seed": 2 } }
+        ],
+        "vector": { "subpaths": [ { "anchors": [ { "x": 0, "y": 20 }, { "x": 100, "y": 20 } ], "closed": false } ] }
+      },
+      "v3": {
+        "id": "v3", "parentId": "page1", "orderKey": "a2", "name": "Plain",
+        "visible": true, "opacity": 1, "x": 0, "y": 70, "width": 100, "height": 10,
+        "strokes": [
+          { "paint": { "solid": { "color": { "r": 0, "g": 0, "b": 0, "a": 1 } } }, "weight": 6,
+            "brush": { "spacing": -5 } }
+        ],
+        "vector": { "subpaths": [ { "anchors": [ { "x": 0, "y": 5 }, { "x": 100, "y": 5 } ], "closed": false } ] }
+      }
+    }
+  }
+}

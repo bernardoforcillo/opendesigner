@@ -207,7 +207,7 @@ createRoot(document.getElementById("root")!).render(
 
 	// Component sets and components with properties that the screens use become
 	// components (src/components).
-	reg := newCompRegistry(d, b, screens)
+	reg := newCompRegistry(d, b, screens, nil)
 	reg.files(put)
 
 	for _, s := range screens {
@@ -409,6 +409,7 @@ func (w *jsxWriter) element(e *Element, depth int, root bool, d *opendesignerv1.
 	style := e.Style
 
 	var trig *Trigger
+	comments = append(comments, e.Notes...)
 	for i := range e.Triggers {
 		t := e.Triggers[i]
 		comments = append(comments, flowComments(t)...)

@@ -65,9 +65,16 @@ describe("golden parity", () => {
       // style (compared through `nodes` above).
       expect(scene.fonts).toEqual(expected.fonts);
       expect(scene.textStyles).toEqual(expected.textStyles);
+      // Shared paint and effect styles, and the cascade of deleting one (compared through `nodes`).
+      expect(scene.paintStyles).toEqual(expected.paintStyles);
+      expect(scene.effectStyles).toEqual(expected.effectStyles);
       // Component sets (variants); each component's set/variant/properties are
       // compared through `components` above, and the instance's values through `nodes`.
       expect(scene.componentSets).toEqual(expected.componentSets);
+      // Dev mode: annotations and the ready marks (the snapshot of a ready frame is the
+      // server's, so the client keeps only the mark -- fromDocument drops it the same way).
+      const dev = (s: typeof scene) => ({ annotations: s.dev?.annotations ?? {}, ready: s.dev?.ready ?? {} });
+      expect(dev(scene)).toEqual(dev(expected));
       // Object styles, layers and the document settings (colour mode, profile ...).
       expect(scene.objectStyles).toEqual(expected.objectStyles);
       expect(scene.layers).toEqual(expected.layers);

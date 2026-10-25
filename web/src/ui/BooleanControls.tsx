@@ -98,7 +98,7 @@ export function BooleanControls() {
   });
   const maskable = useScene((s) => {
     const n = s.selection.length === 1 ? s.scene?.nodes.at(s.selection[0]) : undefined;
-    return !!n && (n.kind === "rect" || n.kind === "ellipse" || n.kind === "frame" || n.kind === "vector") ? (n.isMask ? "on" : "off") : null;
+    return !!n && (n.kind === "rect" || n.kind === "ellipse" || n.kind === "frame" || n.kind === "vector" || n.kind === "polygon" || n.kind === "star") ? (n.isMask ? "on" : "off") : null;
   });
   const outlinable = useScene((s) => {
     const n = s.selection.length === 1 ? s.scene?.nodes.at(s.selection[0]) : undefined;

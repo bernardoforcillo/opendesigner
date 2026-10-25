@@ -9,20 +9,36 @@ Legend: [x] done · [ ] to do
 - [x] Shapes, text, images, vector, groups, frames, pages
 - [x] Components with instances and overrides
 - [x] Linear and radial gradients (canvas, SVG, panel, MCP)
+- [x] Angular (conic) and diamond gradients (canvas, GPU, SVG export, CSS conic-gradient, panel, MCP; docs/shapes.md)
+- [x] Polygon and star shapes (sides / points / inner ratio) and arcs, pies and rings on ellipses (tool dock, panel, canvas, GPU, SVG, code, hit-test, MCP `create_polygon` / `create_star` / `set_properties`; `.fig` import keeps them; docs/shapes.md)
+- [x] Rectangle corner smoothing (squircle) and independent corner radii (panel, canvas, GPU, SVG, code, MCP)
+- [x] Per-side stroke weights on rectangles and frames (panel, canvas, GPU, SVG, CSS, MCP `set_stroke`)
+- [x] Shared paint styles and effect styles: named, applied to fills / strokes / effects, resolved like text styles (panel, ops, MCP, merge; docs/shapes.md)
 - [x] More stops per gradient (add, move, remove from the panel)
 - [x] Gradient on strokes from the panel; image as a fill or stroke paint (fill / fit / tile; canvas, GPU, SVG, code)
 - [x] Effects: drop shadow and layer blur (canvas, SVG, panel, MCP, copy/paste; one per type per node is drawn)
 - [x] Effects: multiple shadows per node, inner shadow, background blur, blend mode (docs/effects.md)
+- [x] Effects: progressive layer and background blur, noise (mono, duo, multi), texture and a simplified glass (frosted backdrop, grain, light edge); canvas, CanvasKit, SVG, panel, MCP (docs/effects.md)
 - [x] Auto layout: direction, spacing, padding, alignments, hug; computed by the server (Shift+A wraps the selection, Frame tool, panel, MCP `create_frame`/`set_auto_layout`)
 - [x] Auto layout: reordering by dragging children (also into another auto layout), with insertion line and outline; a single undo step
 - [x] Auto layout: children that fill the space (fill), wrapping onto several lines, dragging a child OUT of the frame, instances as children; see docs/layout.md
-- [ ] Auto layout: groups as children, min/max sizes, absolute children
+- [x] Auto layout: min/max sizes (fill children redistribute around them) and absolute children that stay constrained to the frame; see docs/layout.md
+- [x] Auto layout: groups as children (one box of the union of their children, in rows, columns and grid cells); see docs/layout.md
+- [x] Auto layout: baseline alignment on the cross axis of a row (estimated from font size and line height)
+- [x] Auto layout: grid mode (rows / columns tracks with fixed, hug and fr sizes, gaps, cell spans; panel, MCP `set_grid_cell`, `display:grid` export, SwiftUI `Grid` and Compose `DesignGrid` export); see docs/layout.md
+- [x] Context menu (right click on the canvas or a layer): swap, reset overrides, detach, go to main component, group / ungroup, bring forward / back, duplicate, delete; see docs/layout.md
+- [x] MCP twins of the context menu commands that had none: `group_nodes`, `ungroup_nodes`, `arrange_nodes`, `duplicate_nodes`; see docs/layout.md
 - [x] Constraints and responsive resize (min/max/stretch/center/scale per axis, recursive, exact undo); see docs/layout.md
 - [x] Variants and component properties: component sets with axes, instances that choose a variant, boolean (show/hide) and text properties, editor dialog and instance controls, MCP tools, exported code; see docs/components.md
-- [ ] Shared libraries across documents, instance swap, detach instance
+- [x] Instance swap (carrying over the overrides that fit), detach instance, reset overrides (all / per layer), go to main component; see docs/components.md
+- [ ] Shared libraries across documents
 - [x] Variables / design tokens with modes: color and number variables in collections with modes, bound to fills, strokes, opacity, rotation, radius and stroke width, pinned per subtree; editor dialog and panel, MCP tools, resolved in canvas/export/code, see docs/variables.md
-- [ ] Variables: text and spacing, aliases, CSS custom properties per mode in the exported code
+- [x] Variables: string (text content) and boolean (visibility) variables, spacing / padding bindings that the auto layout engine reads per mode (density), aliases; see docs/variables.md
+- [ ] Variables: CSS custom properties per mode in the exported code
 - [x] Typography: uploaded fonts (TTF/OTF/WOFF/WOFF2 as content-addressed assets, drawn by the 2D and GPU renderers and exported as @font-face), shared text styles, italic; multi-line text and wrapping were already there; see docs/typography.md
+- [x] Type extras: text case (upper, lower, title, small caps), super/subscript, bulleted and numbered lists with indent, OpenType feature string, vertical alignment and inset in text boxes (canvas, CanvasKit, SVG, CSS, panel, MCP); see docs/typography.md
+- [x] Horizontal text scale (a percentage on every text style: layout, canvas, CanvasKit, SVG, CSS, panel, MCP); see docs/typography.md
+- [x] Rich text honours the type extras: case, super/subscript, small caps and OpenType features per range, lists and indent per paragraph, inset and vertical alignment of the box; paragraph and character styles carry them; see docs/typography.md
 - [ ] Typography: letter spacing, decoration, case, per-range styling, kerning/shaping on the GPU
 - [x] Live boolean groups (union, subtract, intersect, exclude; flatten on demand), outline stroke, masks (canvas, GPU, SVG, code, hit-test); see docs/vector.md
 - [x] Presentation mode: the playable prototype (Present)
@@ -31,8 +47,15 @@ Legend: [x] done · [ ] to do
 - [ ] Diagrams: `subgraph`, ER, notes in class and state diagrams
 - [x] SVG import (paste, drop, import tool)
 - [x] .fig import (experimental: read from the documented layout, tested on generated files; components and instances are not kept; docs/handoff.md)
+- [x] .fig import tail: connectors (saved, straight, elbowed, curved, placed by their ends), tables and cells, sticky notes and other frame-like layers with their text, per-kind counts (synthetic files only; docs/handoff.md)
+- [x] .fig variables: collections with modes, color / number / string / boolean variables, aliases and the layer bindings and pinned modes; what cannot bind is reported (synthetic files only; docs/handoff.md, docs/variables.md)
+- [x] .fig import robustness tests on generated files: truncation at every length, bit flips, junk, hostile counts (no real file was available)
 - [x] Prototyping: animated transitions between frames (dissolve, slide, push, smart animate) with duration and easing, and `auto` transitions after a delay; see docs/flows.md
 - [ ] Prototyping: hover and drag interactions, overlays, scroll, component state changes in the player
+- [x] Present: device frames (generic, phone, tablet, desktop browser, none) and hotspot hints (flash on a missed click, a "Show hotspots" toggle); see docs/flows.md
+- [x] Present device frame as a document setting (`DocSettings.present_device`, `set_document_settings`, "Make default" in the player), the person's pick kept as an override; see docs/flows.md
+- [x] Prototype variables with expressions (`count = count + 1`, `count >= 3 || paid`) and an `else` guard for if / else on a hotspot; see docs/flows.md
+- [x] Ordered if / else if / else chains in prototypes: `Transition.order` (proto), evaluated in sequence by the player, a Chain row in the Flows panel, MCP `set_transition` `order`, analysis rules (`else_orphan`, `shadowed`); docs/flows.md
 - [x] Multiple artboards (frames), smart guides and snapping to nodes, layout grids on frames (columns, rows, square grid) that guide and snap; see docs/layout.md
 - [x] Snap to a pixel grid (document menu: 1 / 4 / 8 px, per person) and spacing guides (equal gaps between neighbours, drawn while dragging)
 
@@ -41,7 +64,11 @@ Legend: [x] done · [ ] to do
 - [x] Path offset (grow/shrink) and simplification; pathfinder = the live boolean groups
 - [ ] Live corners
 - [x] Strokes: cap, join, miter limit and dashes on every shape (panel, canvas, GPU, SVG)
-- [ ] Advanced strokes: variable width profiles, brushes, arrowheads
+- [x] Arrowheads on open vector strokes (arrow, triangle, circle, square, diamond at either end; panel, canvas, GPU, SVG, code, MCP `set_stroke`)
+- [x] Variable-width strokes on vectors (width points with a left and right width along the path, presets, a Variable width tool and panel; canvas, GPU, SVG as a filled outline, outline stroke, MCP `set_stroke`); see docs/vector.md
+- [x] Advanced strokes: brushes (stretch and scatter brushes with dot, dash, square, diamond and leaf tips, spacing, scatter, size and angle jitter and a seed; chalk, marker, dots and leaves presets; stamps placed by arc length with a seeded RNG; canvas, GPU, SVG as a filled path, panel, MCP `set_stroke`); see docs/vector.md. Pen pressure and user-defined tips are not done
+- [x] Shape builder tool: click or drag across the regions of overlapping shapes to merge them into one vector (Alt removes); see docs/vector.md
+- [x] Shape builder over MCP (`list_shape_builder_faces`, `shape_builder`; Go port of the arrangement, areas golden-tested against the editor); see docs/vector.md
 - [x] Gradient mesh (a color grid blended over the box; the points do not move; code export uses the average color)
 - [x] SVG export and PDF (a real PDF writer, docs/output.md)
 - [x] PDF import (editable text with embedded fonts and shared text styles, shapes and images, one page per PDF page), and export of all pages as PDF or EPUB (fixed layout); see docs/pdf-epub.md
@@ -135,9 +162,17 @@ Output (docs/output.md)
 
 ## 3. Handoff and ecosystem
 - [x] Dev mode: CSS/Tailwind/React and measurements (size, position, gaps to parent and siblings of the selection, in the Ship panel)
+- [x] SwiftUI and Jetpack Compose code (screens, auto layout, fills, gradients, strokes, shadows, text, vectors, images, components with properties as parameters, flows as navigation); format picker in Develop and Ship, `export_code` target; docs/codegen.md
+- [x] Leptos (Rust) code target (view! macros with the IR's inline CSS, components with props, `leptos_router` routes, flows as `use_navigate`, the react target's Playwright tests; format picker in Develop and Ship, `export_code` target, CLI; type-checked with `cargo check`); docs/codegen.md
+- [x] Diamond gradient exact in CSS (four quadrant layers) and angular / diamond as SVG patterns in vector code (was a circle / the first stop); docs/shapes.md
+- [x] Ready for dev: frames marked ready (with a server-side snapshot), a ready list with focus view, colour-coded annotations on layers shown in Develop and written into the exported code, Compare changes (property-level diff against the snapshot); RPC `CompareReady`, MCP tools; see docs/handoff.md
 - [x] Plugin API (sandboxed scripts with a read/write bridge; docs/handoff.md)
+- [x] Plugin API for agents: `describe_plugin_api`, `validate_plugin`, `list_ui_languages` (read-only; running plugins and switching language stay editor-only); see docs/handoff.md, docs/localization.md
+- [x] WebAssembly plugins (import-free modules run in a terminable Worker, capped memory, commands through the same bridge, one undo step; docs/handoff.md)
 - [x] Tokens in and out: W3C Design Tokens (DTCG) JSON and CSS custom properties, with modes; import of a DTCG file as collections (variables dialog); see docs/handoff.md
 - [ ] Syncing components with the code
+- [x] Localization layer: typed catalogs, live language switch, language from the browser or the document menu / Home, plurals; menus, tool dock, Home and panel headings translated into es, fr, de, it, pt-BR, ja, zh-Hans (machine drafts); see docs/localization.md
+- [ ] Localization: translate the remaining dialogs and panels, review the drafts with native speakers, dates and numbers by locale
 
 ## 4. Performance
 - [x] Invalidation-driven rendering, incremental scene index, discarding what is not visible, levels of detail, image reuse during pan/zoom; test bench on 20,000 nodes (see docs/performance.md)

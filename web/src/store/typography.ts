@@ -17,6 +17,25 @@ const HASH_RE = /^[0-9a-f]{64}$/;
 
 const finiteNonNeg = (v: number) => Number.isFinite(v) && v >= 0;
 
+const FEATURES_RE = /^[A-Za-z0-9 ,"]{0,128}$/;
+
+/** Parity with core.ValidFontFeatures: "" or comma-separated `"tag"` / `"tag" N` items. */
+export function isValidFontFeatures(s: string): boolean {
+  return isCssFontFeatures(s) || validFontFeatures(s);
+}
+
+function isCssFontFeatures(s: string): boolean {
+  if (s === "") return true;
+  if (!FEATURES_RE.test(s)) return false;
+  for (const item of s.split(",")) {
+    const parts = item.trim().split(/\s+/).filter((p) => p !== "");
+    if (parts.length === 0 || parts.length > 2) return false;
+    if (!/^"[A-Za-z0-9]{4}"$/.test(parts[0])) return false;
+    if (parts.length === 2 && !/^[0-9]{1,4}$/.test(parts[1])) return false;
+  }
+  return true;
+}
+
 /** Parity with core.validateFont. */
 export function isValidFont(state: SceneState, f: PbFont | undefined): f is PbFont {
   if (!f || f.id === "") return false;
@@ -85,9 +104,14 @@ export function isValidTextStyleDef(state: SceneState, d: PbTextStyleDef | undef
   if (!st || !finiteNonNeg(st.fontSize) || !finiteNonNeg(st.lineHeight) || !FAMILY_LIST_RE.test(st.fontFamily)) return false;
   const w = st.fontWeight;
   if (!(w === "" || WEIGHT_RE.test(w) || w === "normal" || w === "bold")) return false;
+  // core.validateTextExtras: enums in range, finite non-negative indent/inset, a well-formed feature string.
+  if (!(st.textCase >= 0 && st.textCase <= 4 && st.textScript >= 0 && st.textScript <= 2 &&
+    st.listKind >= 0 && st.listKind <= 2 && st.verticalAlign >= 0 && st.verticalAlign <= 2 &&
+    finiteNonNeg(st.indent) && finiteNonNeg(st.inset) &&
+    (st.textScale === 0 || (st.textScale >= 1 && st.textScale <= 1000)))) return false;
   if (!Number.isFinite(st.letterSpacing) || Math.abs(st.letterSpacing) > 1000) return false;
   if (!(st.horizontalScale === 0 || (st.horizontalScale >= 0.1 && st.horizontalScale <= 10))) return false;
-  if (!validFontFeatures(st.fontFeatures)) return false;
+  if (!isValidFontFeatures(st.fontFeatures)) return false;
   if (!validFontVariations(st.fontVariations)) return false;
   if (st.script < 0 || st.script > TextScript.SUBSCRIPT) return false;
   if (st.color && ![st.color.r, st.color.g, st.color.b, st.color.a].every((v) => v >= 0 && v <= 1)) return false;
@@ -96,6 +120,8 @@ export function isValidTextStyleDef(state: SceneState, d: PbTextStyleDef | undef
   if (![d.spaceBefore, d.spaceAfter, d.indentFirst, d.indentLeft].every(finiteNonNeg)) return false;
   const character = d.kind === TextStyleKind.CHARACTER;
   if (character && d.alignToGrid) return false;
+  // Parity with validateStyleRelations: list, indent, vertical alignment and inset are not for ranges.
+  if (character && (st.listKind !== 0 || st.indent !== 0 || st.verticalAlign !== 0 || st.inset !== 0)) return false;
   if (character && (d.nextStyleId !== "" || d.spaceBefore !== 0 || d.spaceAfter !== 0 || d.indentFirst !== 0 || d.indentLeft !== 0)) return false;
   if (d.nextStyleId !== "" && d.nextStyleId !== d.id) {
     const n = state.textStyles[d.nextStyleId];

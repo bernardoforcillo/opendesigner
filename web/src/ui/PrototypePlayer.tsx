@@ -12,7 +12,10 @@ import { useProtoAnimation } from "./protoAnim";
 import { animOf, layersAt, progressOf, smartScene, type TransitionAnim } from "../flow/transitionAnim";
 import { screenName } from "../flow/screens";
 import { Badge, Icon, IconButton } from "./ds";
-import { AnyIcon, FlowIconButton } from "./ds/flow-parts";
+import { AnyIcon, FlowIcon, FlowIconButton } from "./ds/flow-parts";
+import { DeviceBody, DeviceOverlay } from "./DeviceChrome";
+import { makeSetDocSettingsOp } from "../tools/ops";
+import { DEVICES, deviceById, deviceGeometry, type DeviceId } from "../flow/devices";
 import "./ds/flow-stage.css";
 import {
   back, backTo, canGoBack, follow, optionsFrom, startState, trail, varEntries,
@@ -35,10 +38,17 @@ const PAD = 48; // margin around the screen, px
 const DOCK_RESERVE = 124;
 // How long the hotspot pulse stays visible after entering a screen.
 const HINT_MS = 4200;
-// The border (px) of the frame that acts as the device's "bezel", and the radius.
-const BEZEL = 8;
-const BEZEL_RADIUS = 22;
 const MAX_ZOOM = 2;
+// The device frame has two levels: the DOCUMENT's (DocSettings.present_device, set with set_document_settings
+// or "Make default" below; generic when unset) and the person's own pick, remembered in this browser, which
+// overrides it for them. null = no personal pick: follow the document.
+const DEVICE_KEY = "od.protoDevice";
+function loadPersonalDevice(): DeviceId | null {
+  try {
+    const raw = localStorage.getItem(DEVICE_KEY);
+    return raw && DEVICES.some((d) => d.id === raw) ? (raw as DeviceId) : null;
+  } catch { return null; }
+}
 
 function fitCamera(b: Bounds, w: number, h: number) {
   const zoom = Math.min(MAX_ZOOM, Math.max(0.05, Math.min((w - PAD * 2) / Math.max(1, b.width), (h - PAD * 2) / Math.max(1, b.height))));
@@ -63,12 +73,19 @@ export function PrototypePlayer({ onClose }: { onClose: () => void }) {
   // It also redraws when an image arrives.
   const [imgTick, setImgTick] = useState(0);
   // The hotspot pulse: it lights up on every new screen and fades on its own.
+  // It also flashes again when the person clicks outside every hotspot (`flashes`), and a toggle
+  // keeps the hotspots lit (`pinned`).
   const [hint, setHint] = useState(true);
+  const [flashes, setFlashes] = useState(0);
+  const [pinned, setPinned] = useState(false);
+  const [personalDevice, setPersonalDevice] = useState<DeviceId | null>(loadPersonalDevice);
+  const docDevice = deviceById(scene?.settings?.presentDevice).id;
+  const device = personalDevice ?? docDevice;
   useEffect(() => {
     setHint(true);
     const t = setTimeout(() => setHint(false), HINT_MS);
     return () => clearTimeout(t);
-  }, [state?.screenId]);
+  }, [state?.screenId, flashes]);
 
   // The screen-to-screen animation in progress (see flow/transitionAnim.ts), or null.
   const [tx, setTx] = useState<{ fromId: string; anim: TransitionAnim; start: number } | null>(null);
@@ -199,6 +216,7 @@ export function PrototypePlayer({ onClose }: { onClose: () => void }) {
   const hotspots: { o: Option; box: Bounds }[] = [];
   const bar: Option[] = [];
   for (const o of options) {
+    if (o.superseded) continue; // the other branch of an if / else on this hotspot applies instead
     const el = o.transition.elementId !== "" ? scene.nodes.at(o.transition.elementId) : undefined;
     if (el && cam) hotspots.push({ o, box: worldBoundsOfNode(scene, el) });
     else bar.push(o);
@@ -218,7 +236,10 @@ export function PrototypePlayer({ onClose }: { onClose: () => void }) {
         h: screenBox.height * cam.zoom,
       }
     : null;
-  const radius = BEZEL_RADIUS - BEZEL;
+  const spec = deviceById(device);
+  const geo = frame ? deviceGeometry(spec, { left: frame.x, top: frame.y, width: frame.w, height: frame.h }) : null;
+  const radius = geo?.screenRadius ?? 0;
+  const lit = hint || pinned;
 
   return (
     <div
@@ -232,19 +253,18 @@ export function PrototypePlayer({ onClose }: { onClose: () => void }) {
         {state && derived ? (
           <>
             {frame && (
-              <div
-                aria-hidden="true"
-                className="absolute bg-surface shadow-[0_40px_90px_-30px_rgba(0,0,0,0.85),0_0_0_1px_var(--line-strong)]"
-                style={{
-                  left: frame.x - BEZEL, top: frame.y - BEZEL, width: frame.w + BEZEL * 2, height: frame.h + BEZEL * 2,
-                  borderRadius: BEZEL_RADIUS,
-                }}
+              <DeviceBody
+                spec={spec}
+                screen={{ left: frame.x, top: frame.y, width: frame.w, height: frame.h }}
+                label={screenName(scene, state.screenId)}
               />
             )}
             <canvas
               ref={canvas}
               aria-label={`Screen ${screenName(scene, state.screenId)}`}
               className="absolute inset-0 block h-full w-full"
+              // A click that misses every hotspot flashes them: "where can I click?".
+              onClick={() => setFlashes((n) => n + 1)}
               style={
                 frame
                   ? {
@@ -253,6 +273,7 @@ export function PrototypePlayer({ onClose }: { onClose: () => void }) {
                   : undefined
               }
             />
+            {frame && <DeviceOverlay spec={spec} screen={{ left: frame.x, top: frame.y, width: frame.w, height: frame.h }} />}
             {cam &&
               hotspots.map(({ o, box }) => {
                 const x = box.x * cam.zoom + cam.x;
@@ -271,12 +292,12 @@ export function PrototypePlayer({ onClose }: { onClose: () => void }) {
                       "focus-visible:shadow-[var(--ring)] " +
                       (o.enabled
                         ? "cursor-pointer hover:border-flow hover:bg-flow/25 hover:duration-150 " +
-                          (hint ? "border-flow/80 bg-flow/10" : "border-transparent bg-transparent")
+                          (lit ? "border-flow/80 bg-flow/10" : "border-transparent bg-transparent")
                         : "cursor-not-allowed border-dashed border-danger/60 bg-danger/10")
                     }
                   >
                     {/* The pulse ring: only while the hint lasts. */}
-                    {o.enabled && hint && (
+                    {o.enabled && lit && (
                       <span aria-hidden="true" className="od-pulse pointer-events-none absolute -inset-1 rounded-lg border-2 border-flow" />
                     )}
                   </button>
@@ -375,6 +396,55 @@ export function PrototypePlayer({ onClose }: { onClose: () => void }) {
               })}
             </nav>
           )}
+          <FlowIconButton
+            icon={pinned ? "eye" : "eyeOff"}
+            label="Show hotspots"
+            selected={pinned}
+            onPress={() => { setPinned((v) => !v); setFlashes((n) => n + 1); }}
+          />
+          <label className="flex h-7 items-center gap-1 rounded-md px-1 text-fg-muted hover:bg-surface-3">
+            <FlowIcon name="device" size={14} />
+            <select
+              aria-label="Device frame"
+              value={device}
+              onChange={(e) => {
+                const id = deviceById(e.target.value).id;
+                setPersonalDevice(id);
+                try { localStorage.setItem(DEVICE_KEY, id); } catch { /* no storage */ }
+              }}
+              className="h-6 cursor-pointer rounded bg-transparent text-[12px] text-fg outline-none focus-visible:shadow-[var(--ring)]"
+            >
+              {DEVICES.map((d) => <option key={d.id} value={d.id}>{d.label}</option>)}
+            </select>
+            {device !== docDevice && (
+              <RacButton
+                aria-label="Make this the document's device frame"
+                onPress={() => {
+                  const store = useScene.getState();
+                  store.beginGesture();
+                  store.endGesture([makeSetDocSettingsOp({ ...(store.scene?.settings ?? {}), presentDevice: device === "generic" ? undefined : device })]);
+                  // The document now says it, so the personal pick is no longer an override.
+                  setPersonalDevice(null);
+                  try { localStorage.removeItem(DEVICE_KEY); } catch { /* no storage */ }
+                }}
+                className="h-6 rounded px-1.5 text-[11px] text-fg-muted outline-none hover:bg-surface-3 hover:text-fg data-[focus-visible]:shadow-[var(--ring)]"
+              >
+                Make default
+              </RacButton>
+            )}
+            {personalDevice !== null && personalDevice !== docDevice && (
+              <RacButton
+                aria-label="Use the document's device frame"
+                onPress={() => {
+                  setPersonalDevice(null);
+                  try { localStorage.removeItem(DEVICE_KEY); } catch { /* no storage */ }
+                }}
+                className="h-6 rounded px-1.5 text-[11px] text-fg-muted outline-none hover:bg-surface-3 hover:text-fg data-[focus-visible]:shadow-[var(--ring)]"
+              >
+                Reset
+              </RacButton>
+            )}
+          </label>
           <FlowIconButton icon="braces" label="Variables" selected={showVars} onPress={() => setShowVars((v) => !v)}>
             {state && Object.keys(state.vars).length > 0 && (
               <Badge tone="flow" className="pointer-events-none absolute -right-1 -top-1 h-4 min-w-4 justify-center px-1 text-[10px]">

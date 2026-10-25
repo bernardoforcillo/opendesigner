@@ -74,8 +74,11 @@ Rules (Go `internal/core/typography.go`, TS `store/typography.ts`): keeps 0–6 
 
 `set_text_style` takes `letterSpacing`, `alignToGrid`, `kind` (`paragraph` | `character`), `basedOn`, `nextStyleId`, `spaceBefore`, `spaceAfter`, `indentFirst`, `indentLeft`, `underline`, `strikethrough`, `smallCaps`, `script`, `horizontalScale`, `noKerning`, `color`, `hyphenate`, `listKind`, `listMarker`, `listNumberStyle`, `listIndent`, `tabStops`, `dropCapLines`, `dropCapChars`, `nestedStyles`, `outlineLevel`, `fontFeatures` and `align: justify`; `list_text_styles` returns them. `format_text { nodeId, paragraphStyles, runs }` sets a text node's formatting; `get_document` / `list_nodes` return `paragraphStyles` and `runs`. `set_text` keeps the formatting (adjusted to the new content).
 
+Case, super/subscript, small caps, OpenType features, horizontal scale, lists, indent, inset and vertical alignment work in formatted text too: see "Rich text" in docs/typography.md.
+
 ## Not yet
 
+- **Colour** in styles (a character style cannot change the fill), nested styles, tabs.
 - Keeps inside one frame with columns (a frame has no columns yet), optical kerning and pair-kerning values, language-specific hyphenation dictionaries, tab characters inside plain (unformatted) text.
 - Small caps use a fixed 80% scale and super/subscript fixed offsets rather than the font's own tables.
 - The editing field shows plain text (the canvas shows the result once you leave it), and generated code (`opendesigner export`) exports the text's own style.

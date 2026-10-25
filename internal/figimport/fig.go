@@ -9,8 +9,9 @@
 //
 // It maps pages, frames (with auto layout), groups, rectangles, ellipses, text, vector paths,
 // fills (solid, linear and radial gradient, image), strokes, shadows and blurs, masks and
-// constraints. Components, instances and variables are NOT carried over as such: an instance
-// becomes a plain frame.
+// constraints, and variable collections with their modes, variables (color, number, string, boolean,
+// aliases) and the bindings of layers to them. Components and instances are NOT carried over as such:
+// an instance becomes a plain frame.
 package figimport
 
 import (
@@ -56,6 +57,14 @@ type Result struct {
 	Nodes         []*opendesignerv1.Node
 	Width, Height float64
 	Warnings      []string
+	// Imported counts the layers that came in, by Figma kind ("FRAME": 12); Skipped counts the kinds
+	// left out. Together they are the import report's numbers.
+	Imported map[string]int
+	Skipped  map[string]int
+	// Collections and Variables are the file's variables with their modes; the nodes' Bindings and Modes
+	// name them. Variables come with the targets of aliases first, so the editor can create them in order.
+	Collections []*opendesignerv1.VariableCollection
+	Variables   []*opendesignerv1.Variable
 }
 
 // Import reads a .fig file (a zip, or the bare canvas.fig).
@@ -273,7 +282,9 @@ func convert(msg map[string]any, images map[string][]byte, opt Options) (*Result
 			blobs = append(blobs, nil)
 		}
 	}
-	c := &converter{opt: opt, images: images, blobs: blobs, counters: map[string]int{}, seenAssets: map[string]string{}, skipped: map[string]int{}}
+	c := &converter{opt: opt, images: images, blobs: blobs, counters: map[string]int{}, seenAssets: map[string]string{}, skipped: map[string]int{}, imported: map[string]int{}}
+	c.byKey = byKey
+	c.readVariables(all)
 
 	name := strings.TrimSpace(opt.Name)
 	if name == "" {
@@ -324,7 +335,9 @@ func convert(msg map[string]any, images map[string][]byte, opt Options) (*Result
 	nodes := append([]*opendesignerv1.Node{root}, c.nodes...)
 	// Drop empty page groups (nothing converted) so the tree has no hollow shells.
 	nodes = pruneEmpty(nodes)
-	res := &Result{Nodes: nodes, Width: root.Width, Height: root.Height, Warnings: c.warnings}
+	res := &Result{Nodes: nodes, Width: root.Width, Height: root.Height, Warnings: c.warnings, Imported: c.imported, Skipped: c.skipped}
+	res.Collections, res.Variables = c.vt.output()
+	res.Warnings = append(res.Warnings, c.vt.warnings()...)
 	for t, n := range c.skipped {
 		res.Warnings = append(res.Warnings, fmt.Sprintf("%d %s layers were not imported (that kind is not supported)", n, strings.ToLower(strings.ReplaceAll(t, "_", " "))))
 	}
@@ -355,6 +368,9 @@ type converter struct {
 	counters   map[string]int
 	warnings   []string
 	skipped    map[string]int
+	imported   map[string]int
+	byKey      map[string]*fnode // every node of the file by guid
+	vt         varTable          // the file's variable collections and variables (variables.go)
 	seenAssets map[string]string
 	instances  int
 }
@@ -387,6 +403,10 @@ func (c *converter) newNode(parent, name string, shape any) *opendesignerv1.Node
 		n.Shape = s
 	case *opendesignerv1.Node_Ellipse:
 		n.Shape = s
+	case *opendesignerv1.Node_Polygon:
+		n.Shape = s
+	case *opendesignerv1.Node_Star:
+		n.Shape = s
 	case *opendesignerv1.Node_Text:
 		n.Shape = s
 	case *opendesignerv1.Node_Vector:
@@ -396,6 +416,42 @@ func (c *converter) newNode(parent, name string, shape any) *opendesignerv1.Node
 		c.nodes = append(c.nodes, n)
 	}
 	return n
+}
+
+// ellipseNode reads an ellipse's arc: Figma's arcData holds the start and end angles (radians, clockwise from
+// +x) and the ring's inner radius as a fraction.
+func ellipseNode(raw map[string]any) *opendesignerv1.EllipseNode {
+	e := &opendesignerv1.EllipseNode{}
+	arc := asMap(raw["arcData"])
+	if arc == nil {
+		return e
+	}
+	start, end := num(arc, "startingAngle", 0), num(arc, "endingAngle", 2*math.Pi)
+	sweep := end - start
+	if sweep < 0 {
+		sweep += 2 * math.Pi
+	}
+	if sweep < 2*math.Pi-1e-3 {
+		e.ArcStart = round2(start * 180 / math.Pi)
+		e.ArcSweep = round2(sweep * 180 / math.Pi)
+	}
+	if r := num(arc, "innerRadius", 0); r > 0 && r < 1 {
+		e.InnerRatio = math.Min(0.99, r)
+	}
+	return e
+}
+
+// polygonOrStar: a REGULAR_POLYGON or STAR with a readable count (3..60); nil otherwise.
+func polygonOrStar(raw map[string]any, typ string) any {
+	count := int(num(raw, "count", 0))
+	if count < 3 || count > 60 {
+		return nil
+	}
+	if typ == "REGULAR_POLYGON" {
+		return &opendesignerv1.Node_Polygon{Polygon: &opendesignerv1.PolygonNode{Sides: uint32(count)}}
+	}
+	ratio := num(raw, "starInnerScale", 0.382)
+	return &opendesignerv1.Node_Star{Star: &opendesignerv1.StarNode{Points: uint32(count), InnerRatio: math.Min(0.95, math.Max(0.05, ratio))}}
 }
 
 // convertNode converts one Figma node (and its children) under `parent`.
@@ -409,6 +465,7 @@ func (c *converter) convertNode(f *fnode, parent string) {
 	w, h := num(size, "x", 0), num(size, "y", 0)
 
 	var shape any
+	var ends *connEnds
 	switch typ {
 	case "FRAME", "SECTION", "COMPONENT", "COMPONENT_SET", "SYMBOL", "INSTANCE":
 		if typ == "INSTANCE" {
@@ -421,20 +478,43 @@ func (c *converter) convertNode(f *fnode, parent string) {
 	case "RECTANGLE", "ROUNDED_RECTANGLE":
 		shape = &opendesignerv1.Node_Rect{Rect: &opendesignerv1.RectNode{CornerRadius: cornerRadius(f.raw)}}
 	case "ELLIPSE":
-		shape = &opendesignerv1.Node_Ellipse{Ellipse: &opendesignerv1.EllipseNode{}}
+		shape = &opendesignerv1.Node_Ellipse{Ellipse: ellipseNode(f.raw)}
+	case "STAR", "REGULAR_POLYGON":
+		// Figma keeps the point / side count and the star's inner scale: the shape stays editable instead of
+		// becoming a path. A node without a readable count falls through to its geometry below.
+		if sh := polygonOrStar(f.raw, typ); sh != nil {
+			shape = sh
+			break
+		}
+		fallthrough
 	case "TEXT":
 		shape = &opendesignerv1.Node_Text{Text: c.text(f.raw, w)}
-	case "VECTOR", "STAR", "REGULAR_POLYGON", "LINE", "BOOLEAN_OPERATION":
+	case "VECTOR", "LINE", "BOOLEAN_OPERATION":
 		if v := c.vector(f.raw, typ, w, h); v != nil {
 			shape = &opendesignerv1.Node_Vector{Vector: v}
 		} else {
 			c.warn("%q (%s) has no readable path and was imported as a rectangle", name, strings.ToLower(typ))
 			shape = &opendesignerv1.Node_Rect{Rect: &opendesignerv1.RectNode{}}
 		}
+	case "CONNECTOR":
+		ends = c.connectorEnds(f)
+		if ends != nil && len(c.geometry(c.savedPaths(f.raw))) == 0 {
+			// The ends decide the line, so they decide the box: the saved size and place of a connector
+			// are not trusted over them (FigCraft's reader does the same).
+			w, h = ends.w, ends.h
+		} else {
+			ends = nil
+		}
+		shape = c.connector(f.raw, w, h, ends)
+	case "TABLE", "TABLE_CELL", "SLIDE", "SLIDE_ROW", "SLIDE_GRID", "STICKY", "SHAPE_WITH_TEXT", "CODE_BLOCK":
+		// Layers with no counterpart come in as the closest frame; the text they carry becomes a text layer.
+		c.warn("%s layers were imported as frames (their special behaviour is not kept)", strings.ToLower(strings.ReplaceAll(typ, "_", " ")))
+		shape = &opendesignerv1.Node_Frame{Frame: &opendesignerv1.FrameNode{ClipsContent: typ == "SLIDE", AutoLayout: autoLayout(f.raw)}}
 	default:
 		c.skipped[typ]++
 		return
 	}
+	c.imported[typ]++
 	n := c.newNode(parent, name, shape)
 	if n.Name == "" {
 		n.Name = strings.ToLower(typ)
@@ -452,14 +532,25 @@ func (c *converter) convertNode(f *fnode, parent string) {
 	if math.Abs(n.Rotation) < 0.005 {
 		n.Rotation = 0
 	}
+	if ends != nil {
+		n.X, n.Y, n.Rotation = round2(ends.x), round2(ends.y), 0
+	}
 	n.IsMask = boolOf(f.raw, "mask", false)
 	n.ConstraintX = constraint(asStr(f.raw["horizontalConstraint"]))
 	n.ConstraintY = constraint(asStr(f.raw["verticalConstraint"]))
 	n.BlendMode = blend(asStr(f.raw["blendMode"]))
-	n.Fills = c.paints(f.raw["fillPaints"], typ == "LINE")
-	n.Strokes = c.strokes(f.raw)
+	var fillSrc, strokeSrc []int
+	n.Fills, fillSrc = c.paintsWithSrc(f.raw["fillPaints"], typ == "LINE")
+	n.Strokes, strokeSrc = c.strokesWithSrc(f.raw)
 	n.Effects = effects(f.raw["effects"])
-	if typ == "FRAME" || typ == "GROUP" || typ == "SECTION" || typ == "COMPONENT" || typ == "COMPONENT_SET" || typ == "SYMBOL" || typ == "INSTANCE" || typ == "BOOLEAN_OPERATION" {
+	if typ == "CONNECTOR" {
+		fillSrc = c.connectorPaint(n, f.raw)
+	}
+	c.bindLayer(n, f.raw, fillSrc, strokeSrc)
+	if isLabelled(typ) {
+		c.label(n, f)
+	}
+	if typ == "FRAME" || typ == "GROUP" || typ == "SECTION" || isLabelled(typ) || typ == "COMPONENT" || typ == "COMPONENT_SET" || typ == "SYMBOL" || typ == "INSTANCE" || typ == "BOOLEAN_OPERATION" {
 		for _, ch := range f.children {
 			if typ == "BOOLEAN_OPERATION" {
 				break // the result is already in its own geometry
@@ -602,12 +693,21 @@ func color(m map[string]any, opacity float64) *opendesignerv1.Color {
 }
 
 func (c *converter) paints(v any, isLine bool) []*opendesignerv1.Paint {
+	out, _ := c.paintsWithSrc(v, isLine)
+	return out
+}
+
+// paintsWithSrc is paints plus, for each paint kept, the index it had in the file's list. Hidden and
+// unsupported paints drop out, so the two indexes differ and a variable binding has to translate.
+func (c *converter) paintsWithSrc(v any, isLine bool) ([]*opendesignerv1.Paint, []int) {
 	var out []*opendesignerv1.Paint
-	for _, p := range asList(v) {
+	var src []int
+	for i, p := range asList(v) {
 		pm := asMap(p)
 		if pm == nil || !boolOf(pm, "visible", true) {
 			continue
 		}
+		kept := len(out)
 		op := clamp01(num(pm, "opacity", 1))
 		switch t := asStr(pm["type"]); t {
 		case "SOLID":
@@ -616,10 +716,11 @@ func (c *converter) paints(v any, isLine bool) []*opendesignerv1.Paint {
 			if g := gradient(pm, op, t); g != nil {
 				if t == "GRADIENT_LINEAR" {
 					out = append(out, &opendesignerv1.Paint{Kind: &opendesignerv1.Paint_Linear{Linear: g}})
+				} else if t == "GRADIENT_ANGULAR" {
+					out = append(out, &opendesignerv1.Paint{Kind: &opendesignerv1.Paint_Angular{Angular: g}})
+				} else if t == "GRADIENT_DIAMOND" {
+					out = append(out, &opendesignerv1.Paint{Kind: &opendesignerv1.Paint_Diamond{Diamond: g}})
 				} else {
-					if t != "GRADIENT_RADIAL" {
-						c.warn("%s gradients were imported as radial gradients", strings.ToLower(strings.TrimPrefix(t, "GRADIENT_")))
-					}
 					out = append(out, &opendesignerv1.Paint{Kind: &opendesignerv1.Paint_Radial{Radial: g}})
 				}
 			}
@@ -630,8 +731,11 @@ func (c *converter) paints(v any, isLine bool) []*opendesignerv1.Paint {
 		default:
 			c.warn("a %s fill was left out (not supported)", strings.ToLower(t))
 		}
+		if len(out) > kept {
+			src = append(src, i)
+		}
 	}
-	return out
+	return out, src
 }
 
 func gradient(pm map[string]any, opacity float64, typ string) *opendesignerv1.GradientPaint {
@@ -702,9 +806,15 @@ func (c *converter) imagePaint(pm map[string]any) *opendesignerv1.Paint {
 }
 
 func (c *converter) strokes(m map[string]any) []*opendesignerv1.Stroke {
+	out, _ := c.strokesWithSrc(m)
+	return out
+}
+
+// strokesWithSrc is strokes plus the index each stroke's paint had in strokePaints.
+func (c *converter) strokesWithSrc(m map[string]any) ([]*opendesignerv1.Stroke, []int) {
 	weight := num(m, "strokeWeight", 0)
 	if weight <= 0 {
-		return nil
+		return nil, nil
 	}
 	al := opendesignerv1.StrokeAlign_STROKE_ALIGN_CENTER
 	switch asStr(m["strokeAlign"]) {
@@ -714,10 +824,11 @@ func (c *converter) strokes(m map[string]any) []*opendesignerv1.Stroke {
 		al = opendesignerv1.StrokeAlign_STROKE_ALIGN_OUTSIDE
 	}
 	var out []*opendesignerv1.Stroke
-	for _, p := range c.paints(m["strokePaints"], false) {
+	ps, src := c.paintsWithSrc(m["strokePaints"], false)
+	for _, p := range ps {
 		out = append(out, &opendesignerv1.Stroke{Paint: p, Weight: weight, Align: al})
 	}
-	return out
+	return out, src
 }
 
 func effects(v any) []*opendesignerv1.Effect {
@@ -849,4 +960,165 @@ func pathCommands(b []byte) ([]*opendesignerv1.SubPath, bool) {
 		subs = append(subs, cur)
 	}
 	return subs, len(subs) > 0
+}
+
+// ---- the import tail: connectors, tables and other layers with no counterpart ----
+
+// isLabelled: the kinds that come in as frames and may carry their own text.
+func isLabelled(typ string) bool {
+	switch typ {
+	case "TABLE", "TABLE_CELL", "SLIDE", "SLIDE_ROW", "SLIDE_GRID", "STICKY", "SHAPE_WITH_TEXT", "CODE_BLOCK":
+		return true
+	}
+	return false
+}
+
+// label puts the text a frame-like layer carries (a table cell's content, a sticky note) in a text layer
+// that fills it. Cells and notes that have real child layers keep those and get no extra text.
+func (c *converter) label(n *opendesignerv1.Node, f *fnode) {
+	td := asMap(f.raw["textData"])
+	if len(f.children) > 0 || (asStr(td["characters"]) == "" && asStr(f.raw["characters"]) == "") {
+		return
+	}
+	t := c.newNode(n.Id, "Text", &opendesignerv1.Node_Text{Text: c.text(f.raw, n.Width)})
+	t.Width, t.Height = n.Width, n.Height
+	// The frame's own fills and strokes stay on the frame; the text is plain black on top.
+	t.Fills = []*opendesignerv1.Paint{solidPaint(0, 0, 0)}
+}
+
+// connector draws a connector between its ends. A saved path (an outline) is kept as the vector it is.
+// Without one the line is rebuilt from the style between the two ends (a to b, in the layer's own
+// coordinates): a straight line, an elbow (across, along, across, with the bend half way) or a curve (a
+// cubic with horizontal tangents). When the file does not give both ends they are taken to be the opposite
+// corners of the layer's box, (0,0) and (w,h).
+func (c *converter) connector(raw map[string]any, w, h float64, ends *connEnds) any {
+	if sub := c.geometry(c.savedPaths(raw)); len(sub) > 0 {
+		return &opendesignerv1.Node_Vector{Vector: &opendesignerv1.VectorNode{Subpaths: sub}}
+	}
+	style := asStr(raw["connectorLineStyle"])
+	ax, ay, bx, by := 0.0, 0.0, w, h
+	if ends != nil {
+		ax, ay, bx, by = ends.ax-ends.x, ends.ay-ends.y, ends.bx-ends.x, ends.by-ends.y
+	}
+	a := func(x, y float64) *opendesignerv1.Anchor { return &opendesignerv1.Anchor{X: x, Y: y} }
+	var anchors []*opendesignerv1.Anchor
+	switch {
+	case style == "ELBOWED" && ax != bx && ay != by:
+		anchors = []*opendesignerv1.Anchor{a(ax, ay), a((ax+bx)/2, ay), a((ax+bx)/2, by), a(bx, by)}
+	case style == "CURVED" && ax != bx && ay != by:
+		anchors = []*opendesignerv1.Anchor{{X: ax, Y: ay, OutX: (bx - ax) / 2}, {X: bx, Y: by, InX: -(bx - ax) / 2}}
+	default:
+		anchors = []*opendesignerv1.Anchor{a(ax, ay), a(bx, by)}
+	}
+	if style == "ELBOWED" || style == "CURVED" {
+		if ends != nil {
+			c.warn("elbowed and curved connectors without a saved path were redrawn between their ends, not along the route Figma saved")
+		} else {
+			c.warn("elbowed and curved connectors without a saved path were redrawn between the corners of their box")
+		}
+	}
+	return &opendesignerv1.Node_Vector{Vector: &opendesignerv1.VectorNode{Subpaths: []*opendesignerv1.SubPath{{Anchors: anchors}}}}
+}
+
+// connEnds are a connector's two ends in its parent's coordinates (a: connectorStart, b: connectorEnd) and
+// the box they span (x, y, w, h).
+type connEnds struct{ ax, ay, bx, by, x, y, w, h float64 }
+
+// connectorEnds places both ends, as FigCraft's reader does: an end attached to a sibling layer
+// (endpointNodeID) is that layer's transform applied to its relativePosition in the layer's size (the
+// middle by default); a free end is its position. Nil when either end cannot be placed.
+func (c *converter) connectorEnds(f *fnode) *connEnds {
+	parent := guidKey(asMap(f.raw["parentIndex"])["guid"])
+	end := func(key string) (x, y float64, ok bool) {
+		e := asMap(f.raw[key])
+		if e == nil {
+			return 0, 0, false
+		}
+		if id := guidKey(e["endpointNodeID"]); id != "" && id != noStyle {
+			n := c.byKey[id]
+			// Only siblings share the connector's coordinates.
+			if n == nil || guidKey(asMap(n.raw["parentIndex"])["guid"]) != parent {
+				return 0, 0, false
+			}
+			size, tr, rel := asMap(n.raw["size"]), asMap(n.raw["transform"]), asMap(e["relativePosition"])
+			px, py := num(size, "x", 0)*num(rel, "x", 0.5), num(size, "y", 0)*num(rel, "y", 0.5)
+			x = num(tr, "m00", 1)*px + num(tr, "m01", 0)*py + num(tr, "m02", 0)
+			y = num(tr, "m10", 0)*px + num(tr, "m11", 1)*py + num(tr, "m12", 0)
+			return x, y, !math.IsNaN(x+y) && !math.IsInf(x+y, 0)
+		}
+		pos := asMap(e["position"])
+		x, okx := pos["x"].(float64)
+		y, oky := pos["y"].(float64)
+		return x, y, okx && oky && !math.IsNaN(x+y) && !math.IsInf(x+y, 0)
+	}
+	ax, ay, oka := end("connectorStart")
+	bx, by, okb := end("connectorEnd")
+	if !oka || !okb {
+		return nil
+	}
+	x, y := math.Min(ax, bx), math.Min(ay, by)
+	return &connEnds{ax: ax, ay: ay, bx: bx, by: by, x: x, y: y, w: math.Abs(ax - bx), h: math.Abs(ay - by)}
+}
+
+// savedPaths is the list of {commandsBlob} entries holding a connector's saved path: its own strokeGeometry,
+// else the stroke or fill outline of the generated line Figma keeps in derivedImmutableFrameData (the row
+// whose guidPath is the single template guid 40000000:0, as FigCraft's reader finds it).
+func (c *converter) savedPaths(raw map[string]any) any {
+	if len(c.geometry(raw["strokeGeometry"])) > 0 {
+		return raw["strokeGeometry"]
+	}
+	for _, r := range asList(asMap(raw["derivedImmutableFrameData"])["overrides"]) {
+		row := asMap(r)
+		guids := asList(asMap(row["guidPath"])["guids"])
+		if len(guids) != 1 || guidKey(guids[0]) != "40000000:0" {
+			continue
+		}
+		for _, k := range []string{"strokeGeometry", "fillGeometry"} {
+			if len(c.geometry(row[k])) > 0 {
+				return row[k]
+			}
+		}
+	}
+	return nil
+}
+
+// connectorPaint: a drawn connector is a stroke; a saved path is the stroke's outline, so it is filled
+// with the stroke's colour instead.
+// It returns the strokePaints index of each fill it ends up with (variable bindings translate by it).
+func (c *converter) connectorPaint(n *opendesignerv1.Node, raw map[string]any) (fillSrc []int) {
+	if len(c.geometry(c.savedPaths(raw))) > 0 {
+		n.Fills, fillSrc = c.paintsWithSrc(raw["strokePaints"], false)
+		n.Strokes = nil
+	} else {
+		n.Fills = nil
+	}
+	if t := asMap(raw["textData"]); asStr(t["characters"]) != "" {
+		c.warn("the labels of connectors were left out")
+	}
+	// The end points (which layers a connector joins) are not live links here.
+	if raw["connectorStart"] != nil || raw["connectorEnd"] != nil {
+		c.warn("connectors are not attached to the layers they joined: they are plain lines")
+	}
+	return fillSrc
+}
+
+func solidPaint(r, g, b float64) *opendesignerv1.Paint {
+	return &opendesignerv1.Paint{Kind: &opendesignerv1.Paint_Solid{Solid: &opendesignerv1.SolidPaint{Color: &opendesignerv1.Color{R: float32(r), G: float32(g), B: float32(b), A: 1}}}}
+}
+
+// geometry reads a list of {commandsBlob} entries into subpaths (nil when there is none or it is unreadable).
+func (c *converter) geometry(v any) []*opendesignerv1.SubPath {
+	var subs []*opendesignerv1.SubPath
+	for _, g := range asList(v) {
+		idx := int(num(asMap(g), "commandsBlob", -1))
+		if idx < 0 || idx >= len(c.blobs) || c.blobs[idx] == nil {
+			continue
+		}
+		s, ok := pathCommands(c.blobs[idx])
+		if !ok {
+			return nil
+		}
+		subs = append(subs, s...)
+	}
+	return subs
 }

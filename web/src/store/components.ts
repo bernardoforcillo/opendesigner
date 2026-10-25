@@ -161,7 +161,7 @@ export function cascadeComponentTargets(state: SceneState, gone: ReadonlySet<str
   return out === state.components ? {} : { components: out };
 }
 
-function propertyValueValid(state: SceneState, p: ComponentPropertyLite, v: string): boolean {
+export function propertyValueValid(state: SceneState, p: ComponentPropertyLite, v: string): boolean {
   switch (p.type) {
     case "boolean": return v === "true" || v === "false";
     case "text": return p.options?.length ? p.options.includes(v) : utf8Len(v) <= MAX_TEXT_BYTES;

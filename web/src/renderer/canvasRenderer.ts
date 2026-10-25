@@ -22,6 +22,13 @@ import { hasRealStroke, vectorStyleOf } from "./vectorStyle";
 import { drawDash, perimeterOf, vectorDrawSubpaths } from "./animDraw";
 import { imageCache, type CachedImage } from "./imageCache";
 import { MESH_BITMAP_SIZE, meshBitmap } from "./mesh";
+import { hasComputedOutline, traceCommands } from "./shapeGeometry";
+import { hasArrowheads, strokeHeads } from "./arrowheads";
+import { sideBandRects } from "./strokeSides";
+import { variableStrokeCommands } from "../vector/widthProfile";
+import { brushStrokeCommands } from "../vector/brush";
+import { GRADIENT_BITMAP_SIZE, angularStart, gradientBitmap } from "./gradientBitmap";
+import { FX_TILE, blurBands, overlayEffects, overlayTile, progressiveBlur, tileUnit, withBandBlur, withExpandedGlass } from "./effectsFx";
 
 const DEG_TO_RAD = Math.PI / 180;
 
@@ -119,11 +126,44 @@ export function paintStyle(ctx: CanvasRenderingContext2D, f: FillLite, n: NodeLi
   const x2 = n.x + g.x2 * n.width, y2 = n.y + g.y2 * n.height;
   const len = Math.hypot(x2 - x1, y2 - y1);
   if (!(len > 0)) return cssRgba(f);
-  const grad = g.kind === "linear"
-    ? ctx.createLinearGradient(x1, y1, x2, y2)
-    : ctx.createRadialGradient(x1, y1, 0, x1, y1, len);
+  if (g.kind === "diamond") return diamondPattern(ctx, f, n);
+  let grad: CanvasGradient;
+  if (g.kind === "angular") {
+    // No conic gradient in this environment (an old browser, a test canvas): the flat color.
+    if (typeof ctx.createConicGradient !== "function") return cssRgba(f);
+    grad = ctx.createConicGradient(angularStart(g, n.width, n.height), x1, y1);
+  } else {
+    grad = g.kind === "linear" ? ctx.createLinearGradient(x1, y1, x2, y2) : ctx.createRadialGradient(x1, y1, 0, x1, y1, len);
+  }
   for (const st of g.stops) grad.addColorStop(Math.min(1, Math.max(0, st.position)), cssRgba(st.color));
   return grad;
+}
+
+// A DIAMOND gradient has no native canvas form: it is rasterized (renderer/gradientBitmap.ts) over the box
+// and drawn as a pattern, like a mesh. The bitmap depends on the box's size, so it is rebuilt when that changes.
+const diamondCanvases = new WeakMap<object, { key: string; canvas: HTMLCanvasElement | null }>();
+
+function diamondPattern(ctx: CanvasRenderingContext2D, f: FillLite, n: NodeLite): string | CanvasPattern {
+  const flat = cssRgba(f);
+  const g = f.gradient!;
+  if (typeof document === "undefined" || typeof ImageData === "undefined" || typeof ctx.createPattern !== "function") return flat;
+  const key = `${n.width}x${n.height}`;
+  let entry = diamondCanvases.get(g);
+  if (!entry || entry.key !== key) {
+    const c = document.createElement("canvas");
+    const total = GRADIENT_BITMAP_SIZE + 2;
+    c.width = c.height = total;
+    const gc = c.getContext("2d");
+    if (gc) gc.putImageData(new ImageData(gradientBitmap(g, n.width, n.height, GRADIENT_BITMAP_SIZE, 1) as unknown as Uint8ClampedArray<ArrayBuffer>, total, total), 0, 0);
+    entry = { key, canvas: gc ? c : null };
+    diamondCanvases.set(g, entry);
+  }
+  if (!entry.canvas) return flat;
+  const pattern = ctx.createPattern(entry.canvas, "no-repeat");
+  if (!pattern || typeof pattern.setTransform !== "function" || typeof DOMMatrix === "undefined") return pattern ?? flat;
+  const sx = n.width / GRADIENT_BITMAP_SIZE, sy = n.height / GRADIENT_BITMAP_SIZE;
+  pattern.setTransform(new DOMMatrix([sx, 0, 0, sy, n.x - sx, n.y - sy]));
+  return pattern;
 }
 
 // A MESH paint: the grid rasterized once (renderer/mesh.ts) into a small canvas that the pattern stretches
@@ -260,7 +300,7 @@ function innerShadows(n: NodeLite): InnerShadowLite[] {
 function backdropBlur(n: NodeLite): BackgroundBlurLite | undefined {
   return n.effects?.find((e): e is BackgroundBlurLite => e.kind === "backgroundBlur" && e.radius > 0);
 }
-const hasOutline = (n: NodeLite) => n.kind === "rect" || n.kind === "ellipse" || n.kind === "frame";
+const hasOutline = (n: NodeLite) => n.kind === "rect" || n.kind === "ellipse" || n.kind === "frame" || n.kind === "polygon" || n.kind === "star";
 
 // Blurs what is already drawn behind the node, inside its outline.
 function drawBackdropBlur(ctx: CanvasRenderingContext2D, path: Path2D, radius: number, scale: number): void {
@@ -272,6 +312,60 @@ function drawBackdropBlur(ctx: CanvasRenderingContext2D, path: Path2D, radius: n
   ctx.filter = `blur(${radius * scale}px)`;
   ctx.drawImage(ctx.canvas, 0, 0);
   ctx.restore();
+}
+
+function clipPolygon(ctx: CanvasRenderingContext2D, pts: readonly (readonly [number, number])[]): void {
+  const path = new Path2D();
+  pts.forEach(([x, y], i) => (i === 0 ? path.moveTo(x, y) : path.lineTo(x, y)));
+  path.closePath();
+  ctx.clip(path);
+}
+
+// NOISE AND TEXTURE: a repeating tile of grain (effectsFx.ts, seeded, so every renderer draws
+// the same grain) used as a pattern in WORLD space, anchored at the node's corner so it moves
+// with the node, filled over the node's box and clipped to its outline.
+const overlayTiles = new WeakMap<object, CanvasImageSource | null>();
+
+function overlayTileCanvas(e: Extract<EffectLite, { kind: "noise" | "texture" }>): CanvasImageSource | null {
+  if (overlayTiles.has(e)) return overlayTiles.get(e) ?? null;
+  let tile: CanvasImageSource | null = null;
+  try {
+    const c: HTMLCanvasElement | OffscreenCanvas = typeof OffscreenCanvas !== "undefined"
+      ? new OffscreenCanvas(FX_TILE, FX_TILE)
+      : Object.assign(document.createElement("canvas"), { width: FX_TILE, height: FX_TILE });
+    const c2 = c.getContext("2d") as CanvasRenderingContext2D | null;
+    if (c2) {
+      c2.putImageData(new ImageData(overlayTile(e) as Uint8ClampedArray<ArrayBuffer>, FX_TILE, FX_TILE), 0, 0);
+      tile = c;
+    }
+  } catch {
+    tile = null; // no canvas here (a test double): the overlay is skipped
+  }
+  overlayTiles.set(e, tile);
+  return tile;
+}
+
+function drawOverlays(ctx: CanvasRenderingContext2D, n: NodeLite, outline: Path2D | null): void {
+  for (const e of overlayEffects(n)) {
+    const tile = overlayTileCanvas(e);
+    if (!tile) continue;
+    let pattern: CanvasPattern | null = null;
+    try {
+      pattern = ctx.createPattern(tile, "repeat");
+      const u = tileUnit(e);
+      pattern?.setTransform(new DOMMatrix([u, 0, 0, u, n.x, n.y]));
+    } catch {
+      pattern = null;
+    }
+    if (!pattern) continue;
+    ctx.save();
+    if (outline) ctx.clip(outline);
+    ctx.globalAlpha = n.opacity;
+    ctx.imageSmoothingEnabled = false;
+    ctx.fillStyle = pattern;
+    ctx.fillRect(n.x, n.y, n.width, n.height);
+    ctx.restore();
+  }
 }
 
 // Draws `body` once per extra drop shadow, parked off canvas (see above).
@@ -609,7 +703,7 @@ function drawSiblings(
 
 // Only shapes with an outline can mask (the same set as the boolean operations).
 export function isMaskShape(n: NodeLite): boolean {
-  return n.kind === "rect" || n.kind === "ellipse" || n.kind === "frame" || n.kind === "vector";
+  return n.kind === "rect" || n.kind === "ellipse" || n.kind === "frame" || n.kind === "vector" || n.kind === "polygon" || n.kind === "star";
 }
 
 // Clips the context by the mask node's outline, in the PARENT's space (where the
@@ -677,6 +771,7 @@ function drawInstance(
  * under ~1.5 screen pixels, which is when nobody can tell. null for anything else.
  */
 export function plainShape(n: NodeLite, px: number): "box" | "ellipse" | null {
+  if (hasComputedOutline(n)) return null;
   const kind = n.kind === "rect" ? (n.cornerRadius / px < 1.5 ? "box" : null) : n.kind === "frame" ? "box" : n.kind === "ellipse" ? "ellipse" : null;
   if (kind === null) return null;
   if (n.rotation % 360 !== 0 || n.animScale !== undefined || n.animDraw !== undefined || n.blendMode !== undefined) return null;
@@ -708,7 +803,7 @@ function drawNode(
   // overrides it: from here on `eff` is drawn, not `n`. The override touches only
   // fills/text -- the geometry (box, rotation) stays the master's, so
   // the guards and rotation centers below are identical with or without it.
-  const eff = withOverride(n, overrides?.get(n.id));
+  const eff = withExpandedGlass(withOverride(n, overrides?.get(n.id)));
   // The size guard only applies to shapes whose ink IS the box
   // (rect, ellipse, image, frame): for text and vector a zero side is
   // a legitimate, drawable state. The list of exceptions lives in ONE place
@@ -775,6 +870,16 @@ function drawNode(
   const outline = hasOutline(eff) ? nodePath(eff) : null;
   const bb = backdropBlur(eff);
   if (bb && outline) drawBackdropBlur(ctx, outline, bb.radius, scale);
+  // A progressive backdrop blur: the same blur in bands, each of its own radius.
+  const pbb = progressiveBlur(eff, true);
+  if (pbb && outline) {
+    for (const band of blurBands(eff, pbb, 1 / scale)) {
+      ctx.save();
+      clipPolygon(ctx, band.polygon);
+      drawBackdropBlur(ctx, outline, band.radius, scale);
+      ctx.restore();
+    }
+  }
   let castsShadow = false;
   const body = () => {
     if (eff.kind === "text") {
@@ -812,11 +917,26 @@ function drawNode(
   if (extraShadows(eff).length > 0) drawExtraShadows(ctx, eff, scale, body);
   // Effects apply to everything the node draws below: shape, text,
   // image, vector.
-  const fx = applyEffects(ctx, eff, scale);
-  castsShadow = fx;
-  body();
-  if (fx) ctx.restore();
+  const pb = progressiveBlur(eff, false);
+  if (pb) {
+    // A progressive layer blur: the node drawn once per band, clipped to it, with the band's radius.
+    for (const band of blurBands(eff, pb, 1 / scale)) {
+      ctx.save();
+      clipPolygon(ctx, band.polygon);
+      const bandFx = applyEffects(ctx, withBandBlur(eff, pb, band.radius), scale);
+      castsShadow = bandFx;
+      body();
+      if (bandFx) ctx.restore();
+      ctx.restore();
+    }
+  } else {
+    const fx = applyEffects(ctx, eff, scale);
+    castsShadow = fx;
+    body();
+    if (fx) ctx.restore();
+  }
   if (outline && innerShadows(eff).length > 0) drawInnerShadows(ctx, eff, outline, scale);
+  if (outline || eff.kind === "image") drawOverlays(ctx, eff, outline);
   if (blended) ctx.globalCompositeOperation = "source-over";
   if (rotated) ctx.restore();
 }
@@ -881,6 +1001,10 @@ function drawStrokes(ctx: CanvasRenderingContext2D, n: NodeLite, path: Path2D | 
 }
 
 function strokeShape(ctx: CanvasRenderingContext2D, n: NodeLite, path: Path2D, s: StrokeLite): void {
+  if (s.sides && (n.kind === "rect" || n.kind === "frame")) {
+    strokeSides(ctx, n, path, s);
+    return;
+  }
   if (s.align === "center") {
     ctx.lineWidth = s.weight;
     ctx.stroke(path);
@@ -891,6 +1015,22 @@ function strokeShape(ctx: CanvasRenderingContext2D, n: NodeLite, path: Path2D, s
   else ctx.clip(outsideClip(n, path, s.weight), "evenodd");
   ctx.lineWidth = s.weight * 2;
   ctx.stroke(path);
+  ctx.restore();
+}
+
+// PER-SIDE weights (a rectangle or frame whose border is thicker at the bottom, say): the stroke is a band
+// between two rectangles, filled with the stroke's paint. INSIDE and OUTSIDE are clipped by the outline like
+// the uniform stroke, so a rounded corner still follows the shape.
+function strokeSides(ctx: CanvasRenderingContext2D, n: NodeLite, path: Path2D, s: StrokeLite): void {
+  const band = new Path2D();
+  const { outer, inner } = sideBandRects(n, s);
+  band.rect(outer.x, outer.y, outer.width, outer.height);
+  band.rect(inner.x, inner.y, inner.width, inner.height);
+  ctx.save();
+  if (s.align === "inside") ctx.clip(path);
+  else if (s.align === "outside") ctx.clip(outsideClip(n, path, Math.max(s.sides!.top, s.sides!.right, s.sides!.bottom, s.sides!.left)), "evenodd");
+  ctx.fillStyle = ctx.strokeStyle;
+  ctx.fill(band, "evenodd");
   ctx.restore();
 }
 
@@ -953,11 +1093,28 @@ function drawVector(ctx: CanvasRenderingContext2D, n: NodeLite, color: string, z
     ctx.lineDashOffset = vs.dashOffset;
     for (const s of n.strokes) {
       if (!(s.weight > 0)) continue;
+      if (s.brush) {
+        // BRUSH: tips stamped along the path (vector/brush.ts), filled NON-ZERO so overlapping stamps merge.
+        const stamps = new Path2D();
+        traceCommands(stamps, brushStrokeCommands(n, s));
+        ctx.fillStyle = paintStyle(ctx, s.color, n);
+        ctx.fill(stamps, "nonzero");
+        continue;
+      }
+      if (s.widthProfile && s.widthProfile.length > 0) {
+        // VARIABLE WIDTH: the stroke's region (vector/widthProfile.ts), filled with its paint.
+        const region = new Path2D();
+        traceCommands(region, variableStrokeCommands(n, s));
+        ctx.fillStyle = paintStyle(ctx, s.color, n);
+        ctx.fill(region, "evenodd");
+        continue;
+      }
       ctx.strokeStyle = paintStyle(ctx, s.color, n);
       ctx.lineWidth = s.weight;
       ctx.stroke(stroke);
     }
     ctx.setLineDash([]);
+    if (hasArrowheads(n)) drawArrowheads(ctx, n);
   } else if (stroke && vs.hairline) {
     ctx.strokeStyle = color;
     // The ctx is in WORLD transform (drawScene applies zoom * dpr), so
@@ -971,6 +1128,32 @@ function drawVector(ctx: CanvasRenderingContext2D, n: NodeLite, color: string, z
     ctx.lineJoin = "round";
     ctx.lineCap = "round";
     ctx.stroke(stroke);
+  }
+}
+
+// The arrowheads of a vector's strokes (renderer/arrowheads.ts): filled shapes in the stroke's paint, and the
+// arrow's open V stroked with it, undashed and with sharp joins.
+function drawArrowheads(ctx: CanvasRenderingContext2D, n: NodeLite): void {
+  ctx.lineJoin = "miter";
+  ctx.lineCap = "butt";
+  for (const s of n.strokes) {
+    if (!(s.weight > 0) || (!s.startCap && !s.endCap)) continue;
+    const style = paintStyle(ctx, s.color, n);
+    ctx.fillStyle = style;
+    ctx.strokeStyle = style;
+    ctx.lineWidth = s.weight;
+    for (const g of strokeHeads(n, s.startCap, s.endCap, s.weight)) {
+      if (g.filled.length > 0) {
+        const p = new Path2D();
+        traceCommands(p, g.filled);
+        ctx.fill(p);
+      }
+      if (g.open.length > 0) {
+        const p = new Path2D();
+        traceCommands(p, g.open);
+        ctx.stroke(p);
+      }
+    }
   }
 }
 

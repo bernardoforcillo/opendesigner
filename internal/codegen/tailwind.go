@@ -40,7 +40,7 @@ var keyword = map[string]map[string]string{
 	"display":         {"flex": "flex", "block": "block", "inline-block": "inline-block", "inline": "inline", "grid": "grid", "none": "hidden"},
 	"flex-direction":  {"column": "flex-col", "row": "flex-row"},
 	"justify-content": {"flex-start": "justify-start", "center": "justify-center", "flex-end": "justify-end", "space-between": "justify-between"},
-	"align-items":     {"flex-start": "items-start", "center": "items-center", "flex-end": "items-end", "stretch": "items-stretch"},
+	"align-items":     {"flex-start": "items-start", "center": "items-center", "flex-end": "items-end", "stretch": "items-stretch", "baseline": "items-baseline"},
 	"overflow":        {"hidden": "overflow-hidden", "visible": "overflow-visible"},
 	"object-fit":      {"fill": "object-fill", "cover": "object-cover", "contain": "object-contain"},
 	"max-width":       {"none": "max-w-none"},
@@ -107,6 +107,10 @@ func tailwindFor(p Prop) []string {
 	case "background-color":
 		return []string{"bg-[" + arb(p.Value) + "]"}
 	case "background-image":
+		if len(splitTop(p.Value, ',')) > 1 && strings.Contains(p.Value, "-gradient(") {
+			// Several layers (the diamond): an explicit property, not a utility Tailwind has to type-guess.
+			return []string{arbProp(p)}
+		}
 		if strings.Contains(p.Value, "-gradient(") {
 			return []string{"bg-[" + arb(p.Value) + "]"}
 		}

@@ -51,7 +51,7 @@ var (
 	ErrCollectionModes    = errors.New("core: a collection needs at least one mode, with unique non-empty ids")
 	ErrNilVariable        = errors.New("core: nil variable")
 	ErrVariableNotFound   = errors.New("core: variable not found")
-	ErrVariableType       = errors.New("core: variable type must be color, number or string")
+	ErrVariableType       = errors.New("core: variable type must be color, number, string or boolean")
 	ErrVariableAlias      = errors.New("core: alias must carry no values and name an existing variable of the same type, without cycles")
 	ErrVariableImmutable  = errors.New("core: a variable cannot change type or collection")
 	ErrVariableValue      = errors.New("core: variable value missing, of the wrong type or out of range")
@@ -68,14 +68,21 @@ var (
 //	font_size (text nodes)                                   NUMBER
 //	fills.N | strokes.N                                      COLOR
 //	text (text nodes)                                        STRING
+//	visible                                                  BOOLEAN
+//	spacing | cross_spacing | padding_left | padding_top
+//	  | padding_right | padding_bottom (auto layout frames)   NUMBER
 //
 // The TS mirror (web/src/store/variables.ts::bindingType) repeats it.
 func BindingType(key string) (opendesignerv1.VariableType, bool) {
 	switch key {
 	case "opacity", "rotation", "corner_radius", "font_size":
 		return opendesignerv1.VariableType_VARIABLE_TYPE_NUMBER, true
+	case "spacing", "cross_spacing", "padding_left", "padding_top", "padding_right", "padding_bottom":
+		return opendesignerv1.VariableType_VARIABLE_TYPE_NUMBER, true
 	case "text":
 		return opendesignerv1.VariableType_VARIABLE_TYPE_STRING, true
+	case "visible":
+		return opendesignerv1.VariableType_VARIABLE_TYPE_BOOLEAN, true
 	}
 	parts := strings.Split(key, ".")
 	if len(parts) < 2 || len(parts) > 3 || (parts[0] != "fills" && parts[0] != "strokes") {
@@ -149,7 +156,7 @@ func validateVariable(doc *opendesignerv1.Document, v *opendesignerv1.Variable) 
 	}
 	t := v.GetType()
 	if t != opendesignerv1.VariableType_VARIABLE_TYPE_COLOR && t != opendesignerv1.VariableType_VARIABLE_TYPE_NUMBER &&
-		t != opendesignerv1.VariableType_VARIABLE_TYPE_STRING {
+		t != opendesignerv1.VariableType_VARIABLE_TYPE_STRING && t != opendesignerv1.VariableType_VARIABLE_TYPE_BOOLEAN {
 		return ErrVariableType
 	}
 	if prev, ok := doc.GetVariables()[v.GetId()]; ok &&
@@ -180,6 +187,10 @@ func validateVariable(doc *opendesignerv1.Document, v *opendesignerv1.Variable) 
 			}
 		case opendesignerv1.VariableType_VARIABLE_TYPE_STRING:
 			if _, ok := val.GetKind().(*opendesignerv1.VariableValue_Text); !ok {
+				return ErrVariableValue
+			}
+		case opendesignerv1.VariableType_VARIABLE_TYPE_BOOLEAN:
+			if _, ok := val.GetKind().(*opendesignerv1.VariableValue_Boolean); !ok {
 				return ErrVariableValue
 			}
 		}
@@ -432,6 +443,7 @@ func VariableValueIn(doc *opendesignerv1.Document, v *opendesignerv1.Variable, m
 // variable, value or target paint is missing is ignored: the literal stays.
 func ResolveNode(doc *opendesignerv1.Document, n *opendesignerv1.Node) *opendesignerv1.Node {
 	n = resolveObjectStyle(doc, resolveTextStyle(doc, n))
+	n = resolvePaintStyles(doc, n)
 	if len(n.GetBindings()) == 0 {
 		return n
 	}
@@ -463,8 +475,33 @@ func setBound(n *opendesignerv1.Node, key string, val *opendesignerv1.VariableVa
 		}
 		return
 	}
+	if b, ok := val.GetKind().(*opendesignerv1.VariableValue_Boolean); ok {
+		if key == "visible" {
+			n.Visible = b.Boolean
+		}
+		return
+	}
 	if num, ok := val.GetKind().(*opendesignerv1.VariableValue_Number); ok {
 		switch key {
+		case "spacing", "cross_spacing", "padding_left", "padding_top", "padding_right", "padding_bottom":
+			// Auto layout frames only; a negative value is clamped like a literal one cannot be.
+			if al := n.GetFrame().GetAutoLayout(); al != nil {
+				v := math.Max(0, num.Number)
+				switch key {
+				case "spacing":
+					al.Spacing = v
+				case "cross_spacing":
+					al.CrossSpacing = v
+				case "padding_left":
+					al.PaddingLeft = v
+				case "padding_top":
+					al.PaddingTop = v
+				case "padding_right":
+					al.PaddingRight = v
+				default:
+					al.PaddingBottom = v
+				}
+			}
 		case "font_size":
 			if t := n.GetText(); t != nil && num.Number > 0 {
 				if t.Style == nil {

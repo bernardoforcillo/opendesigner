@@ -85,6 +85,9 @@ export function effectsOutset(n: NodeLite): number {
     } else if (e.kind === "layerBlur" && !blurSeen && e.radius > 0) {
       blurSeen = true;
       out += e.radius * 3;
+    } else if (e.kind === "progressiveBlur" && !e.background && !blurSeen) {
+      blurSeen = true;
+      out += Math.max(e.startRadius, e.endRadius) * 3;
     }
   }
   return out + shadow;

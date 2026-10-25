@@ -26,8 +26,127 @@ export interface TextLayout {
   ascent: number;
   width: number;
   height: number;
+  // Parallel to `lines`: the left lead of each line (paragraph indent plus the hanging
+  // list marker column) and the marker of the paragraph's FIRST line ("" elsewhere).
+  leads: number[];
+  markers: string[];
 }
 
+// Small caps are SYNTHESISED (lowercase letters drawn as capitals at this fraction of
+// the size) instead of asking the font for `smcp`: it works on every renderer, in the
+// 2D canvas and in the GPU font book alike, and the layout can measure it.
+export const SMALL_CAPS_SCALE = 0.8;
+// Super/subscript: glyphs at this fraction of the size, raised or lowered by a fraction
+// of the (unscaled) size.
+export const SCRIPT_SCALE = 0.65;
+const SUPER_RISE = 0.33;
+const SUB_DROP = 0.12;
+// Gap between a list marker and its text, and the marker column's minimum width, in em.
+const LIST_GAP_EM = 0.4;
+const LIST_MIN_MARKER_EM = 0.9;
+export const BULLET = "•";
+
+type StyleX = TextStyleLite | undefined;
+
+/** True for small caps asked by `textCase` or by the font-feature string (`"smcp"` / `"c2sc"`). */
+export function isSmallCaps(style: StyleX): boolean {
+  if (!style) return false;
+  return style.textCase === "smallCaps" || /"(smcp|c2sc)"(?!\s*0)/.test(style.fontFeatures ?? "");
+}
+
+/** Whether `"liga"` (or `"clig"`) is switched off in the feature string. */
+export function ligaturesOff(style: StyleX): boolean {
+  return /"(liga|clig)"\s*0|(^|,\s*)(liga|clig) off/.test(style?.fontFeatures ?? "");
+}
+
+/** The sanitised font-feature string (what CSS/SVG may write), "" if unset or malformed. */
+export function fontFeaturesOf(style: StyleX): string {
+  const f = style?.fontFeatures ?? "";
+  return /^[A-Za-z0-9 ,"]{0,128}$/.test(f) ? f : "";
+}
+
+/** Scale of super/subscript glyphs: 1 for none. */
+export function scriptScaleOf(style: StyleX): number {
+  return style?.textScript ? SCRIPT_SCALE : 1;
+}
+
+/** Horizontal scale of the glyphs as a factor: 1 for none (the style stores a percentage, 0 = unset). */
+export function hscaleOf(style: StyleX): number {
+  const p = style?.textScale;
+  return p !== undefined && p > 0 && Number.isFinite(p) ? p / 100 : 1;
+}
+
+/** The baseline shift of a super/subscript (negative = up), in world units. */
+export function scriptShiftOf(style: StyleX): number {
+  if (style?.textScript === "super") return -fontSizeOf(style) * SUPER_RISE;
+  if (style?.textScript === "sub") return fontSizeOf(style) * SUB_DROP;
+  return 0;
+}
+
+function titleCase(s: string): string {
+  return s.toLowerCase().replace(/(^|[^\p{L}\p{N}'’])(\p{L})/gu, (_, a: string, b: string) => a + b.toUpperCase());
+}
+
+/** The text as DRAWN: upper, lower and title case transform it; small caps are a drawing matter. */
+export function caseText(text: string, style: StyleX): string {
+  switch (style?.textCase) {
+    case "upper": return text.toUpperCase();
+    case "lower": return text.toLowerCase();
+    case "title": return titleCase(text);
+    default: return text;
+  }
+}
+
+export interface TextRun { text: string; scale: number }
+
+/** A line split into runs of one size: the small-cap lowercase letters (as capitals) apart from the rest. */
+export function runsOf(text: string, style: StyleX): TextRun[] {
+  const base = scriptScaleOf(style);
+  if (!isSmallCaps(style)) return text === "" ? [] : [{ text, scale: base }];
+  const out: TextRun[] = [];
+  for (const ch of Array.from(text)) {
+    const up = ch.toUpperCase();
+    const small = up !== ch && ch === ch.toLowerCase();
+    const scale = small ? base * SMALL_CAPS_SCALE : base;
+    const piece = small ? up : ch;
+    const last = out[out.length - 1];
+    if (last && last.scale === scale) last.text += piece;
+    else out.push({ text: piece, scale });
+  }
+  return out;
+}
+
+// Whether a style changes how a line is MEASURED or drawn in runs (case synthesis, scripts).
+function needsRuns(style: StyleX): boolean {
+  return isSmallCaps(style) || !!style?.textScript;
+}
+
+/** `measure` made aware of runs: linear in the size, so a run at 0.8 is 0.8 of its width. */
+export function styledMeasure(measure: (s: string) => number, style: StyleX): (s: string) => number {
+  const h = hscaleOf(style);
+  const sized = needsRuns(style) ? (s: string) => runsOf(s, style).reduce((w, r) => w + measure(r.text) * r.scale, 0) : measure;
+  return h === 1 ? sized : (s) => sized(s) * h;
+}
+
+/** Padding between the box and the text on every side. */
+export function insetOf(style: StyleX): number {
+  return style?.inset && style.inset > 0 ? style.inset : 0;
+}
+
+function innerWidth(n: NodeLite, style: StyleX): number {
+  return n.width > 0 ? Math.max(0, n.width - 2 * insetOf(style)) : n.width;
+}
+
+// The lead of a paragraph (indent plus the marker column of a list). The marker column
+// is as wide as the widest marker of the node, so every item's text lines up.
+function paragraphLead(markerWidth: number, style: StyleX): number {
+  const indent = style?.indent && style.indent > 0 ? style.indent : 0;
+  return indent + (style?.listKind ? markerWidth : 0);
+}
+
+function markerFor(style: StyleX, ordinal: number): string {
+  return style?.listKind === "numbered" ? `${ordinal}.` : style?.listKind === "bullet" ? BULLET : "";
+}
 // They also accept an ABSENT style: a text node without `text` is not a
 // state that toNodeLite produces (store/types.ts), but whoever resolves a metric
 // must not blow up because of it -- it falls back to the renderer defaults like for
@@ -62,9 +181,10 @@ export function fontWeightOf(style: TextStyleLite | undefined): string {
 
 /** OpenType feature settings ("liga off, onum, ss01 2") as the CSS `font-feature-settings` value ('"liga" 0, "onum" 1, "ss01" 2'). */
 export function cssFeatureSettings(features: string): string {
-  return features.split(",").map((item) => item.trim()).filter((item) => /^[A-Za-z0-9]{4}( (on|off|[0-9]{1,3}))?$/.test(item)).map((item) => {
+  return features.split(",").map((item) => item.trim()).filter((item) => /^("[A-Za-z0-9]{4}"|[A-Za-z0-9]{4})( (on|off|[0-9]{1,4}))?$/.test(item)).map((item) => {
     const [tag, value] = item.split(/\s+/);
-    return `"${tag}" ${value === "off" ? 0 : value === undefined || value === "on" ? 1 : value}`;
+    const quoted = tag.startsWith('"');
+    return `"${tag.replace(/"/g, "")}"${value === undefined && quoted ? "" : ` ${value === "off" ? 0 : value === undefined || value === "on" ? 1 : value}`}`;
   }).join(", ");
 }
 
@@ -77,8 +197,8 @@ export function cssVariationSettings(variations: string): string {
 }
 
 // Shorthand CSS accettato da ctx.font: "<weight> <size>px <family>".
-export function fontString(style: TextStyleLite): string {
-  return `${style.italic ? "italic " : ""}${fontWeightOf(style)} ${fontSizeOf(style)}px ${fontFamilyOf(style)}`;
+export function fontString(style: TextStyleLite, scale = 1): string {
+  return `${style.italic ? "italic " : ""}${fontWeightOf(style)} ${fontSizeOf(style) * scale}px ${fontFamilyOf(style)}`;
 }
 
 // x offset of ONE line inside the box, in coordinates relative to the box.
@@ -185,18 +305,39 @@ export function layoutText(
   // half-leading as in CSS: the excess line spacing is split above and below,
   // so the first line does not stick to the box's top edge.
   const ascent = (lineHeight - fontSizeOf(style)) / 2 + fontSizeOf(style) * ASCENT_RATIO;
-  if (content === "") return { lines: [], lineHeight, ascent, width: 0, height: 0 };
+  if (content === "") return { lines: [], lineHeight, ascent, width: 0, height: 0, leads: [], markers: [] };
+
+  // Case first (the wrap must see the glyphs that are drawn), then runs-aware measure.
+  const m = styledMeasure(measure, style);
+  const paras = caseText(content, style).replace(/\r\n?/g, "\n").split("\n");
+  // List markers: an item per non-empty paragraph, numbered in order.
+  const markerOf: string[] = [];
+  let ordinal = 0;
+  for (const para of paras) markerOf.push(style.listKind && para.trim() !== "" ? markerFor(style, ++ordinal) : "");
+  const markerCol = style.listKind
+    ? Math.max(LIST_MIN_MARKER_EM * fontSizeOf(style), ...markerOf.map((k) => (k === "" ? 0 : measure(k)))) + LIST_GAP_EM * fontSizeOf(style)
+    : 0;
+  const lead = paragraphLead(markerCol, style);
 
   const lines: string[] = [];
-  for (const para of content.replace(/\r\n?/g, "\n").split("\n")) {
-    wrapParagraph(measure, para, maxWidth, lines);
-  }
+  const leads: number[] = [];
+  const markers: string[] = [];
+  paras.forEach((para, pi) => {
+    const before = lines.length;
+    // The lead narrows the wrap; at least 1 so a huge indent still terminates (breakWord).
+    const room = maxWidth > 0 && Number.isFinite(maxWidth) ? Math.max(1, maxWidth - lead) : maxWidth;
+    wrapParagraph(m, para, room, lines);
+    for (let i = before; i < lines.length; i++) {
+      leads.push(lead);
+      markers.push(i === before ? markerOf[pi] : "");
+    }
+  });
   let width = 0;
-  for (const line of lines) {
+  lines.forEach((line, i) => {
     const paint = visible(line);
-    width = Math.max(width, paint === "" ? 0 : measure(paint));
-  }
-  return { lines, lineHeight, ascent, width, height: lines.length * lineHeight };
+    width = Math.max(width, paint === "" ? 0 : leads[i] + m(paint));
+  });
+  return { lines, lineHeight, ascent, width, height: lines.length * lineHeight, leads, markers };
 }
 
 // Measure of ONE line with the given style, in world units.
@@ -221,9 +362,33 @@ export type MeasureText = (text: string, style: TextStyleLite) => number;
 // RICH lines (paragraph / character styles, see layoutRich) also carry `segments`: the pieces of the
 // line with their own style and x, in world coordinates. `text` is then the whole line, and `x` the
 // start of the first piece.
-/** `y` (instead of the line's baseline) and `angle` (radians, around (x, y)) are set for glyphs placed along a path. */
-export interface PlacedSegment { text: string; x: number; width: number; style: TextStyleLite; y?: number; angle?: number; inline?: { id: string; height: number } }
-export interface PlacedLine { text: string; x: number; y: number; width: number; segments?: PlacedSegment[] }
+export interface PlacedSegment {
+  text: string; x: number; width: number; style: TextStyleLite;
+  // Present when the segment is not one run (small caps, scripts): the pieces to draw instead of text/x.
+  pieces?: PlacedPiece[];
+  // A list marker: drawn like text, but belongs to no run (it is not part of the line's text).
+  marker?: boolean;
+  /** `y` (instead of the line's baseline) and `angle` (radians, around (x, y)) are set for glyphs placed along a path. */
+  y?: number; angle?: number; inline?: { id: string; height: number };
+}
+export interface PlacedLine {
+  text: string; x: number; y: number; width: number; segments?: PlacedSegment[];
+  // Present only when a plain (non-rich) line is not one run -- small caps, scripts, a list marker:
+  // the pieces to draw, each with its own position (baseline y) and size scale. Whoever draws uses
+  // them INSTEAD of text/x/y.
+  pieces?: PlacedPiece[];
+}
+export interface PlacedPiece { text: string; x: number; y: number; scale: number }
+
+/** The pieces a plain placed line is drawn with: its pieces, or the line itself as one. */
+export function piecesOfLine(line: PlacedLine): PlacedPiece[] {
+  return line.pieces ?? [{ text: line.text, x: line.x, y: line.y, scale: 1 }];
+}
+
+/** The pieces a segment of a rich line is drawn with: its own pieces, or the whole segment on the baseline. */
+export function piecesOfSegment(seg: PlacedSegment, baseline: number): PlacedPiece[] {
+  return seg.pieces ?? [{ text: seg.text, x: seg.x, y: seg.y ?? baseline, scale: 1 }];
+}
 
 /** A measure that can be asked for any style: `measureFor(style)(text)` is the width in world units. */
 export type MeasureFor = (style: TextStyleLite) => (s: string) => number;
@@ -274,10 +439,10 @@ export function placeTextLines(measure: (s: string) => number, n: NodeLite, meas
   // Formatted text needs to measure with several styles; without that it is laid out as plain text.
   if (t.rich && measureFor) {
     const tracked = trackedMeasureFor(measureFor);
-    return placeRichLines(tracked, n, layoutRich(tracked, t.content, t.style, t.rich, n.width));
+    return placeRichLines(tracked, n, layoutRich(tracked, t.content, t.style, t.rich, innerWidth(n, t.style)));
   }
   const m = trackedMeasure(measure, t.style);
-  return placeLines(m, n, t.style, layoutText(m, t.content, t.style, n.width));
+  return placeLines(m, n, t.style, layoutText(m, t.content, t.style, innerWidth(n, t.style)));
 }
 
 // The real placement, starting from an ALREADY computed layout: it is private because
@@ -290,19 +455,40 @@ function placeLines(
   layout: TextLayout,
 ): PlacedLine[] {
   const out: PlacedLine[] = [];
+  const m = styledMeasure(measure, style);
+  const inset = insetOf(style);
+  const inner = innerWidth(n, style);
+  // Vertical alignment inside a box taller than the text; a text taller than its box
+  // starts at the top (never above the box).
+  const spare = n.height - 2 * inset - layout.height;
+  const top = n.y + inset + (spare > 0 ? (style.verticalAlign === "middle" ? spare / 2 : style.verticalAlign === "bottom" ? spare : 0) : 0);
+  const runs = needsRuns(style);
   for (let i = 0; i < layout.lines.length; i++) {
     // Trailing spaces are not drawn (they are invisible) but would widen
     // the measure, and with align center/right would shift the line.
     const line = visible(layout.lines[i]);
     // An empty line is not drawn but still occupies its vertical slot.
     if (line === "") continue;
-    const width = measure(line);
-    out.push({
-      text: line,
-      x: n.x + alignOffsetX(style.align, width, n.width),
-      y: n.y + layout.ascent + i * layout.lineHeight,
-      width,
-    });
+    const width = m(line);
+    const lead = layout.leads[i] ?? 0;
+    const x = n.x + inset + lead + alignOffsetX(style.align, width, inner > 0 ? Math.max(0, inner - lead) : inner);
+    const baseline = top + layout.ascent + i * layout.lineHeight;
+    const placed: PlacedLine = { text: line, x, y: baseline, width };
+    const marker = layout.markers[i] ?? "";
+    if (runs || marker !== "") {
+      const pieces: PlacedPiece[] = [];
+      if (marker !== "") {
+        pieces.push({ text: marker, x: n.x + inset + (style.indent && style.indent > 0 ? style.indent : 0), y: baseline, scale: 1 });
+      }
+      let cx = x;
+      const shift = scriptShiftOf(style);
+      for (const r of runsOf(line, style)) {
+        pieces.push({ text: r.text, x: cx, y: baseline + shift, scale: r.scale });
+        cx += measure(r.text) * r.scale * hscaleOf(style);
+      }
+      placed.pieces = pieces;
+    }
+    out.push(placed);
   }
   return out;
 }
@@ -337,29 +523,31 @@ export function textPaintBounds(measure: MeasureText, n: NodeLite): Bounds {
   if (n.kind !== "text" || !t || t.content === "") return box;
   if (t.rich) {
     const mf: MeasureFor = trackedMeasureFor((style) => (s) => measure(s, style));
-    const layout = layoutRich(mf, t.content, t.style, t.rich, n.width);
+    const layout = layoutRich(mf, t.content, t.style, t.rich, innerWidth(n, t.style));
     let minX = n.x, maxX = n.x + n.width;
     for (const line of placeRichLines(mf, n, layout)) {
       minX = Math.min(minX, line.x);
       maxX = Math.max(maxX, line.x + line.width);
       for (const seg of line.segments ?? []) { minX = Math.min(minX, seg.x); maxX = Math.max(maxX, seg.x + seg.width); }
     }
-    return { x: minX, y: n.y, width: maxX - minX, height: Math.max(n.height, layout.height) };
+    return { x: minX, y: n.y, width: maxX - minX, height: Math.max(n.height, layout.height + 2 * insetOf(t.style)) };
   }
 
   const m = trackedMeasure((s: string) => measure(s, t.style), t.style);
-  const layout = layoutText(m, t.content, t.style, n.width);
+  const layout = layoutText(m, t.content, t.style, innerWidth(n, t.style));
   let minX = n.x;
   let maxX = n.x + n.width;
   for (const line of placeLines(m, n, t.style, layout)) {
     minX = Math.min(minX, line.x);
     maxX = Math.max(maxX, line.x + line.width);
+    // A list marker sits left of the text.
+    for (const seg of line.pieces ?? []) minX = Math.min(minX, seg.x);
   }
   // Vertically the LAYOUT's height is used and not the last placed line:
   // empty lines paint nothing but occupy their slot, and the text's height
   // is the one the layout declares (layoutText invariant:
   // height === lines.length * lineHeight).
-  const height = Math.max(n.height, layout.height);
+  const height = Math.max(n.height, layout.height + 2 * insetOf(t.style));
   return { x: minX, y: n.y, width: maxX - minX, height };
 }
 
@@ -451,6 +639,10 @@ function paintText(
 
   // ctx.font must be set BEFORE measuring: measureText uses the current font.
   ctx.font = fontString(t.style);
+  // "liga" 0 maps to the one switch canvas has (it also turns kerning off); the other
+  // OpenType features are CSS/SVG only. Reset explicitly: the ctx is shared state.
+  const tr = ctx as CanvasRenderingContext2D & { textRendering?: string };
+  if ("textRendering" in ctx) tr.textRendering = ligaturesOff(t.style) ? "optimizeSpeed" : "auto";
   // Never the default: textBaseline's initial value is "alphabetic" by
   // specification, but leaving it implicit means depending on the state left
   // by whoever drew before. The lines' y is computed with respect to the
@@ -470,7 +662,7 @@ function paintText(
   // with letter spacing it is drawn character by character.
   const piece = (text: string, x: number, y: number, style: TextStyleLite, angle = 0) => {
     const ls = style.letterSpacing ?? 0;
-    const sx = style.horizontalScale ?? 1;
+    const sx = (style.horizontalScale ?? 1) * hscaleOf(style);
     const py = y - (style.baselineShift ?? 0);
     setKerning(ctx, style.noKerning ? "none" : "auto");
     const prevFill = ctx.fillStyle;
@@ -488,10 +680,22 @@ function paintText(
     if (style.color) ctx.fillStyle = prevFill;
   };
   for (const line of placeTextLines(raw, n, ctxMeasureFor(ctx))) {
-    if (!line.segments) { piece(line.text, line.x, line.y, t.style); continue; }
+    if (!line.segments) {
+      for (const p of piecesOfLine(line)) {
+        // Runs at another size (small caps, scripts) switch the font and switch back.
+        if (p.scale !== 1) ctx.font = fontString(t.style, p.scale);
+        piece(p.text, p.x, p.y, t.style);
+        if (p.scale !== 1) ctx.font = fontString(t.style);
+      }
+      continue;
+    }
     for (const seg of line.segments) {
-      ctx.font = fontString(seg.style);
-      if (seg.text !== "") piece(seg.text, seg.x, seg.y ?? line.y, seg.style, seg.angle);
+      // Pieces of a segment (small caps, scripts, a marker) each have their own size and baseline.
+      if ("textRendering" in ctx) tr.textRendering = ligaturesOff(seg.style) ? "optimizeSpeed" : "auto";
+      for (const p of piecesOfSegment(seg, line.y)) {
+        ctx.font = fontString(seg.style, p.scale);
+        if (p.text !== "") piece(p.text, p.x, p.y, seg.style, seg.angle);
+      }
     }
   }
 }
@@ -556,8 +760,7 @@ const frag = (text: string, style: TextStyleLite, at: number): Frag => ({ text, 
 
 /** Tab stops past the last explicit one fall on multiples of this. */
 export const DEFAULT_TAB = 36;
-const SMALL_CAPS_SCALE = 0.8;
-const SCRIPT_SCALE = 0.58;
+const RICH_SCRIPT_SCALE = 0.58;
 const DROP_CAP_HEIGHT = 0.7;
 const DROP_CAP_GAP = 0.15;
 
@@ -603,7 +806,7 @@ function derivedStyles() {
     if (lower) out = { ...out, fontSize: fontSizeOf(style) * SMALL_CAPS_SCALE };
     if (style.script) {
       const size = fontSizeOf(out);
-      out = { ...out, fontSize: size * SCRIPT_SCALE, baselineShift: (out.baselineShift ?? 0) + (style.script === "super" ? size * 0.36 : -size * 0.14) };
+      out = { ...out, fontSize: size * RICH_SCRIPT_SCALE, baselineShift: (out.baselineShift ?? 0) + (style.script === "super" ? size * 0.36 : -size * 0.14) };
     }
     per.set(key, out);
     return out;
@@ -660,16 +863,43 @@ export function layoutRich(
   let y = 0;
   let offset = 0;
   const paragraphs = text.split("\n");
+  const ownOf = (pi: number): ParagraphLite => rich.paragraphs[pi] ?? { style: base, spaceBefore: 0, spaceAfter: 0, indentFirst: 0, indentLeft: 0 };
+  // Lists of the paragraph STYLE (listKind): an item per non-empty paragraph of a list style, numbered in
+  // order (a paragraph that is not an item restarts the count). The marker column is as wide as the widest
+  // marker of the node, so every item's text lines up.
+  const markerOf: string[] = [];
+  let ordinal = 0;
+  let lastKind = "";
   paragraphs.forEach((para, pi) => {
-    const pr: ParagraphLite = rich.paragraphs[pi] ?? { style: base, spaceBefore: 0, spaceAfter: 0, indentFirst: 0, indentLeft: 0 };
-    // The pieces of the paragraph: split at run boundaries.
+    const kind = ownOf(pi).style.listKind ?? "";
+    if (kind !== lastKind) ordinal = 0;
+    lastKind = kind;
+    markerOf.push(kind !== "" && para.trim() !== "" ? markerFor(ownOf(pi).style, ++ordinal) : "");
+  });
+  let markerCol = 0;
+  paragraphs.forEach((_, pi) => {
+    const st = ownOf(pi).style;
+    if (!st.listKind) return;
+    const mw = markerOf[pi] === "" ? 0 : styledMeasure(measureFor(st), st)(markerOf[pi]);
+    markerCol = Math.max(markerCol, Math.max(LIST_MIN_MARKER_EM * fontSizeOf(st), mw) + LIST_GAP_EM * fontSizeOf(st));
+  });
+  paragraphs.forEach((para, pi) => {
+    const own = ownOf(pi);
+    // The paragraph's lead (indent plus the marker column) narrows its wrap like a left indent.
+    const lead = paragraphLead(own.style.listKind ? markerCol : 0, own.style);
+    const pr: ParagraphLite = lead > 0 ? { ...own, indentLeft: own.indentLeft + lead } : own;
+    // The pieces of the paragraph: split at run boundaries, CASED (the wrap must see the glyphs that are drawn).
     let pieces: Frag[] = [];
     const end = offset + para.length;
     let pos = offset;
+    let prev = "";
     while (pos < end) {
       const run = runs.find((r) => r.start <= pos && pos < r.end);
       const next = Math.min(end, run ? run.end : Math.min(...runs.filter((r) => r.start > pos).map((r) => r.start), end));
-      pieces.push(frag(text.slice(pos, next), run ? overlayStyle(pr.style, run.style) : pr.style, pos));
+      const style = run ? overlayStyle(pr.style, run.style) : pr.style;
+      const raw = text.slice(pos, next);
+      pieces.push(frag(caseAfter(prev, raw, style), style, pos));
+      prev = raw.slice(-1);
       pos = next;
     }
     const paraStart = offset;
@@ -778,6 +1008,7 @@ export function layoutRich(
         frags: l.frags, width: l.width, top: y, height, ascent: m.ascent, left, end: last ? last.at + last.text.length : paraStart + dropLen, para: pi,
         ...(l.justify ? { justify: l.justify } : {}),
         ...(li === 0 && listed ? { marker: { text: pr.marker!, style: pr.style, x: pr.indentLeft } } : {}),
+        ...(li === 0 && !listed && markerOf[pi] !== "" ? { marker: { text: markerOf[pi], style: markerStyle(own.style), x: own.indentLeft + own.indentFirst + (own.style.indent && own.style.indent > 0 ? own.style.indent : 0) } } : {}),
         ...(li === 0 && drop ? { drop } : {}),
       });
       y += height;
@@ -827,7 +1058,25 @@ function overlayStyle(base: TextStyleLite, over: TextStyleLite): TextStyleLite {
   if (over.color) out.color = over.color;
   if (over.fontFeatures) out.fontFeatures = over.fontFeatures;
   if (over.fontVariations) out.fontVariations = over.fontVariations;
+  // Character-level type settings; list, indent, vertical alignment and inset are paragraph / box
+  // settings and stay the paragraph's.
+  if (over.textCase) out.textCase = over.textCase;
+  if (over.textScript) out.textScript = over.textScript;
+  if (over.textScale) out.textScale = over.textScale;
   return out;
+}
+
+/** A list marker is drawn in its paragraph's font, never underlined, cased or raised. */
+function markerStyle(style: TextStyleLite): TextStyleLite {
+  const { underline: _u, strikethrough: _s, textCase: _c, textScript: _t, ...rest } = style;
+  return rest;
+}
+
+/** `text` as drawn in `style`, given the character just before it in the paragraph (title case needs it). */
+function caseAfter(prev: string, text: string, style: TextStyleLite): string {
+  if (!style.textCase || style.textCase === "smallCaps" || text === "") return text;
+  const shown = caseText(prev + text, style).slice(prev.length);
+  return shown.length === text.length ? shown : text;
 }
 
 interface Built { frags: Frag[]; width: number; justify?: number }
@@ -998,10 +1247,17 @@ const rgba = (c: { r: number; g: number; b: number; a: number }) => `rgba(${Math
 /** The lines of a rich layout placed in WORLD coordinates (the text box's top-left is n.x, n.y). */
 function placeRichLines(measureFor: MeasureFor, n: NodeLite, layout: RichLayout): PlacedLine[] {
   const out: PlacedLine[] = [];
+  // The box-level settings come from the text's own style: inset, and the vertical alignment in a box
+  // taller than the text (a taller text starts at the top).
+  const own = n.text?.style;
+  const inset = insetOf(own);
+  const spare = n.height - 2 * inset - layout.height;
+  const top = n.y + inset + (spare > 0 ? (own?.verticalAlign === "middle" ? spare / 2 : own?.verticalAlign === "bottom" ? spare : 0) : 0);
   for (const l of layout.lines) {
     const hasText = l.frags.some((f) => f.text !== "" || f.w !== undefined);
     if (!hasText && !l.marker && !l.drop) continue;
-    let x = n.x + l.left;
+    const baseline = top + l.top + l.ascent;
+    let x = n.x + inset + l.left;
     const segments: PlacedSegment[] = [];
     const body: PlacedSegment[] = [];
     for (const f of l.frags) {
@@ -1022,18 +1278,30 @@ function placeRichLines(measureFor: MeasureFor, n: NodeLite, layout: RichLayout)
           if (part !== "") { const w = m(part); body.push({ text: part, x, width: w, style: f.style }); x += w; }
         });
       } else {
-        const w = m(f.text);
-        body.push({ text: f.text, x, width: w, style: f.style });
+        const w = styledMeasure(m, f.style)(f.text);
+        const seg: PlacedSegment = { text: f.text, x, width: w, style: f.style };
+        if (needsRuns(f.style)) {
+          // Small caps and scripts: runs at another size, on a shifted baseline.
+          const h = hscaleOf(f.style);
+          const shift = scriptShiftOf(f.style);
+          let cx = x;
+          seg.pieces = runsOf(f.text, f.style).map((r) => {
+            const piece = { text: r.text, x: cx, y: baseline + shift, scale: r.scale };
+            cx += m(r.text) * r.scale * h;
+            return piece;
+          });
+        }
+        body.push(seg);
         x += w;
       }
     }
-    if (l.marker) segments.push({ text: l.marker.text, x: n.x + l.marker.x, width: measureFor(l.marker.style)(l.marker.text), style: l.marker.style });
-    if (l.drop) segments.push({ text: l.drop.text, x: n.x + l.drop.x, width: l.drop.width, style: l.drop.style });
+    if (l.marker) segments.push({ text: l.marker.text, x: n.x + inset + l.marker.x, width: styledMeasure(measureFor(l.marker.style), l.marker.style)(l.marker.text), style: l.marker.style, marker: true });
+    if (l.drop) segments.push({ text: l.drop.text, x: n.x + inset + l.drop.x, width: l.drop.width, style: l.drop.style });
     segments.push(...body);
     out.push({
       text: body.map((s) => s.text).join(""),
-      x: n.x + l.left,
-      y: n.y + l.top + l.ascent,
+      x: n.x + inset + l.left,
+      y: baseline,
       width: l.width,
       segments,
     });

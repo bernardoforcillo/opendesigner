@@ -1,9 +1,8 @@
 import { NodeMap } from "./nodeMap";
 import { create } from "@bufbuild/protobuf";
-import { BlendMode, ImageScaleMode, LayerSchema, ListKind, ObjectStyleDefSchema, TabAlign, TextScript, TextStyleKind, LayoutGridKind, CommentSchema, ClipSchema, Constraint, LayoutSizing, ComponentPropertySchema, ComponentPropertyType, ComponentSetSchema, FlowSchema, FontFaceSchema, TextStyleDefSchema, ParagraphRuleSchema, VariableCollectionSchema, VariableSchema, VariableType, TransitionSchema, LayoutAlign, LayoutDirection, NodeSchema, StrokeAlign, TextAlign } from "../gen/opendesigner/v1/opendesigner_pb";
+import { AnnotationSchema, ReadyForDevSchema, BlendMode, ImageScaleMode, TextStyleKind, ArrowHead, PaintStyleDefSchema, EffectStyleDefSchema, LayoutGridKind, CommentSchema, ClipSchema, Constraint, LayoutPositioning, LayoutSizing, ComponentPropertySchema, ComponentPropertyType, ComponentSetSchema, FlowSchema, FontFaceSchema, TextStyleDefSchema, VariableCollectionSchema, VariableSchema, VariableType, TransitionSchema, LayoutAlign, LayoutDirection, NodeSchema, StrokeAlign, TextAlign, TextCase, TextScript, ListKind, TextVAlign, NoiseMode, LayoutMode, GridTrackKind, BrushKind, BrushTip, LayerSchema, ObjectStyleDefSchema, TabAlign, ParagraphRuleSchema } from "../gen/opendesigner/v1/opendesigner_pb";
 import type {
-  Document, Component as PbComponent, ComponentProperty as PbComponentProperty, ComponentSet as PbComponentSet, FontFace as PbFont, TextStyleDef as PbTextStyleDef, ObjectStyleDef as PbObjectStyleDef, Layer as PbLayer, VariableCollection as PbCollection, Variable as PbVariable, Clip as PbClip, Flow as PbFlow, Transition as PbTransition, Node as PbNode, Comment as PbComment, LayoutGrid as PbLayoutGrid, Paint as PbPaint, Stroke as PbStroke, Effect as PbEffect, AutoLayout as PbAutoLayout,
-  ParagraphRule as PbParagraphRule, TextNode as PbTextNode, TextStyle as PbTextStyle,
+  Annotation as PbAnnotation, ReadyForDev as PbReady, Document, Component as PbComponent, ComponentProperty as PbComponentProperty, ComponentSet as PbComponentSet, FontFace as PbFont, TextStyleDef as PbTextStyleDef, PaintStyleDef as PbPaintStyleDef, EffectStyleDef as PbEffectStyleDef, VariableCollection as PbCollection, Variable as PbVariable, Clip as PbClip, Flow as PbFlow, Transition as PbTransition, Node as PbNode, Comment as PbComment, LayoutGrid as PbLayoutGrid, Paint as PbPaint, Stroke as PbStroke, Brush as PbBrush, Effect as PbEffect, AutoLayout as PbAutoLayout, TextNode as PbTextNode, TextStyle as PbTextStyle, ObjectStyleDef as PbObjectStyleDef, Layer as PbLayer, ParagraphRule as PbParagraphRule,
   SubPath as PbSubPath, VectorNode as PbVectorNode,
   InstanceNode as PbInstanceNode, InstanceOverride as PbInstanceOverride,
 } from "../gen/opendesigner/v1/opendesigner_pb";
@@ -44,13 +43,14 @@ export interface TableStyleLite {
   headerObjectStyleId?: string; bodyObjectStyleId?: string; altObjectStyleId?: string;
   headerTextStyleId?: string; bodyTextStyleId?: string;
 }
-export interface DocSettingsLite { vertical?: Exclude<Vertical, "product">; baselineIncrement?: number; baselineStart?: number; facingPages?: boolean; colorMode?: "cmyk"; iccProfile?: string; book?: BookLite; conditions?: TextConditionLite[]; tableStyles?: TableStyleLite[] }
+export interface DocSettingsLite { vertical?: Exclude<Vertical, "product">; baselineIncrement?: number; baselineStart?: number; facingPages?: boolean; colorMode?: "cmyk"; iccProfile?: string; book?: BookLite; presentDevice?: string; conditions?: TextConditionLite[]; tableStyles?: TableStyleLite[] }
 export interface GradientStopLite { color: { r: number; g: number; b: number; a: number }; position: number; }
 // A gradient in NORMALIZED box coordinates (see GradientPaint in the proto).
 // Linear: axis (x1,y1)->(x2,y2). Radial: center (x1,y1), radius = |p2-p1| in
-// world coordinates.
+// world coordinates. Angular (conic): center (x1,y1), the 0% direction points toward (x2,y2), sweeping
+// clockwise. Diamond: center (x1,y1), 100% where |dx|+|dy| in world units equals |p2-p1|.
 export interface GradientLite {
-  kind: "linear" | "radial";
+  kind: "linear" | "radial" | "angular" | "diamond";
   stops: GradientStopLite[];
   x1: number; y1: number; x2: number; y2: number;
 }
@@ -82,13 +82,23 @@ export type StrokeAlignLite = "center" | "inside" | "outside";
 // screen. The default 0 is "no stroke to draw", not "very thin":
 // a non-positive weight produces neither pixels nor bounds overhang (see
 // canvas/geometry.ts::strokeOutsetOf).
-export interface StrokeLite { color: FillLite; weight: number; align: StrokeAlignLite; }
+// Arrowheads at the ends of an open path or a line (see ArrowHead in the proto) and per-side weights of a
+// rectangle / frame stroke (see StrokeSides). All absent by default, so a stroke without them is what it was.
+export type ArrowHeadLite = "arrow" | "triangle" | "circle" | "square" | "diamond";
+export interface StrokeSidesLite { top: number; right: number; bottom: number; left: number }
+// A variable-width stroke's profile (see WidthPoint in the proto and vector/widthProfile.ts); absent = uniform.
+export interface WidthPointLite { position: number; left: number; right: number }
+// A brush (see Brush in the proto and vector/brush.ts); absent = the plain stroke. NONE collapses to absent.
+export type BrushKindLite = "stretch" | "scatter";
+export type BrushTipLite = "dot" | "dash" | "square" | "diamond" | "leaf";
+export interface BrushLite { kind: BrushKindLite; tip: BrushTipLite; spacing: number; scatter: number; sizeJitter: number; angleJitter: number; seed: number }
+export interface StrokeLite { color: FillLite; weight: number; align: StrokeAlignLite; startCap?: ArrowHeadLite; endCap?: ArrowHeadLite; sides?: StrokeSidesLite; widthProfile?: WidthPointLite[]; brush?: BrushLite; }
 
 // Auto layout of a frame (see AutoLayout in the proto and store/layout.ts). As
 // for StrokeAlignLite, enums are strings: UNSPECIFIED collapses to
 // "horizontal" / "start", which is what the computation would do anyway.
 export type LayoutDirectionLite = "horizontal" | "vertical";
-export type LayoutAlignLite = "start" | "center" | "end" | "space-between";
+export type LayoutAlignLite = "start" | "center" | "end" | "space-between" | "baseline";
 export interface AutoLayoutLite {
   direction: LayoutDirectionLite;
   spacing: number;
@@ -101,7 +111,19 @@ export interface AutoLayoutLite {
   // `crossSpacing` is the gap between the lines.
   wrap?: true;
   crossSpacing?: number;
+  // GRID mode (docs/layout.md): the children sit in the cells of `columns` x `rows` instead of a
+  // row. Absent = flex. `columnGap` / `rowGap` replace `spacing`.
+  mode?: "grid";
+  columns?: GridTrackLite[];
+  rows?: GridTrackLite[];
+  columnGap?: number;
+  rowGap?: number;
 }
+// A track of a grid: fixed pixels, as big as its content (hug) or a weighted share of the rest (fr).
+export type GridTrackKindLite = "fixed" | "hug" | "fr";
+export interface GridTrackLite { kind: GridTrackKindLite; size: number }
+// The cell a child occupies in a grid parent (1-based; absent number = auto / one cell).
+export interface GridCellLite { column?: number; columnSpan?: number; row?: number; rowSpan?: number }
 
 // How a node follows its parent frame's resize (CONSTRAINTS), and how an auto layout parent
 // sizes it (LAYOUT SIZING), per axis. Absent = the proto default: "min" / fixed.
@@ -124,7 +146,15 @@ export type EffectLite =
   | { kind: "dropShadow"; color: { r: number; g: number; b: number; a: number }; offsetX: number; offsetY: number; blur: number }
   | { kind: "layerBlur"; radius: number }
   | { kind: "innerShadow"; color: { r: number; g: number; b: number; a: number }; offsetX: number; offsetY: number; blur: number }
-  | { kind: "backgroundBlur"; radius: number };
+  | { kind: "backgroundBlur"; radius: number }
+  // The radius ramps from startRadius at (x1,y1) to endRadius at (x2,y2), points in the node's unit box.
+  | { kind: "progressiveBlur"; startRadius: number; endRadius: number; x1: number; y1: number; x2: number; y2: number; background: boolean }
+  | { kind: "noise"; mode: NoiseModeLite; size: number; density: number; opacity: number; color: RgbaLite; color2: RgbaLite; seed: number }
+  | { kind: "texture"; scale: number; intensity: number; seed: number }
+  // Frosted backdrop + grain + light edge; drawn as those effects (renderer/effectsFx.ts::expandGlass).
+  | { kind: "glass"; frost: number; light: number; lightAngle: number; noise: number };
+export type NoiseModeLite = "mono" | "duo" | "multi";
+type RgbaLite = { r: number; g: number; b: number; a: number };
 
 // The alignment as a string and not as a numeric enum, for the same reason
 // that `kind` is "rect" | "ellipse" | "text" instead of the oneof's
@@ -147,6 +177,17 @@ export interface TextStyleLite {
   strikethrough?: boolean;
   /** px added after every character (tracking); absent at 0, may be negative. */
   letterSpacing?: number;
+  // Type extras (proto TextStyle 20..26). All absent when unset, like `italic`.
+  textCase?: TextCaseLite;
+  textScript?: TextScriptLite;
+  listKind?: ListKindLite;
+  indent?: number;
+  // CSS font-feature-settings value; see core.ValidFontFeatures.
+  fontFeatures?: string;
+  verticalAlign?: TextVAlignLite;
+  inset?: number;
+  /** Horizontal scale of the glyphs in percent (proto 30); absent = 100. */
+  textScale?: number;
   /** Lowercase letters drawn as smaller capitals. */
   smallCaps?: boolean;
   /** Smaller and raised / lowered. */
@@ -157,13 +198,15 @@ export interface TextStyleLite {
   noKerning?: boolean;
   /** Text colour of the style; absent => the node's fill. */
   color?: { r: number; g: number; b: number; a: number };
-  /** OpenType features, "liga off, onum": shown in SVG / HTML output and the editing field (the canvas has no way to apply them). */
-  fontFeatures?: string;
   /** Variable-font axes ("wght 650, wdth 90"): drawn where the renderer can set them (SVG), always kept. */
   fontVariations?: string;
   /** DERIVED by the layout, never stored: px a piece is raised above its line's baseline (negative = lowered). */
   baselineShift?: number;
 }
+export type TextCaseLite = "upper" | "lower" | "title" | "smallCaps";
+export type TextScriptLite = "super" | "sub";
+export type ListKindLite = "bullet" | "numbered";
+export type TextVAlignLite = "middle" | "bottom";
 
 // RICH TEXT (store/richText.ts). `paragraphStyles` / `runs` are the document's; `rich` is DERIVED by
 // resolveScene (never written, never in an op) and carries them resolved, so the layout needs no scene.
@@ -344,7 +387,19 @@ export interface NodeLite {
   // "instance" is an INSTANCE of a component (proto: InstanceNode = 37): it sits in the
   // `shape` oneof like the shapes, but its subtree is VIRTUAL -- derived from the
   // master on every read, never in `nodes`. The payload is in `instance`.
-  kind: "rect" | "ellipse" | "text" | "image" | "vector" | "unknown" | "group" | "frame" | "instance"; cornerRadius: number;
+  kind: "rect" | "ellipse" | "text" | "image" | "vector" | "unknown" | "group" | "frame" | "instance" | "polygon" | "star"; cornerRadius: number;
+  // Parametric shapes (docs/shapes.md). Named after the proto fields (and the SetProperties mask paths)
+  // they come from, and absent when they are the default, so existing nodes are unchanged.
+  // Rectangles: `cornerSmoothing` (0..1) and `radii` (independent corner radii, replacing cornerRadius).
+  // Ellipses: `arcStart` / `arcSweep` (degrees; sweep 0 = full) and `innerRatio` (the ring's hole).
+  // Polygons: `sides`. Stars: `points` and `innerRatio` (the notch depth).
+  cornerSmoothing?: number;
+  radii?: CornerRadiiLite;
+  arcStart?: number;
+  arcSweep?: number;
+  innerRatio?: number;
+  sides?: number;
+  points?: number;
   // Meaningful if and only if kind === "frame" (for all others it is false,
   // like the proto3 default): the clipping applies to drawing, hit-test
   // and rubber band together -- what is not seen is not clicked.
@@ -379,6 +434,10 @@ export interface NodeLite {
   modes?: Record<string, string>;
   // Shared text style id (text nodes only); absent when none. See TextStyleDefLite.
   textStyleId?: string;
+  // Shared paint / effect styles (see PaintStyleDefLite, EffectStyleDefLite); absent when none.
+  fillStyleId?: string;
+  strokeStyleId?: string;
+  effectStyleId?: string;
   /** Shared object style (store/graphics.ts) and layer; absent when none. */
   objectStyleId?: string;
   layerId?: string;
@@ -389,6 +448,15 @@ export interface NodeLite {
   constraintY?: ConstraintLite;
   layoutSizingX?: "fill";
   layoutSizingY?: "fill";
+  // Size limits enforced by the auto layout engine (absent = no limit) and the opt-out of the
+  // flow of an auto layout parent; see Node.min_width and Node.layout_positioning in the proto.
+  minWidth?: number;
+  maxWidth?: number;
+  minHeight?: number;
+  maxHeight?: number;
+  layoutPositioning?: "absolute";
+  // The cell of a GRID auto layout parent; absent = auto-placed, one cell.
+  gridCell?: GridCellLite;
   // Blend mode against what is behind; absent = normal.
   blendMode?: BlendModeLite;
   // A mask is not drawn: its outline clips the siblings above it. Absent = not a mask.
@@ -425,7 +493,12 @@ export interface TransitionLite {
   label: string; trigger: string; elementId: string; guard: string; effect: string;
   // Animation to the destination (see Transition.animation); absent = a cut.
   animation?: string; durationMs?: number; easing?: string; delayMs?: number;
+  // Position in the hotspot's if / else if / else chain (see proto Transition.order); absent = not in a chain.
+  order?: number;
 }
+
+/** Transition.order is 0..MAX_TRANSITION_ORDER (parity with core.MaxTransitionOrder). */
+export const MAX_TRANSITION_ORDER = 1000;
 
 /** The closed set of Transition.animation values (parity with core.TransitionAnimations). */
 export const TRANSITION_ANIMATIONS = [
@@ -440,13 +513,18 @@ export interface CommentLite {
   id: string; parentId: string; nodeId: string; pageId: string; x: number; y: number;
   author: string; text: string; createdAt: number; resolved: boolean;
 }
+// DEV MODE (see Annotation / ReadyForDev in the proto and internal/core/devmode.go). The server keeps
+// the snapshot a ready frame is compared against; the editor only needs the mark.
+export interface AnnotationLite { id: string; nodeId: string; category: string; text: string; author: string; createdAt: number }
+export interface ReadyLite { nodeId: string; note: string; markedBy: string; markedAt: number }
+export interface DevLite { annotations: Record<string, AnnotationLite>; ready: Record<string, ReadyLite> }
 export interface ModeLite { id: string; name: string }
 export interface CollectionLite { id: string; name: string; modes: ModeLite[] }
-export type VariableTypeLite = "color" | "number" | "string";
+export type VariableTypeLite = "color" | "number" | "string" | "boolean";
 export interface VariableLite {
   id: string; collectionId: string; name: string; type: VariableTypeLite;
-  // modeId -> value. A color is {r,g,b,a}; a number is a plain number; a string is a string.
-  values: Record<string, FillLite | number | string>;
+  // modeId -> value. A color is {r,g,b,a}; a number is a plain number; a string is a string; a boolean is a boolean.
+  values: Record<string, FillLite | number | string | boolean>;
   // Present for an alias: the variable it reads (then `values` is empty).
   aliasOf?: string;
   // SWATCH data (store/graphics.ts): a color variable listed in the Swatches panel, with its print definition.
@@ -501,6 +579,10 @@ export interface TextStyleDefLite {
   /** Hanging punctuation at the line edges. */
   opticalMargin?: boolean;
 }
+// SHARED PAINT AND EFFECT STYLES (docs/shapes.md; proto PaintStyleDef / EffectStyleDef).
+export interface PaintStyleDefLite { id: string; name: string; paints: FillLite[] }
+export interface EffectStyleDefLite { id: string; name: string; effects: EffectLite[] }
+export interface CornerRadiiLite { topLeft: number; topRight: number; bottomRight: number; bottomLeft: number }
 
 // ANIMATION: the document's clips (animated properties of nodes referenced by
 // id). See proto Clip/Track/Keyframe and internal/core/animation.go.
@@ -524,10 +606,15 @@ export interface SceneState {
   // Typography, like variables: an empty record when there are none.
   fonts: Record<string, FontLite>;
   textStyles: Record<string, TextStyleDefLite>;
+  // Shared paint and effect styles, like textStyles: an empty record when there are none.
+  paintStyles: Record<string, PaintStyleDefLite>;
+  effectStyles: Record<string, EffectStyleDefLite>;
   objectStyles: Record<string, ObjectStyleLite>;
   layers: LayerLite[];
   // Comments, like clips: an empty record when there are none.
   comments: Record<string, CommentLite>;
+  // Dev mode (annotations and ready frames); absent when the document has none.
+  dev?: DevLite;
   // Only in scenes derived from playback (animation/pose.ts): see AnimInfo.
   anim?: AnimInfo;
   // M4 — components indexed by id (componentId -> master). It is part of the
@@ -570,7 +657,7 @@ export interface BookMsg {
   prices: { priceType: string; amount: string; currency: string }[]; senderName: string; senderEmail: string; productForm: string;
 }
 export interface TableStyleMsg { id: string; name: string; headerObjectStyleId: string; bodyObjectStyleId: string; altObjectStyleId: string; headerTextStyleId: string; bodyTextStyleId: string }
-export interface DocSettingsMsg { vertical: string; baselineIncrement: number; baselineStart: number; facingPages?: boolean; colorMode?: string; iccProfile?: string; book?: BookMsg; conditions?: { name: string; visible: boolean }[]; tableStyles?: TableStyleMsg[] }
+export interface DocSettingsMsg { vertical: string; baselineIncrement: number; baselineStart: number; facingPages?: boolean; presentDevice?: string; colorMode?: string; iccProfile?: string; book?: BookMsg; conditions?: { name: string; visible: boolean }[]; tableStyles?: TableStyleMsg[] }
 
 /** The message form of a book record (every field written). */
 export function bookToMsg(b: BookLite): BookMsg {
@@ -605,7 +692,7 @@ export function bookOf(m: BookMsg | undefined): BookLite | undefined {
 export function settingsToMsg(s: DocSettingsLite): DocSettingsMsg {
   return {
     vertical: s.vertical ?? "", baselineIncrement: s.baselineIncrement ?? 0, baselineStart: s.baselineStart ?? 0,
-    facingPages: s.facingPages === true, colorMode: s.colorMode ?? "", iccProfile: s.iccProfile ?? "",
+    facingPages: s.facingPages === true, presentDevice: s.presentDevice ?? "", colorMode: s.colorMode ?? "", iccProfile: s.iccProfile ?? "",
     ...(s.book ? { book: bookToMsg(s.book) } : {}),
     ...(s.conditions?.length ? { conditions: s.conditions.map((c) => ({ name: c.name, visible: c.visible })) } : {}),
     ...(s.tableStyles?.length ? {
@@ -624,6 +711,7 @@ export function settingsOf(s: DocSettingsMsg): DocSettingsLite {
     ...(s.baselineIncrement ? { baselineIncrement: s.baselineIncrement } : {}),
     ...(s.baselineStart ? { baselineStart: s.baselineStart } : {}),
     ...(s.facingPages ? { facingPages: true } : {}),
+    ...(s.presentDevice && s.presentDevice !== "generic" ? { presentDevice: s.presentDevice } : {}),
     ...(s.colorMode === "cmyk" ? { colorMode: "cmyk" as const } : {}),
     ...(s.iccProfile ? { iccProfile: s.iccProfile } : {}),
     ...(bookOf(s.book) ? { book: bookOf(s.book)! } : {}),
@@ -646,7 +734,7 @@ export function settingsField(s: DocSettingsMsg): { settings?: DocSettingsLite }
 }
 
 export function emptyScene(id: string, name: string): SceneState {
-  return { id, name, schemaVersion: 1, pages: [{ id: "page1", name: "Page 1" }], nodes: NodeMap.empty, flows: {}, transitions: {}, clips: {}, collections: {}, variables: {}, fonts: {}, textStyles: {}, objectStyles: {}, layers: [], comments: {}, components: {}, componentSets: {} };
+  return { id, name, schemaVersion: 1, pages: [{ id: "page1", name: "Page 1" }], nodes: NodeMap.empty, flows: {}, transitions: {}, clips: {}, collections: {}, variables: {}, fonts: {}, textStyles: {}, paintStyles: {}, effectStyles: {}, objectStyles: {}, layers: [], comments: {}, components: {}, componentSets: {} };
 }
 
 const ALIGN_TO_LITE: Record<TextAlign, TextAlignLite> = {
@@ -679,7 +767,24 @@ const STROKE_ALIGN_TO_PB: Record<StrokeAlignLite, StrokeAlign> = {
 // returns the zeros of every field (and it is exactly what remains after a
 // SetText with style_present=true and no style). Here the counterpart is an
 // all-zero style, so the two implementations remain indistinguishable.
+const CASE_TO_LITE: Partial<Record<TextCase, TextCaseLite>> = {
+  [TextCase.UPPER]: "upper", [TextCase.LOWER]: "lower", [TextCase.TITLE]: "title", [TextCase.SMALL_CAPS]: "smallCaps",
+};
+const CASE_TO_PB: Record<TextCaseLite, TextCase> = {
+  upper: TextCase.UPPER, lower: TextCase.LOWER, title: TextCase.TITLE, smallCaps: TextCase.SMALL_CAPS,
+};
+const SCRIPT_TO_LITE: Partial<Record<TextScript, TextScriptLite>> = { [TextScript.SUPER]: "super", [TextScript.SUB]: "sub" };
+const SCRIPT_TO_PB: Record<TextScriptLite, TextScript> = { super: TextScript.SUPER, sub: TextScript.SUB };
+const LIST_TO_LITE: Partial<Record<ListKind, ListKindLite>> = { [ListKind.BULLET]: "bullet", [ListKind.NUMBERED]: "numbered" };
+const LIST_TO_PB: Record<ListKindLite, ListKind> = { bullet: ListKind.BULLET, numbered: ListKind.NUMBERED };
+const VALIGN_TO_LITE: Partial<Record<TextVAlign, TextVAlignLite>> = { [TextVAlign.MIDDLE]: "middle", [TextVAlign.BOTTOM]: "bottom" };
+const VALIGN_TO_PB: Record<TextVAlignLite, TextVAlign> = { middle: TextVAlign.MIDDLE, bottom: TextVAlign.BOTTOM };
+
 export function toTextStyleLite(s: PbTextStyle | undefined): TextStyleLite {
+  const tc = CASE_TO_LITE[s?.textCase ?? TextCase.UNSPECIFIED];
+  const ts = SCRIPT_TO_LITE[s?.textScript ?? TextScript.UNSPECIFIED];
+  const lk = LIST_TO_LITE[s?.listKind ?? ListKind.UNSPECIFIED];
+  const va = VALIGN_TO_LITE[s?.verticalAlign ?? TextVAlign.UNSPECIFIED];
   return {
     fontFamily: s?.fontFamily ?? "",
     fontSize: s?.fontSize ?? 0,
@@ -687,6 +792,14 @@ export function toTextStyleLite(s: PbTextStyle | undefined): TextStyleLite {
     lineHeight: s?.lineHeight ?? 0,
     align: ALIGN_TO_LITE[s?.align ?? TextAlign.UNSPECIFIED] ?? "left",
     ...(s?.italic ? { italic: true } : {}),
+    ...(tc ? { textCase: tc } : {}),
+    ...(ts ? { textScript: ts } : {}),
+    ...(lk ? { listKind: lk } : {}),
+    ...(s && s.indent > 0 ? { indent: s.indent } : {}),
+    ...(s && s.fontFeatures !== "" ? { fontFeatures: s.fontFeatures } : {}),
+    ...(va ? { verticalAlign: va } : {}),
+    ...(s && s.inset > 0 ? { inset: s.inset } : {}),
+    ...(s && s.textScale > 0 ? { textScale: s.textScale } : {}),
     ...(s?.underline ? { underline: true } : {}),
     ...(s?.strikethrough ? { strikethrough: true } : {}),
     ...(s?.letterSpacing ? { letterSpacing: s.letterSpacing } : {}),
@@ -813,6 +926,14 @@ export function toPbTextStyle(s: TextStyleLite) {
     fontFamily: s.fontFamily, fontSize: s.fontSize, fontWeight: s.fontWeight,
     lineHeight: s.lineHeight, align: ALIGN_TO_PB[s.align] ?? TextAlign.LEFT,
     italic: s.italic === true,
+    textCase: s.textCase ? CASE_TO_PB[s.textCase] : TextCase.UNSPECIFIED,
+    textScript: s.textScript ? SCRIPT_TO_PB[s.textScript] : TextScript.UNSPECIFIED,
+    listKind: s.listKind ? LIST_TO_PB[s.listKind] : ListKind.UNSPECIFIED,
+    indent: s.indent ?? 0,
+    fontFeatures: s.fontFeatures ?? "",
+    verticalAlign: s.verticalAlign ? VALIGN_TO_PB[s.verticalAlign] : TextVAlign.UNSPECIFIED,
+    inset: s.inset ?? 0,
+    textScale: s.textScale ?? 0,
     underline: s.underline === true,
     strikethrough: s.strikethrough === true,
     letterSpacing: s.letterSpacing ?? 0,
@@ -820,7 +941,6 @@ export function toPbTextStyle(s: TextStyleLite) {
     script: s.script === "super" ? TextScript.SUPERSCRIPT : s.script === "sub" ? TextScript.SUBSCRIPT : TextScript.NORMAL,
     horizontalScale: s.horizontalScale ?? 0,
     noKerning: s.noKerning === true,
-    fontFeatures: s.fontFeatures ?? "",
     fontVariations: s.fontVariations ?? "",
     ...(s.color ? { color: { r: s.color.r, g: s.color.g, b: s.color.b, a: s.color.a } } : {}),
   };
@@ -845,6 +965,11 @@ export function toPbStrokes(strokes: readonly StrokeLite[]) {
     paint: toPbPaint(s.color),
     weight: s.weight,
     align: STROKE_ALIGN_TO_PB[s.align] ?? StrokeAlign.CENTER,
+    ...(s.startCap ? { startCap: ARROW_TO_PB[s.startCap] } : {}),
+    ...(s.endCap ? { endCap: ARROW_TO_PB[s.endCap] } : {}),
+    ...(s.sides ? { sides: { ...s.sides } } : {}),
+    ...(s.widthProfile && s.widthProfile.length > 0 ? { widthProfile: s.widthProfile.map((p) => ({ ...p })) } : {}),
+    ...(s.brush ? { brush: toPbBrush(s.brush) } : {}),
   }));
 }
 
@@ -859,6 +984,14 @@ export function toPbEffects(effects: readonly EffectLite[]) {
         return { kind: { case: "innerShadow" as const, value: { color: { ...e.color }, offsetX: e.offsetX, offsetY: e.offsetY, blur: e.blur } } };
       case "backgroundBlur":
         return { kind: { case: "backgroundBlur" as const, value: { radius: e.radius } } };
+      case "progressiveBlur":
+        return { kind: { case: "progressiveBlur" as const, value: { startRadius: e.startRadius, endRadius: e.endRadius, x1: e.x1, y1: e.y1, x2: e.x2, y2: e.y2, background: e.background } } };
+      case "noise":
+        return { kind: { case: "noise" as const, value: { mode: NOISE_TO_PB[e.mode], size: e.size, density: e.density, opacity: e.opacity, color: { ...e.color }, color2: { ...e.color2 }, seed: e.seed } } };
+      case "texture":
+        return { kind: { case: "texture" as const, value: { scale: e.scale, intensity: e.intensity, seed: e.seed } } };
+      case "glass":
+        return { kind: { case: "glass" as const, value: { frost: e.frost, light: e.light, lightAngle: e.lightAngle, noise: e.noise } } };
       default:
         return { kind: { case: "layerBlur" as const, value: { radius: e.radius } } };
     }
@@ -867,11 +1000,11 @@ export function toPbEffects(effects: readonly EffectLite[]) {
 
 const LAYOUT_ALIGN_TO_LITE: Partial<Record<LayoutAlign, LayoutAlignLite>> = {
   [LayoutAlign.START]: "start", [LayoutAlign.CENTER]: "center", [LayoutAlign.END]: "end",
-  [LayoutAlign.SPACE_BETWEEN]: "space-between",
+  [LayoutAlign.SPACE_BETWEEN]: "space-between", [LayoutAlign.BASELINE]: "baseline",
 };
 const LAYOUT_ALIGN_TO_PB: Record<LayoutAlignLite, LayoutAlign> = {
   start: LayoutAlign.START, center: LayoutAlign.CENTER, end: LayoutAlign.END,
-  "space-between": LayoutAlign.SPACE_BETWEEN,
+  "space-between": LayoutAlign.SPACE_BETWEEN, baseline: LayoutAlign.BASELINE,
 };
 
 export function toAutoLayoutLite(a: PbAutoLayout): AutoLayoutLite {
@@ -884,6 +1017,26 @@ export function toAutoLayoutLite(a: PbAutoLayout): AutoLayoutLite {
     hugWidth: a.hugWidth, hugHeight: a.hugHeight,
     ...(a.wrap ? { wrap: true as const } : {}),
     ...(a.crossSpacing ? { crossSpacing: a.crossSpacing } : {}),
+    ...(a.mode === LayoutMode.GRID ? { mode: "grid" as const } : {}),
+    ...(a.columns.length > 0 ? { columns: a.columns.map(toTrackLite) } : {}),
+    ...(a.rows.length > 0 ? { rows: a.rows.map(toTrackLite) } : {}),
+    ...(a.columnGap ? { columnGap: a.columnGap } : {}),
+    ...(a.rowGap ? { rowGap: a.rowGap } : {}),
+  };
+}
+
+const TRACK_TO_LITE: Record<GridTrackKind, GridTrackKindLite> = {
+  [GridTrackKind.FIXED]: "fixed", [GridTrackKind.HUG]: "hug", [GridTrackKind.FR]: "fr",
+};
+const TRACK_TO_PB: Record<GridTrackKindLite, GridTrackKind> = { fixed: GridTrackKind.FIXED, hug: GridTrackKind.HUG, fr: GridTrackKind.FR };
+const toTrackLite = (t: { kind: GridTrackKind; size: number }): GridTrackLite => ({ kind: TRACK_TO_LITE[t.kind] ?? "fixed", size: t.size });
+const toPbTrack = (t: GridTrackLite) => ({ kind: TRACK_TO_PB[t.kind], size: t.size });
+
+export function toGridCellLite(c: { column: number; columnSpan: number; row: number; rowSpan: number } | undefined): GridCellLite | undefined {
+  if (!c || (!c.column && !c.columnSpan && !c.row && !c.rowSpan)) return undefined;
+  return {
+    ...(c.column ? { column: c.column } : {}), ...(c.columnSpan ? { columnSpan: c.columnSpan } : {}),
+    ...(c.row ? { row: c.row } : {}), ...(c.rowSpan ? { rowSpan: c.rowSpan } : {}),
   };
 }
 
@@ -895,8 +1048,16 @@ export function toPbAutoLayout(a: AutoLayoutLite) {
     mainAlign: LAYOUT_ALIGN_TO_PB[a.mainAlign], crossAlign: LAYOUT_ALIGN_TO_PB[a.crossAlign],
     hugWidth: a.hugWidth, hugHeight: a.hugHeight,
     wrap: a.wrap === true, crossSpacing: a.crossSpacing ?? 0,
+    mode: a.mode === "grid" ? LayoutMode.GRID : LayoutMode.FLEX,
+    columns: (a.columns ?? []).map(toPbTrack), rows: (a.rows ?? []).map(toPbTrack),
+    columnGap: a.columnGap ?? 0, rowGap: a.rowGap ?? 0,
   };
 }
+
+const NOISE_TO_LITE: Partial<Record<NoiseMode, NoiseModeLite>> = {
+  [NoiseMode.MONO]: "mono", [NoiseMode.DUO]: "duo", [NoiseMode.MULTI]: "multi",
+};
+const NOISE_TO_PB: Record<NoiseModeLite, NoiseMode> = { mono: NoiseMode.MONO, duo: NoiseMode.DUO, multi: NoiseMode.MULTI };
 
 export function toEffectLite(e: PbEffect): EffectLite {
   const k = e.kind;
@@ -909,6 +1070,17 @@ export function toEffectLite(e: PbEffect): EffectLite {
     };
   }
   if (k.case === "backgroundBlur") return { kind: "backgroundBlur", radius: k.value.radius };
+  if (k.case === "progressiveBlur") {
+    const v = k.value;
+    return { kind: "progressiveBlur", startRadius: v.startRadius, endRadius: v.endRadius, x1: v.x1, y1: v.y1, x2: v.x2, y2: v.y2, background: v.background };
+  }
+  if (k.case === "noise") {
+    const v = k.value;
+    const col = (c: typeof v.color) => ({ r: c?.r ?? 0, g: c?.g ?? 0, b: c?.b ?? 0, a: c?.a ?? 1 });
+    return { kind: "noise", mode: NOISE_TO_LITE[v.mode] ?? "mono", size: v.size, density: v.density, opacity: v.opacity, color: col(v.color), color2: col(v.color2), seed: v.seed };
+  }
+  if (k.case === "texture") return { kind: "texture", scale: k.value.scale, intensity: k.value.intensity, seed: k.value.seed };
+  if (k.case === "glass") return { kind: "glass", frost: k.value.frost, light: k.value.light, lightAngle: k.value.lightAngle, noise: k.value.noise };
   // An effect without `kind` (wire from a future version) reads as a
   // null blur: harmless to draw and keeps the position in the list.
   return { kind: "layerBlur", radius: k.case === "layerBlur" ? k.value.radius : 0 };
@@ -928,9 +1100,7 @@ function toPbPaint(c: FillLite) {
       stops: g.stops.map((st) => ({ color: { ...st.color }, position: st.position })),
       x1: g.x1, y1: g.y1, x2: g.x2, y2: g.y2,
     };
-    return g.kind === "linear"
-      ? { kind: { case: "linear" as const, value } }
-      : { kind: { case: "radial" as const, value } };
+    return { kind: { case: g.kind, value } };
   }
   return { kind: { case: "solid" as const, value: { color: { r: c.r, g: c.g, b: c.b, a: c.a } } } };
 }
@@ -943,6 +1113,16 @@ function toPbPaint(c: FillLite) {
 // round-trip with toInstanceOverrideLite is LOSSLESS: a fill-only override
 // does not gain an empty text passing through here, nor lose the distinction between
 // "absent fill" and "emptied fill".
+/** An InstanceLite as the wire InstanceNode init. */
+export function toPbInstance(i: InstanceLite) {
+  return {
+    componentId: i.componentId,
+    overrides: i.overrides.map(toPbInstanceOverride),
+    propertyValues: { ...(i.propertyValues ?? {}) },
+    variantProps: { ...(i.variantProps ?? {}) },
+  };
+}
+
 export function toPbInstanceOverride(o: InstanceOverrideLite) {
   return {
     masterNodeId: o.masterNodeId,
@@ -959,7 +1139,7 @@ export function toPbInstanceOverride(o: InstanceOverrideLite) {
 // the only case is an ABSENT paint, but the `kind` oneof exists to grow).
 function toFillLite(p: PbPaint | undefined): FillLite {
   const k = p?.kind;
-  if (k?.case === "linear" || k?.case === "radial") {
+  if (k?.case === "linear" || k?.case === "radial" || k?.case === "angular" || k?.case === "diamond") {
     const g = k.value;
     const stops = g.stops.map((st) => ({
       color: { r: st.color?.r ?? 0, g: st.color?.g ?? 0, b: st.color?.b ?? 0, a: st.color?.a ?? 1 },
@@ -985,11 +1165,46 @@ function toFillLite(p: PbPaint | undefined): FillLite {
   return c ? { r: c.r, g: c.g, b: c.b, a: c.a } : { r: 0, g: 0, b: 0, a: 1 };
 }
 
+const ARROW_TO_LITE: Partial<Record<ArrowHead, ArrowHeadLite>> = {
+  [ArrowHead.ARROW]: "arrow", [ArrowHead.TRIANGLE]: "triangle", [ArrowHead.CIRCLE]: "circle",
+  [ArrowHead.SQUARE]: "square", [ArrowHead.DIAMOND]: "diamond",
+};
+const ARROW_TO_PB: Record<ArrowHeadLite, ArrowHead> = {
+  arrow: ArrowHead.ARROW, triangle: ArrowHead.TRIANGLE, circle: ArrowHead.CIRCLE, square: ArrowHead.SQUARE, diamond: ArrowHead.DIAMOND,
+};
+
 export function toStrokeLite(s: PbStroke): StrokeLite {
   return {
     color: toFillLite(s.paint),
     weight: s.weight,
     align: STROKE_ALIGN_TO_LITE[s.align] ?? "center",
+    ...(ARROW_TO_LITE[s.startCap] ? { startCap: ARROW_TO_LITE[s.startCap] } : {}),
+    ...(ARROW_TO_LITE[s.endCap] ? { endCap: ARROW_TO_LITE[s.endCap] } : {}),
+    ...(s.sides ? { sides: { top: s.sides.top, right: s.sides.right, bottom: s.sides.bottom, left: s.sides.left } } : {}),
+    ...(s.widthProfile.length > 0 ? { widthProfile: s.widthProfile.map((p) => ({ position: p.position, left: p.left, right: p.right })) } : {}),
+    ...(s.brush && s.brush.kind !== BrushKind.NONE ? { brush: toBrushLite(s.brush) } : {}),
+  };
+}
+
+const BRUSH_KIND_TO_PB: Record<BrushKindLite, BrushKind> = { stretch: BrushKind.STRETCH, scatter: BrushKind.SCATTER };
+const BRUSH_TIP_TO_PB: Record<BrushTipLite, BrushTip> = {
+  dot: BrushTip.DOT, dash: BrushTip.DASH, square: BrushTip.SQUARE, diamond: BrushTip.DIAMOND, leaf: BrushTip.LEAF,
+};
+const BRUSH_TIP_TO_LITE: Record<number, BrushTipLite> = {
+  [BrushTip.DOT]: "dot", [BrushTip.DASH]: "dash", [BrushTip.SQUARE]: "square", [BrushTip.DIAMOND]: "diamond", [BrushTip.LEAF]: "leaf",
+};
+
+function toPbBrush(b: BrushLite) {
+  return {
+    kind: BRUSH_KIND_TO_PB[b.kind], tip: BRUSH_TIP_TO_PB[b.tip], spacing: b.spacing, scatter: b.scatter,
+    sizeJitter: b.sizeJitter, angleJitter: b.angleJitter, seed: b.seed,
+  };
+}
+
+function toBrushLite(b: PbBrush): BrushLite {
+  return {
+    kind: b.kind === BrushKind.SCATTER ? "scatter" : "stretch", tip: BRUSH_TIP_TO_LITE[b.tip] ?? "dot", spacing: b.spacing,
+    scatter: b.scatter, sizeJitter: b.sizeJitter, angleJitter: b.angleJitter, seed: b.seed,
   };
 }
 
@@ -1016,6 +1231,8 @@ function kindOf(shape: PbNode["shape"]): NodeLite["kind"] {
     case "group": return "group";
     case "frame": return "frame";
     case "instance": return "instance";
+    case "polygon": return "polygon";
+    case "star": return "star";
     default: return "unknown";
   }
 }
@@ -1067,6 +1284,13 @@ export function toNodeLite(n: PbNode): NodeLite {
     ...(n.effects.length > 0 ? { effects: n.effects.map(toEffectLite) } : {}),
     kind,
     cornerRadius: n.shape.case === "rect" ? n.shape.value.cornerRadius : 0,
+    ...(n.shape.case === "rect" && n.shape.value.cornerSmoothing > 0 ? { cornerSmoothing: n.shape.value.cornerSmoothing } : {}),
+    ...(n.shape.case === "rect" && n.shape.value.radii ? { radii: toCornerRadiiLite(n.shape.value.radii) } : {}),
+    ...(n.shape.case === "ellipse" && n.shape.value.arcStart !== 0 ? { arcStart: n.shape.value.arcStart } : {}),
+    ...(n.shape.case === "ellipse" && n.shape.value.arcSweep !== 0 ? { arcSweep: n.shape.value.arcSweep } : {}),
+    ...(n.shape.case === "ellipse" && n.shape.value.innerRatio > 0 ? { innerRatio: n.shape.value.innerRatio } : {}),
+    ...(n.shape.case === "polygon" ? { sides: n.shape.value.sides } : {}),
+    ...(n.shape.case === "star" ? { points: n.shape.value.points, innerRatio: n.shape.value.innerRatio } : {}),
     clipsContent: n.shape.case === "frame" ? n.shape.value.clipsContent : false,
     ...(n.shape.case === "frame" && n.shape.value.autoLayout ? { autoLayout: toAutoLayoutLite(n.shape.value.autoLayout) } : {}),
     ...(n.shape.case === "text" ? { text: toTextLite(n.shape.value) } : {}),
@@ -1086,12 +1310,21 @@ export function toNodeLite(n: PbNode): NodeLite {
     ...(Object.keys(n.bindings).length > 0 ? { bindings: { ...n.bindings } } : {}),
     ...(Object.keys(n.modes).length > 0 ? { modes: { ...n.modes } } : {}),
     ...(n.textStyleId !== "" ? { textStyleId: n.textStyleId } : {}),
+    ...(n.fillStyleId !== "" ? { fillStyleId: n.fillStyleId } : {}),
+    ...(n.strokeStyleId !== "" ? { strokeStyleId: n.strokeStyleId } : {}),
+    ...(n.effectStyleId !== "" ? { effectStyleId: n.effectStyleId } : {}),
     ...(n.objectStyleId !== "" ? { objectStyleId: n.objectStyleId } : {}),
     ...(n.layerId !== "" ? { layerId: n.layerId } : {}),
     ...(n.constraintX !== Constraint.UNSPECIFIED ? { constraintX: CONSTRAINT_TO_LITE[n.constraintX] } : {}),
     ...(n.constraintY !== Constraint.UNSPECIFIED ? { constraintY: CONSTRAINT_TO_LITE[n.constraintY] } : {}),
     ...(n.layoutSizingX === LayoutSizing.FILL ? { layoutSizingX: "fill" as const } : {}),
     ...(n.layoutSizingY === LayoutSizing.FILL ? { layoutSizingY: "fill" as const } : {}),
+    ...(n.minWidth ? { minWidth: n.minWidth } : {}),
+    ...(n.maxWidth ? { maxWidth: n.maxWidth } : {}),
+    ...(n.minHeight ? { minHeight: n.minHeight } : {}),
+    ...(n.maxHeight ? { maxHeight: n.maxHeight } : {}),
+    ...(n.layoutPositioning === LayoutPositioning.ABSOLUTE ? { layoutPositioning: "absolute" as const } : {}),
+    ...(toGridCellLite(n.gridCell) ? { gridCell: toGridCellLite(n.gridCell) } : {}),
     ...(blendToLite(n.blendMode) ? { blendMode: blendToLite(n.blendMode) } : {}),
     ...(n.isMask ? { isMask: true as const } : {}),
     ...(n.layoutGrids.length > 0 ? { layoutGrids: n.layoutGrids.map(toLayoutGridLite) } : {}),
@@ -1115,12 +1348,18 @@ export function toPbNode(n: NodeLite): PbNode {
     bindings: n.bindings ? { ...n.bindings } : {},
     modes: n.modes ? { ...n.modes } : {},
     textStyleId: n.textStyleId ?? "",
+    fillStyleId: n.fillStyleId ?? "",
+    strokeStyleId: n.strokeStyleId ?? "",
+    effectStyleId: n.effectStyleId ?? "",
     objectStyleId: n.objectStyleId ?? "",
     layerId: n.layerId ?? "",
     constraintX: n.constraintX ? CONSTRAINT_TO_PB[n.constraintX] : Constraint.UNSPECIFIED,
     constraintY: n.constraintY ? CONSTRAINT_TO_PB[n.constraintY] : Constraint.UNSPECIFIED,
     layoutSizingX: n.layoutSizingX === "fill" ? LayoutSizing.FILL : LayoutSizing.FIXED,
     layoutSizingY: n.layoutSizingY === "fill" ? LayoutSizing.FILL : LayoutSizing.FIXED,
+    minWidth: n.minWidth ?? 0, maxWidth: n.maxWidth ?? 0, minHeight: n.minHeight ?? 0, maxHeight: n.maxHeight ?? 0,
+    layoutPositioning: n.layoutPositioning === "absolute" ? LayoutPositioning.ABSOLUTE : LayoutPositioning.AUTO,
+    ...(n.gridCell ? { gridCell: { column: n.gridCell.column ?? 0, columnSpan: n.gridCell.columnSpan ?? 0, row: n.gridCell.row ?? 0, rowSpan: n.gridCell.rowSpan ?? 0 } } : {}),
     blendMode: toPbBlend(n.blendMode),
     isMask: n.isMask === true,
     layoutGrids: n.layoutGrids ? toPbLayoutGrids(n.layoutGrids) : [],
@@ -1132,7 +1371,11 @@ export function toPbNode(n: NodeLite): PbNode {
       // rectangle going through an undo.
       ? undefined
       : n.kind === "ellipse"
-      ? { case: "ellipse" as const, value: {} }
+      ? { case: "ellipse" as const, value: { arcStart: n.arcStart ?? 0, arcSweep: n.arcSweep ?? 0, innerRatio: n.innerRatio ?? 0 } }
+      : n.kind === "polygon"
+      ? { case: "polygon" as const, value: { sides: n.sides ?? 3 } }
+      : n.kind === "star"
+      ? { case: "star" as const, value: { points: n.points ?? 5, innerRatio: n.innerRatio ?? 0.5 } }
       : n.kind === "image"
         // The hash and nothing else: it is all an ImageNode contains, and rebuilding it
         // here is what makes an image survive the undo of a delete and
@@ -1185,7 +1428,11 @@ export function toPbNode(n: NodeLite): PbNode {
             paragraphStyles: n.text?.paragraphStyles ?? [],
             runs: (n.text?.runs ?? []).map((r) => ({ start: r.start, end: r.end, styleId: r.styleId })),
           } }
-        : { case: "rect" as const, value: { cornerRadius: n.cornerRadius } },
+        : { case: "rect" as const, value: {
+            cornerRadius: n.cornerRadius,
+            ...(n.cornerSmoothing ? { cornerSmoothing: n.cornerSmoothing } : {}),
+            ...(n.radii ? { radii: { ...n.radii } } : {}),
+          } },
   });
   if (n.kind === "unknown" && n.unknownShape) node.shape = n.unknownShape;
   return node;
@@ -1202,6 +1449,7 @@ export function toTransitionLite(t: PbTransition): TransitionLite {
     ...(t.durationMs !== 0 ? { durationMs: t.durationMs } : {}),
     ...(t.easing !== "" ? { easing: t.easing } : {}),
     ...(t.delayMs !== 0 ? { delayMs: t.delayMs } : {}),
+    ...(t.order !== 0 ? { order: t.order } : {}),
   };
 }
 export function toPbFlow(f: FlowLite): PbFlow {
@@ -1211,7 +1459,7 @@ export function toPbTransition(t: TransitionLite): PbTransition {
   return create(TransitionSchema, {
     id: t.id, flowId: t.flowId, fromId: t.fromId, toId: t.toId, label: t.label,
     trigger: t.trigger, elementId: t.elementId, guard: t.guard, effect: t.effect,
-    animation: t.animation ?? "", durationMs: t.durationMs ?? 0, easing: t.easing ?? "", delayMs: t.delayMs ?? 0,
+    animation: t.animation ?? "", durationMs: t.durationMs ?? 0, easing: t.easing ?? "", delayMs: t.delayMs ?? 0, order: t.order ?? 0,
   });
 }
 
@@ -1228,6 +1476,20 @@ export function toPbComment(c: CommentLite): PbComment {
   });
 }
 
+export function toAnnotationLite(a: PbAnnotation): AnnotationLite {
+  return { id: a.id, nodeId: a.nodeId, category: a.category, text: a.text, author: a.author, createdAt: Number(a.createdAt) };
+}
+export function toPbAnnotation(a: AnnotationLite): PbAnnotation {
+  return create(AnnotationSchema, { id: a.id, nodeId: a.nodeId, category: a.category, text: a.text, author: a.author, createdAt: BigInt(Math.trunc(a.createdAt)) });
+}
+export function toReadyLite(r: PbReady): ReadyLite {
+  return { nodeId: r.nodeId, note: r.note, markedBy: r.markedBy, markedAt: Number(r.markedAt) };
+}
+/** The op payload: no snapshot, the server takes it. */
+export function toPbReady(r: ReadyLite): PbReady {
+  return create(ReadyForDevSchema, { nodeId: r.nodeId, note: r.note, markedBy: r.markedBy, markedAt: BigInt(Math.trunc(r.markedAt)) });
+}
+
 export function toCollectionLite(c: PbCollection): CollectionLite {
   return { id: c.id, name: c.name, modes: c.modes.map((m) => ({ id: m.id, name: m.name })) };
 }
@@ -1235,7 +1497,7 @@ export function toPbCollection(c: CollectionLite): PbCollection {
   return create(VariableCollectionSchema, { id: c.id, name: c.name, modes: c.modes.map((m) => ({ id: m.id, name: m.name })) });
 }
 export function toVariableLite(v: PbVariable): VariableLite {
-  const type: VariableTypeLite = v.type === VariableType.COLOR ? "color" : v.type === VariableType.STRING ? "string" : "number";
+  const type: VariableTypeLite = v.type === VariableType.COLOR ? "color" : v.type === VariableType.STRING ? "string" : v.type === VariableType.BOOLEAN ? "boolean" : "number";
   const values: VariableLite["values"] = {};
   for (const [mode, val] of Object.entries(v.values)) {
     if (val.kind.case === "color") {
@@ -1243,6 +1505,7 @@ export function toVariableLite(v: PbVariable): VariableLite {
       values[mode] = { r, g, b, a };
     } else if (val.kind.case === "number") values[mode] = val.kind.value;
     else if (val.kind.case === "text") values[mode] = val.kind.value;
+    else if (val.kind.case === "boolean") values[mode] = val.kind.value;
   }
   return {
     id: v.id, collectionId: v.collectionId, name: v.name, type, values, ...(v.aliasOf !== "" ? { aliasOf: v.aliasOf } : {}),
@@ -1253,19 +1516,21 @@ export function toVariableLite(v: PbVariable): VariableLite {
   };
 }
 export function toPbVariable(v: VariableLite): PbVariable {
-  const values: Record<string, { kind: { case: "color"; value: { r: number; g: number; b: number; a: number } } | { case: "number"; value: number } | { case: "text"; value: string } }> = {};
+  const values: Record<string, { kind: { case: "color"; value: { r: number; g: number; b: number; a: number } } | { case: "number"; value: number } | { case: "text"; value: string } | { case: "boolean"; value: boolean } }> = {};
   for (const [mode, val] of Object.entries(v.values)) {
     values[mode] = typeof val === "number"
       ? { kind: { case: "number", value: val } }
       : typeof val === "string"
         ? { kind: { case: "text", value: val } }
-        : { kind: { case: "color", value: { r: val.r, g: val.g, b: val.b, a: val.a } } };
+        : typeof val === "boolean"
+          ? { kind: { case: "boolean", value: val } }
+          : { kind: { case: "color", value: { r: val.r, g: val.g, b: val.b, a: val.a } } };
   }
   return create(VariableSchema, {
     id: v.id, collectionId: v.collectionId, name: v.name, aliasOf: v.aliasOf ?? "",
     swatch: v.swatch === true, spotName: v.spotName ?? "", tintOf: v.tintOf ?? "", tint: v.tint ?? 0,
     ...(v.cmyk ? { cmyk: v.cmyk } : {}),
-    type: v.type === "color" ? VariableType.COLOR : v.type === "string" ? VariableType.STRING : VariableType.NUMBER, values,
+    type: v.type === "color" ? VariableType.COLOR : v.type === "string" ? VariableType.STRING : v.type === "boolean" ? VariableType.BOOLEAN : VariableType.NUMBER, values,
   });
 }
 
@@ -1381,6 +1646,21 @@ export function toPbTextStyleDef(d: TextStyleDefLite): PbTextStyleDef {
     ...(d.borderColor ? { borderColor: { r: d.borderColor.r, g: d.borderColor.g, b: d.borderColor.b, a: d.borderColor.a } } : {}),
   });
 }
+export function toPaintStyleDefLite(d: PbPaintStyleDef): PaintStyleDefLite {
+  return { id: d.id, name: d.name, paints: d.paints.map(toFillLite) };
+}
+export function toPbPaintStyleDef(d: PaintStyleDefLite): PbPaintStyleDef {
+  return create(PaintStyleDefSchema, { id: d.id, name: d.name, paints: toPbFills(d.paints) });
+}
+export function toEffectStyleDefLite(d: PbEffectStyleDef): EffectStyleDefLite {
+  return { id: d.id, name: d.name, effects: d.effects.map(toEffectLite) };
+}
+export function toPbEffectStyleDef(d: EffectStyleDefLite): PbEffectStyleDef {
+  return create(EffectStyleDefSchema, { id: d.id, name: d.name, effects: toPbEffects(d.effects) });
+}
+export function toCornerRadiiLite(r: { topLeft: number; topRight: number; bottomRight: number; bottomLeft: number }): CornerRadiiLite {
+  return { topLeft: r.topLeft, topRight: r.topRight, bottomRight: r.bottomRight, bottomLeft: r.bottomLeft };
+}
 
 export function toClipLite(c: PbClip): ClipLite {
   return {
@@ -1423,8 +1703,18 @@ export function fromDocument(doc: Document): SceneState {
     variables: Object.fromEntries(Object.entries(doc.variables).map(([id, v]) => [id, toVariableLite(v)])),
     fonts: Object.fromEntries(Object.entries(doc.fonts).map(([id, f]) => [id, toFontLite(f)])),
     textStyles: Object.fromEntries(Object.entries(doc.textStyles).map(([id, d]) => [id, toTextStyleDefLite(d)])),
+    paintStyles: Object.fromEntries(Object.entries(doc.paintStyles).map(([id, d]) => [id, toPaintStyleDefLite(d)])),
+    effectStyles: Object.fromEntries(Object.entries(doc.effectStyles).map(([id, d]) => [id, toEffectStyleDefLite(d)])),
     objectStyles: Object.fromEntries(Object.entries(doc.objectStyles).map(([id, d]) => [id, toObjectStyleLite(d)])),
     layers: doc.layers.map(toLayerLite),
     comments: Object.fromEntries(Object.entries(doc.comments).map(([id, c]) => [id, toCommentLite(c)])),
+    ...(Object.keys(doc.annotations).length > 0 || Object.keys(doc.readyForDev).length > 0
+      ? {
+          dev: {
+            annotations: Object.fromEntries(Object.entries(doc.annotations).map(([id, a]) => [id, toAnnotationLite(a)])),
+            ready: Object.fromEntries(Object.entries(doc.readyForDev).map(([id, r]) => [id, toReadyLite(r)])),
+          },
+        }
+      : {}),
   };
 }

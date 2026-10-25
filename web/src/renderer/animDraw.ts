@@ -1,6 +1,7 @@
 import type { NodeLite } from "../store/types";
 import { flattenSubpath } from "../store/vectorGeometry";
 import { traceSubpath } from "./shapes";
+import { flattenCommands, hasComputedOutline, outlineCommands } from "./shapeGeometry";
 
 // THE STROKE BEING DRAWN ("draw" of an animation).
 //
@@ -24,8 +25,13 @@ export function drawDash(length: number, draw: number): number[] {
  * the ellipse is Ramanujan's approximation (error below 0.01% for any
  * eccentricity a box can have).
  */
-export function perimeterOf(n: Pick<NodeLite, "kind" | "width" | "height" | "cornerRadius">): number {
+export function perimeterOf(n: Pick<NodeLite, "kind" | "width" | "height" | "cornerRadius"> & Partial<NodeLite>): number {
   const w = Math.max(0, n.width), h = Math.max(0, n.height);
+  // Polygon, star, arc / ring and smoothed or independent-corner rectangles: measure the flattened outline.
+  if (hasComputedOutline(n as NodeLite)) {
+    const cmds = outlineCommands({ ...(n as NodeLite), x: 0, y: 0 });
+    return (cmds ? flattenCommands(cmds, 24) : []).reduce((sum, ring) => sum + polylineLength(ring.map(([x, y]) => ({ x, y }))) + (ring.length > 1 ? Math.hypot(ring[0][0] - ring[ring.length - 1][0], ring[0][1] - ring[ring.length - 1][1]) : 0), 0);
+  }
   if (n.kind === "ellipse") {
     const a = w / 2, b = h / 2;
     return Math.PI * (3 * (a + b) - Math.sqrt((3 * a + b) * (a + 3 * b)));

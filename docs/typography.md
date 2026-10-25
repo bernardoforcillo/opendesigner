@@ -13,7 +13,8 @@ Document.text_styles : map<id, TextStyleDef>
 
 FontFace     { id, family, weight "100".."900", style "normal"|"italic", asset_hash }
 TextStyleDef { id, name, style: TextStyle }
-TextStyle    { font_family, font_size, font_weight, line_height, align, italic }
+TextStyle    { font_family, font_size, font_weight, line_height, align, italic,
+               text_case, text_script, list_kind, indent, font_features, vertical_align, inset, text_scale }
 Node.text_style_id : the shared style a text node applies (text nodes only)
 ```
 
@@ -88,10 +89,57 @@ rejections included.
   `textStyles` and each node's `textStyleId`. Uploading the font file itself is an
   editor action (the MCP tools register an already-uploaded hash).
 
+## Case, scripts, lists and OpenType
+
+Fields 20..26 of `TextStyle` (so a shared text style carries them too). All default to "unset", which draws exactly as before.
+
+| Field | Values | What it does |
+|---|---|---|
+| `text_case` | upper, lower, title, small caps | transforms what is **drawn**; the content keeps its capitalisation. Title lowercases the rest of each word. |
+| `text_script` | super, sub | glyphs at 0.65 of the size, raised 0.33em / lowered 0.12em |
+| `list_kind` | bullet, numbered | every paragraph (line break) is an item: marker in a hanging column, the text wraps inside it. Empty paragraphs get no marker and are not counted. |
+| `indent` | px >= 0 | added to the left of every paragraph (and its marker) |
+| `font_features` | CSS `font-feature-settings`, e.g. `"liga" 0, "tnum", "ss01"` | OpenType features |
+| `vertical_align` | top, middle, bottom | where the text sits in a box taller than it (a taller text starts at the top) |
+| `inset` | px >= 0 | padding between the box and the text; the wrap width is the box less twice the inset |
+
+`core.validateTextExtras` (and its twin `isValidTextStyleDef`) check enums in range, finite non-negative indent/inset and a well-formed feature string (`core.ValidFontFeatures`: comma-separated `"tag"` or `"tag" N`, tags of four alphanumerics). The feature string ends up in CSS and SVG, so the renderers also re-check it and drop a malformed one.
+
+**Small caps are synthesised**: lowercase letters are drawn as capitals at 0.8 of the size (`renderer/text.ts::runsOf`), so the layout can measure them and the 2D canvas, CanvasKit and SVG agree; a `"smcp"` / `"c2sc"` feature (not set to 0) means the same. Super/subscript and small caps share this run mechanism: `placeTextLines` returns, for such a line, `segments` (text, x, baseline y, scale), which the canvas, the GPU renderer and the SVG export all draw. Lists use the same segments for the marker.
+
+### Where it shows up
+
+- **2D canvas / CanvasKit**: runs and markers as above. OpenType features: the 2D canvas has no `font-feature-settings`, so only `"liga" 0` is honoured (it maps to `textRendering = "optimizeSpeed"`, which also turns kerning off) and `"smcp"` (synthesised); the GPU renderer ignores the others.
+- **SVG**: case is baked into the text, runs and markers are separate `<tspan>`s with their own `font-size`, features are `style="font-feature-settings:..."` on the `<text>`.
+- **HTML / React / Tailwind**: `text-transform` (title also lowercases the content), `font-variant-caps: small-caps`, `font-feature-settings`, a smaller `font-size` and a `padding-top` standing in for the baseline shift, `padding` / `padding-left` for inset and indent, a flex column for vertical alignment, and a list becomes one `display: list-item` block per paragraph (`list-style-type: disc | decimal`, marker hanging outside) so the browser numbers it.
+- **Editor**: the *Text* section has case, script, list and vertical-align selects, indent and inset fields, ligature and tabular-figure toggles and a free `font-feature-settings` field.
+- **MCP**: `create_text`, `set_text`, `set_text_style` take `textCase` (`none|upper|lower|title|smallCaps`), `script` (`none|super|sub`), `list` (`none|bullet|numbered`), `indent`, `fontFeatures`, `verticalAlign` (`top|middle|bottom`) and `inset`; `get_document` reports a text node's `format` and `list_text_styles` the same fields. `set_text` now **overlays** the style fields it is given on the node's current style (it used to zero the omitted ones).
+
+### Horizontal scale
+
+`text_scale` (field 30 of `TextStyle`, so shared styles carry it too) stretches the glyphs horizontally, in percent: 0 is unset (100), otherwise 1..1000 (`core.validateTextExtras`). The height of the line does not change. The layout measures with it (so the wrap and alignment see the stretched widths), the 2D canvas and CanvasKit stretch each piece about its start (`save` / `scale`), the SVG puts the pieces of one scale in a `<text transform="scale(s 1)">` with their `x` divided by `s`, and the CSS export writes `transform: scaleX(s)` about the edge the text hangs from, with the width divided so the box keeps its size. Panel: *Scale %* in the Text section and in the styles dialog; MCP: `textScale` in `create_text`, `set_text` and `set_text_style` (0 clears).
+
+Approximations: letter spacing is stretched with the glyphs; a text with a gradient fill has the gradient stretched with each piece; the CSS export leaves a rotated text unscaled (the transform is taken by the rotation).
+
+### Rich text (paragraph and character styles)
+
+Text with paragraph styles or runs (docs/rich-text.md) draws the same extras as plain text, with the same helpers (`caseText`, `runsOf`, `styledMeasure`, the list marker and lead, `insetOf`) and the same drawing of pieces (`PlacedSegment.pieces`). Plain text keeps its own layout function; what is shared is everything that decides how a piece is measured and drawn.
+
+| Setting | Level | Resolution |
+|---|---|---|
+| `text_case`, `text_script`, `font_features`, `text_scale` | character | the node's style, the paragraph style on top, the run's character style on top; a field counts as set when non-empty / non-zero, so a run cannot turn a paragraph's case or script *off* |
+| `list_kind`, `indent` | paragraph | the paragraph style over the node's style (a node with a list makes every paragraph an item); the marker column is as wide as the widest marker of the node and a paragraph that is not an item restarts the numbering |
+| `vertical_align`, `inset` | box | **only the node's own style** (or its shared text style); a paragraph style carrying them has no effect on the box |
+
+A character style cannot carry `list_kind`, `indent`, `vertical_align` or `inset` (they could never apply to a range): `SetTextStyleDef` refuses it, in Go and in the editor store. Title case continues across a run boundary (`He` + bold `llo` is `Hello`); a case change that would alter the length of a piece (a German sharp s) is not applied there, so run offsets stay the typed ones. The wrap width, the alignment, the vertical offset and the baseline grid all start inside the inset, and the bounds / threaded frames count it. In the editor, the styles dialog has case, script, scale and OpenType fields for both kinds, and list and indent for paragraph styles; MCP `set_text_style` takes the same `textCase`, `script`, `list`, `indent`, `fontFeatures`, `textScale`.
+
+Declared approximations: the editing textarea shows the raw content (no case, no marker); runs are measured by scaling the base-size width, so kerning across a run boundary is lost; a numbered marker column is sized from the widest marker; the CSS script shift is a padding approximation.
+
 ## Not yet
 
-- Letter spacing, text decoration, case, paragraph spacing, per-range styling
-  (one style per text node today), OpenType features and variable fonts' axes.
+- Letter spacing, text decoration, paragraph spacing, per-range styling
+  (one style per text node today), tabular figures and stylistic sets
+  on the 2D canvas / GPU renderer (CSS and SVG only), and variable fonts' axes.
 - Kerning and shaping in the GPU renderer (it measures glyph by glyph).
 - A text style that overrides only some properties (a style replaces the node's
   whole style).

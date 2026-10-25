@@ -11,7 +11,7 @@ import type { CollectionLite, FillLite, SceneState, VariableLite } from "../stor
 //  - CSS custom properties: `:root` carries the first mode of every collection and a
 //    `[data-theme="<mode>"]` block overrides what the other modes change.
 // An alias leaves as the value it resolves to in each mode (the formats here have no portable
-// alias across our collections); a string variable leaves as a "string" token.
+// alias across our collections); a string variable leaves as a "string" token and a boolean one as a "boolean" token (CSS: true / false).
 // A DTCG file comes back in as new collections of variables. Pure: scene in, text out and the
 // reverse, never touching the store.
 
@@ -24,7 +24,7 @@ export function colorToHex(c: { r: number; g: number; b: number; a: number }): s
   return `#${channel(c.r)}${channel(c.g)}${channel(c.b)}${c.a >= 1 ? "" : channel(c.a)}`;
 }
 
-type Value = FillLite | number | string;
+type Value = FillLite | number | string | boolean;
 
 /** The value of `v` in `mode` (an alias resolved, a mode with no value falling back to the default). */
 function valueOf(scene: SceneState, v: VariableLite, mode: string): Value | undefined {
@@ -51,7 +51,7 @@ export function toDtcg(scene: SceneState): string {
     const vars = Object.values(scene.variables).filter((v) => v.collectionId === col.id).sort((a, b) => a.name.localeCompare(b.name));
     const first = col.modes[0]?.id ?? "";
     for (const v of vars) {
-      const fmt = (x: Value | undefined) => (typeof x === "number" || typeof x === "string" ? x : x ? colorToHex(x) : undefined);
+      const fmt = (x: Value | undefined) => (typeof x === "number" || typeof x === "string" || typeof x === "boolean" ? x : x ? colorToHex(x) : undefined);
       const leaf: Json = { $type: v.type, $value: fmt(valueOf(scene, v, first)) };
       const extra: Json = {};
       for (const m of col.modes.slice(1)) {
@@ -78,7 +78,7 @@ export function toCssVariables(scene: SceneState): string {
     const vars = Object.values(scene.variables).filter((v) => v.collectionId === col.id).sort((a, b) => a.name.localeCompare(b.name));
     const first = col.modes[0]?.id ?? "";
     const name = (v: VariableLite) => `--${v.name.split("/").map(cssIdent).join("-")}`;
-    const css = (x: Value | undefined) => (typeof x === "number" ? String(x) : typeof x === "string" ? JSON.stringify(x) : x ? colorToHex(x) : undefined);
+    const css = (x: Value | undefined) => (typeof x === "number" || typeof x === "boolean" ? String(x) : typeof x === "string" ? JSON.stringify(x) : x ? colorToHex(x) : undefined);
     for (const v of vars) {
       const x = css(valueOf(scene, v, first));
       if (x !== undefined) rootLines.push(`  ${name(v)}: ${x};`);

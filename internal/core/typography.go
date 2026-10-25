@@ -55,7 +55,10 @@ var (
 	fontFamilyRe     = regexp.MustCompile(`^[\p{L}\p{N} _.\-]{1,64}$`)
 	fontFamilyListRe = regexp.MustCompile(`^[\p{L}\p{N} _.,'\-]{0,128}$`)
 	fontWeightRe     = regexp.MustCompile(`^[1-9]00$`)
-	assetHashRe      = regexp.MustCompile(`^[0-9a-f]{64}$`)
+	// fontFeaturesRe is a CSS font-feature-settings value: quoted four-letter tags with an
+	// optional integer, e.g. `"liga" 0, "tnum", "ss01" 1`. The shape is checked at the call site.
+	fontFeaturesRe = regexp.MustCompile(`^[A-Za-z0-9 ,"]{0,128}$`)
+	assetHashRe    = regexp.MustCompile(`^[0-9a-f]{64}$`)
 )
 
 func validateFont(doc *opendesignerv1.Document, f *opendesignerv1.FontFace) error {
@@ -98,6 +101,9 @@ func validateTextStyleDef(doc *opendesignerv1.Document, d *opendesignerv1.TextSt
 	}
 	if ls := st.GetLetterSpacing(); math.IsNaN(ls) || math.IsInf(ls, 0) || ls < -1000 || ls > 1000 {
 		return ErrTextStyleValue
+	}
+	if err := validateTextExtras(st); err != nil {
+		return err
 	}
 	if err := validateStyleGlyphs(st); err != nil {
 		return err
@@ -155,7 +161,7 @@ func hasParagraphLook(d *opendesignerv1.TextStyleDef) bool {
 }
 
 func validateStyleGlyphs(st *opendesignerv1.TextStyle) error {
-	if !validFontFeatures(st.GetFontFeatures()) {
+	if !ValidFontFeatures(st.GetFontFeatures()) {
 		return fmt.Errorf("%w: font features %q", ErrTextStyleValue, st.GetFontFeatures())
 	}
 	if !validFontVariations(st.GetFontVariations()) {
@@ -251,6 +257,12 @@ func validateStyleRelations(doc *opendesignerv1.Document, d *opendesignerv1.Text
 	if character && d.GetAlignToGrid() {
 		return fmt.Errorf("%w: a character style cannot align to the grid", ErrTextStyleValue)
 	}
+	// List, indent, vertical alignment and inset belong to a paragraph or to the whole box: a character
+	// style over a range could never apply them.
+	if st := d.GetStyle(); character && (st.GetListKind() != opendesignerv1.ListKind_LIST_KIND_UNSPECIFIED || st.GetIndent() != 0 ||
+		st.GetVerticalAlign() != opendesignerv1.TextVAlign_TEXT_V_ALIGN_UNSPECIFIED || st.GetInset() != 0) {
+		return fmt.Errorf("%w: a character style has no list, indent, vertical alignment or inset", ErrTextStyleValue)
+	}
 	if character && (d.GetNextStyleId() != "" || d.GetSpaceBefore() != 0 || d.GetSpaceAfter() != 0 || d.GetIndentFirst() != 0 || d.GetIndentLeft() != 0) {
 		return fmt.Errorf("%w: a character style has no paragraph settings", ErrTextStyleValue)
 	}
@@ -268,6 +280,65 @@ func validateStyleRelations(doc *opendesignerv1.Document, d *opendesignerv1.Text
 		cur = b.GetBasedOn()
 	}
 	return nil
+}
+
+// validateTextExtras checks the case / script / list / OpenType / box fields of a
+// text style: enums in range, finite non-negative indent and inset, and a
+// well-formed feature string (it is written into ctx.fontVariant*, SVG and CSS).
+func validateTextExtras(st *opendesignerv1.TextStyle) error {
+	if _, ok := opendesignerv1.TextCase_name[int32(st.GetTextCase())]; !ok {
+		return ErrTextStyleValue
+	}
+	if _, ok := opendesignerv1.TextScript_name[int32(st.GetTextScript())]; !ok {
+		return ErrTextStyleValue
+	}
+	if _, ok := opendesignerv1.ListKind_name[int32(st.GetListKind())]; !ok {
+		return ErrTextStyleValue
+	}
+	if _, ok := opendesignerv1.TextVAlign_name[int32(st.GetVerticalAlign())]; !ok {
+		return ErrTextStyleValue
+	}
+	if !finiteNonNeg(st.GetIndent()) || !finiteNonNeg(st.GetInset()) || !ValidFontFeatures(st.GetFontFeatures()) {
+		return ErrTextStyleValue
+	}
+	// text_scale: unset (0) or a percentage in 1..1000.
+	if sc := st.GetTextScale(); sc != 0 && !(sc >= 1 && sc <= 1000) {
+		return ErrTextStyleValue
+	}
+	return nil
+}
+
+// ValidFontFeatures reports whether s is "" or a comma-separated list of
+// `"tag"` / `"tag" N` items (tag: four ASCII alphanumerics, N: 0..9999) or the bare
+// form `tag` / `tag on|off|N`. For the
+// MCP tools, which run the same check before submitting.
+func ValidFontFeatures(s string) bool {
+	return validCSSFontFeatures(s) || validFontFeatures(s)
+}
+
+func validCSSFontFeatures(s string) bool {
+	if s == "" {
+		return true
+	}
+	if !fontFeaturesRe.MatchString(s) {
+		return false
+	}
+	for _, item := range strings.Split(s, ",") {
+		parts := strings.Fields(item)
+		if len(parts) == 0 || len(parts) > 2 {
+			return false
+		}
+		tag := parts[0]
+		if len(tag) != 6 || tag[0] != '"' || tag[5] != '"' || strings.Contains(tag[1:5], `"`) {
+			return false
+		}
+		if len(parts) == 2 {
+			if len(parts[1]) > 4 || strings.Trim(parts[1], "0123456789") != "" {
+				return false
+			}
+		}
+	}
+	return true
 }
 
 func applySetFont(doc *opendesignerv1.Document, s *opendesignerv1.SetFont) error {

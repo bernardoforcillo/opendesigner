@@ -71,13 +71,15 @@ func encodeSchema(defs []td) []byte {
 			if d.kind == kindEnum {
 				e.varint(0)
 			} else {
-				t := -1
+				// A built-in is the complement of its index (bool is ^0 = -1, so a "not found" sentinel
+				// would swallow it: that once made every bool field decode as a NodeType).
+				t, builtin := 0, false
 				for i, b := range builtins {
 					if b == f.typ {
-						t = ^i
+						t, builtin = ^i, true
 					}
 				}
-				if t == -1 {
+				if !builtin {
 					t = idx[f.typ]
 				}
 				e.varint(int64(t))
@@ -172,7 +174,10 @@ func toF(v any) float64 {
 
 func testDefs() []td {
 	return []td{
-		{"NodeType", kindEnum, []tf{{"DOCUMENT", "", false, 1}, {"CANVAS", "", false, 2}, {"FRAME", "", false, 3}, {"RECTANGLE", "", false, 4}, {"TEXT", "", false, 5}, {"ELLIPSE", "", false, 6}, {"VECTOR", "", false, 7}, {"GROUP", "", false, 8}, {"INSTANCE", "", false, 9}, {"SLICE", "", false, 10}}},
+		{"NodeType", kindEnum, []tf{{"DOCUMENT", "", false, 1}, {"CANVAS", "", false, 2}, {"FRAME", "", false, 3}, {"RECTANGLE", "", false, 4}, {"TEXT", "", false, 5}, {"ELLIPSE", "", false, 6}, {"VECTOR", "", false, 7}, {"GROUP", "", false, 8}, {"INSTANCE", "", false, 9}, {"SLICE", "", false, 10}, {"STAR", "", false, 11}, {"REGULAR_POLYGON", "", false, 12}, {"CONNECTOR", "", false, 13}, {"TABLE", "", false, 14}, {"TABLE_CELL", "", false, 15}, {"STICKY", "", false, 16}, {"SLIDE", "", false, 17}, {"VARIABLE", "", false, 18}, {"VARIABLE_SET", "", false, 19}}},
+		{"VariableField", kindEnum, []tf{{"MISSING", "", false, 0}, {"STROKE_WEIGHT", "", false, 1}, {"STACK_SPACING", "", false, 2}, {"STACK_PADDING_LEFT", "", false, 3}, {"STACK_PADDING_TOP", "", false, 4}, {"STACK_PADDING_RIGHT", "", false, 5}, {"STACK_PADDING_BOTTOM", "", false, 6}, {"VISIBLE", "", false, 7}, {"TEXT_DATA", "", false, 8}, {"OPACITY", "", false, 9}, {"FONT_SIZE", "", false, 10}, {"CORNER_RADIUS", "", false, 11}, {"WIDTH", "", false, 12}, {"STACK_COUNTER_SPACING", "", false, 13}}},
+		{"DataType", kindEnum, []tf{{"BOOLEAN", "", false, 0}, {"FLOAT", "", false, 1}, {"STRING", "", false, 2}, {"ALIAS", "", false, 3}, {"COLOR", "", false, 4}}},
+		{"ResolvedType", kindEnum, []tf{{"BOOLEAN", "", false, 0}, {"FLOAT", "", false, 1}, {"STRING", "", false, 2}, {"COLOR", "", false, 4}, {"TEXT_DATA", "", false, 8}}},
 		{"PaintType", kindEnum, []tf{{"SOLID", "", false, 1}, {"GRADIENT_LINEAR", "", false, 2}, {"IMAGE", "", false, 3}}},
 		{"GUID", kindStruct, []tf{{"sessionID", "uint", false, 1}, {"localID", "uint", false, 2}}},
 		{"Vector", kindStruct, []tf{{"x", "float", false, 1}, {"y", "float", false, 2}}},
@@ -181,9 +186,26 @@ func testDefs() []td {
 		{"ColorStop", kindStruct, []tf{{"color", "Color", false, 1}, {"position", "float", false, 2}}},
 		{"ParentIndex", kindMessage, []tf{{"guid", "GUID", false, 1}, {"position", "string", false, 2}}},
 		{"Image", kindMessage, []tf{{"hash", "byte", true, 1}}},
-		{"Paint", kindMessage, []tf{{"type", "PaintType", false, 1}, {"color", "Color", false, 2}, {"opacity", "float", false, 3}, {"visible", "bool", false, 4}, {"stops", "ColorStop", true, 5}, {"transform", "Matrix", false, 6}, {"image", "Image", false, 7}, {"imageScaleMode", "string", false, 8}}},
+		{"Paint", kindMessage, []tf{{"type", "PaintType", false, 1}, {"color", "Color", false, 2}, {"opacity", "float", false, 3}, {"visible", "bool", false, 4}, {"stops", "ColorStop", true, 5}, {"transform", "Matrix", false, 6}, {"image", "Image", false, 7}, {"imageScaleMode", "string", false, 8}, {"colorVar", "VariableData", false, 9}, {"stopsVar", "StopVar", true, 10}}},
+		{"StopVar", kindMessage, []tf{{"colorVar", "VariableData", false, 1}}},
+		{"AssetRef", kindMessage, []tf{{"key", "string", false, 1}, {"version", "string", false, 2}}},
+		{"VariableID", kindMessage, []tf{{"guid", "GUID", false, 1}, {"assetRef", "AssetRef", false, 2}}},
+		{"AnyValue", kindMessage, []tf{{"boolValue", "bool", false, 1}, {"floatValue", "float", false, 2}, {"alias", "VariableID", false, 3}, {"colorValue", "Color", false, 4}, {"textValue", "string", false, 5}}},
+		{"VariableData", kindMessage, []tf{{"value", "AnyValue", false, 1}, {"dataType", "DataType", false, 2}}},
+		{"MapEntry", kindMessage, []tf{{"variableData", "VariableData", false, 1}, {"variableField", "VariableField", false, 2}}},
+		{"VariableDataMap", kindMessage, []tf{{"entries", "MapEntry", true, 1}}},
+		{"SetMode", kindMessage, []tf{{"id", "GUID", false, 1}, {"name", "string", false, 2}, {"sortPosition", "string", false, 3}}},
+		{"ValuesEntry", kindMessage, []tf{{"modeID", "GUID", false, 1}, {"variableData", "VariableData", false, 2}}},
+		{"Values", kindMessage, []tf{{"entries", "ValuesEntry", true, 1}}},
+		{"ModeEntry", kindMessage, []tf{{"variableSetID", "VariableID", false, 1}, {"variableModeID", "GUID", false, 2}}},
+		{"ModeMap", kindMessage, []tf{{"entries", "ModeEntry", true, 1}}},
 		{"TextData", kindMessage, []tf{{"characters", "string", false, 1}}},
 		{"FontName", kindMessage, []tf{{"family", "string", false, 1}, {"style", "string", false, 2}}},
+		{"ArcData", kindMessage, []tf{{"startingAngle", "float", false, 1}, {"endingAngle", "float", false, 2}, {"innerRadius", "float", false, 3}}},
+		{"ConnectorEnd", kindMessage, []tf{{"endpointNodeID", "GUID", false, 1}, {"position", "Vector", false, 2}, {"relativePosition", "Vector", false, 3}}},
+		{"GUIDPath", kindMessage, []tf{{"guids", "GUID", true, 1}}},
+		{"FrameRow", kindMessage, []tf{{"guidPath", "GUIDPath", false, 1}, {"fillGeometry", "Geometry", true, 2}, {"strokeGeometry", "Geometry", true, 3}}},
+		{"DerivedFrame", kindMessage, []tf{{"version", "float", false, 1}, {"overrides", "FrameRow", true, 2}}},
 		{"Geometry", kindMessage, []tf{{"commandsBlob", "uint", false, 1}}},
 		{"NodeChange", kindMessage, []tf{
 			{"guid", "GUID", false, 1}, {"parentIndex", "ParentIndex", false, 2}, {"type", "NodeType", false, 3}, {"name", "string", false, 4},
@@ -191,7 +213,11 @@ func testDefs() []td {
 			{"fillPaints", "Paint", true, 9}, {"strokePaints", "Paint", true, 10}, {"strokeWeight", "float", false, 11}, {"cornerRadius", "float", false, 12},
 			{"textData", "TextData", false, 13}, {"fontSize", "float", false, 14}, {"fontName", "FontName", false, 15}, {"stackMode", "string", false, 16},
 			{"stackSpacing", "float", false, 17}, {"stackPaddingLeft", "float", false, 18}, {"fillGeometry", "Geometry", true, 19}, {"mask", "bool", false, 20},
-			{"horizontalConstraint", "string", false, 21},
+			{"horizontalConstraint", "string", false, 21}, {"count", "uint", false, 22}, {"starInnerScale", "float", false, 23}, {"arcData", "ArcData", false, 24},
+			{"connectorLineStyle", "string", false, 25}, {"strokeGeometry", "Geometry", true, 26}, {"connectorStart", "ConnectorEnd", false, 27}, {"variableConsumptionMap", "VariableDataMap", false, 28},
+			{"variableSetModes", "SetMode", true, 29}, {"variableSetID", "VariableID", false, 30}, {"variableResolvedType", "ResolvedType", false, 31}, {"variableDataValues", "Values", false, 32},
+			{"variableModeBySetMap", "ModeMap", false, 33}, {"key", "string", false, 34}, {"version", "string", false, 35}, {"isSoftDeleted", "bool", false, 36}, {"sortPosition", "string", false, 37},
+			{"connectorEnd", "ConnectorEnd", false, 38}, {"derivedImmutableFrameData", "DerivedFrame", false, 39},
 		}},
 		{"Blob", kindMessage, []tf{{"bytes", "byte", true, 1}}},
 		{"Message", kindMessage, []tf{{"nodeChanges", "NodeChange", true, 1}, {"blobs", "Blob", true, 2}}},
@@ -224,10 +250,10 @@ func deflateRaw(b []byte) []byte {
 	return buf.Bytes()
 }
 
-func zstdCompress(b []byte) []byte {
-	w, _ := zstd.NewWriter(nil)
-	return w.EncodeAll(b, nil)
-}
+// zstdWriter is shared: EncodeAll can be called again, and a new encoder per call is the slow part.
+var zstdWriter, _ = zstd.NewWriter(nil, zstd.WithEncoderConcurrency(1))
+
+func zstdCompress(b []byte) []byte { return zstdWriter.EncodeAll(b, nil) }
 
 func zipOf(files map[string][]byte) []byte {
 	var buf bytes.Buffer
@@ -301,6 +327,16 @@ func fixture() map[string]any {
 						map[string]any{"color": map[string]any{"r": 1, "g": 0, "b": 0, "a": 1}, "position": 0},
 						map[string]any{"color": map[string]any{"r": 0, "g": 0, "b": 1, "a": 1}, "position": 1},
 					}}},
+			}),
+			change(9, 2, "d", "STAR", "Spark", map[string]any{
+				"size": map[string]any{"x": 60, "y": 60}, "transform": mat(0, 100), "fillPaints": []any{solid(1, 1, 0)}, "count": 6, "starInnerScale": 0.5,
+			}),
+			change(10, 2, "e", "REGULAR_POLYGON", "Hex", map[string]any{
+				"size": map[string]any{"x": 60, "y": 60}, "transform": mat(80, 100), "fillPaints": []any{solid(0, 1, 1)}, "count": 6,
+			}),
+			change(11, 2, "f", "ELLIPSE", "Donut", map[string]any{
+				"size": map[string]any{"x": 60, "y": 60}, "transform": mat(160, 100), "fillPaints": []any{solid(1, 0, 1)},
+				"arcData": map[string]any{"startingAngle": 0, "endingAngle": 3.14159265358979, "innerRadius": 0.5},
 			}),
 			change(7, 1, "c", "SLICE", "Slice", nil),
 			change(8, 1, "d", "INSTANCE", "Inst", map[string]any{"size": map[string]any{"x": 10, "y": 10}, "transform": mat(700, 700)}),
@@ -380,6 +416,17 @@ func TestImportsAFigFile(t *testing.T) {
 			}
 			if g := dot.Fills[0].GetLinear(); g == nil || len(g.Stops) != 2 || g.X1 != 0 || g.Y1 != 0.5 || g.X2 != 1 || g.Y2 != 0.5 {
 				t.Fatalf("dot gradient = %v", dot.Fills)
+			}
+
+			// A star, a polygon and an arc keep their parameters instead of becoming paths.
+			if st := find(res, "Spark").GetStar(); st == nil || st.GetPoints() != 6 || st.GetInnerRatio() != 0.5 {
+				t.Fatalf("star = %v", find(res, "Spark"))
+			}
+			if pg := find(res, "Hex").GetPolygon(); pg == nil || pg.GetSides() != 6 {
+				t.Fatalf("polygon = %v", find(res, "Hex"))
+			}
+			if el := find(res, "Donut").GetEllipse(); el == nil || el.GetArcSweep() != 180 || el.GetInnerRatio() != 0.5 || el.GetArcStart() != 0 {
+				t.Fatalf("arc = %v", find(res, "Donut"))
 			}
 
 			if find(res, "Slice") != nil {
@@ -479,5 +526,179 @@ func TestBadPathCommandsFallBack(t *testing.T) {
 	tri := find(res, "Tri")
 	if tri.GetRect() == nil || !strings.Contains(strings.Join(res.Warnings, "|"), "imported as a rectangle") {
 		t.Fatalf("a misread path must become a rectangle with a warning: %v / %v", tri, res.Warnings)
+	}
+}
+
+func tailFixture() map[string]any {
+	return map[string]any{
+		"nodeChanges": []any{
+			map[string]any{"guid": guid(1, 0), "type": "DOCUMENT", "name": "Document"},
+			change(1, 0, "a", "CANVAS", "Page 1", nil),
+			change(2, 1, "a", "CONNECTOR", "Elbow", map[string]any{
+				"size": map[string]any{"x": 100, "y": 60}, "transform": mat(0, 0), "strokePaints": []any{solid(0, 0, 1)}, "strokeWeight": 2,
+				"connectorLineStyle": "ELBOWED", "connectorStart": map[string]any{"endpointNodeID": guid(1, 999)},
+			}),
+			change(3, 1, "b", "CONNECTOR", "Curve", map[string]any{
+				"size": map[string]any{"x": 80, "y": 40}, "transform": mat(0, 100), "strokePaints": []any{solid(1, 0, 0)}, "strokeWeight": 1, "connectorLineStyle": "CURVED",
+			}),
+			change(4, 1, "c", "CONNECTOR", "Saved", map[string]any{
+				"size": map[string]any{"x": 40, "y": 40}, "transform": mat(0, 200), "strokePaints": []any{solid(0, 1, 0)}, "strokeWeight": 3,
+				"strokeGeometry": []any{map[string]any{"commandsBlob": 0}},
+			}),
+			change(5, 1, "d", "TABLE", "Grid", map[string]any{"size": map[string]any{"x": 200, "y": 60}, "transform": mat(300, 0)}),
+			change(6, 5, "a", "TABLE_CELL", "Cell A", map[string]any{
+				"size": map[string]any{"x": 100, "y": 30}, "transform": mat(0, 0), "fillPaints": []any{solid(0.9, 0.9, 0.9)}, "textData": map[string]any{"characters": "Name"},
+			}),
+			change(7, 5, "b", "TABLE_CELL", "Cell B", map[string]any{
+				"size": map[string]any{"x": 100, "y": 30}, "transform": mat(100, 0), "textData": map[string]any{"characters": "Qty"},
+			}),
+			change(8, 1, "e", "STICKY", "Note", map[string]any{
+				"size": map[string]any{"x": 80, "y": 80}, "transform": mat(300, 200), "fillPaints": []any{solid(1, 0.9, 0.2)}, "textData": map[string]any{"characters": "Remember"},
+				"variableConsumptionMap": consumption(bound("WIDTH", 1)),
+			}),
+		},
+		"blobs": []any{map[string]any{"bytes": cmd(1, 0.0, 0.0, 2, 40.0, 0.0, 2, 40.0, 5.0, 2, 0.0, 5.0, 0)}},
+	}
+}
+
+func TestImportsTheTail(t *testing.T) {
+	res, err := Import(buildCanvas(t, tailFixture(), deflateRaw), Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// An elbow goes across, along, across; a curve is one cubic segment; neither keeps a fill.
+	el := find(res, "Elbow").GetVector()
+	if el == nil || len(el.Subpaths) != 1 || len(el.Subpaths[0].Anchors) != 4 || el.Subpaths[0].Closed {
+		t.Fatalf("elbow = %v", find(res, "Elbow"))
+	}
+	if a := el.Subpaths[0].Anchors; a[1].X != 50 || a[1].Y != 0 || a[2].X != 50 || a[2].Y != 60 || a[3].X != 100 || a[3].Y != 60 {
+		t.Fatalf("elbow anchors = %v", a)
+	}
+	if n := find(res, "Elbow"); len(n.Fills) != 0 || len(n.Strokes) != 1 || n.Strokes[0].Weight != 2 {
+		t.Fatalf("elbow paint = %v %v", n.Fills, n.Strokes)
+	}
+	cv := find(res, "Curve").GetVector().Subpaths[0].Anchors
+	if len(cv) != 2 || cv[0].OutX != 40 || cv[1].InX != -40 || cv[1].X != 80 || cv[1].Y != 40 {
+		t.Fatalf("curve anchors = %v", cv)
+	}
+	// A saved path is an outline: kept, and filled with the stroke's colour.
+	sv := find(res, "Saved")
+	if sv.GetVector() == nil || len(sv.GetVector().Subpaths[0].Anchors) != 4 || len(sv.Strokes) != 0 || len(sv.Fills) != 1 || sv.Fills[0].GetSolid().GetColor().G != 1 {
+		t.Fatalf("saved = %v", sv)
+	}
+
+	// A table is a frame of cells; a cell with content has a text layer, the cell's fill stays on the frame.
+	grid, cell := find(res, "Grid"), find(res, "Cell A")
+	if grid.GetFrame() == nil || cell.GetFrame() == nil || cell.ParentId != grid.Id || cell.Width != 100 || len(cell.Fills) != 1 {
+		t.Fatalf("table = %v / %v", grid, cell)
+	}
+	var texts []string
+	for _, n := range res.Nodes {
+		if n.ParentId == cell.Id && n.GetText() != nil {
+			texts = append(texts, n.GetText().Content)
+		}
+	}
+	if len(texts) != 1 || texts[0] != "Name" {
+		t.Fatalf("cell text = %v", texts)
+	}
+	if b := find(res, "Cell B"); b.X != 100 {
+		t.Fatalf("cell B at %v", b.X)
+	}
+	if note := find(res, "Note"); note.GetFrame() == nil || note.Fills[0].GetSolid().GetColor().B > 0.3 {
+		t.Fatalf("note = %v", note)
+	}
+
+	// The report: counts by kind, and the warnings say what was approximated.
+	if res.Imported["CONNECTOR"] != 3 || res.Imported["TABLE_CELL"] != 2 || res.Imported["STICKY"] != 1 || len(res.Skipped) != 0 {
+		t.Fatalf("report = %v / %v", res.Imported, res.Skipped)
+	}
+	joined := strings.Join(res.Warnings, "\n")
+	for _, want := range []string{"elbowed and curved connectors", "not attached to the layers", "table cell layers were imported as frames", "sticky layers were imported as frames", "1 variable bindings were not imported (width x1)"} {
+		if !strings.Contains(joined, want) {
+			t.Errorf("missing warning %q in %v", want, res.Warnings)
+		}
+	}
+}
+
+func TestStraightConnectorHasNoWarning(t *testing.T) {
+	msg := map[string]any{"nodeChanges": []any{
+		map[string]any{"guid": guid(1, 0), "type": "DOCUMENT", "name": "Document"},
+		change(1, 0, "a", "CANVAS", "P", nil),
+		change(2, 1, "a", "CONNECTOR", "Line", map[string]any{"size": map[string]any{"x": 50, "y": 0}, "transform": mat(0, 0), "strokePaints": []any{solid(0, 0, 0)}, "strokeWeight": 1}),
+	}}
+	res, err := Import(buildCanvas(t, msg, deflateRaw), Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	a := find(res, "Line").GetVector().Subpaths[0].Anchors
+	if len(a) != 2 || a[1].X != 50 || len(res.Warnings) != 0 {
+		t.Fatalf("line = %v, warnings %v", a, res.Warnings)
+	}
+}
+
+func connectorFile(over map[string]any, sibling ...any) map[string]any {
+	nodes := []any{
+		map[string]any{"guid": guid(1, 0), "type": "DOCUMENT", "name": "Document"},
+		change(1, 0, "a", "CANVAS", "P", nil),
+		change(2, 1, "a", "CONNECTOR", "Wire", over),
+	}
+	return map[string]any{"nodes": append(nodes, sibling...), "blobs": []any{map[string]any{"bytes": cmd(1, 0.0, 0.0, 2, 40.0, 0.0, 2, 40.0, 5.0, 2, 0.0, 5.0, 0)}}}
+}
+
+func importConnector(t *testing.T, f map[string]any) (*Result, *opendesignerv1.Node) {
+	t.Helper()
+	res, err := Import(buildCanvas(t, map[string]any{"nodeChanges": f["nodes"], "blobs": f["blobs"]}, deflateRaw), Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return res, find(res, "Wire")
+}
+
+// The ends the file gives decide the line, in either direction, with a free end or one attached to a
+// sibling (its transform applied to the relative position in its size).
+func TestConnectorEndsPlaceTheLine(t *testing.T) {
+	// From the lower right to the upper left: the box is spanned by the ends and the anchors keep the direction.
+	res, wire := importConnector(t, connectorFile(map[string]any{
+		"size": map[string]any{"x": 1, "y": 1}, "transform": mat(500, 500), "strokePaints": []any{solid(0, 0, 0)}, "strokeWeight": 1, "connectorLineStyle": "ELBOWED",
+		"connectorStart": map[string]any{"position": map[string]any{"x": 100, "y": 90}},
+		"connectorEnd":   map[string]any{"endpointNodeID": guid(1, 3), "relativePosition": map[string]any{"x": 0.5, "y": 1}},
+	}, change(3, 1, "b", "RECTANGLE", "Target", map[string]any{"size": map[string]any{"x": 40, "y": 20}, "transform": mat(20, 30)})))
+	// End b = (20+40*.5, 30+20*1) = (40, 50); a = (100, 90): box (40,50) 60x40.
+	a := wire.GetVector().Subpaths[0].Anchors
+	if wire.Width != 60 || wire.Height != 40 || len(a) != 4 || a[0].X != 60 || a[0].Y != 40 || a[1].X != 30 || a[1].Y != 40 || a[2].X != 30 || a[2].Y != 0 || a[3].X != 0 || a[3].Y != 0 {
+		t.Fatalf("wire = %v %v %v / %v", wire.Width, wire.Height, a, res.Warnings)
+	}
+	if !strings.Contains(strings.Join(res.Warnings, "|"), "redrawn between their ends") {
+		t.Fatalf("warnings = %v", res.Warnings)
+	}
+	// An end attached to a layer that is not a sibling, or missing, cannot be placed: the old corner rule applies.
+	_, wire = importConnector(t, connectorFile(map[string]any{
+		"size": map[string]any{"x": 30, "y": 20}, "transform": mat(0, 0), "strokePaints": []any{solid(0, 0, 0)}, "strokeWeight": 1,
+		"connectorStart": map[string]any{"endpointNodeID": guid(1, 77)}, "connectorEnd": map[string]any{"position": map[string]any{"x": 1, "y": 1}},
+	}))
+	if a := wire.GetVector().Subpaths[0].Anchors; wire.Width != 30 || a[1].X != 30 || a[1].Y != 20 {
+		t.Fatalf("fallback wire = %v %v", wire.Width, a)
+	}
+}
+
+// A connector's saved line can sit in the generated row of derivedImmutableFrameData instead of the layer.
+func TestConnectorSavedPathInDerivedFrameData(t *testing.T) {
+	row := func(id int, key string) map[string]any {
+		return map[string]any{"guidPath": map[string]any{"guids": []any{guid(40000000, id)}}, key: []any{map[string]any{"commandsBlob": 0}}}
+	}
+	over := func(rows ...any) map[string]any {
+		return map[string]any{
+			"size": map[string]any{"x": 40, "y": 5}, "transform": mat(0, 0), "strokePaints": []any{solid(0, 1, 0)}, "strokeWeight": 3, "connectorLineStyle": "STRAIGHT",
+			"derivedImmutableFrameData": map[string]any{"version": 1, "overrides": rows},
+		}
+	}
+	// The row of the template guid 40000000:0 counts; another row (the label, 40000000:1) does not.
+	_, wire := importConnector(t, connectorFile(over(row(1, "fillGeometry"), row(0, "fillGeometry"))))
+	if wire.GetVector() == nil || len(wire.GetVector().Subpaths[0].Anchors) != 4 || len(wire.Strokes) != 0 || len(wire.Fills) != 1 || wire.Fills[0].GetSolid().GetColor().G != 1 {
+		t.Fatalf("wire = %v", wire)
+	}
+	_, wire = importConnector(t, connectorFile(over(row(1, "fillGeometry"))))
+	if len(wire.GetVector().Subpaths[0].Anchors) != 2 || len(wire.Strokes) != 1 {
+		t.Fatalf("a row that is not the line's must not be used: %v", wire)
 	}
 }

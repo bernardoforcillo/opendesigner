@@ -54,6 +54,8 @@ type bctx struct {
 	// fillMain / fillCross: the node FILLS that axis of its auto layout parent (LayoutSizing)
 	// and `vertical` is the parent's direction, to know which of width/height is which.
 	fillMain, fillCross, vertical bool
+	// grid: the parent is a GRID auto layout (fillMain/fillCross are then its width/height).
+	grid bool
 	// origin: the node is placed at left:0/top:0 (root of an instance's master:
 	// descending into the instance subtracts the master's origin).
 	origin bool
@@ -103,13 +105,14 @@ func (c bctx) inInstance() bool { return c.idPrefix != "" }
 
 // participates: the children that the core lays out in a row (core/layout.go).
 func participates(n *opendesignerv1.Node) bool {
-	if !n.GetVisible() {
+	// An absolute child is out of the flow: position:absolute at its own x/y.
+	if !n.GetVisible() || n.GetLayoutPositioning() == opendesignerv1.LayoutPositioning_LAYOUT_POSITIONING_ABSOLUTE {
 		return false
 	}
 	switch n.GetShape().(type) {
 	case nil, *opendesignerv1.Node_Rect, *opendesignerv1.Node_Ellipse, *opendesignerv1.Node_Text,
 		*opendesignerv1.Node_Image, *opendesignerv1.Node_Vector, *opendesignerv1.Node_Frame,
-		*opendesignerv1.Node_Instance:
+		*opendesignerv1.Node_Instance, *opendesignerv1.Node_Polygon, *opendesignerv1.Node_Star:
 		return true
 	}
 	return false
@@ -137,6 +140,17 @@ func fillAxes(al *opendesignerv1.AutoLayout, k *opendesignerv1.Node) (main, cros
 // axis (the core shares the free space equally, which is what equal flex-grow does) and
 // `align-self: stretch` across. The fixed length on that axis is dropped.
 func applyFill(el *Element, c bctx) {
+	if c.grid {
+		if c.fillMain {
+			el.delStyle("width")
+			el.addStyle("justify-self", "stretch")
+		}
+		if c.fillCross {
+			el.delStyle("height")
+			el.addStyle("align-self", "stretch")
+		}
+		return
+	}
 	mainSize, crossSize := "width", "height"
 	if c.vertical {
 		mainSize, crossSize = "height", "width"
@@ -161,7 +175,11 @@ func (b *builder) warn(format string, a ...any) {
 // buildScreen builds the IR tree of screen `n`.
 func (b *builder) buildScreen(n *opendesignerv1.Node) *Element {
 	b.planAnimations(n)
-	return b.element(n, bctx{root: true, visited: map[string]bool{}})
+	el := b.element(n, bctx{root: true, visited: map[string]bool{}})
+	if el != nil {
+		el.Notes = append(b.readyNote(n.GetId()), el.Notes...)
+	}
+	return el
 }
 
 // element translates a node (and its subtree). nil = nothing to emit.
@@ -204,6 +222,9 @@ func (b *builder) element(n *opendesignerv1.Node, c bctx) *Element {
 	if c.fillMain || c.fillCross {
 		applyFill(el, c)
 	}
+	if c.grid && c.flowChild {
+		gridCellCSS(el, n)
+	}
 	if pb, ok := c.bind[n.GetId()]; ok {
 		el.ShowIf, el.TextProp = pb.show, pb.text
 	}
@@ -212,6 +233,9 @@ func (b *builder) element(n *opendesignerv1.Node, c bctx) *Element {
 	el.NodeID = n.GetId()
 	el.NodeName = n.GetName()
 	el.Meta = n.GetMeta()
+	if !c.inInstance() {
+		el.Notes = b.notes(n.GetId())
+	}
 	id := c.idPrefix + n.GetId()
 	el.Attrs = append([]Attr{{"data-node-id", id}}, el.Attrs...)
 	if tid := n.GetMeta()["test.id"]; tid != "" && !c.inInstance() { // a test.id in the master would be duplicated in every instance
@@ -265,7 +289,22 @@ func (b *builder) children(el *Element, n *opendesignerv1.Node, c bctx) {
 	// clips them with the mask's outline. Not in an auto layout (the mask would be a flow
 	// item), and not for a rotated mask: those masks are not applied (documented).
 	target := el
-	for _, k := range core.ChildrenOf(b.doc, n.GetId()) {
+	kids := core.ChildrenOf(b.doc, n.GetId())
+	// GRID: the cells of the in-flow children, for the targets that cannot auto-place (native_grid.go).
+	cells := map[string]GridCell{}
+	if al.GetMode() == opendesignerv1.LayoutMode_LAYOUT_MODE_GRID {
+		var flow []*opendesignerv1.Node
+		for _, k := range kids {
+			if !(k.GetVisible() && k.GetIsMask() && isMaskShape(k)) && (participates(k) || b.groupFlows(k)) {
+				flow = append(flow, k)
+			}
+		}
+		cs, _, _ := core.GridCells(flow, al)
+		for i, k := range flow {
+			cells[k.GetId()] = GridCell{Col: cs[i].Col, Row: cs[i].Row, ColSpan: cs[i].ColSpan, RowSpan: cs[i].RowSpan, X: k.GetX(), Y: k.GetY(), W: k.GetWidth(), H: k.GetHeight()}
+		}
+	}
+	for _, k := range kids {
 		if k.GetVisible() && k.GetIsMask() && isMaskShape(k) {
 			if clip, ok := maskClip(k); ok && al == nil {
 				wrap := &Element{Tag: "div"}
@@ -280,12 +319,20 @@ func (b *builder) children(el *Element, n *opendesignerv1.Node, c bctx) {
 		}
 		cc := c
 		cc.root, cc.origin = false, false
-		cc.flowChild = al != nil && participates(k)
-		cc.fillMain, cc.fillCross, cc.vertical = false, false, false
+		cc.flowChild = al != nil && (participates(k) || b.groupFlows(k))
+		cc.fillMain, cc.fillCross, cc.vertical, cc.grid = false, false, false, false
 		if cc.flowChild {
 			cc.fillMain, cc.fillCross, cc.vertical = fillAxes(al, k)
+			if al.GetMode() == opendesignerv1.LayoutMode_LAYOUT_MODE_GRID {
+				cc.grid = true
+				cc.fillMain = k.GetLayoutSizingX() == opendesignerv1.LayoutSizing_LAYOUT_SIZING_FILL && !isGroupNode(k)
+				cc.fillCross = k.GetLayoutSizingY() == opendesignerv1.LayoutSizing_LAYOUT_SIZING_FILL && !isGroupNode(k)
+			}
 		}
 		if ce := b.element(k, cc); ce != nil {
+			if g, ok := cells[k.GetId()]; ok && cc.flowChild {
+				ce.Cell = &g
+			}
 			target.Children = append(target.Children, ce)
 		}
 	}
@@ -298,6 +345,17 @@ func maskClip(m *opendesignerv1.Node) (string, bool) {
 		return "", false
 	}
 	x, y, w, h := m.GetX(), m.GetY(), m.GetWidth(), m.GetHeight()
+	// Polygon, star, arc / ring and smoothed corners clip by their computed outline.
+	if cmds := computedCmds(m); cmds != nil && w > 0 && h > 0 {
+		moved := make([]cmd, len(cmds))
+		for i, c := range cmds {
+			moved[i] = c
+			for k := 0; k+1 < 6 && c.op != 'Z'; k += 2 {
+				moved[i].v[k], moved[i].v[k+1] = c.v[k]+x, c.v[k+1]+y
+			}
+		}
+		return "path(evenodd, '" + cmdsD(moved) + "')", true
+	}
 	switch m.GetShape().(type) {
 	case *opendesignerv1.Node_Ellipse:
 		return fmt.Sprintf("ellipse(%s %s at %s %s)", px(w/2), px(h/2), px(x+w/2), px(y+h/2)), w > 0 && h > 0
@@ -352,11 +410,39 @@ func hasVisibleKids(doc *opendesignerv1.Document, id string) bool {
 func (b *builder) groupElement(n *opendesignerv1.Node, c bctx) *Element {
 	el := &Element{Tag: "div"}
 	placement(el, n, c)
+	// A group in the flow of an auto layout parent is one box of the union of its children
+	// (core.GroupBounds); they hang from a zero-size anchor at the box's corner.
+	if bx, ok := core.GroupBounds(b.doc, n.GetId()); ok && c.flowChild {
+		el.addStyle("width", px(bx[2]-bx[0]))
+		el.addStyle("height", px(bx[3]-bx[1]))
+		rotation(el, n)
+		anchor := &Element{Tag: "div"}
+		anchor.addStyle("position", "absolute")
+		anchor.addStyle("left", px(-bx[0]))
+		anchor.addStyle("top", px(-bx[1]))
+		b.children(anchor, n, c)
+		el.Children = append(el.Children, anchor)
+		return el
+	}
 	el.addStyle("width", px(n.GetWidth()))
 	el.addStyle("height", px(n.GetHeight()))
 	rotation(el, n)
 	b.children(el, n, c)
 	return el
+}
+
+func isGroupNode(n *opendesignerv1.Node) bool {
+	_, ok := n.GetShape().(*opendesignerv1.Node_Group)
+	return ok
+}
+
+// groupFlows: a visible group with something to show sits in the flow of an auto layout parent.
+func (b *builder) groupFlows(k *opendesignerv1.Node) bool {
+	if !isGroupNode(k) || !core.ResolveNode(b.doc, k).GetVisible() || k.GetLayoutPositioning() == opendesignerv1.LayoutPositioning_LAYOUT_POSITIONING_ABSOLUTE {
+		return false
+	}
+	_, ok := core.GroupBounds(b.doc, k.GetId())
+	return ok
 }
 
 // instanceElement expands the instance's master INLINE (no component
@@ -496,7 +582,7 @@ func cloneShallow(n *opendesignerv1.Node) *opendesignerv1.Node {
 
 // shapeElement: rect, ellipse, frame, text, image, vector.
 func (b *builder) shapeElement(n *opendesignerv1.Node, c bctx) *Element {
-	eff := withNums(withOverride(n, c.overrides[n.GetId()]), c.nums[n.GetId()])
+	eff := withGlassExpanded(withNums(withOverride(n, c.overrides[n.GetId()]), c.nums[n.GetId()]))
 	switch eff.GetShape().(type) {
 	case *opendesignerv1.Node_Text:
 		return b.textElement(n, eff, c)
@@ -504,6 +590,11 @@ func (b *builder) shapeElement(n *opendesignerv1.Node, c bctx) *Element {
 		return b.vectorElement(n, eff, c)
 	case *opendesignerv1.Node_Image:
 		return b.imageElement(n, eff, c)
+	}
+	// Polygon, star, ellipse arc / ring, rectangle with smoothed or independent corners: an inline <svg> path
+	// (codegen/shapes.go).
+	if v := computedVector(eff); v != nil && eff.GetWidth() > 0 && eff.GetHeight() > 0 {
+		return b.vectorElement(n, v, c)
 	}
 	// rect / ellipse / frame. A box with a side <= 0 leaves no pixels (guard
 	// of drawNode); a FRAME like that still stays a container of its children.
@@ -533,7 +624,11 @@ func (b *builder) shapeElement(n *opendesignerv1.Node, c bctx) *Element {
 	el.addStyle("height", sizeOf(eff, false))
 	al := eff.GetFrame().GetAutoLayout()
 	if al != nil {
-		flexProps(el, al)
+		if al.GetMode() == opendesignerv1.LayoutMode_LAYOUT_MODE_GRID {
+			gridProps(el, al)
+		} else {
+			flexProps(el, al)
+		}
 	}
 	if isFrame && eff.GetFrame().GetClipsContent() {
 		el.addStyle("overflow", "hidden")
@@ -579,7 +674,11 @@ func flexProps(el *Element, al *opendesignerv1.AutoLayout) {
 		el.addStyle("flex-direction", "column")
 	}
 	el.addStyle("justify-content", alignCSS(al.GetMainAlign(), true))
-	el.addStyle("align-items", alignCSS(al.GetCrossAlign(), false))
+	cross := al.GetCrossAlign()
+	if cross == opendesignerv1.LayoutAlign_LAYOUT_ALIGN_BASELINE && al.GetDirection() == opendesignerv1.LayoutDirection_LAYOUT_DIRECTION_VERTICAL {
+		cross = opendesignerv1.LayoutAlign_LAYOUT_ALIGN_START // baselines only line up in a row
+	}
+	el.addStyle("align-items", alignCSS(cross, false))
 	// WRAP (the core ignores it when the main axis hugs): the lines are `cross_spacing` apart, and
 	// `gap` takes row-gap then column-gap, so the two spacings swap with the direction.
 	wrap := al.GetWrap() && !((al.GetDirection() == opendesignerv1.LayoutDirection_LAYOUT_DIRECTION_VERTICAL && al.GetHugHeight()) ||
@@ -608,6 +707,11 @@ func alignCSS(a opendesignerv1.LayoutAlign, main bool) string {
 		return "center"
 	case opendesignerv1.LayoutAlign_LAYOUT_ALIGN_END:
 		return "flex-end"
+	case opendesignerv1.LayoutAlign_LAYOUT_ALIGN_BASELINE:
+		// Cross axis of a row only; on the main axis (and in a column) it behaves as START.
+		if !main {
+			return "baseline"
+		}
 	case opendesignerv1.LayoutAlign_LAYOUT_ALIGN_SPACE_BETWEEN:
 		// On the cross axis SPACE_BETWEEN behaves as START (proto).
 		if main {
@@ -703,8 +807,13 @@ func boxPaint(el *Element, n *opendesignerv1.Node, isFrame, isEllipse bool, mul 
 				}
 			}
 		} else if f.grad != nil {
-			if g, ok := gradientCSS(f.grad, f.radial, w, h, mul); ok {
-				el.addStyle("background-image", g)
+			if props, ok := fillBackground(f, w, h, mul); ok {
+				for _, p := range props {
+					el.addStyle(p.Name, p.Value)
+				}
+				if f.diamond {
+					el.NativeBG, _ = fillGradientCSS(f, w, h, mul)
+				}
 			} else {
 				el.addStyle("background-color", colorCSS(f.color, mul))
 			}
@@ -810,9 +919,13 @@ func (b *builder) textElement(n, eff *opendesignerv1.Node, c bctx) *Element {
 	placement(el, n, c)
 	f := resolvedFill(eff.GetFills())
 	gradient := ""
+	var gradientProps []Prop
 	if f.grad != nil {
-		if g, ok := gradientCSS(f.grad, f.radial, eff.GetWidth(), eff.GetHeight(), 1); ok {
-			gradient = g
+		if props, ok := fillBackground(f, eff.GetWidth(), eff.GetHeight(), 1); ok {
+			gradient, gradientProps = props[0].Value, props
+			if f.diamond {
+				el.NativeBG, _ = fillGradientCSS(f, eff.GetWidth(), eff.GetHeight(), 1)
+			}
 		}
 	}
 	if eff.GetWidth() > 0 {
@@ -841,7 +954,7 @@ func (b *builder) textElement(n, eff *opendesignerv1.Node, c bctx) *Element {
 		lh = defaultLineHeight
 	}
 	el.addStyle("font-family", fontFamilyCSS(st.GetFontFamily()))
-	el.addStyle("font-size", px(size))
+	el.addStyle("font-size", px(size*scriptScale(st)))
 	el.addStyle("font-weight", weight)
 	if st.GetItalic() {
 		el.addStyle("font-style", "italic")
@@ -853,8 +966,11 @@ func (b *builder) textElement(n, eff *opendesignerv1.Node, c bctx) *Element {
 	case opendesignerv1.TextAlign_TEXT_ALIGN_RIGHT:
 		el.addStyle("text-align", "right")
 	}
+	textExtras(el, st, size, lh, eff.GetHeight(), c.bind[n.GetId()].text == "", rotates(eff.GetRotation()))
 	if gradient != "" {
-		el.addStyle("background-image", gradient)
+		for _, p := range gradientProps {
+			el.addStyle(p.Name, p.Value)
+		}
 		el.addStyle("background-clip", "text")
 		el.addStyle("-webkit-background-clip", "text")
 		el.addStyle("color", "transparent")
@@ -1110,6 +1226,7 @@ func (b *builder) vectorElement(n, eff *opendesignerv1.Node, c bctx) *Element {
 			}
 			el.Children = append(el.Children, p)
 		}
+		el.Children = append(el.Children, arrowheadElements(eff, eff.GetOpacity())...)
 		return el
 	}
 	if meta["vector.hairline"] == "0" {
@@ -1176,6 +1293,9 @@ func subpathData(sp *opendesignerv1.SubPath) string {
 // like export/svg.ts::gradientRef.
 func vectorGradient(id string, f fill, w, h float64) (*Element, string) {
 	g := f.grad
+	if f.angular || f.diamond {
+		return vectorPattern(id, f, w, h) // SVG has neither: a pattern of wedges / quadrants (gradientsvg.go)
+	}
 	if len(g.GetStops()) < 2 {
 		return nil, ""
 	}
@@ -1272,7 +1392,8 @@ func (b *builder) fontFaceCSS() string {
 // isMaskShape: the shapes with an outline, the only ones that can mask.
 func isMaskShape(n *opendesignerv1.Node) bool {
 	switch n.GetShape().(type) {
-	case *opendesignerv1.Node_Rect, *opendesignerv1.Node_Ellipse, *opendesignerv1.Node_Frame, *opendesignerv1.Node_Vector:
+	case *opendesignerv1.Node_Rect, *opendesignerv1.Node_Ellipse, *opendesignerv1.Node_Frame, *opendesignerv1.Node_Vector,
+		*opendesignerv1.Node_Polygon, *opendesignerv1.Node_Star:
 		return true
 	}
 	return false

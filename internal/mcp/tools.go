@@ -28,7 +28,7 @@ type RGBA struct {
 	A float64 `json:"a" jsonschema:"alpha channel, 0..1"`
 	// Gradient, when set, turns this entry into a gradient fill and r/g/b/a are
 	// ignored. A separate stop type keeps the JSON schema non-recursive.
-	Gradient *GradientSpec `json:"gradient,omitempty" jsonschema:"makes this fill a linear or radial gradient instead of a solid colour"`
+	Gradient *GradientSpec `json:"gradient,omitempty" jsonschema:"makes this fill a linear, radial, angular or diamond gradient instead of a solid colour"`
 }
 
 // StopColor is a gradient stop's colour; same channels as RGBA, without the
@@ -49,11 +49,11 @@ type GradientStopSpec struct {
 // GradientSpec is a gradient in coordinates NORMALISED to the node's box: (0,0)
 // is its top-left corner and (1,1) its bottom-right.
 type GradientSpec struct {
-	Kind  string             `json:"kind" jsonschema:"linear or radial"`
+	Kind  string             `json:"kind" jsonschema:"linear, radial, angular or diamond"`
 	Stops []GradientStopSpec `json:"stops" jsonschema:"at least two stops, ordered by position"`
-	X1    float64            `json:"x1" jsonschema:"linear: axis start x; radial: centre x"`
-	Y1    float64            `json:"y1" jsonschema:"linear: axis start y; radial: centre y"`
-	X2    float64            `json:"x2" jsonschema:"linear: axis end x; radial: a point on the edge (radius = distance from x1,y1)"`
+	X1    float64            `json:"x1" jsonschema:"linear: axis start x; radial/angular/diamond: centre x"`
+	Y1    float64            `json:"y1" jsonschema:"linear: axis start y; radial/angular/diamond: centre y"`
+	X2    float64            `json:"x2" jsonschema:"linear: axis end x; radial: a point on the edge (radius = distance from x1,y1); angular: a point in the direction of the 0% stop (the stops sweep clockwise); diamond: a point on a diamond corner (|dx|+|dy| from the centre = distance to it)"`
 	Y2    float64            `json:"y2" jsonschema:"linear: axis end y; radial: a point on the edge"`
 }
 
@@ -66,8 +66,13 @@ func toGradientPaint(g *GradientSpec) *opendesignerv1.Paint {
 		})
 	}
 	gp := &opendesignerv1.GradientPaint{Stops: stops, X1: g.X1, Y1: g.Y1, X2: g.X2, Y2: g.Y2}
-	if g.Kind == "radial" {
+	switch g.Kind {
+	case "radial":
 		return &opendesignerv1.Paint{Kind: &opendesignerv1.Paint_Radial{Radial: gp}}
+	case "angular":
+		return &opendesignerv1.Paint{Kind: &opendesignerv1.Paint_Angular{Angular: gp}}
+	case "diamond":
+		return &opendesignerv1.Paint{Kind: &opendesignerv1.Paint_Diamond{Diamond: gp}}
 	}
 	return &opendesignerv1.Paint{Kind: &opendesignerv1.Paint_Linear{Linear: gp}}
 }
@@ -80,8 +85,10 @@ func validateFills(colors []RGBA) error {
 		if g == nil {
 			continue
 		}
-		if g.Kind != "linear" && g.Kind != "radial" {
-			return fmt.Errorf("fills[%d].gradient.kind must be \"linear\" or \"radial\", got %q", i, g.Kind)
+		switch g.Kind {
+		case "linear", "radial", "angular", "diamond":
+		default:
+			return fmt.Errorf("fills[%d].gradient.kind must be \"linear\", \"radial\", \"angular\" or \"diamond\", got %q", i, g.Kind)
 		}
 		if len(g.Stops) < 2 {
 			return fmt.Errorf("fills[%d].gradient needs at least two stops", i)
@@ -96,12 +103,13 @@ func validateFills(colors []RGBA) error {
 // EffectSpec is one node effect. Any number of dropShadow and innerShadow effects
 // are drawn; the canvas applies the FIRST layerBlur and the FIRST backgroundBlur.
 type EffectSpec struct {
-	Kind    string    `json:"kind" jsonschema:"dropShadow, innerShadow, layerBlur or backgroundBlur"`
+	Kind    string    `json:"kind" jsonschema:"dropShadow, innerShadow, layerBlur, backgroundBlur, progressiveBlur, noise, texture or glass"`
 	Color   StopColor `json:"color,omitempty" jsonschema:"shadows only; alpha 0..1"`
 	OffsetX float64   `json:"offsetX,omitempty" jsonschema:"shadows only, in world units"`
 	OffsetY float64   `json:"offsetY,omitempty" jsonschema:"shadows only, in world units"`
 	Blur    float64   `json:"blur,omitempty" jsonschema:"shadows only, >= 0, in world units"`
 	Radius  float64   `json:"radius,omitempty" jsonschema:"layerBlur and backgroundBlur only, >= 0, in world units"`
+	EffectFx
 }
 
 // blendModes maps the tool's names (CSS names) to the document's enum.
@@ -136,8 +144,12 @@ func validateEffects(effects []EffectSpec) error {
 			if e.Radius < 0 {
 				return fmt.Errorf("effects[%d].radius must be >= 0", i)
 			}
+		case "progressiveBlur", "noise", "texture", "glass":
+			if _, err := e.fxProto(); err != nil {
+				return fmt.Errorf("effects[%d] (%s): %w", i, e.Kind, err)
+			}
 		default:
-			return fmt.Errorf("effects[%d].kind must be dropShadow, innerShadow, layerBlur or backgroundBlur, got %q", i, e.Kind)
+			return fmt.Errorf("effects[%d].kind must be dropShadow, innerShadow, layerBlur, backgroundBlur, progressiveBlur, noise, texture or glass, got %q", i, e.Kind)
 		}
 	}
 	return nil
@@ -146,6 +158,12 @@ func validateEffects(effects []EffectSpec) error {
 func toEffects(effects []EffectSpec) []*opendesignerv1.Effect {
 	out := make([]*opendesignerv1.Effect, 0, len(effects))
 	for _, e := range effects {
+		if isFxKind(e.Kind) {
+			if fx, err := e.fxProto(); err == nil { // validateEffects has already vetted it
+				out = append(out, fx)
+			}
+			continue
+		}
 		if e.Kind == "layerBlur" {
 			out = append(out, &opendesignerv1.Effect{Kind: &opendesignerv1.Effect_LayerBlur{LayerBlur: &opendesignerv1.LayerBlur{Radius: e.Radius}}})
 			continue
@@ -225,6 +243,7 @@ type CreateTextInput struct {
 	FontWeight *string  `json:"fontWeight,omitempty" jsonschema:"e.g. 400 or 700"`
 	Italic     *bool    `json:"italic,omitempty"`
 	LineHeight *float64 `json:"lineHeight,omitempty" jsonschema:"multiplier; defaults to 1.2"`
+	TextFormat
 }
 
 // newBaseNode builds the common Node scaffold for a created shape.
@@ -295,6 +314,9 @@ func (s *Session) CreateText(ctx context.Context, in CreateTextInput) (CreateNod
 	if in.LineHeight != nil {
 		style.LineHeight = *in.LineHeight
 	}
+	if err := in.TextFormat.apply(style); err != nil {
+		return CreateNodeOutput{}, fmt.Errorf("create_text: %w", err)
+	}
 	n.Shape = &opendesignerv1.Node_Text{Text: &opendesignerv1.TextNode{Content: in.Content, Style: style}}
 	return s.createNode(ctx, n)
 }
@@ -325,13 +347,15 @@ type SetPropertiesInput struct {
 	Rotation     *float64     `json:"rotation,omitempty"`
 	Name         *string      `json:"name,omitempty"`
 	Visible      *bool        `json:"visible,omitempty"`
-	CornerRadius *float64     `json:"cornerRadius,omitempty" jsonschema:"rectangles only"`
+	CornerRadius *float64     `json:"cornerRadius,omitempty" jsonschema:"rectangles only (the single radius; see cornerRadii)"`
 	Fills        []RGBA       `json:"fills,omitempty" jsonschema:"replaces the whole fill list; [] clears it"`
 	Effects      []EffectSpec `json:"effects,omitempty" jsonschema:"replaces the whole effect list; [] clears it"`
 	IsMask       *bool        `json:"isMask,omitempty" jsonschema:"rect, ellipse, frame and vector only: the node is not drawn and its outline clips the siblings above it"`
-	Strokes      []StrokeSpec `json:"strokes,omitempty" jsonschema:"replaces the whole stroke list; [] clears it. The first stroke with a positive weight is the one drawn"`
-	LayoutGrids  []GridSpec   `json:"layoutGrids,omitempty" jsonschema:"frames only: replaces the whole list of layout grids (guides and snap targets, never exported); [] clears it"`
-	BlendMode    *string      `json:"blendMode,omitempty" jsonschema:"normal | multiply | screen | overlay | darken | lighten | color-dodge | color-burn | hard-light | soft-light | difference | exclusion | hue | saturation | color | luminosity"`
+	// ShapeFields: corner smoothing / independent radii, ellipse arcs and rings, polygon sides, star points.
+	ShapeFields
+	BlendMode   *string      `json:"blendMode,omitempty" jsonschema:"normal | multiply | screen | overlay | darken | lighten | color-dodge | color-burn | hard-light | soft-light | difference | exclusion | hue | saturation | color | luminosity"`
+	Strokes     []StrokeSpec `json:"strokes,omitempty" jsonschema:"replaces the whole stroke list; [] clears it. The first stroke with a positive weight is the one drawn"`
+	LayoutGrids []GridSpec   `json:"layoutGrids,omitempty" jsonschema:"frames only: replaces the whole list of layout grids (guides and snap targets, never exported); [] clears it"`
 }
 
 // SetProperties applies an absolute field patch to a node via SetProperties.
@@ -428,6 +452,9 @@ func (s *Session) SetProperties(ctx context.Context, in SetPropertiesInput) (Seq
 		patch.Shape = &opendesignerv1.Node_Rect{Rect: &opendesignerv1.RectNode{CornerRadius: *in.CornerRadius}}
 		paths = append(paths, "corner_radius")
 	}
+	if err := s.addShapeFields(in.Id, in.ShapeFields, patch, &paths); err != nil {
+		return SeqOutput{}, err
+	}
 	if len(paths) == 0 {
 		return SeqOutput{}, errors.New("set_properties: no properties given")
 	}
@@ -445,8 +472,8 @@ func (s *Session) SetProperties(ctx context.Context, in SetPropertiesInput) (Seq
 // ---------------------------------------------------------------------------
 
 // SetTextInput sets a text node's content and, if any style field is given,
-// REPLACES its whole style (style_present). Omit all style fields to keep the
-// node's existing style intact.
+// overlays those fields on the node's style (written with style_present). Omit all
+// style fields to keep the node's existing style intact.
 type SetTextInput struct {
 	Id         string   `json:"id"`
 	Content    string   `json:"content"`
@@ -455,14 +482,22 @@ type SetTextInput struct {
 	FontWeight *string  `json:"fontWeight,omitempty"`
 	Italic     *bool    `json:"italic,omitempty"`
 	LineHeight *float64 `json:"lineHeight,omitempty"`
+	TextFormat
 }
 
 // SetText rewrites a text node's content (and optionally its style).
 func (s *Session) SetText(ctx context.Context, in SetTextInput) (SeqOutput, error) {
 	st := &opendesignerv1.SetText{Id: in.Id, Content: in.Content}
-	if in.FontSize != nil || in.FontFamily != nil || in.FontWeight != nil || in.Italic != nil || in.LineHeight != nil {
+	if in.FontSize != nil || in.FontFamily != nil || in.FontWeight != nil || in.Italic != nil || in.LineHeight != nil || in.TextFormat.given() {
 		st.StylePresent = true
 		style := &opendesignerv1.TextStyle{}
+		// Start from the node's current style and overlay what was given, so a
+		// format-only edit (case, lists, ...) does not zero the font size.
+		s.mu.Lock()
+		if cur, ok := s.doc.GetNodes()[in.Id]; ok && cur.GetText().GetStyle() != nil {
+			style = proto.Clone(cur.GetText().GetStyle()).(*opendesignerv1.TextStyle)
+		}
+		s.mu.Unlock()
 		if in.FontSize != nil {
 			style.FontSize = *in.FontSize
 		}
@@ -477,6 +512,9 @@ func (s *Session) SetText(ctx context.Context, in SetTextInput) (SeqOutput, erro
 		}
 		if in.LineHeight != nil {
 			style.LineHeight = *in.LineHeight
+		}
+		if err := in.TextFormat.apply(style); err != nil {
+			return SeqOutput{}, fmt.Errorf("set_text: %w", err)
 		}
 		st.Style = style
 	}
@@ -848,6 +886,10 @@ type NodeView struct {
 	Height   float64 `json:"height"`
 	Visible  bool    `json:"visible"`
 	Text     string  `json:"text,omitempty" jsonschema:"content, for text nodes"`
+	// EffectKinds: the kinds of the node's effects, in order (dropShadow, layerBlur, noise, glass...).
+	EffectKinds []string `json:"effectKinds,omitempty" jsonschema:"kinds of the node's effects in order; set them with set_properties effects"`
+	// Format: the text node's case / script / list / OpenType / box settings; absent when none is set.
+	Format *TextFormat `json:"format,omitempty" jsonschema:"text case, script, list, indent, fontFeatures, verticalAlign and inset of a text node; see set_text"`
 	// Rich text of a text node (see format_text).
 	ParagraphStyles []string       `json:"paragraphStyles,omitempty" jsonschema:"paragraph style id per paragraph; empty string = the node's own style"`
 	Runs            []TextRunInput `json:"runs,omitempty" jsonschema:"character styles over ranges of the content (UTF-16 units)"`
@@ -868,6 +910,28 @@ type NodeView struct {
 	ConstraintY   string `json:"constraintY,omitempty"`
 	LayoutSizingX string `json:"layoutSizingX,omitempty" jsonschema:"fill when an auto layout parent fills its width; see set_layout_sizing"`
 	LayoutSizingY string `json:"layoutSizingY,omitempty"`
+	// Shape: the parametric part (polygon sides, star points, arc / ring, rectangle corners); see set_properties.
+	Shape *ShapeView `json:"shape,omitempty"`
+	// FillStyleId / StrokeStyleId / EffectStyleId: shared styles applied (see apply_paint_style, apply_effect_style).
+	FillStyleId   string `json:"fillStyleId,omitempty"`
+	StrokeStyleId string `json:"strokeStyleId,omitempty"`
+	EffectStyleId string `json:"effectStyleId,omitempty"`
+	// Size limits and the opt-out of the auto layout flow (see set_layout_limits, set_layout_positioning).
+	MinWidth          float64 `json:"minWidth,omitempty"`
+	MaxWidth          float64 `json:"maxWidth,omitempty"`
+	MinHeight         float64 `json:"minHeight,omitempty"`
+	MaxHeight         float64 `json:"maxHeight,omitempty"`
+	LayoutPositioning string  `json:"layoutPositioning,omitempty" jsonschema:"absolute when the node is out of its auto layout parent's flow; see set_layout_positioning"`
+	// GridCell: the cell in a GRID auto layout parent, when it has one (see set_grid_cell).
+	GridCell *GridCellView `json:"gridCell,omitempty"`
+}
+
+// GridCellView is a node's cell in a grid parent; 0 = auto / one.
+type GridCellView struct {
+	Column     int32 `json:"column,omitempty"`
+	ColumnSpan int32 `json:"columnSpan,omitempty"`
+	Row        int32 `json:"row,omitempty"`
+	RowSpan    int32 `json:"rowSpan,omitempty"`
 }
 
 // nodeKind derives the compact kind label from the shape oneof. A node with no
@@ -890,6 +954,10 @@ func nodeKind(n *opendesignerv1.Node) string {
 		return "vector"
 	case *opendesignerv1.Node_Instance:
 		return "instance"
+	case *opendesignerv1.Node_Polygon:
+		return "polygon"
+	case *opendesignerv1.Node_Star:
+		return "star"
 	default:
 		return fmt.Sprintf("%T", n.GetShape())
 	}
@@ -908,6 +976,9 @@ func toNodeView(n *opendesignerv1.Node) NodeView {
 		for _, r := range t.GetRuns() {
 			v.Runs = append(v.Runs, TextRunInput{Start: int(r.GetStart()), End: int(r.GetEnd()), StyleId: r.GetStyleId()})
 		}
+		if f := formatOf(t.GetStyle()); f.given() {
+			v.Format = &f
+		}
 	}
 	v.AutoLayout = autoLayoutView(n.GetFrame().GetAutoLayout())
 	if len(n.GetMeta()) > 0 {
@@ -920,6 +991,9 @@ func toNodeView(n *opendesignerv1.Node) NodeView {
 		v.Modes = n.GetModes()
 	}
 	v.TextStyleId = n.GetTextStyleId()
+	v.Shape = shapeViewOf(n)
+	v.FillStyleId, v.StrokeStyleId, v.EffectStyleId = n.GetFillStyleId(), n.GetStrokeStyleId(), n.GetEffectStyleId()
+	v.EffectKinds = effectKinds(n.GetEffects())
 	v.BlendMode = blendModeName(n.GetBlendMode())
 	v.IsMask = n.GetIsMask()
 	v.ConstraintX, v.ConstraintY = constraintNames[n.GetConstraintX()], constraintNames[n.GetConstraintY()]
@@ -928,6 +1002,13 @@ func toNodeView(n *opendesignerv1.Node) NodeView {
 	}
 	if n.GetLayoutSizingY() == opendesignerv1.LayoutSizing_LAYOUT_SIZING_FILL {
 		v.LayoutSizingY = "fill"
+	}
+	v.MinWidth, v.MaxWidth, v.MinHeight, v.MaxHeight = n.GetMinWidth(), n.GetMaxWidth(), n.GetMinHeight(), n.GetMaxHeight()
+	if n.GetLayoutPositioning() == opendesignerv1.LayoutPositioning_LAYOUT_POSITIONING_ABSOLUTE {
+		v.LayoutPositioning = "absolute"
+	}
+	if c := n.GetGridCell(); c.GetColumn() != 0 || c.GetColumnSpan() != 0 || c.GetRow() != 0 || c.GetRowSpan() != 0 {
+		v.GridCell = &GridCellView{Column: c.GetColumn(), ColumnSpan: c.GetColumnSpan(), Row: c.GetRow(), RowSpan: c.GetRowSpan()}
 	}
 	return v
 }
@@ -950,6 +1031,7 @@ type DocumentView struct {
 	Vertical          string  `json:"vertical" jsonschema:"publishing | design | product"`
 	BaselineIncrement float64 `json:"baselineIncrement,omitempty"`
 	BaselineStart     float64 `json:"baselineStart,omitempty"`
+	PresentDevice     string  `json:"presentDevice" jsonschema:"the default Present device frame: generic | phone | tablet | desktop | none"`
 }
 
 // GetDocument returns the whole synced document: pages, components and every
@@ -962,6 +1044,7 @@ func (s *Session) GetDocument(ctx context.Context, _ struct{}) (DocumentView, er
 	doc := s.doc
 	out := DocumentView{Id: doc.GetId(), Name: doc.GetName(), Seq: s.seq}
 	out.Vertical = verticalName(doc.GetSettings().GetVertical())
+	out.PresentDevice = presentDeviceName(doc.GetSettings().GetPresentDevice())
 	out.BaselineIncrement, out.BaselineStart = doc.GetSettings().GetBaselineIncrement(), doc.GetSettings().GetBaselineStart()
 	for _, p := range doc.GetPages() {
 		out.Pages = append(out.Pages, pageView(p))
@@ -1067,7 +1150,7 @@ func RegisterTools(srv *mcp.Server, s *Session) {
 	addTool(srv, "create_frame", "Create a frame: a container with its own box. Optionally clipsContent, and autoLayout to have the server arrange its children in a row or column (the children's x/y are then computed for you). parentId defaults to the first page.", s.CreateFrame)
 	addTool(srv, "set_auto_layout", "Turn auto layout on, change it, or (autoLayout omitted) off for a frame. After every change the server repositions the frame's children; reposition by editing the layout, not the children's x/y, which it overrides.", s.SetAutoLayout)
 	addTool(srv, "create_text", "Create a text node with the given content. parentId defaults to the first page. Returns the new node id.", s.CreateText)
-	addTool(srv, "set_properties", "Set absolute properties on a node (x/y/width/height/opacity/rotation/name/visible/cornerRadius/fills/strokes/effects/layoutGrids). Effects (any number of shadows): [{kind:dropShadow|innerShadow,color,offsetX,offsetY,blur}|{kind:layerBlur|backgroundBlur,radius}]. blendMode: normal|multiply|screen|overlay|... (CSS names). isMask: true makes the shape a mask for the siblings above it. A fill is a solid {r,g,b,a} or a {gradient:{kind:linear|radial,stops,x1,y1,x2,y2}} in box-normalised coordinates. Only provided fields change.", s.SetProperties)
+	addTool(srv, "set_properties", "Set absolute properties on a node (x/y/width/height/opacity/rotation/name/visible/cornerRadius/fills/strokes/effects/layoutGrids). Effects (any number of shadows): [{kind:dropShadow|innerShadow,color,offsetX,offsetY,blur}|{kind:layerBlur|backgroundBlur,radius}|{kind:progressiveBlur,startRadius,endRadius,x1,y1,x2,y2,background}|{kind:noise,mode:mono|duo|multi,size,density,opacity,color,color2,seed}|{kind:texture,scale,intensity,seed}|{kind:glass,frost,light,lightAngle,noise}] (progressive blur, noise, texture and glass are described in docs/effects.md; noise, texture and glass draw on rect/ellipse/frame/image). blendMode: normal|multiply|screen|overlay|... (CSS names). isMask: true makes the shape a mask for the siblings above it. A fill is a solid {r,g,b,a} or a {gradient:{kind:linear|radial|angular|diamond,stops,x1,y1,x2,y2}} in box-normalised coordinates. Only provided fields change.", s.SetProperties)
 	addTool(srv, "set_text", "Set a text node's content, and optionally replace its style. Markers written in the content do things when the text is drawn (the document keeps the markers): [^note] footnote (numbered, set at the foot of the page); [*note] endnote (list them with generate_contents kind endnotes); [#term] or [#Parent:Child] index entry; [=name] a named place, and [>name] / [>name:text] a cross-reference to it (its page number / its paragraph text, always current, ?? if missing); [!comment] an editorial note (never drawn or exported); [?Name]...[/?] conditional text hidden while the condition Name is hidden (set_document_settings conditions); [@id] an object anchored in the text; {{Field}} a data_merge placeholder; <#> <pages> <doc> <h1> <h2> <h3> variables on a master page.", s.SetText)
 	addTool(srv, "delete_node", "Delete a node and its whole subtree.", s.DeleteNode)
 	addTool(srv, "reparent_node", "Move a node under a new parent (node or page), with an optional order key.", s.ReparentNode)
@@ -1091,12 +1174,18 @@ func RegisterTools(srv *mcp.Server, s *Session) {
 	registerAnimationTools(srv, s)
 	registerVariableTools(srv, s)
 	registerTypographyTools(srv, s)
+	registerShapeTools(srv, s)
 	registerGraphicsTools(srv, s)
 	registerCommentTools(srv, s)
 	registerReviewTools(srv, s)
 	registerBoardTools(srv, s)
 	registerVariantTools(srv, s)
 	registerConstraintTools(srv, s)
+	registerLayoutLimitTools(srv, s)
+	registerInstanceTools(srv, s)
+	registerArrangeTools(srv, s)
+	registerShapeBuilderTools(srv, s)
+	registerPluginTools(srv, s)
 	registerCodegenTools(srv, s)
 	registerJobTools(srv, s)
 	registerOnixTools(srv, s)
@@ -1104,13 +1193,7 @@ func RegisterTools(srv *mcp.Server, s *Session) {
 	registerCommandTools(srv, s)
 	registerDocumentTools(srv, s)
 	registerDiagramTools(srv, s)
-}
-
-// StrokeSpec is one stroke: a colour (or gradient), a weight and where it sits on the outline.
-type StrokeSpec struct {
-	Color  RGBA    `json:"color"`
-	Weight float64 `json:"weight" jsonschema:"world units, >= 0"`
-	Align  string  `json:"align,omitempty" jsonschema:"center (default) | inside | outside"`
+	registerDevTools(srv, s)
 }
 
 func strokeAlignEnum(s string) (opendesignerv1.StrokeAlign, error) {

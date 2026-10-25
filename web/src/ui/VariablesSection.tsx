@@ -22,6 +22,14 @@ const ROWS: Row[] = [
   { key: "corner_radius", label: "Radius", type: "number", applies: (n) => n.kind === "rect" },
   { key: "font_size", label: "Font size", type: "number", applies: (n) => n.kind === "text" },
   { key: "text", label: "Text", type: "string", applies: (n) => n.kind === "text" },
+  { key: "visible", label: "Visible", type: "boolean", applies: () => true },
+  // The auto layout lengths: the layout engine reads them in the frame's active mode.
+  { key: "spacing", label: "Gap", type: "number", applies: (n) => n.autoLayout !== undefined },
+  { key: "cross_spacing", label: "Line gap", type: "number", applies: (n) => n.autoLayout?.wrap === true },
+  { key: "padding_left", label: "Padding left", type: "number", applies: (n) => n.autoLayout !== undefined },
+  { key: "padding_top", label: "Padding top", type: "number", applies: (n) => n.autoLayout !== undefined },
+  { key: "padding_right", label: "Padding right", type: "number", applies: (n) => n.autoLayout !== undefined },
+  { key: "padding_bottom", label: "Padding bottom", type: "number", applies: (n) => n.autoLayout !== undefined },
 ];
 
 function commit(ops: ReturnType<typeof bindingOps>) {

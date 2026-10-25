@@ -327,18 +327,6 @@ type SelectionOutput struct {
 	Selection []string `json:"selection,omitempty" jsonschema:"the nodes the operation produced or kept selected"`
 }
 
-// GroupNodes wraps nodes in a group.
-func (s *Session) GroupNodes(ctx context.Context, in NodeIdsInput) (SelectionOutput, error) {
-	var out SelectionOutput
-	return out, s.runCommand(ctx, "group_nodes", "group_nodes", map[string]any{"nodeIds": in.NodeIds}, &out)
-}
-
-// UngroupNodes dissolves groups, keeping their children in place.
-func (s *Session) UngroupNodes(ctx context.Context, in NodeIdsInput) (SelectionOutput, error) {
-	var out SelectionOutput
-	return out, s.runCommand(ctx, "ungroup_nodes", "ungroup_nodes", map[string]any{"nodeIds": in.NodeIds}, &out)
-}
-
 type AlignNodesInput struct {
 	NodeIds []string `json:"nodeIds"`
 	Command string   `json:"command" jsonschema:"left | hcenter | right | top | middle | bottom (to the selection's box, or the parent frame for one node) | distribute-h | distribute-v (equal gaps, three or more nodes)"`
@@ -391,16 +379,6 @@ type OutlineStrokeInput struct {
 func (s *Session) OutlineStroke(ctx context.Context, in OutlineStrokeInput) (NodeOnlyOutput, error) {
 	var out NodeOnlyOutput
 	return out, s.runCommand(ctx, "outline_stroke", "outline_stroke", map[string]any{"nodeId": in.NodeId}, &out)
-}
-
-type DuplicateNodesOutput struct {
-	NodeIds []string `json:"nodeIds" jsonschema:"the copies, offset from the originals like a paste"`
-}
-
-// DuplicateNodes copies nodes next to themselves.
-func (s *Session) DuplicateNodes(ctx context.Context, in NodeIdsInput) (DuplicateNodesOutput, error) {
-	var out DuplicateNodesOutput
-	return out, s.runCommand(ctx, "duplicate_nodes", "duplicate_nodes", map[string]any{"nodeIds": in.NodeIds}, &out)
 }
 
 type ReorderInput struct {
@@ -498,6 +476,10 @@ type StepAndRepeatInput struct {
 	Count   int      `json:"count" jsonschema:"how many further copies, 1..200"`
 	Dx      float64  `json:"dx" jsonschema:"offset of each copy from the previous one, in document units"`
 	Dy      float64  `json:"dy"`
+}
+
+type DuplicateNodesOutput struct {
+	NodeIds []string `json:"nodeIds" jsonschema:"the copies, offset from the originals like a paste"`
 }
 
 // StepAndRepeat makes a row, column or grid of copies.
@@ -933,13 +915,10 @@ func registerCommandTools(srv *mcp.Server, s *Session) {
 	addTool(srv, "list_editor_commands", "List the command names the connected editor runs (the names `batch` takes)."+jobNote, s.ListEditorCommands)
 	addTool(srv, "create_vector", "Draw a vector from paths of anchors with optional bezier handles (handles are offsets from their anchor). The editor computes the curve's true bounds for the node's box (one implementation of that geometry), so use this rather than writing a vector by hand."+jobNote, s.CreateVector)
 	addTool(srv, "set_vector_path", "Replace a vector node's geometry; its box follows the new curve in the same step."+jobNote, s.SetVectorPath)
-	addTool(srv, "group_nodes", "Wrap nodes in a group (they keep their stacking order inside it)."+jobNote, s.GroupNodes)
-	addTool(srv, "ungroup_nodes", "Dissolve groups, leaving their children in place."+jobNote, s.UngroupNodes)
 	addTool(srv, "align_nodes", "Align (left, hcenter, right, top, middle, bottom) or distribute (distribute-h, distribute-v) nodes."+jobNote, s.AlignNodes)
 	addTool(srv, "boolean_operation", "Union, subtract, intersect or exclude shapes into a LIVE boolean group (the shapes stay editable children); pass one existing boolean group to change its operation."+jobNote, s.BooleanOperation)
 	addTool(srv, "flatten_boolean", "Turn a boolean group into one plain vector node (the shapes go)."+jobNote, s.FlattenBoolean)
 	addTool(srv, "outline_stroke", "Turn a node's stroke into a filled vector outline."+jobNote, s.OutlineStroke)
-	addTool(srv, "duplicate_nodes", "Copy nodes, offset from the originals like a paste."+jobNote, s.DuplicateNodes)
 	addTool(srv, "reorder_node", "Move a node in the stacking order among its siblings: front, back, forward one, backward one."+jobNote, s.ReorderNode)
 	addTool(srv, "override_master_item", "Give a page its own editable copy of an item that comes from its master (the master's item stops being drawn on that page)."+jobNote, s.OverrideMasterItem)
 }

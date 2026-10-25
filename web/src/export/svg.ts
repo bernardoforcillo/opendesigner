@@ -1,12 +1,20 @@
-import type { EffectLite, FillLite, NodeLite } from "../store/types";
+import type { EffectLite, FillLite, GradientLite, NodeLite } from "../store/types";
+import { gradientBitmap } from "../renderer/gradientBitmap";
+import { commandsToD, outlineCommands } from "../renderer/shapeGeometry";
+import type { PathCmd } from "../renderer/shapeGeometry";
+import { strokeHeads } from "../renderer/arrowheads";
+import { sideBandRects } from "../renderer/strokeSides";
+import { variableStrokeCommands } from "../vector/widthProfile";
+import { brushStrokeCommands } from "../vector/brush";
 import type { Bounds } from "../canvas/geometry";
 import { firstBlur, firstShadow, resolvedFill } from "../renderer/canvasRenderer";
-import { cssFeatureSettings, cssVariationSettings, fontFamilyOf, fontSizeOf, fontWeightOf, paragraphDecorations, placeTextLines } from "../renderer/text";
+import { cssFeatureSettings, cssVariationSettings, fontFamilyOf, fontFeaturesOf, fontSizeOf, fontWeightOf, hscaleOf, paragraphDecorations, piecesOfSegment, placeTextLines } from "../renderer/text";
 import type { MeasureText } from "../renderer/text";
 import { hasRealStroke, vectorStyleOf } from "../renderer/vectorStyle";
 import { subPathsToD } from "../svg/pathData";
 import { meshBitmap } from "../renderer/mesh";
 import { encodePng, pngDataUri } from "./rawPng";
+import { FX_TILE, overlayEffects, overlayTile, progressiveBlur, tileUnit, withExpandedGlass } from "../renderer/effectsFx";
 
 // SVG EXPORT — markup from the NODES.
 //
@@ -117,10 +125,14 @@ function paintAttrs(n: NodeLite, defs: string[]): (Attr | null)[] {
 // standard deviation. The filter region is in document coordinates,
 // wide enough to contain offset and blur: the default (-10%/120%)
 // would crop a distant shadow.
+//
+// A progressive layer blur cannot be a filter (SVG blurs are uniform): it is exported as a
+// uniform blur of the mean radius of its ramp. Background blur has no standalone-SVG form.
 function effectsRef(n: NodeLite, defs: string[]): string | null {
   const shadows = n.effects?.filter((e): e is Extract<EffectLite, { kind: "dropShadow" }> => e.kind === "dropShadow") ?? [];
   const shadow = firstShadow(n);
-  const blur = firstBlur(n);
+  const prog = progressiveBlur(n, false);
+  const blur = firstBlur(n) ?? (prog ? { kind: "layerBlur" as const, radius: (prog.startRadius + prog.endRadius) / 2 } : undefined);
   const inners = n.effects?.filter((e): e is Extract<EffectLite, { kind: "innerShadow" }> => e.kind === "innerShadow") ?? [];
   if (!shadow && !blur && inners.length === 0) return null;
   const id = `f${defs.length}`;
@@ -199,11 +211,24 @@ function imagePatternRef(n: NodeLite, f: FillLite, defs: string[]): string | nul
 const MESH_SVG_SIZE = 32;
 
 function meshPatternRef(n: NodeLite, f: FillLite, defs: string[]): string | null {
+  return bitmapPatternRef(n, MESH_SVG_SIZE, meshBitmap(f.mesh!, MESH_SVG_SIZE, 1), defs);
+}
+
+// ANGULAR and DIAMOND gradients have no SVG element: they go out as the same kind of embedded bitmap
+// (renderer/gradientBitmap.ts, the geometry the canvas and the GPU use), 64 pixels a side.
+const GRADIENT_SVG_SIZE = 64;
+
+function bitmapGradientRef(n: NodeLite, g: GradientLite, defs: string[]): string | null {
   if (!(n.width > 0) || !(n.height > 0)) return null;
-  const total = MESH_SVG_SIZE + 2;
-  const uri = pngDataUri(encodePng(total, total, meshBitmap(f.mesh!, MESH_SVG_SIZE, 1)));
+  return bitmapPatternRef(n, GRADIENT_SVG_SIZE, gradientBitmap(g, n.width, n.height, GRADIENT_SVG_SIZE, 1), defs);
+}
+
+function bitmapPatternRef(n: NodeLite, size: number, rgba: Uint8ClampedArray, defs: string[]): string | null {
+  if (!(n.width > 0) || !(n.height > 0)) return null;
+  const total = size + 2;
+  const uri = pngDataUri(encodePng(total, total, rgba));
   const id = `p${defs.length}`;
-  const sx = n.width / MESH_SVG_SIZE, sy = n.height / MESH_SVG_SIZE;
+  const sx = n.width / size, sy = n.height / size;
   defs.push(
     `<pattern${attrs([attr("id", id), attr("x", n.x), attr("y", n.y), attr("width", n.width), attr("height", n.height)])} patternUnits="userSpaceOnUse">` +
     `<image${attrs([
@@ -228,6 +253,7 @@ function gradientRef(n: NodeLite, f: FillLite, defs: string[]): string | null {
   const x2 = n.x + g.x2 * n.width, y2 = n.y + g.y2 * n.height;
   const len = Math.hypot(x2 - x1, y2 - y1);
   if (!(len > 0)) return null;
+  if (g.kind === "angular" || g.kind === "diamond") return bitmapGradientRef(n, g, defs);
   const id = `g${defs.length}`;
   const stops = g.stops
     .map((st) => `<stop${attrs([
@@ -249,7 +275,9 @@ function gradientRef(n: NodeLite, f: FillLite, defs: string[]): string | null {
 // alignment: it is the only one SVG can express without clips.
 function strokeAttrs(n: NodeLite, defs: string[]): (Attr | null)[] {
   const s = n.strokes.find((st) => st.weight > 0);
-  if (!s) return [];
+  if (!s || s.sides) return []; // per-side weights go out as a band (sideBands)
+  if (s.brush) return []; // a brush goes out as filled stamps (brushStrokeElement)
+  if (s.widthProfile && s.widthProfile.length > 0) return []; // variable width goes out as a filled outline (variableStrokeElement)
   const ref = gradientRef(n, s.color, defs);
   const vs = n.kind === "vector" || n.meta ? vectorStyleOf(n) : null;
   return [
@@ -287,6 +315,96 @@ function vectorElement(n: NodeLite, defs: string[]): string {
   return out.join("");
 }
 
+// PER-SIDE stroke weights have no SVG attribute: the stroke goes out as the band between two rectangles
+// (the same one the canvas fills, renderer/strokeSides.ts), filled even-odd with the stroke's paint. The
+// band is not clipped to rounded corners (SVG has no cheap inside/outside clip), so on a rounded rectangle
+// it keeps square corners.
+function sideBands(n: NodeLite, defs: string[]): string {
+  const s = n.strokes.find((st) => st.weight > 0 && st.sides);
+  if (!s) return "";
+  const { outer, inner } = sideBandRects(n, s);
+  const rect = (r: { x: number; y: number; width: number; height: number }) => `M${fmt(r.x)} ${fmt(r.y)}h${fmt(r.width)}v${fmt(r.height)}h${fmt(-r.width)}z`;
+  const ref = gradientRef(n, s.color, defs);
+  return `<path${attrs([
+    attr("d", rect(outer) + rect(inner)), attr("fill-rule", "evenodd"),
+    attr("fill", ref ?? `rgb(${channel(s.color.r)},${channel(s.color.g)},${channel(s.color.b)})`),
+    s.color.a === 1 || ref !== null ? null : attr("fill-opacity", s.color.a),
+    n.opacity === 1 ? null : attr("opacity", n.opacity),
+  ])}/>`;
+}
+
+// A VARIABLE-WIDTH stroke has no SVG attribute: it goes out as a filled <path> of the stroke's region
+// (vector/widthProfile.ts, the same one the canvas fills), in the stroke's paint.
+function variableStrokeElement(n: NodeLite, defs: string[]): string {
+  let out = "";
+  for (const s of n.strokes) {
+    if (!(s.weight > 0) || s.brush || !s.widthProfile || s.widthProfile.length === 0) continue;
+    const cmds = variableStrokeCommands(n, s);
+    if (cmds.length === 0) continue;
+    const ref = gradientRef(n, s.color, defs);
+    out += `<path${attrs([
+      attr("d", commandsToD(cmds.map((c): PathCmd => (c[0] === "M" ? ["M", c[1] + n.x, c[2] + n.y] : c[0] === "L" ? ["L", c[1] + n.x, c[2] + n.y] : c)), DECIMALS)), attr("fill-rule", "evenodd"),
+      attr("fill", ref ?? `rgb(${channel(s.color.r)},${channel(s.color.g)},${channel(s.color.b)})`),
+      s.color.a === 1 || ref !== null ? null : attr("fill-opacity", s.color.a),
+      n.opacity === 1 ? null : attr("opacity", n.opacity),
+    ])}/>`;
+  }
+  return out;
+}
+
+// A BRUSHED stroke goes out as one filled <path> of its stamps (vector/brush.ts, the same ones the canvas
+// fills), NON-ZERO so overlapping stamps merge, in the stroke's paint. The jitter is seeded, so the marks are
+// the ones on the canvas.
+function brushStrokeElement(n: NodeLite, defs: string[]): string {
+  let out = "";
+  for (const s of n.strokes) {
+    if (!(s.weight > 0) || !s.brush) continue;
+    const cmds = brushStrokeCommands(n, s);
+    if (cmds.length === 0) continue;
+    const ref = gradientRef(n, s.color, defs);
+    const moved = cmds.map((c): PathCmd => (c[0] === "Z" ? c : c[0] === "C" ? ["C", c[1] + n.x, c[2] + n.y, c[3] + n.x, c[4] + n.y, c[5] + n.x, c[6] + n.y] : [c[0], c[1] + n.x, c[2] + n.y]));
+    out += `<path${attrs([
+      attr("d", commandsToD(moved, DECIMALS)), attr("fill-rule", "nonzero"),
+      attr("fill", ref ?? `rgb(${channel(s.color.r)},${channel(s.color.g)},${channel(s.color.b)})`),
+      s.color.a === 1 || ref !== null ? null : attr("fill-opacity", s.color.a),
+      n.opacity === 1 ? null : attr("opacity", n.opacity),
+    ])}/>`;
+  }
+  return out;
+}
+
+// The arrowheads of a vector's strokes (renderer/arrowheads.ts): filled shapes in the stroke's paint and the
+// arrow's open V stroked with it.
+function arrowheadElements(n: NodeLite, defs: string[]): string {
+  let out = "";
+  for (const s of n.strokes) {
+    if (!(s.weight > 0) || (!s.startCap && !s.endCap)) continue;
+    const ref = gradientRef(n, s.color, defs);
+    const color = ref ?? `rgb(${channel(s.color.r)},${channel(s.color.g)},${channel(s.color.b)})`;
+    const alpha = s.color.a === 1 || ref !== null ? null : s.color.a;
+    for (const g of strokeHeads(n, s.startCap, s.endCap, s.weight)) {
+      if (g.filled.length > 0) {
+        out += `<path${attrs([attr("d", commandsToD(g.filled, DECIMALS)), attr("fill", color), alpha === null ? null : attr("fill-opacity", alpha), n.opacity === 1 ? null : attr("opacity", n.opacity)])}/>`;
+      }
+      if (g.open.length > 0) {
+        out += `<path${attrs([
+          attr("d", commandsToD(g.open, DECIMALS)), attr("fill", "none"), attr("stroke", color), alpha === null ? null : attr("stroke-opacity", alpha),
+          attr("stroke-width", s.weight), n.opacity === 1 ? null : attr("opacity", n.opacity),
+        ])}/>`;
+      }
+    }
+  }
+  return out;
+}
+
+// Polygon, star, ellipse arc / ring and rectangle with smoothed or independent corners: one <path> of the
+// computed outline (renderer/shapeGeometry.ts), the same one the canvas draws.
+function computedElement(n: NodeLite, defs: string[]): string | null {
+  const cmds = outlineCommands(n);
+  if (!cmds) return null;
+  return `<path${attrs([attr("d", commandsToD(cmds, DECIMALS)), attr("fill-rule", "evenodd"), ...paintAttrs(n, defs), ...strokeAttrs(n, defs)])}/>` + sideBands(n, defs);
+}
+
 function rectElement(n: NodeLite, defs: string[]): string {
   // The radius is clamped to half the shorter side, as CanvasRenderingContext2D
   // .roundRect does: without it, the same shape would be drawn differently by the
@@ -298,7 +416,7 @@ function rectElement(n: NodeLite, defs: string[]): string {
     r > 0 ? attr("rx", r) : null,
     ...paintAttrs(n, defs),
     ...strokeAttrs(n, defs),
-  ])}/>`;
+  ])}/>` + sideBands(n, defs);
 }
 
 function ellipseElement(n: NodeLite, defs: string[]): string {
@@ -333,45 +451,72 @@ function textElement(n: NodeLite, measure: MeasureText, defs: string[]): string 
   }).join("");
   // A rich line is one <tspan> per piece (each with its own x, font and decoration); the first
   // carries the line's y, and so does every other: an absolute y per piece keeps the baseline shared.
-  const spans = lines
-    .flatMap((l) =>
-      (l.segments ?? [{ text: l.text, x: l.x, width: l.width, style }]).map((seg) => {
-        const own = l.segments !== undefined;
-        const decoration = [seg.style.underline ? "underline" : "", seg.style.strikethrough ? "line-through" : ""].filter(Boolean).join(" ");
-        return `<tspan${attrs([
-          attr("x", seg.x), attr("y", (seg.y ?? l.y) - (seg.style.baselineShift ?? 0)),
+  // A plain line made of runs (small caps, scripts, a list marker) is one tspan per piece, at its own size;
+  // so is a segment of a rich line made of runs, at its own size and baseline.
+  // A horizontal scale cannot be put on a tspan: the tspans of one scale share a <text> whose transform
+  // scales x, and their x is divided by it.
+  const plainDecoration = [style.underline ? "underline" : "", style.strikethrough ? "line-through" : ""].filter(Boolean).join(" ");
+  const rootFeatures = fontFeaturesOf(style);
+  const rgb = (c: { r: number; g: number; b: number }) => `rgb(${Math.round(c.r * 255)},${Math.round(c.g * 255)},${Math.round(c.b * 255)})`;
+  const declarations = (decls: string[]) => (decls.length > 0 ? [attr("style", decls.join(";"))] : []);
+  interface Span { h: number; xml: string }
+  const spans: Span[] = lines.flatMap((l): Span[] => {
+    if (l.pieces) {
+      const h = hscaleOf(style);
+      return l.pieces.map((g) => ({ h, xml: `<tspan${attrs([
+        attr("x", g.x / h), attr("y", g.y), g.scale === 1 ? null : attr("font-size", fontSizeOf(style) * g.scale),
+        plainDecoration ? attr("text-decoration", plainDecoration) : null,
+      ])}>${esc(g.text)}</tspan>` }));
+    }
+    if (!l.segments) {
+      const h = hscaleOf(style);
+      return [{ h, xml: `<tspan${attrs([attr("x", l.x / h), attr("y", l.y), plainDecoration ? attr("text-decoration", plainDecoration) : null])}>${esc(l.text)}</tspan>` }];
+    }
+    return l.segments.flatMap((seg) => {
+      const h = hscaleOf(seg.style);
+      const decoration = [seg.style.underline ? "underline" : "", seg.style.strikethrough ? "line-through" : ""].filter(Boolean).join(" ");
+      const features = fontFeaturesOf(seg.style);
+      return piecesOfSegment(seg, l.y).map((p): Span => {
+        const size = fontSizeOf(seg.style) * p.scale;
+        return { h, xml: `<tspan${attrs([
+          attr("x", p.x / h), attr("y", p.y - (seg.style.baselineShift ?? 0)),
           ...(seg.angle !== undefined ? [attr("rotate", Math.round((seg.angle * 180 / Math.PI) * 100) / 100)] : []),
-          ...(seg.style.color ? [attr("fill", `rgb(${Math.round(seg.style.color.r * 255)},${Math.round(seg.style.color.g * 255)},${Math.round(seg.style.color.b * 255)})`)] : []),
+          ...(seg.style.color ? [attr("fill", rgb(seg.style.color))] : []),
           ...(seg.style.color && seg.style.color.a < 1 ? [attr("fill-opacity", seg.style.color.a)] : []),
-          ...(seg.style.horizontalScale && seg.style.horizontalScale !== 1 && seg.text !== "" ? [attr("textLength", seg.width), attr("lengthAdjust", "spacingAndGlyphs")] : []),
-          ...(seg.style.noKerning || seg.style.fontFeatures || seg.style.fontVariations
-            ? [attr("style", [seg.style.noKerning ? "font-kerning:none" : "", seg.style.fontFeatures ? `font-feature-settings:${cssFeatureSettings(seg.style.fontFeatures)}` : "", seg.style.fontVariations ? `font-variation-settings:${cssVariationSettings(seg.style.fontVariations)}` : ""].filter(Boolean).join(";"))]
-            : []),
-          ...(own && fontFamilyOf(seg.style) !== fontFamilyOf(style) ? [attr("font-family", fontFamilyOf(seg.style))] : []),
-          ...(own && fontSizeOf(seg.style) !== fontSizeOf(style) ? [attr("font-size", fontSizeOf(seg.style))] : []),
-          ...(own && fontWeightOf(seg.style) !== fontWeightOf(style) ? [attr("font-weight", fontWeightOf(seg.style))] : []),
-          ...(own && !!seg.style.italic !== !!style.italic ? [attr("font-style", seg.style.italic ? "italic" : "normal")] : []),
+          ...(seg.style.horizontalScale && seg.style.horizontalScale !== 1 && p.text !== "" ? [attr("textLength", seg.width), attr("lengthAdjust", "spacingAndGlyphs")] : []),
+          ...(fontFamilyOf(seg.style) !== fontFamilyOf(style) ? [attr("font-family", fontFamilyOf(seg.style))] : []),
+          ...(size !== fontSizeOf(style) ? [attr("font-size", size)] : []),
+          ...(fontWeightOf(seg.style) !== fontWeightOf(style) ? [attr("font-weight", fontWeightOf(seg.style))] : []),
+          ...(!!seg.style.italic !== !!style.italic ? [attr("font-style", seg.style.italic ? "italic" : "normal")] : []),
+          ...declarations([
+            seg.style.noKerning ? "font-kerning:none" : "",
+            features !== rootFeatures ? `font-feature-settings:${features === "" ? "normal" : cssFeatureSettings(features) || "normal"}` : "",
+            seg.style.fontVariations ? `font-variation-settings:${cssVariationSettings(seg.style.fontVariations)}` : "",
+          ].filter(Boolean)),
           ...(decoration ? [attr("text-decoration", decoration)] : []),
-          ...(own && (seg.style.letterSpacing ?? 0) !== (style.letterSpacing ?? 0) ? [attr("letter-spacing", seg.style.letterSpacing ?? 0)] : []),
-        ])}>${esc(seg.text)}</tspan>`;
-      }),
-    )
-    .join("");
+          ...((seg.style.letterSpacing ?? 0) !== (style.letterSpacing ?? 0) ? [attr("letter-spacing", seg.style.letterSpacing ?? 0)] : []),
+        ])}>${esc(p.text)}</tspan>` };
+      });
+    });
+  });
   // xml:space="preserve" serves a line's LEADING spaces, which the canvas
   // draws and which SVG would otherwise collapse. The price is that every whitespace
   // INSIDE <text> becomes drawn: that is why the tspans are attached
   // to one another, with no newlines or indentation.
-  return `${boxes}<text${attrs([
+  const scales = [...new Set(spans.map((sp) => sp.h))];
+  return boxes + scales.map((h) => `<text${attrs([
     attr("font-family", fontFamilyOf(style)),
     attr("font-size", fontSizeOf(style)),
     attr("font-weight", fontWeightOf(style)),
     ...(style.italic ? [attr("font-style", "italic")] : []),
     ...(style.letterSpacing ? [attr("letter-spacing", style.letterSpacing)] : []),
-    ...(style.fontFeatures || style.fontVariations
-      ? [attr("style", [style.fontFeatures ? `font-feature-settings:${cssFeatureSettings(style.fontFeatures)}` : "", style.fontVariations ? `font-variation-settings:${cssVariationSettings(style.fontVariations)}` : ""].filter(Boolean).join(";"))]
-      : []),
+    h === 1 ? null : attr("transform", `scale(${h} 1)`),
+    ...declarations([
+      rootFeatures === "" ? "" : `font-feature-settings:${cssFeatureSettings(rootFeatures) || "normal"}`,
+      style.fontVariations ? `font-variation-settings:${cssVariationSettings(style.fontVariations)}` : "",
+    ].filter(Boolean)),
     ...paintAttrs(n, defs),
-  ])} xml:space="preserve">${spans}</text>`;
+  ])} xml:space="preserve">${spans.filter((sp) => sp.h === h).map((sp) => sp.xml).join("")}</text>`).join("");
 }
 
 /**
@@ -437,10 +582,44 @@ function imagePlaceholderElement(n: NodeLite): string {
   return `<g${attrs([n.opacity === 1 ? null : attr("opacity", n.opacity)])}>${body}</g>`;
 }
 
-function element(n: NodeLite, measure: MeasureText, href: ResolveImageHref, defs: string[]): string {
+// Noise and texture: the same seeded tile the canvas draws (renderer/effectsFx.ts), embedded as a
+// PNG <pattern> (pixelated, one tile pixel = one grain) over a copy of the node's outline.
+function overlayElements(n: NodeLite, defs: string[]): string {
+  if (!(n.width > 0) || !(n.height > 0)) return "";
+  const r = n.kind === "rect" ? Math.min(n.cornerRadius, n.width / 2, n.height / 2) : 0;
+  return overlayEffects(n).map((e) => {
+    const u = tileUnit(e);
+    const id = `p${defs.length}`;
+    const side = FX_TILE * u;
+    defs.push(
+      `<pattern${attrs([attr("id", id), attr("x", n.x), attr("y", n.y), attr("width", side), attr("height", side)])} patternUnits="userSpaceOnUse">` +
+      `<image${attrs([
+        attr("href", pngDataUri(encodePng(FX_TILE, FX_TILE, overlayTile(e)))), attr("x", 0), attr("y", 0), attr("width", side), attr("height", side),
+        { name: "preserveAspectRatio", value: "none" }, attr("style", "image-rendering:pixelated"),
+      ])}/></pattern>`,
+    );
+    const paint = [attr("fill", `url(#${id})`), n.opacity === 1 ? null : attr("opacity", n.opacity)];
+    return n.kind === "ellipse"
+      ? `<ellipse${attrs([attr("cx", n.x + n.width / 2), attr("cy", n.y + n.height / 2), attr("rx", n.width / 2), attr("ry", n.height / 2), ...paint])}/>`
+      : `<rect${attrs([attr("x", n.x), attr("y", n.y), attr("width", n.width), attr("height", n.height), r > 0 ? attr("rx", r) : null, ...paint])}/>`;
+  }).join("");
+}
+
+function element(node: NodeLite, measure: MeasureText, href: ResolveImageHref, defs: string[]): string {
+  // Glass is exported as the effects it is made of; noise and texture are drawn on top of
+  // boxes, ellipses, frames and images (not text or vectors, which have no outline).
+  const n = withExpandedGlass(node);
+  const base = elementBody(n, measure, href, defs);
+  const overlay = base !== "" && n.kind !== "text" && n.kind !== "vector" ? overlayElements(n, defs) : "";
+  return overlay === "" ? base : base + overlay;
+}
+
+function elementBody(n: NodeLite, measure: MeasureText, href: ResolveImageHref, defs: string[]): string {
   if (n.kind === "text") return textElement(n, measure, defs);
+  const computed = computedElement(n, defs);
+  if (computed !== null) return computed;
   if (n.kind === "ellipse") return ellipseElement(n, defs);
-  if (n.kind === "vector") return vectorElement(n, defs);
+  if (n.kind === "vector") return vectorElement(n, defs) + variableStrokeElement(n, defs) + brushStrokeElement(n, defs) + arrowheadElements(n, defs);
   if (n.kind === "image") {
     const uri = href(n.image?.assetHash ?? "");
     return uri === null ? imagePlaceholderElement(n) : imageElement(n, uri, defs);
@@ -450,6 +629,8 @@ function element(n: NodeLite, measure: MeasureText, href: ResolveImageHref, defs
 
 // The shape of a mask, geometry only (it goes inside a <clipPath>); null for a node that cannot mask.
 function maskGeometry(n: NodeLite): string | null {
+  const cmds = outlineCommands(n);
+  if (cmds) return `<path${attrs([attr("d", commandsToD(cmds, DECIMALS)), attr("clip-rule", "evenodd")])}/>`;
   if (n.kind === "ellipse") {
     return `<ellipse${attrs([attr("cx", n.x + n.width / 2), attr("cy", n.y + n.height / 2), attr("rx", n.width / 2), attr("ry", n.height / 2)])}/>`;
   }

@@ -6,8 +6,11 @@ e2e tests already written. A single implementation, in Go (`internal/codegen`),
 used by the CLI, the RPC and the MCP tool.
 
 ```
-Document ──> screens ──> IR (tree of elements + CSS properties) ──┬─> html   (CSS in a <style>)
-                                                                  └─> react  (Tailwind v4 classes)
+Document ──> screens ──> IR (tree of elements + CSS properties) ──┬─> html     (CSS in a <style>)
+                                                                  ├─> react    (Tailwind v4 classes)
+                                                                  ├─> leptos   (Rust view! macros, the same CSS inline)
+                                                                  ├─> swiftui  (native.go parses the CSS back)
+                                                                  └─> compose  (same)
 ```
 
 The IR is unique: CSS and Tailwind come out of the **same tree**, so they cannot
@@ -62,7 +65,8 @@ canvas, not like what you would expect.
 |---|---|
 | Frame with **auto layout** | `display:flex`, `flex-direction`, `gap`, `padding`, `justify-content` / `align-items` from main/cross alignment (also `space-between`); **hug** -> `fit-content`, otherwise fixed size. Children are in flow (`relative shrink-0`): the core has already written x/y, here CSS is told to redo the same arrangement |
 | Everything else | positioned container, `absolute` children at `left`/`top` = x/y (relative to the parent, as in the model) |
-| Group | positioned wrapper **without paint** |
+| Group | positioned wrapper **without paint** | (in the flow of an auto layout parent: a flow box of the union of its children, which hang from a zero-size anchor)
+| Frame with **grid** auto layout | `display:grid`, `grid-template-columns/rows`, `gap: <row> <column>`, `justify-items` / `align-items`; children get `grid-column` / `grid-row`; HTML and React (SwiftUI and Compose: see below, docs/layout.md) |
 | `clipsContent` | `overflow: hidden` |
 | Rotation | `transform: rotate(Ndeg)`, origin at the centre (same clockwise convention as the canvas) |
 | Rectangle | `border-radius` clamped to half the shorter side |
@@ -88,6 +92,13 @@ from the centre: on a non-square box the "(0,0)->(1,1)" diagonal is not
 where two stops have different alphas the segment is split into 8 points
 already interpolated the canvas way.
 
+**Angular and diamond gradients.** Angular is `conic-gradient(from <deg> at x y, ...)` in CSS. CSS has no
+diamond, but inside each quadrant around the centre the canvas's `|dx|+|dy|` is linear, so the diamond is
+four layered `linear-gradient(45|135|225|315deg, ...)` backgrounds, each in a no-repeat tile
+(`background-size` / `background-position`) that covers one quadrant; in react they are arbitrary
+properties (`[background-image:...]`). A vector's SVG gets a `<pattern>`: 120 wedges for angular, four
+rects with a `linearGradient` each for diamond. SwiftUI and Compose keep a radial approximation of the diamond.
+
 ## Components (react)
 
 A **component set** exports as ONE file, `src/components/<Name>.tsx`, and so does a
@@ -108,6 +119,97 @@ label="Buy" />` from its `variant_props` and `property_values`, leaving out what
 equals the default. Instances with overrides, or with animation or flow wiring inside,
 stay inline, and so does everything in the html target. The same properties still
 apply in the inline expansion (`core.EffectsOf`).
+
+## Native targets: SwiftUI and Jetpack Compose
+
+`-target swiftui` and `-target compose` write Swift / Kotlin sources from the **same IR**: `native.go` parses
+an element's CSS properties back into a small neutral model (size, position, flex axes, padding, fill,
+gradient, radius, shadows, stroke rings, opacity, rotation, text style) and `swiftui.go` / `compose.go` write
+it in their own syntax. First fill, first shadow, gradient geometry, stroke alignment and baked opacity are
+therefore decided once, in `build.go`, exactly as for html and react.
+
+| Design | SwiftUI | Compose |
+|---|---|---|
+| Screen (top-level frame) | `struct Name: View` in `Sources/Screens/` | `@Composable fun Name(onNavigate, onBack)` in `screens/` |
+| Auto layout | `VStack` / `HStack` (`spacing`, `.padding(EdgeInsets)`, `alignment`); `space-between` = `Spacer(minLength: 0)` between children; main-axis centre / end = the frame's alignment | `Column` / `Row` (`Arrangement.spacedBy`, `SpaceBetween`, `Modifier.padding`, `Alignment`) |
+| **Grid** auto layout | `Grid` / `GridRow` (iOS 16+), `gridCellColumns` for column spans, fixed tracks as `.frame(width:height:)` on the cell, fr tracks as `.frame(maxWidth: .infinity)`; row spans / overlapping cells fall back to `ZStack` + the core's computed `.offset` (warning) | `DesignGrid(columns, rows, columnGap, rowGap, ...)`, a generated `components/DesignGrid.kt` (a custom `Layout`: fixed, hug and fr tracks, gaps, spans, in-cell alignment); children carry `Modifier.gridCell(col, row, colSpan, rowSpan, fillX, fillY)` |
+| Everything else | `ZStack(alignment: .topLeading)`, children `.frame(...)` + `.offset(x:y:)` | `Box`, children `Modifier.size(...)` + `.offset(x, y)` |
+| hug | no fixed `.frame` on that axis | no fixed size on that axis |
+| fill the parent (`LayoutSizing` fill) | `.frame(maxWidth: .infinity)` / `maxHeight` | `Modifier.weight(1f)` / `fillMaxWidth()` / `fillMaxHeight()` |
+| Fill | `Shape().fill(Color / LinearGradient / RadialGradient)` | `Modifier.background(Color / Brush.linearGradient / radialGradient, shape)` |
+| Corner radius, ellipse | `RoundedRectangle(cornerRadius:)`, `Ellipse()` | `RoundedCornerShape`, `CircleShape` (a non-square ellipse is a pill) |
+| Stroke | `strokeBorder` (inside), `stroke` (centre), `stroke(...).padding(-w/2)` (outside) | `Modifier.border` (always drawn inside) |
+| Shadow | `.shadow(color:radius: blur/2, x:y:)` | `Modifier.dropShadow(shape, Shadow(...))` (Compose UI 1.9) |
+| Blur, opacity, rotation, clip | `.blur`, `.opacity`, `.rotationEffect`, `.clipShape` | `.blur`, `.alpha`, `.rotate`, `.clip` |
+| Text | `Text` with `.font(.custom(family, size:).weight(...))`, colour, alignment, line spacing, `.frame(width:)` | `Text(text, color, fontSize, fontWeight, lineHeight, textAlign)` with `Modifier.width` |
+| Image | `Image("img_<hash>")` from an image set in `Sources/Resources/Assets.xcassets` | `Image(painterResource(R.drawable.img_<hash>))` from `res/drawable-nodpi` |
+| Vector | `Path { p in ... }` with `.fill(style: FillStyle(eoFill:))` / `.stroke(style: StrokeStyle(...))` | `Canvas` + `PathParser().parsePathString(d)` with fill type and `Stroke` (cap, join, miter, dashes) |
+
+**Components** reuse the react registry (`react_components.go`): a component set, or a component with
+properties, is ONE `View` (`Sources/Components/Name.swift`) or `@Composable` (`components/Name.kt`) whose
+parameters are the set's axes (a string, first option by default) and the properties (boolean = show / hide,
+text = string, number = the target attribute, instance swap = `AnyView?` / `(@Composable () -> Unit)?`
+slot with the default content as fallback). The body `switch`es / `when`s on the axes. An instance is
+`Button2(size: "L", label: "Buy")`; what it leaves out is the default. Names that clash with the framework
+(`Button`, `Text`, `Card`...) get a suffix. Instances with overrides stay inline.
+
+**Flows**: the element that fires a transition becomes a `Button { router.go(.home) }` (SwiftUI, a
+`Router` object over a `NavigationStack`) or gets `Modifier.clickable { onNavigate("Home") }` (Compose, a
+`NavHost`); `back` transitions call `router.back()` / `onBack()`. Transitions without an element become an
+accessibility action on the screen's root. Key and auto triggers are left as comments (with the `// flow:`,
+guard and effect lines). Every element is preceded by a `// Name (data-node-id="...")` comment: the link
+between design and code, which is also how the editor finds a screen's file.
+
+**Grid**: the cells are resolved by the core's own placement (the CSS leaves auto-placement to the browser),
+so both targets get explicit cells. `Grid` shares spare room between fr columns equally: different fr weights,
+and cells spanning fixed or fr tracks, are approximated (warnings). Compose honours all of it. Children out of
+the flow (absolute) sit over the grid.
+
+**Not exported** (reported as warnings and in the generated README): animation clips, blend modes,
+background blur, inner shadows, wrapping auto layout, vector gradient fills and gradient text (first stop
+used), outside / centred strokes in Compose (drawn inside), text strokes. Custom fonts are named but not bundled.
+Screens have a fixed size.
+
+**Not verified by a compiler**: the sources are checked by golden tests and string assertions, not compiled
+(there is no Swift or Kotlin toolchain in the repo's CI). Treat the first build as the real test.
+
+## `leptos` target (Rust)
+
+`-target leptos` writes a client-side [Leptos](https://leptos.dev) 0.8 project built with [Trunk](https://trunkrs.dev).
+Unlike the native targets it does not parse anything back: like html it writes the IR's CSS properties as they are,
+in an inline `style="..."` attribute on every element of a `view!` macro, so fills (gradients included, the diamond
+as its exact four layers), strokes, shadows, filters, text and inline SVG vectors come out as in the html target.
+
+| File | Content |
+|---|---|
+| `src/screens/<name>.rs` | one screen = one `#[component]` whose `view!` holds the markup (`snake_case` file, PascalCase function) |
+| `src/components/<name>.rs` | one component set (or a component with properties) = one `#[component]` with props |
+| `src/app.rs` | `leptos_router` routes (`<Routes>` / `<Route path=path!("/cart") view=Cart />`); the start screen is also on `/` |
+| `src/main.rs`, `Cargo.toml`, `index.html` | `mount_to_body(App)`, dependencies (`leptos` with `csr`, `leptos_router`, `web-sys`), the Trunk page with the base CSS and fonts |
+| `public/assets/<hash>.<ext>` | the document's images (`<link data-trunk rel="copy-dir">`) |
+| `tests/flows.spec.ts`, `playwright.config.ts`, `package.json` | the **same** Playwright tests as the react target; the config starts `trunk serve --port 5173` |
+
+Components: the set's axes are `String` props (the first option by default), a BOOLEAN property is a `bool`
+(`{icon.then(|| view! { ... })}`), a TEXT property a `String` (`{label.clone()}`), a NUMBER property an `f64` written into
+the target's inline style (`format!("... opacity: {}", fade)`), an INSTANCE_SWAP property an `Option<ViewFn>`
+slot (`match &icon { Some(f) => f.run().into_any(), None => <default content> }`). The component `match`es on the
+axes (`format!("{}|{}", size, kind)`), and a combination without a variant renders `()`. An instance becomes
+`<Button size="L" label="Buy" icon=true />`. Prop names are snake_case (`buttonSize` -> `button_size`).
+
+Flow wiring is the react target's: the trigger element gets `role="button"`, `tabindex`, `aria-label`, `on:click` and
+`on:keydown` (Enter) calling `use_navigate()`, a pointer cursor and its `data-testid`; a transition without an element is a
+visually hidden `<button>` in a transparent `<nav>` (1px, top-left); `key` triggers are one `window_event_listener` removed
+with `on_cleanup`; `back` goes back in the browser history; `auto` is a comment. `// flow:`, `// guard:`, `// effect:` and
+`// chain:` (the if / else if position, see [flows.md](flows.md)) lines are Rust comments next to the element. A route the
+router's `path!` cannot take (`/p/[slug]`) is mounted as `/p/:slug` and reported as a warning.
+
+**Not exported**: animation clips (a warning and a README note). Screens have a fixed size.
+
+**Verified with a compiler** (unlike Swift and Kotlin): `go test ./internal/codegen` checks goldens and strings, and
+`OD_CARGO_CHECK=1 go test ./internal/codegen -run LeptosCompiles` runs `cargo check` (`RUSTFLAGS=-D warnings`) on the shop,
+button-set and card-with-swap projects; the same dump (`LEPTOS_OUT=dir`) was also checked for images, vectors with
+angular / diamond patterns, key / back / auto triggers and animated documents. **Not run**: `trunk build` / `trunk serve`
+(no wasm target or browser here), so the wasm bundle and the generated Playwright tests have not been executed.
 
 ## Flow wiring
 
@@ -215,7 +317,7 @@ at the same time are spaced 0.0001% apart so they do not merge) and an
 
 ```sh
 opendesigner export [-workspace DIR] [-doc ID|NAME | -json FILE] [-assets DIR]
-                    [-target react|html] [-out DIR] [-flow ID] [-force]
+                    [-target react|html|swiftui|compose|leptos] [-out DIR] [-flow ID] [-force]
 ```
 
 - loads the document **offline** from the workspace (like `opendesigner flow`),

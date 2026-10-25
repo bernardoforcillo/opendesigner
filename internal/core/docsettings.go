@@ -19,11 +19,12 @@ import (
 //	5. with more than one column the gutters leave room: (columns - 1) * gutter < the text width.
 
 var (
-	ErrBadVertical    = errors.New("core: vertical must be publishing, design or product")
-	ErrBadBaseline    = errors.New("core: baseline grid needs a finite increment between 0 and 1000 and a start >= 0")
-	ErrBadPageSetup   = errors.New("core: invalid page setup (size, margins, columns or bleed)")
-	ErrBadDocSettings = errors.New("core: invalid document settings (colour mode or profile)")
-	errNilDocSettings = errors.New("core: nil document settings")
+	ErrBadVertical      = errors.New("core: vertical must be publishing, design or product")
+	ErrBadPresentDevice = errors.New("core: present device must be generic, phone, tablet, desktop or none")
+	ErrBadBaseline      = errors.New("core: baseline grid needs a finite increment between 0 and 1000 and a start >= 0")
+	ErrBadPageSetup     = errors.New("core: invalid page setup (size, margins, columns or bleed)")
+	ErrBadDocSettings   = errors.New("core: invalid document settings (colour mode or profile)")
+	errNilDocSettings   = errors.New("core: nil document settings")
 )
 
 // ValidVertical reports whether v names a vertical ("" included).
@@ -35,12 +36,31 @@ func ValidVertical(v string) bool {
 	return false
 }
 
+// PresentDevices are the device frames the prototype player knows (web/src/flow/devices.ts::DEVICES).
+var PresentDevices = []string{"generic", "phone", "tablet", "desktop", "none"}
+
+// ValidPresentDevice reports whether d names a device frame ("" included: the default, generic).
+func ValidPresentDevice(d string) bool {
+	if d == "" {
+		return true
+	}
+	for _, k := range PresentDevices {
+		if k == d {
+			return true
+		}
+	}
+	return false
+}
+
 func validateDocSettings(s *opendesignerv1.DocSettings) error {
 	if s == nil {
 		return errNilDocSettings
 	}
 	if !ValidVertical(s.GetVertical()) {
 		return fmt.Errorf("%w: %q", ErrBadVertical, s.GetVertical())
+	}
+	if !ValidPresentDevice(s.GetPresentDevice()) {
+		return fmt.Errorf("%w: %q", ErrBadPresentDevice, s.GetPresentDevice())
 	}
 	inc, start := s.GetBaselineIncrement(), s.GetBaselineStart()
 	if math.IsNaN(inc) || math.IsInf(inc, 0) || inc < 0 || inc > 1000 || math.IsNaN(start) || math.IsInf(start, 0) || start < 0 {

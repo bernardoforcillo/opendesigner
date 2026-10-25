@@ -5,15 +5,22 @@ import type { Camera } from "../../canvas/camera";
 import { type Bounds, boundsIntersect, boundsOfNode, inflateBounds, strokeOutsetOfNode } from "../../canvas/geometry";
 import { type Transform, localTransformOf } from "../../canvas/transform";
 import { instanceDescentLocal, instanceOverrideMap, resolveInstance } from "../../store/instances";
-import type { EffectLite, FillLite, InstanceOverrideLite, MeshLite, NodeLite, SceneState, StrokeLite, TextStyleLite } from "../../store/types";
+import type { EffectLite, FillLite, GradientLite, InstanceOverrideLite, MeshLite, NodeLite, SceneState, StrokeLite, TextStyleLite } from "../../store/types";
 import { anchorPoint, inHandlePoint, outHandlePoint, subpathFills } from "../../store/vectorGeometry";
 import {
   CLIP_MIN_PX, LOD_FLAT_PX, SKIP_SUBTREE_PX, type ImageSource, resolvedFill, rootsOf, withOverride,
 } from "../canvasRenderer";
 import { effectsOutset, sceneIndexOf } from "../sceneIndex";
 import { MESH_BITMAP_SIZE, meshBitmap } from "../mesh";
+import { outlineCommands, type PathCmd } from "../shapeGeometry";
+import { hasArrowheads, strokeHeads } from "../arrowheads";
+import { sideBandRects } from "../strokeSides";
+import { variableStrokeCommands } from "../../vector/widthProfile";
+import { brushStrokeCommands } from "../../vector/brush";
+import { GRADIENT_BITMAP_SIZE, angularStart, gradientBitmap } from "../gradientBitmap";
 import { VECTOR_STROKE_PX, inkIsBox, nodeCenter } from "../shapes";
-import { decorationBars, fontSizeOf, paragraphDecorations, placeTextLines, trackedOffsets, type MeasureFor } from "../text";
+import { decorationBars, fontSizeOf, hscaleOf, paragraphDecorations, piecesOfLine, piecesOfSegment, placeTextLines, trackedOffsets, type MeasureFor } from "../text";
+import { FX_TILE, blurBands, overlayEffects, overlayTile, progressiveBlur, tileUnit, withBandBlur, withExpandedGlass } from "../effectsFx";
 import { hasRealStroke, vectorStyleOf } from "../vectorStyle";
 import type { FontBook } from "./canvaskit";
 
@@ -51,7 +58,9 @@ interface Frame {
 type Shape =
   | { kind: "rect"; rect: Float32Array }
   | { kind: "rrect"; rr: Float32Array }
-  | { kind: "oval"; rect: Float32Array };
+  | { kind: "oval"; rect: Float32Array }
+  // The computed outlines (polygon, star, arc / ring, smoothed or independent-corner rectangle).
+  | { kind: "path"; path: Path };
 
 export class CanvasKitRenderer {
   private surface: Surface | null = null;
@@ -159,7 +168,7 @@ export class CanvasKitRenderer {
     let masks = 0;
     for (const n of siblings) {
       if (!n.visible || seen.has(n.id) || overrides?.get(n.id)?.hidden) continue;
-      if (n.isMask && (n.kind === "rect" || n.kind === "ellipse" || n.kind === "frame" || n.kind === "vector")) {
+      if (n.isMask && (n.kind === "rect" || n.kind === "ellipse" || n.kind === "frame" || n.kind === "vector" || n.kind === "polygon" || n.kind === "star")) {
         seen.add(n.id);
         sk.save();
         masks++;
@@ -237,7 +246,7 @@ export class CanvasKitRenderer {
   private drawNode(sk: Canvas, n: NodeLite, overrides: ReadonlyMap<string, InstanceOverrideLite> | null): void {
     if (n.kind === "group" || n.kind === "instance") return;
     const f = this.frame as Frame;
-    const eff = withOverride(n, overrides?.get(n.id));
+    const eff = withExpandedGlass(withOverride(n, overrides?.get(n.id)));
     if (inkIsBox(eff) && (eff.width <= 0 || eff.height <= 0)) return;
 
     // Level of detail: as in the 2D renderer, at a few pixels a node is a
@@ -268,29 +277,101 @@ export class CanvasKitRenderer {
         sk.translate(-c.x, -c.y);
       }
     }
-    const outline = eff.kind === "rect" || eff.kind === "ellipse" || eff.kind === "frame" ? this.shapeOf(eff) : null;
+    const outline = eff.kind === "rect" || eff.kind === "ellipse" || eff.kind === "frame" || eff.kind === "polygon" || eff.kind === "star" ? this.shapeOf(eff) : null;
     const bb = eff.effects?.find((e): e is Extract<EffectLite, { kind: "backgroundBlur" }> => e.kind === "backgroundBlur" && e.radius > 0);
     if (bb && outline) this.drawBackdropBlur(sk, outline, bb.radius);
-    const layered = this.beginEffects(sk, eff);
-
-    if (eff.kind === "text") {
-      this.drawText(sk, eff);
-    } else if (eff.kind === "image") {
-      this.drawImage(sk, eff);
-    } else if (eff.kind === "vector") {
-      this.drawVector(sk, eff);
-    } else {
-      const shape = this.shapeOf(eff);
-      // A frame without a fill is transparent (the default gray belongs to shapes).
-      if (!(eff.kind === "frame" && eff.fills.length === 0)) {
-        this.drawShape(sk, shape, this.fillPaint(resolvedFill(eff), eff, eff.opacity));
+    // A progressive backdrop blur: the same blur in bands, each of its own radius.
+    const pbb = progressiveBlur(eff, true);
+    if (pbb && outline) {
+      for (const band of blurBands(eff, pbb, 1 / f.px)) {
+        sk.save();
+        this.clipPolygon(sk, band.polygon);
+        this.drawBackdropBlur(sk, outline, band.radius);
+        sk.restore();
       }
-      this.drawStrokes(sk, eff, shape);
     }
 
-    if (layered) sk.restore();
+    const drawBody = () => {
+      if (eff.kind === "text") {
+        this.drawText(sk, eff);
+      } else if (eff.kind === "image") {
+        this.drawImage(sk, eff);
+      } else if (eff.kind === "vector") {
+        this.drawVector(sk, eff);
+      } else {
+        const shape = this.shapeOf(eff);
+        // A frame without a fill is transparent (the default gray belongs to shapes).
+        if (!(eff.kind === "frame" && eff.fills.length === 0)) {
+          this.drawShape(sk, shape, this.fillPaint(resolvedFill(eff), eff, eff.opacity));
+        }
+        this.drawStrokes(sk, eff, shape);
+      }
+    };
+    const pb = progressiveBlur(eff, false);
+    if (pb) {
+      // A progressive layer blur: the node once per band, clipped to it, with the band's radius.
+      for (const band of blurBands(eff, pb, 1 / f.px)) {
+        sk.save();
+        this.clipPolygon(sk, band.polygon);
+        const layered = this.beginEffects(sk, withBandBlur(eff, pb, band.radius));
+        drawBody();
+        if (layered) sk.restore();
+        sk.restore();
+      }
+    } else {
+      const layered = this.beginEffects(sk, eff);
+      drawBody();
+      if (layered) sk.restore();
+    }
     if (outline) this.drawInnerShadows(sk, eff, outline);
+    if (outline || eff.kind === "image") this.drawOverlays(sk, eff, outline);
     if (rotated) sk.restore();
+  }
+
+  private clipPolygon(sk: Canvas, pts: readonly (readonly [number, number])[]): void {
+    const CK = this.CK;
+    const b = new CK.PathBuilder();
+    pts.forEach(([x, y], i) => (i === 0 ? b.moveTo(x, y) : b.lineTo(x, y)));
+    b.close();
+    const path: Path = b.detachAndDelete();
+    (this.frame as Frame).garbage.push(path);
+    sk.clipPath(path, CK.ClipOp.Intersect, true);
+  }
+
+  // Noise and texture: the seeded tile (effectsFx.ts, the same grain as the 2D renderer) as a
+  // repeating image shader in world space, anchored at the node's corner, over its box and
+  // clipped to its outline.
+  private readonly overlayImages = new WeakMap<object, SkImage | null>();
+
+  private overlayImage(e: Parameters<typeof overlayTile>[0]): SkImage | null {
+    if (this.overlayImages.has(e)) return this.overlayImages.get(e) ?? null;
+    const CK = this.CK;
+    const img = CK.MakeImage(
+      { width: FX_TILE, height: FX_TILE, alphaType: CK.AlphaType.Unpremul, colorType: CK.ColorType.RGBA_8888, colorSpace: CK.ColorSpace.SRGB },
+      overlayTile(e), FX_TILE * 4,
+    );
+    this.overlayImages.set(e, img);
+    return img;
+  }
+
+  private drawOverlays(sk: Canvas, n: NodeLite, shape: Shape | null): void {
+    const CK = this.CK;
+    const f = this.frame as Frame;
+    for (const e of overlayEffects(n)) {
+      const img = this.overlayImage(e);
+      if (!img) continue;
+      const u = tileUnit(e);
+      const shader: Shader = img.makeShaderOptions(CK.TileMode.Repeat, CK.TileMode.Repeat, CK.FilterMode.Nearest, CK.MipmapMode.None, [u, 0, n.x, 0, u, n.y, 0, 0, 1]);
+      f.garbage.push(shader);
+      const p = new CK.Paint();
+      p.setShader(shader);
+      p.setAlphaf(n.opacity);
+      sk.save();
+      if (shape) this.clipShape(sk, shape, CK.ClipOp.Intersect);
+      sk.drawRect(CK.XYWHRect(n.x, n.y, n.width, n.height), p);
+      sk.restore();
+      p.delete();
+    }
   }
 
   // The frosted glass: what is already drawn, inside the outline, blurred.
@@ -318,6 +399,7 @@ export class CanvasKitRenderer {
       b.addRect(CK.XYWHRect(n.x - m, n.y - m, n.width + m * 2, n.height + m * 2));
       if (shape.kind === "rect") b.addRect(shape.rect);
       else if (shape.kind === "rrect") b.addRRect(shape.rr);
+      else if (shape.kind === "path") b.addPath(shape.path);
       else b.addOval(shape.rect);
       b.setFillType(CK.FillType.EvenOdd);
       const ring: Path = b.detachAndDelete();
@@ -405,6 +487,8 @@ export class CanvasKitRenderer {
   private shapeOf(n: NodeLite): Shape {
     const CK = this.CK;
     const rect = CK.XYWHRect(n.x, n.y, n.width, n.height);
+    const cmds = outlineCommands(n);
+    if (cmds) return { kind: "path", path: this.pathOf(cmds) };
     if (n.kind === "ellipse") return { kind: "oval", rect };
     if (n.kind === "rect" && n.cornerRadius > 0) {
       const r = Math.min(n.cornerRadius, n.width / 2, n.height / 2);
@@ -413,9 +497,28 @@ export class CanvasKitRenderer {
     return { kind: "rect", rect };
   }
 
+  // Path commands (renderer/shapeGeometry.ts) as a Skia path, freed with the frame. Even-odd, like the
+  // 2D canvas's rings and holes (an arc's ring is two opposite circles); `winding` for brush stamps, which
+  // are all wound the same way and must merge where they overlap.
+  private pathOf(cmds: readonly PathCmd[], winding = false): Path {
+    const CK = this.CK;
+    const b = new CK.PathBuilder();
+    for (const c of cmds) {
+      if (c[0] === "M") b.moveTo(c[1], c[2]);
+      else if (c[0] === "L") b.lineTo(c[1], c[2]);
+      else if (c[0] === "C") b.cubicTo(c[1], c[2], c[3], c[4], c[5], c[6]);
+      else b.close();
+    }
+    b.setFillType(winding ? CK.FillType.Winding : CK.FillType.EvenOdd);
+    const path: Path = b.detachAndDelete();
+    (this.frame as Frame).garbage.push(path);
+    return path;
+  }
+
   private drawShape(sk: Canvas, s: Shape, paint: Paint): void {
     if (s.kind === "rect") sk.drawRect(s.rect, paint);
     else if (s.kind === "rrect") sk.drawRRect(s.rr, paint);
+    else if (s.kind === "path") sk.drawPath(s.path, paint);
     else sk.drawOval(s.rect, paint);
   }
 
@@ -423,6 +526,7 @@ export class CanvasKitRenderer {
     const CK = this.CK;
     if (s.kind === "rect") sk.clipRect(s.rect, op, true);
     else if (s.kind === "rrect") sk.clipRRect(s.rr, op, true);
+    else if (s.kind === "path") sk.clipPath(s.path, op, true);
     else {
       const b = new CK.PathBuilder();
       b.addOval(s.rect);
@@ -487,10 +591,28 @@ export class CanvasKitRenderer {
         const stops = [...g.stops].sort((a, b) => a.position - b.position);
         const colors = stops.map((s) => CK.Color4f(s.color.r, s.color.g, s.color.b, s.color.a));
         const pos = stops.map((s) => Math.min(1, Math.max(0, s.position)));
-        const shader: Shader =
-          g.kind === "linear"
-            ? CK.Shader.MakeLinearGradient([x1, y1], [x2, y2], colors, pos, CK.TileMode.Clamp)
-            : CK.Shader.MakeRadialGradient([x1, y1], len, colors, pos, CK.TileMode.Clamp);
+        if (g.kind === "diamond") {
+          // No native diamond shader: the bitmap (renderer/gradientBitmap.ts), stretched over the box like a mesh.
+          const img = this.diamondImage(g, n.width, n.height);
+          if (img) {
+            const sx = n.width / GRADIENT_BITMAP_SIZE, sy = n.height / GRADIENT_BITMAP_SIZE;
+            const ds: Shader = img.makeShaderOptions(CK.TileMode.Clamp, CK.TileMode.Clamp, CK.FilterMode.Linear, CK.MipmapMode.None, [sx, 0, n.x - sx, 0, sy, n.y - sy, 0, 0, 1]);
+            (this.frame as Frame).garbage.push(ds);
+            p.setColor(CK.BLACK);
+            p.setShader(ds);
+            p.setAlphaf(opacity);
+            return p;
+          }
+          p.setColor(CK.Color4f(fill.r, fill.g, fill.b, fill.a * opacity));
+          return p;
+        }
+        let shader: Shader;
+        if (g.kind === "linear") shader = CK.Shader.MakeLinearGradient([x1, y1], [x2, y2], colors, pos, CK.TileMode.Clamp);
+        else if (g.kind === "angular") {
+          // A sweep gradient starts at +x and runs clockwise (y points down), like the 2D canvas's conic one.
+          const start = (angularStart(g, n.width, n.height) * 180) / Math.PI;
+          shader = CK.Shader.MakeSweepGradient(x1, y1, colors, pos, CK.TileMode.Clamp, null, 0, start, start + 360);
+        } else shader = CK.Shader.MakeRadialGradient([x1, y1], len, colors, pos, CK.TileMode.Clamp);
         (this.frame as Frame).garbage.push(shader);
         p.setColor(CK.BLACK);
         p.setShader(shader);
@@ -533,6 +655,10 @@ export class CanvasKitRenderer {
       this.paintText(sk, n, p);
       return;
     }
+    if (s.sides && (n.kind === "rect" || n.kind === "frame")) {
+      this.strokeSides(sk, n, shape, s);
+      return;
+    }
     if (s.align === "center") {
       p.setStrokeWidth(s.weight);
       this.drawShape(sk, shape, p);
@@ -544,6 +670,44 @@ export class CanvasKitRenderer {
     p.setStrokeWidth(s.weight * 2);
     this.drawShape(sk, shape, p);
     sk.restore();
+  }
+
+  // Per-side weights: the band between two rectangles (renderer/strokeSides.ts), filled even-odd with the
+  // stroke's paint; inside and outside are clipped by the outline like the uniform stroke.
+  private strokeSides(sk: Canvas, n: NodeLite, shape: Shape, s: StrokeLite): void {
+    const CK = this.CK;
+    const { outer, inner } = sideBandRects(n, s);
+    const b = new CK.PathBuilder();
+    b.addRect(CK.XYWHRect(outer.x, outer.y, outer.width, outer.height));
+    b.addRect(CK.XYWHRect(inner.x, inner.y, inner.width, inner.height));
+    b.setFillType(CK.FillType.EvenOdd);
+    const band: Path = b.detachAndDelete();
+    (this.frame as Frame).garbage.push(band);
+    const p = this.paintFor(this.fillP, s.color, n, n.opacity);
+    sk.save();
+    if (s.align !== "center") this.clipShape(sk, shape, s.align === "inside" ? CK.ClipOp.Intersect : CK.ClipOp.Difference);
+    sk.drawPath(band, p);
+    sk.restore();
+  }
+
+  // The arrowheads of a vector's strokes (renderer/arrowheads.ts).
+  private drawArrowheads(sk: Canvas, n: NodeLite): void {
+    const CK = this.CK;
+    for (const s of n.strokes) {
+      if (!(s.weight > 0) || (!s.startCap && !s.endCap)) continue;
+      for (const g of strokeHeads(n, s.startCap, s.endCap, s.weight)) {
+        if (g.filled.length > 0) sk.drawPath(this.pathOf(g.filled), this.paintFor(this.fillP, s.color, n, n.opacity));
+        if (g.open.length > 0) {
+          const p = this.paintFor(this.strokeP, s.color, n, n.opacity);
+          p.setStyle(CK.PaintStyle.Stroke);
+          p.setStrokeWidth(s.weight);
+          p.setStrokeCap(CK.StrokeCap.Butt);
+          p.setStrokeJoin(CK.StrokeJoin.Miter);
+          p.setPathEffect(null);
+          sk.drawPath(this.pathOf(g.open), p);
+        }
+      }
+    }
   }
 
   // --- testo -----------------------------------------------------------------
@@ -597,7 +761,7 @@ export class CanvasKitRenderer {
     // A piece with letter spacing goes character by character, as on the 2D canvas.
     const put = (text: string, x: number, y0: number, f: Font, style: TextStyleLite, angle = 0) => {
       if (text === "") return;
-      const spacing = style.letterSpacing ?? 0, sx = style.horizontalScale ?? 1;
+      const spacing = style.letterSpacing ?? 0, sx = (style.horizontalScale ?? 1) * hscaleOf(style);
       const y = y0 - (style.baselineShift ?? 0);
       // A piece with its own colour is painted with a copy of the node's paint.
       const own = style.color ? paint.copy() : null;
@@ -617,14 +781,21 @@ export class CanvasKitRenderer {
     };
     for (const line of lines) {
       if (!line.segments) {
-        put(line.text, line.x, line.y, font, t.style);
+        for (const p of piecesOfLine(line)) {
+          // Small caps and scripts are runs at another size; the font is cached per size.
+          const f = p.scale === 1 ? font
+            : this.fonts.fontFor(t.style.fontWeight, fontSizeOf(t.style) * p.scale, t.style.fontFamily, t.style.italic === true) ?? font;
+          put(p.text, p.x, p.y, f, t.style);
+        }
         this.drawBars(sk, [{ x: line.x, width: line.width, style: t.style }], line.y, paint);
         continue;
       }
-      // Rich text: every piece in its own font, on the line's baseline.
+      // Rich text: every piece in its own font, on the line's baseline (or its own: scripts, small caps).
       for (const seg of line.segments) {
-        const f = this.fonts.fontFor(seg.style.fontWeight, fontSizeOf(seg.style), seg.style.fontFamily, seg.style.italic === true) ?? font;
-        put(seg.text, seg.x, seg.y ?? line.y, f, seg.style, seg.angle);
+        for (const p of piecesOfSegment(seg, line.y)) {
+          const f = this.fonts.fontFor(seg.style.fontWeight, fontSizeOf(seg.style) * p.scale, seg.style.fontFamily, seg.style.italic === true) ?? font;
+          put(p.text, p.x, p.y, f, seg.style, seg.angle);
+        }
       }
       this.drawBars(sk, line.segments, line.y, paint);
     }
@@ -657,6 +828,23 @@ export class CanvasKitRenderer {
       meshBitmap(mesh, MESH_BITMAP_SIZE, 1), total * 4,
     );
     this.meshImages.set(mesh, img);
+    return img;
+  }
+
+  private readonly diamondImages = new WeakMap<GradientLite, { key: string; img: SkImage | null }>();
+
+  // A diamond gradient's bitmap as a GPU image; it depends on the box's size, so it is remade when that changes.
+  private diamondImage(g: GradientLite, w: number, h: number): SkImage | null {
+    const key = `${w}x${h}`;
+    const hit = this.diamondImages.get(g);
+    if (hit && hit.key === key) return hit.img;
+    const CK = this.CK;
+    const total = GRADIENT_BITMAP_SIZE + 2;
+    const img = CK.MakeImage(
+      { width: total, height: total, alphaType: CK.AlphaType.Unpremul, colorType: CK.ColorType.RGBA_8888, colorSpace: CK.ColorSpace.SRGB },
+      gradientBitmap(g, w, h, GRADIENT_BITMAP_SIZE, 1), total * 4,
+    );
+    this.diamondImages.set(g, { key, img });
     return img;
   }
 
@@ -748,6 +936,17 @@ export class CanvasKitRenderer {
       const join = vs.join === "round" ? CK.StrokeJoin.Round : vs.join === "bevel" ? CK.StrokeJoin.Bevel : CK.StrokeJoin.Miter;
       for (const s of n.strokes) {
         if (!(s.weight > 0)) continue;
+        if (s.brush) {
+          // BRUSH: tips stamped along the path (vector/brush.ts), filled NON-ZERO so overlapping stamps merge.
+          sk.drawPath(this.pathOf(brushStrokeCommands(n, s), true), this.paintFor(this.fillP, s.color, n, n.opacity));
+          continue;
+        }
+        if (s.widthProfile && s.widthProfile.length > 0) {
+          // VARIABLE WIDTH: the stroke's region (vector/widthProfile.ts), filled with its paint.
+          const region = this.pathOf(variableStrokeCommands(n, s));
+          sk.drawPath(region, this.paintFor(this.fillP, s.color, n, n.opacity));
+          continue;
+        }
         const p = this.paintFor(this.strokeP, s.color, n, n.opacity);
         p.setStyle(CK.PaintStyle.Stroke);
         p.setStrokeWidth(s.weight);
@@ -763,6 +962,7 @@ export class CanvasKitRenderer {
         sk.drawPath(strokePath, p);
         p.setPathEffect(null);
       }
+      if (hasArrowheads(n)) this.drawArrowheads(sk, n);
     } else if (hasStroke && vs.hairline) {
       const p = this.strokeP;
       p.setShader(null);

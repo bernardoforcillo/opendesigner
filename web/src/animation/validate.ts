@@ -13,7 +13,7 @@ import { CLIP_TRIGGERS, TRACK_PROPS, isValidEasing } from "./engine";
 const finite = Number.isFinite;
 
 // The node types with an outline on which to "draw" the stroke (core.canDraw).
-const DRAWABLE = new Set(["vector", "rect", "ellipse", "frame"]);
+const DRAWABLE = new Set(["vector", "rect", "ellipse", "frame", "polygon", "star"]);
 
 export function isValidClip(scene: Pick<SceneState, "nodes">, c: ClipLite): boolean {
   if (c.id === "") return false;

@@ -25,6 +25,10 @@ message GradientStop { Color color = 1; double position = 2; string variable_id 
 // RADIAL: the center is (x1,y1) and the radius is the distance between (x1,y1)
 // and (x2,y2), measured in WORLD coordinates after denormalization (a circle,
 // not an ellipse).
+// ANGULAR (conic): the center is (x1,y1); the 0% direction points from it toward (x2,y2) and the
+// stops sweep clockwise once around (360 degrees). Only the direction of (x1,y1)->(x2,y2) matters.
+// DIAMOND: the center is (x1,y1); the 100% stop sits where |dx|+|dy| (in WORLD units) equals the
+// distance between (x1,y1) and (x2,y2), so the bands are axis-aligned diamonds.
 message GradientPaint {
   repeated GradientStop stops = 1;
   double x1 = 2; double y1 = 3; double x2 = 4; double y2 = 5;
@@ -42,7 +46,9 @@ message ImagePaint { string asset_hash = 1; ImageScaleMode mode = 2; }
 // color at the top-left corner, the last at the bottom-right), blended smoothly (bilinear) between
 // the grid points. The points sit on a regular grid; they do not move.
 message MeshPaint { uint32 rows = 1; uint32 cols = 2; repeated Color colors = 3; }
-message Paint { oneof kind { SolidPaint solid = 1; GradientPaint linear = 2; GradientPaint radial = 3; ImagePaint image = 4; MeshPaint mesh = 5; } }
+message Paint { oneof kind { SolidPaint solid = 1; GradientPaint linear = 2; GradientPaint radial = 3; ImagePaint image = 4; MeshPaint mesh = 5;
+  // Fields 20-29 are the shapes-and-paints track's (both reuse GradientPaint's stops).
+  GradientPaint angular = 20; GradientPaint diamond = 21; } }
 
 // Alignment of the stroke relative to the shape's PERIMETER. CENTER is the
 // drawing default (half inside, half outside): it is the only one the 2D canvas
@@ -61,6 +67,21 @@ enum StrokeAlign {
   STROKE_ALIGN_OUTSIDE = 3;
 }
 
+// Arrowheads at the two ends of an OPEN path or a line (a vector's open subpaths; closed shapes
+// have no ends). NONE (0) is a plain butt/round/square end as the stroke style says. The head is drawn
+// scaled by the stroke weight (see docs/shapes.md).
+enum ArrowHead {
+  ARROW_HEAD_NONE = 0;
+  ARROW_HEAD_ARROW = 1;     // two strokes forming an open "V"
+  ARROW_HEAD_TRIANGLE = 2;  // a filled triangle
+  ARROW_HEAD_CIRCLE = 3;
+  ARROW_HEAD_SQUARE = 4;
+  ARROW_HEAD_DIAMOND = 5;
+}
+// Per-side stroke weights of a rectangle or frame (world units, each >= 0). When present they
+// REPLACE `Stroke.weight` on the four sides, so a border can be thick at the bottom only.
+message StrokeSides { double top = 1; double right = 2; double bottom = 3; double left = 4; }
+
 // A stroke: the same Paint as fills, plus the width (in WORLD coordinates, like
 // font_size) and the alignment. A message of its own rather than three parallel
 // fields on Node, because `strokes` is repeated exactly like `fills`: a node can
@@ -69,6 +90,56 @@ message Stroke {
   Paint paint = 1;
   double weight = 2;      // >= 0, in world coordinates
   StrokeAlign align = 3;
+  // Fields 20-29 are the shapes-and-paints track's.
+  ArrowHead start_cap = 20;   // the first anchor of the first open subpath
+  ArrowHead end_cap = 21;     // the last anchor of the last open subpath
+  StrokeSides sides = 22;     // per-side weights (rect / frame); absent = `weight` on every side
+  // Fields 30-49 are the vector track's.
+  // VARIABLE WIDTH (vectors): the width along the path, as points sorted by position. Empty = the uniform
+  // stroke. Between points the widths are interpolated linearly; before the first and after the last
+  // they stay. See WidthPoint.
+  repeated WidthPoint width_profile = 30;
+  // Field 40-49 are the brushes track's.
+  // BRUSH (vectors): the stroke is drawn as a row of tips stamped along the path instead of a line. Absent
+  // (or kind NONE) = the plain stroke. A brush wins over width_profile and dashes. See Brush.
+  Brush brush = 40;
+}
+
+enum BrushKind {
+  BRUSH_KIND_NONE = 0;
+  BRUSH_KIND_STRETCH = 1;  // tiles of one tip laid end to end, each `spacing` weights long and one weight wide
+  BRUSH_KIND_SCATTER = 2;  // tips of one weight stamped every `spacing` weights, jittered
+}
+
+enum BrushTip {
+  BRUSH_TIP_DOT = 0;
+  BRUSH_TIP_DASH = 1;     // a rounded bar, twice as long as wide
+  BRUSH_TIP_SQUARE = 2;
+  BRUSH_TIP_DIAMOND = 3;
+  BRUSH_TIP_LEAF = 4;
+}
+
+// A brush: repeated shapes along the path, placed by arc length and jittered by a seeded RNG, so the same
+// document draws the same marks on every client and in the SVG export. Distances are MULTIPLES of the stroke
+// weight, so changing the weight scales the whole brush.
+message Brush {
+  BrushKind kind = 1;
+  BrushTip tip = 2;
+  double spacing = 3;      // 0.05..64: the distance between stamps (stretch: the length of one tile)
+  double scatter = 4;      // 0..8: how far a stamp may stray across the path (a total spread, in weights)
+  double size_jitter = 5;  // 0..1: random scale of a stamp, 1 = between half and one and a half
+  double angle_jitter = 6; // 0..180: random turn of a stamp in degrees, either way
+  uint32 seed = 7;         // seeds the jitter
+}
+
+// One point of a variable-width stroke. `position` runs 0..1 along each subpath's length. `left` and
+// `right` are the half-widths on the left and right of the direction of travel, as MULTIPLES of
+// half the stroke weight (1 / 1 = the uniform stroke; 0 / 0 = a point), so changing the weight scales
+// the whole profile.
+message WidthPoint {
+  double position = 1; // 0..1
+  double left = 2;     // 0..16
+  double right = 3;    // 0..16
 }
 
 // Drop shadow. Offset and blur are in WORLD coordinates (like font_size): they
@@ -96,12 +167,65 @@ message InnerShadow {
 // Background blur: blurs what is BEHIND the node, inside its outline (the
 // frosted-glass look). `radius` is the standard deviation, in world coordinates.
 message BackgroundBlur { double radius = 1; } // >= 0
+// Progressive blur: the radius ramps linearly from start_radius at (x1, y1) to
+// end_radius at (x2, y2), points in the node's unit box (0..1 across and down, like a
+// gradient's handles); before the start and past the end it stays. `background` false
+// blurs the node itself, true what is behind it (inside the outline, like BackgroundBlur).
+message ProgressiveBlur {
+  double start_radius = 1; // >= 0, standard deviation in world units
+  double end_radius = 2;   // >= 0
+  double x1 = 3;
+  double y1 = 4;
+  double x2 = 5;
+  double y2 = 6;
+  bool background = 7;
+}
+
+enum NoiseMode {
+  NOISE_MODE_UNSPECIFIED = 0; // MONO
+  NOISE_MODE_MONO = 1;        // grey grains
+  NOISE_MODE_DUO = 2;         // grains of `color` and `color2`
+  NOISE_MODE_MULTI = 3;       // grains of random colours
+}
+
+// Film grain drawn over the node, inside its outline (its box for other shapes).
+message Noise {
+  NoiseMode mode = 1;
+  double size = 2;    // grain size in world units, > 0 (0 => 1)
+  double density = 3; // 0..1, share of the grains that show
+  double opacity = 4; // 0..1
+  Color color = 5;    // DUO: first colour (MONO and MULTI ignore it)
+  Color color2 = 6;   // DUO: second colour
+  uint32 seed = 7;
+}
+
+// A soft mottled relief (paper, plaster) drawn over the node, light and dark in turn.
+message Texture {
+  double scale = 1;     // blob size in world units, > 0 (0 => 8)
+  double intensity = 2; // 0..1
+  uint32 seed = 3;
+}
+
+// Simplified glass: a frosted backdrop (background blur), a fine grain and a light
+// edge on the side facing `light_angle`. Drawn as those three effects.
+message Glass {
+  double frost = 1;       // >= 0, background blur radius in world units
+  double light = 2;       // 0..1, strength of the light edge
+  double light_angle = 3; // degrees, where the light comes from: 0 = the left, 90 = the top (y grows down)
+  double noise = 4;       // 0..1, strength of the grain
+}
+
 message Effect {
   oneof kind {
     DropShadow drop_shadow = 1;
     LayerBlur layer_blur = 2;
     InnerShadow inner_shadow = 3;
     BackgroundBlur background_blur = 4;
+    // 20..29 are the type-and-effects range.
+    ProgressiveBlur progressive_blur = 20;
+    Noise noise = 21;
+    Texture texture = 22;
+    Glass glass = 23;
   }
 }
 
@@ -125,8 +249,28 @@ enum BlendMode {
   BLEND_MODE_LUMINOSITY = 15;
 }
 
-message RectNode { double corner_radius = 1; }
-message EllipseNode {} // cx/cy/rx/ry derive from x/y/width/height, as for RectNode
+// Independent corner radii (world units, each >= 0, clamped so neighbours fit the side).
+message CornerRadii { double top_left = 1; double top_right = 2; double bottom_right = 3; double bottom_left = 4; }
+message RectNode {
+  double corner_radius = 1;
+  // Fields 20-29 are the shapes-and-paints track's.
+  // Corner smoothing ("squircle"): 0 = circular arcs, 1 = fully smoothed (the iOS-style continuous
+  // curve). Written by the "corner_smoothing" mask path.
+  double corner_smoothing = 20;
+  // When present, the four radii replace `corner_radius`. Written by the "corner_radii" mask path.
+  CornerRadii radii = 21;
+}
+// cx/cy/rx/ry derive from x/y/width/height, as for RectNode. The arc fields turn the ellipse into
+// an ARC / PIE / RING (written by the "arc" mask path); all zero is the plain full ellipse.
+message EllipseNode {
+  double arc_start = 1;    // degrees, 0 = the +x side (3 o'clock), growing clockwise
+  double arc_sweep = 2;    // degrees in -360..360; 0 (unset) and +-360 are the full ellipse
+  double inner_ratio = 3;  // 0..1: the hole's radius as a fraction of the outer one (a ring/donut); 0 = none
+}
+// A regular polygon inscribed in the node's box (the first vertex at the top).
+message PolygonNode { uint32 sides = 1; }   // 3..60
+// A star: `points` outer vertices on the box's ellipse, with inner vertices at `inner_ratio` of the radius.
+message StarNode { uint32 points = 1; double inner_ratio = 2; }   // points 3..60, ratio 0.05..0.95
 
 // A GROUP is a container WITHOUT clipping and without geometry of its own: its
 // bounds are the UNION of its children's (derived, not stored) and it has
@@ -180,6 +324,10 @@ enum LayoutAlign {
   // Only for main_align: distributes the free space between the children. On
   // the cross axis it behaves as START.
   LAYOUT_ALIGN_SPACE_BETWEEN = 4;
+  // Only for cross_align of a HORIZONTAL layout: the children's first baselines coincide (a text's
+  // from its font size and line height, any other node's from its bottom edge). On the main axis
+  // and in a vertical layout it behaves as START.
+  LAYOUT_ALIGN_BASELINE = 5;
 }
 message AutoLayout {
   LayoutDirection direction = 1;
@@ -199,6 +347,37 @@ message AutoLayout {
   // (a hugging frame is as long as its content). `cross_spacing` is the gap between lines.
   bool wrap = 11;
   double cross_spacing = 12;   // >= 0
+  // GRID mode (see docs/layout.md): `direction`, `spacing`, `wrap` and `cross_spacing` are
+  // ignored; the children sit in the cells of `columns` x `rows` instead. Unset = FLEX.
+  LayoutMode mode = 20;
+  repeated GridTrack columns = 21;   // declared column tracks (implicit ones are hug)
+  repeated GridTrack rows = 22;      // declared row tracks
+  double column_gap = 23;            // >= 0, between two columns
+  double row_gap = 24;               // >= 0, between two rows
+}
+
+enum LayoutMode {
+  LAYOUT_MODE_FLEX = 0;  // a row / column (default)
+  LAYOUT_MODE_GRID = 1;  // rows x columns of tracks
+}
+
+enum GridTrackKind {
+  GRID_TRACK_KIND_FIXED = 0;  // `size` pixels (default)
+  GRID_TRACK_KIND_HUG = 1;    // as big as the biggest child that sits in it
+  GRID_TRACK_KIND_FR = 2;     // a share of the free space, `size` is the weight (<= 0 counts as 1)
+}
+
+message GridTrack {
+  GridTrackKind kind = 1;
+  double size = 2;  // >= 0, finite
+}
+
+// Where a child sits in its GRID parent. 1-based; 0 start = auto-placed (row-major), 0 span = 1.
+message GridPlacement {
+  int32 column = 1;
+  int32 column_span = 2;
+  int32 row = 3;
+  int32 row_span = 4;
 }
 
 // How a node is sized by its auto layout PARENT, per axis of the node (not of the layout).
@@ -247,6 +426,10 @@ enum TextAlign {
 }
 
 enum TextScript {
+  option allow_alias = true;
+  TEXT_SCRIPT_UNSPECIFIED = 0;
+  TEXT_SCRIPT_SUPER = 1;
+  TEXT_SCRIPT_SUB = 2;
   TEXT_SCRIPT_NORMAL = 0;
   TEXT_SCRIPT_SUPERSCRIPT = 1;
   TEXT_SCRIPT_SUBSCRIPT = 2;
@@ -269,6 +452,36 @@ message TextStyle {
   Color color = 14;          // text colour of the style; absent => the node's fill
   string font_features = 15; // OpenType features, e.g. "liga off, onum, ss01 2": tags of 4 characters, each optionally followed by on | off | a number
   string font_variations = 16; // variable-font axes, e.g. "wght 650, wdth 90": tags of 4 characters, each followed by a number
+
+  // Fields 20..39 are the type-and-effects range (case, scripts, lists, OpenType).
+  TextCase text_case = 20;       // UNSPECIFIED => as typed
+  TextScript text_script = 21;   // UNSPECIFIED => baseline
+  ListKind list_kind = 22;       // UNSPECIFIED => no list; applies to every paragraph of the node
+  double indent = 23;            // >= 0, world px added to the left of every paragraph (and of a list's marker)
+  // (font_features, field 15 above, serves both: tags of 4 characters, each optionally followed by on | off | a number.)
+  reserved 24;
+  TextVAlign vertical_align = 25; // where the text sits inside a box taller than it
+  double inset = 26;              // >= 0, padding between the box and the text on every side
+
+  // Fields 30..49 are the text-scale range.
+  // Horizontal scale of the glyphs in percent: 0 => 100 (unscaled), otherwise 1..1000. Widens or narrows
+  // every glyph (and so the layout) without changing the height of the line.
+  double text_scale = 30;
+}
+
+// Text case: a transform of what is DRAWN, the content keeps its capitalisation.
+enum TextCase {
+  TEXT_CASE_UNSPECIFIED = 0;
+  TEXT_CASE_UPPER = 1;
+  TEXT_CASE_LOWER = 2;
+  TEXT_CASE_TITLE = 3;       // first letter of every word upper, the rest lower
+  TEXT_CASE_SMALL_CAPS = 4;  // lowercase letters drawn as smaller capitals
+}
+
+enum TextVAlign {
+  TEXT_V_ALIGN_UNSPECIFIED = 0; // TOP
+  TEXT_V_ALIGN_MIDDLE = 1;
+  TEXT_V_ALIGN_BOTTOM = 2;
 }
 
 // The text box is x/y/width/height of the Node (as for rect/ellipse): width is
@@ -509,6 +722,9 @@ message Node {
     ImageNode image = 35;   // track 3 — periphery (see ImageNode above)
     VectorNode vector = 36; // track 4 — vector (see VectorNode above)
     InstanceNode instance = 37; // M4 — component instance (see InstanceNode above)
+    // 60-69: the shapes-and-paints track's.
+    PolygonNode polygon = 60;
+    StarNode star = 61;
   }
   // Free-form key -> value metadata: the bridge between design and product.
   // Conventions (not enforced by the model, read by the flow tools):
@@ -529,6 +745,10 @@ message Node {
   //   "strokes.N.weight"        NUMBER
   //   "font_size"               NUMBER   text nodes only
   //   "text"                    STRING   text nodes only (the content)
+  //   "visible"                 BOOLEAN  show / hide the node (a hidden node leaves its auto layout)
+  //   "spacing" | "cross_spacing" | "padding_left" | "padding_top" | "padding_right" | "padding_bottom"
+  //                             NUMBER   frames with auto layout only (>= 0); the layout engine reads
+  //                                      them in the frame's active mode
   // The "bindings" mask REPLACES the whole map, like `meta`.
   map<string, string> bindings = 41;
   // Mode override: collectionId -> modeId. A node (typically a frame) can pin a
@@ -561,6 +781,33 @@ message Node {
   // paths write them; empty detaches. A style applies to any node but groups and instances.
   string object_style_id = 51;
   string layer_id = 52;
+  // Shared paint / effect styles (see PaintStyleDef, EffectStyleDef): a node that names one draws with the
+  // style's paints / effects instead of its own `fills` / `strokes` paints / `effects`, which stay as the
+  // fallback. The "fill_style_id" / "stroke_style_id" / "effect_style_id" mask paths write them; empty detaches.
+  // (Numbers 90-92 are the shapes-and-paints track's.)
+  string fill_style_id = 90;
+  string stroke_style_id = 91;
+  string effect_style_id = 92;
+  // Size limits, enforced by the layout engine when the node sits in an auto layout frame (or
+  // is an auto layout frame that hugs): the computed size is clamped to [min, max]. 0 = no
+  // limit; when min > max the min wins. Written by the "min_width", "max_width",
+  // "min_height" and "max_height" mask paths; each is finite and >= 0.
+  double min_width = 70;
+  double max_width = 71;
+  double min_height = 72;
+  double max_height = 73;
+  // ABSOLUTE: inside an auto layout frame the node leaves the flow (no room taken, not
+  // hugged, not aligned) and keeps its x/y, following the frame's size by its constraints.
+  // The "layout_positioning" mask path writes it.
+  LayoutPositioning layout_positioning = 74;
+  // The cell of a GRID auto layout parent the node occupies; absent = auto-placed, one cell.
+  // The "grid_cell" mask path writes it.
+  GridPlacement grid_cell = 100;
+}
+
+enum LayoutPositioning {
+  LAYOUT_POSITIONING_AUTO = 0;      // takes part in the flow (default)
+  LAYOUT_POSITIONING_ABSOLUTE = 1;  // out of the flow, positioned by x/y and constraints
 }
 
 enum LayoutGridKind {
@@ -684,6 +931,11 @@ message TextStyleDef {
   // Hanging punctuation: quotes, hyphens and periods at a line's edge hang slightly outside the margin.
   bool optical_margin = 32;
 }
+// Named, reusable paints and effects. A node points to them with Node.fill_style_id / stroke_style_id /
+// effect_style_id. A paint style's paints are a fills list; a stroke that uses it takes the paint at its own
+// index (the last one when there are fewer), keeping its weight and alignment.
+message PaintStyleDef { string id = 1; string name = 2; repeated Paint paints = 3; }
+message EffectStyleDef { string id = 1; string name = 2; repeated Effect effects = 3; }
 
 // A line above or below a paragraph. `offset` is the distance from the text; `indent_*` shorten it;
 // `column_width` draws it across the whole frame instead of the width of the paragraph's text.
@@ -697,6 +949,9 @@ message ParagraphRule {
 }
 
 enum ListKind {
+  option allow_alias = true;
+  LIST_KIND_UNSPECIFIED = 0;
+  LIST_KIND_NUMBERED = 2;
   LIST_KIND_NONE = 0;
   LIST_KIND_BULLET = 1;
   LIST_KIND_NUMBER = 2;
@@ -729,8 +984,9 @@ enum VariableType {
   VARIABLE_TYPE_COLOR = 1;
   VARIABLE_TYPE_NUMBER = 2;
   VARIABLE_TYPE_STRING = 3;
+  VARIABLE_TYPE_BOOLEAN = 4;   // binds to Node.visible
 }
-message VariableValue { oneof kind { Color color = 1; double number = 2; string text = 3; } }
+message VariableValue { oneof kind { Color color = 1; double number = 2; string text = 3; bool boolean = 4; } }
 message Variable {
   string id = 1;
   string collection_id = 2;
@@ -796,6 +1052,11 @@ message Transition {
   string easing = 12;      // the animation easing grammar (core.ValidEasing); "" = easeInOut
   // For trigger "auto": how long the player waits on the screen before following it (0..60000).
   int32 delay_ms = 13;
+  // Position in the if / else if / else CHAIN of this transition's hotspot (the transitions of one
+  // flow that leave the same screen on the same trigger and element): 1, 2, 3... in the order the
+  // player evaluates them, the first whose guard holds being the one that applies. 0 = not in a
+  // chain (an independent branch, as before). 0..1000; an `else` guard needs no order of its own.
+  int32 order = 20;
 }
 
 // ---------- animation ----------
@@ -853,6 +1114,13 @@ message Document {
   map<string, ComponentSet> component_sets = 14;
   // Comments: commentId -> comment (see Comment).
   map<string, Comment> comments = 15;
+  // Shared paint and effect styles: styleId -> definition (fields 60-69 are the shapes-and-paints track's).
+  map<string, PaintStyleDef> paint_styles = 60;
+  map<string, EffectStyleDef> effect_styles = 61;
+  // Dev mode (fields 70-79 are reserved for it): annotations by id, and the frames marked
+  // ready for dev by the frame's node id (see Annotation, ReadyForDev).
+  map<string, Annotation> annotations = 70;
+  map<string, ReadyForDev> ready_for_dev = 71;
   DocSettings settings = 16;
   // Object styles: objectStyleId -> shared look of shapes (see ObjectStyleDef).
   map<string, ObjectStyleDef> object_styles = 17;
@@ -915,6 +1183,10 @@ message DocSettings {
   repeated TextCondition conditions = 8;
   // Table styles: a named recipe a table can be given (header / body / alternate rows, object and text styles).
   repeated TableStyle table_styles = 9;
+  // Present mode: the device frame the prototype player draws around the screen -- "" (the default,
+  // "generic") | "generic" | "phone" | "tablet" | "desktop" | "none". The document's choice; a person's own
+  // pick in the player (kept in their browser) overrides it for them.
+  string present_device = 10;
 }
 
 // A condition of conditional text. A name no condition defines counts as visible. Hidden text is left out of the
@@ -1120,6 +1392,17 @@ message Op {
     SetInstanceProps    set_instance_props    = 38; // an instance's property values and variant choice
     SetComment          set_comment           = 39; // comments — upsert of a comment
     DeleteComment       delete_comment        = 40;
+    // 60-69: the shapes-and-paints track's (shared paint / effect styles).
+    SetPaintStyleDef     set_paint_style_def     = 60;
+    DeletePaintStyleDef  delete_paint_style_def  = 61;
+    SetEffectStyleDef    set_effect_style_def    = 62;
+    DeleteEffectStyleDef delete_effect_style_def = 63;
+    SetInstance         set_instance          = 70; // components — swap or reset an instance (absolute payload)
+    // Dev mode (80-89 are reserved for it).
+    SetAnnotation       set_annotation        = 80; // upsert of an annotation
+    DeleteAnnotation    delete_annotation     = 81;
+    SetReadyForDev      set_ready_for_dev     = 82; // marks a frame ready (or re-marks it: a new baseline)
+    ClearReadyForDev    clear_ready_for_dev   = 83;
     UpdatePage          update_page           = 41; // master pages — a page's name, master flag and applied master
     SetDocSettings      set_doc_settings      = 42; // vertical and baseline grid (absolute upsert)
     MovePage            move_page             = 43; // reorder pages
@@ -1154,6 +1437,62 @@ message Comment {
 message SetComment    { Comment comment = 1; }
 message DeleteComment { string id = 1; }  // a root takes its replies with it
 
+// Replaces an instance's payload WHOLESALE: which component it points at, its overrides,
+// property values and variant choice. A swap is the same op with another `component_id`
+// (the client carries over the overrides that still fit); "reset all overrides" is the
+// same op with the lists emptied. Everything is validated against the component it
+// resolves to; the node's own transform is untouched (write width/height with SetProperties).
+message SetInstance {
+  string instance_id = 1;
+  InstanceNode instance = 2;
+}
+
+// ---------- dev mode ----------
+// An ANNOTATION is a note for the developer attached to a node: what the picture does not
+// say (an interaction, an accessibility label, a content rule...). `category` is one of
+// note | interaction | accessibility | content | animation | layout and gives the colour the
+// editor draws it with. Annotations are shown in Dev Mode and written as comments into the
+// exported code (internal/devmode, internal/codegen). Like comments, a node that disappears
+// leaves its annotations in the document (undoing the deletion brings them back).
+message Annotation {
+  string id = 1;
+  string node_id = 2;      // an existing node
+  string category = 3;
+  string text = 4;         // non-empty, up to 2000 characters
+  string author = 5;       // display name, up to 80 characters
+  int64 created_at = 6;    // unix seconds; 0 when unknown
+}
+// A FRAME marked ready for development. `snapshot` is the frame and its descendants as they were
+// when it was marked: the baseline "Compare changes" diffs the live frame against. The server
+// FILLS it when it applies the op (a client never sends one), so replaying the op log reproduces it.
+message ReadyForDev {
+  string node_id = 1;      // a frame
+  string note = 2;         // up to 500 characters
+  string marked_by = 3;    // display name, up to 80 characters
+  int64 marked_at = 4;     // unix seconds; 0 when unknown
+  repeated Node snapshot = 5;
+}
+message SetAnnotation    { Annotation annotation = 1; }
+message DeleteAnnotation { string id = 1; }
+message SetReadyForDev   { ReadyForDev ready = 1; }
+message ClearReadyForDev { string node_id = 1; }
+
+// Compare changes: the property-level differences between a ready frame and its snapshot.
+message ReadyChange {
+  string node_id = 1;
+  string node_name = 2;
+  string kind = 3;         // added | removed | changed
+  string property = 4;     // "width", "fills[0]", "text.content", "meta.status"... empty for added / removed
+  string before = 5;       // readable value ("" when the property was not set)
+  string after = 6;
+}
+message CompareReadyRequest  { string doc_id = 1; string node_id = 2; }
+message CompareReadyResponse {
+  string node_id = 1;
+  int64 marked_at = 2;
+  repeated ReadyChange changes = 3;
+}
+
 message SetCollection    { VariableCollection collection = 1; }
 message DeleteCollection { string id = 1; }
 message SetVariable      { Variable variable = 1; }
@@ -1162,6 +1501,10 @@ message SetFont            { FontFace font = 1; }
 message DeleteFont         { string id = 1; }
 message SetTextStyleDef    { TextStyleDef text_style = 1; }
 message DeleteTextStyleDef { string id = 1; }
+message SetPaintStyleDef     { PaintStyleDef paint_style = 1; }
+message DeletePaintStyleDef  { string id = 1; }
+message SetEffectStyleDef    { EffectStyleDef effect_style = 1; }
+message DeleteEffectStyleDef { string id = 1; }
 message SetObjectStyleDef    { ObjectStyleDef object_style = 1; }
 message DeleteObjectStyleDef { string id = 1; }
 // Upserts a layer (a new id is appended to the layer list). Deleting a layer detaches its nodes.
@@ -1271,7 +1614,7 @@ message PresenceEvent {
 }
 // ---------- flow analysis ----------
 message FlowIssue {
-  // no_start | unreachable | dead_end | no_exit | ambiguous | empty
+  // no_start | unreachable | dead_end | no_exit | ambiguous | empty | else_orphan | shadowed
   string kind = 1;
   string flow_id = 2;
   string node_id = 3;        // the screen involved, if any
@@ -1304,8 +1647,10 @@ message ExportFile {
   bytes content = 2;
 }
 // target: "react" (default: Vite + React + TypeScript + Tailwind v4 + Playwright
-// flow tests) or "html" (one file per screen). empty flow_id = wires up and
-// tests all flows.
+// flow tests), "html" (one file per screen), "swiftui" (Swift views for an
+// iOS/macOS app), "compose" (Kotlin composables for an Android app) or "leptos"
+// (a Leptos / Rust client-side app built with Trunk). empty
+// flow_id = wires up and tests all flows.
 message ExportCodeRequest {
   string doc_id = 1;
   string target = 2;
@@ -1388,6 +1733,11 @@ message ImportFigResponse {
   double width = 2;
   double height = 3;
   repeated string warnings = 4;  // what could not be carried over
+  // The file's variables: the editor creates the collections, then the variables (in this order: the
+  // target of an alias comes before the alias) before inserting the nodes, whose bindings and modes
+  // name them. Empty for a file without variables.
+  repeated VariableCollection collections = 5;
+  repeated Variable variables = 6;
 }
 
 // MERGING A BRANCH BACK. A branch remembers the document it came from and the state it started
@@ -1503,6 +1853,8 @@ message CompleteJobResponse {}
 service DocumentService {
   rpc RenderBoard(RenderBoardRequest) returns (RenderBoardResponse);
   rpc ReviewDesign(ReviewDesignRequest) returns (ReviewDesignResponse);
+  // Compare changes: a frame marked ready for dev against its state when it was marked.
+  rpc CompareReady(CompareReadyRequest) returns (CompareReadyResponse);
   rpc CreateVersion(CreateVersionRequest) returns (VersionInfo);
   rpc ListVersions(ListVersionsRequest) returns (ListVersionsResponse);
   rpc DeleteVersion(DeleteVersionRequest) returns (DeleteVersionResponse);

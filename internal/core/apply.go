@@ -4,6 +4,7 @@ package core
 import (
 	"errors"
 	"fmt"
+	"math"
 
 	opendesignerv1 "github.com/bernardoforcillo/opendesigner/gen/opendesigner/v1"
 	"google.golang.org/protobuf/proto"
@@ -18,14 +19,16 @@ var (
 	// ErrNotFrameNode: auto_layout is a field of FrameNode, so writing it to a
 	// node that is not a frame is an op on the wrong node (same precedent as
 	// ErrNotRectNode for corner_radius).
-	ErrNotFrameNode    = errors.New("core: not a frame node")
-	ErrConstraint      = errors.New("core: unknown constraint")
-	ErrBlendMode       = errors.New("core: unknown blend mode")
-	ErrComment         = errors.New("core: invalid comment")
-	ErrPaint           = errors.New("core: invalid paint")
-	ErrCommentNotFound = errors.New("core: comment not found")
-	ErrLayoutGrid      = errors.New("core: invalid layout grid")
-	ErrLayoutSizing    = errors.New("core: unknown layout sizing")
+	ErrNotFrameNode      = errors.New("core: not a frame node")
+	ErrConstraint        = errors.New("core: unknown constraint")
+	ErrBlendMode         = errors.New("core: unknown blend mode")
+	ErrComment           = errors.New("core: invalid comment")
+	ErrPaint             = errors.New("core: invalid paint")
+	ErrCommentNotFound   = errors.New("core: comment not found")
+	ErrLayoutGrid        = errors.New("core: invalid layout grid")
+	ErrLayoutSizing      = errors.New("core: unknown layout sizing")
+	ErrSizeLimit         = errors.New("core: a size limit must be a finite number >= 0")
+	ErrLayoutPositioning = errors.New("core: unknown layout positioning")
 	// ErrNotVectorNode: same precedent as ErrNotTextNode -- the `shape` oneof is
 	// the NATURE of the node, so a SetVectorPath on a rectangle is an op on the
 	// wrong node, not a missing field to fill in.
@@ -133,6 +136,14 @@ func applyOp(doc *opendesignerv1.Document, op *opendesignerv1.Op, cow *Shared) e
 		return applySetTextStyleDef(doc, k.SetTextStyleDef)
 	case *opendesignerv1.Op_DeleteTextStyleDef:
 		return applyDeleteTextStyleDef(doc, k.DeleteTextStyleDef, cow)
+	case *opendesignerv1.Op_SetPaintStyleDef:
+		return applySetPaintStyleDef(doc, k.SetPaintStyleDef)
+	case *opendesignerv1.Op_DeletePaintStyleDef:
+		return applyDeletePaintStyleDef(doc, k.DeletePaintStyleDef, cow)
+	case *opendesignerv1.Op_SetEffectStyleDef:
+		return applySetEffectStyleDef(doc, k.SetEffectStyleDef)
+	case *opendesignerv1.Op_DeleteEffectStyleDef:
+		return applyDeleteEffectStyleDef(doc, k.DeleteEffectStyleDef, cow)
 	case *opendesignerv1.Op_SetComponentSet:
 		return applySetComponentSet(doc, k.SetComponentSet, cow)
 	case *opendesignerv1.Op_DeleteComponentSet:
@@ -145,6 +156,14 @@ func applyOp(doc *opendesignerv1.Document, op *opendesignerv1.Op, cow *Shared) e
 		return applySetComment(doc, k.SetComment)
 	case *opendesignerv1.Op_DeleteComment:
 		return applyDeleteComment(doc, k.DeleteComment)
+	case *opendesignerv1.Op_SetAnnotation:
+		return applySetAnnotation(doc, k.SetAnnotation)
+	case *opendesignerv1.Op_DeleteAnnotation:
+		return applyDeleteAnnotation(doc, k.DeleteAnnotation)
+	case *opendesignerv1.Op_SetReadyForDev:
+		return applySetReadyForDev(doc, k.SetReadyForDev)
+	case *opendesignerv1.Op_ClearReadyForDev:
+		return applyClearReadyForDev(doc, k.ClearReadyForDev)
 	case *opendesignerv1.Op_SetFlow:
 		return applySetFlow(doc, k.SetFlow)
 	case *opendesignerv1.Op_DeleteFlow:
@@ -185,6 +204,8 @@ func applyOp(doc *opendesignerv1.Document, op *opendesignerv1.Op, cow *Shared) e
 		return applyCreateComponent(doc, k.CreateComponent)
 	case *opendesignerv1.Op_SetInstanceOverride:
 		return applySetInstanceOverride(doc, k.SetInstanceOverride, cow)
+	case *opendesignerv1.Op_SetInstance:
+		return applySetInstance(doc, k.SetInstance, cow)
 	default:
 		return fmt.Errorf("core: unknown op kind %T", op.GetKind())
 	}
@@ -217,6 +238,15 @@ func applyCreate(doc *opendesignerv1.Document, c *opendesignerv1.CreateNode, cow
 		}
 	}
 	if err := validateNodePaints(n.GetFills(), n.GetStrokes()); err != nil {
+		return fmt.Errorf("%w (node %s)", err, n.GetId())
+	}
+	if err := validateShape(n); err != nil {
+		return fmt.Errorf("%w (node %s)", err, n.GetId())
+	}
+	if err := validateStrokeExtras(n.GetStrokes()); err != nil {
+		return fmt.Errorf("%w (node %s)", err, n.GetId())
+	}
+	if err := validateStyleRefs(doc, n); err != nil {
 		return fmt.Errorf("%w (node %s)", err, n.GetId())
 	}
 	if doc.Nodes == nil {
@@ -526,6 +556,16 @@ func applySetProps(doc *opendesignerv1.Document, s *opendesignerv1.SetProperties
 				return err
 			}
 		}
+		if path == "strokes" {
+			if err := validateStrokeExtras(s.GetPatch().GetStrokes()); err != nil {
+				return err
+			}
+		}
+		if path == "effects" {
+			if err := validateEffects(s.GetPatch().GetEffects()); err != nil {
+				return err
+			}
+		}
 		switch path {
 		case "x", "y", "width", "height", "rotation", "opacity", "name", "visible", "fills", "strokes", "effects", "order_key", "meta", "is_mask":
 			// supported
@@ -537,6 +577,16 @@ func applySetProps(doc *opendesignerv1.Document, s *opendesignerv1.SetProperties
 			}
 			if c < opendesignerv1.Constraint_CONSTRAINT_UNSPECIFIED || c > opendesignerv1.Constraint_CONSTRAINT_SCALE {
 				return fmt.Errorf("%w: %v", ErrConstraint, c)
+			}
+		case "corner_smoothing", "radii", "arc_start", "arc_sweep", "inner_ratio", "sides", "points":
+			// Parametric shape fields: each only on the shapes that own it (see shapes.go).
+			if err := checkShapePath(n, s.GetPatch(), path); err != nil {
+				return err
+			}
+		case "fill_style_id", "stroke_style_id", "effect_style_id":
+			// Shared paint / effect styles: empty detaches, otherwise the style must exist (styles.go).
+			if err := checkStylePath(doc, path, s.GetPatch()); err != nil {
+				return err
 			}
 		case "layout_grids":
 			if n.GetFrame() == nil {
@@ -557,6 +607,24 @@ func applySetProps(doc *opendesignerv1.Document, s *opendesignerv1.SetProperties
 			}
 			if sz < opendesignerv1.LayoutSizing_LAYOUT_SIZING_FIXED || sz > opendesignerv1.LayoutSizing_LAYOUT_SIZING_FILL {
 				return fmt.Errorf("%w: %v", ErrLayoutSizing, sz)
+			}
+		case "min_width", "max_width", "min_height", "max_height":
+			// A size limit is a finite length; 0 clears it.
+			v := map[string]float64{
+				"min_width": s.GetPatch().GetMinWidth(), "max_width": s.GetPatch().GetMaxWidth(),
+				"min_height": s.GetPatch().GetMinHeight(), "max_height": s.GetPatch().GetMaxHeight(),
+			}[path]
+			if math.IsNaN(v) || math.IsInf(v, 0) || v < 0 {
+				return fmt.Errorf("%w: %s %v", ErrSizeLimit, path, v)
+			}
+		case "grid_cell":
+			if err := validateGridCell(s.GetPatch().GetGridCell()); err != nil {
+				return err
+			}
+		case "layout_positioning":
+			// Closed enum, like constraints.
+			if p := s.GetPatch().GetLayoutPositioning(); p < opendesignerv1.LayoutPositioning_LAYOUT_POSITIONING_AUTO || p > opendesignerv1.LayoutPositioning_LAYOUT_POSITIONING_ABSOLUTE {
+				return fmt.Errorf("%w: %v", ErrLayoutPositioning, p)
 			}
 		case "bindings":
 			// Variable bindings: every key in the grammar, every variable existing
@@ -630,6 +698,9 @@ func applySetProps(doc *opendesignerv1.Document, s *opendesignerv1.SetProperties
 			if _, ok := n.GetShape().(*opendesignerv1.Node_Frame); !ok {
 				return fmt.Errorf("%w: %s", ErrNotFrameNode, s.GetId())
 			}
+			if err := validateGridLayout(s.GetPatch().GetFrame().GetAutoLayout()); err != nil {
+				return err
+			}
 		default:
 			return fmt.Errorf("core: unsupported mask path %q", path)
 		}
@@ -681,10 +752,26 @@ func applySetProps(doc *opendesignerv1.Document, s *opendesignerv1.SetProperties
 			n.LayoutGrids = p.GetLayoutGrids()
 		case "blend_mode":
 			n.BlendMode = p.GetBlendMode()
+		case "corner_smoothing", "radii", "arc_start", "arc_sweep", "inner_ratio", "sides", "points":
+			applyShapePath(n, p, path)
+		case "fill_style_id", "stroke_style_id", "effect_style_id":
+			applyStylePath(n, p, path)
 		case "layout_sizing_x":
 			n.LayoutSizingX = p.GetLayoutSizingX()
 		case "layout_sizing_y":
 			n.LayoutSizingY = p.GetLayoutSizingY()
+		case "min_width":
+			n.MinWidth = p.GetMinWidth()
+		case "max_width":
+			n.MaxWidth = p.GetMaxWidth()
+		case "min_height":
+			n.MinHeight = p.GetMinHeight()
+		case "max_height":
+			n.MaxHeight = p.GetMaxHeight()
+		case "layout_positioning":
+			n.LayoutPositioning = p.GetLayoutPositioning()
+		case "grid_cell":
+			n.GridCell = proto.Clone(p.GetGridCell()).(*opendesignerv1.GridPlacement)
 		case "strokes":
 			// REPLACEMENT of the whole list, exactly like `fills` above -- not an
 			// element-by-element merge. It is the REPEATED field on which the two

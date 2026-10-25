@@ -109,7 +109,8 @@ func finite(v float64) bool { return !math.IsNaN(v) && !math.IsInf(v, 0) }
 // canDraw: the node types that have an outline on which to "draw" the stroke.
 func canDraw(n *opendesignerv1.Node) bool {
 	switch n.GetShape().(type) {
-	case *opendesignerv1.Node_Vector, *opendesignerv1.Node_Rect, *opendesignerv1.Node_Ellipse, *opendesignerv1.Node_Frame:
+	case *opendesignerv1.Node_Vector, *opendesignerv1.Node_Rect, *opendesignerv1.Node_Ellipse, *opendesignerv1.Node_Frame,
+		*opendesignerv1.Node_Polygon, *opendesignerv1.Node_Star:
 		return true
 	}
 	return false

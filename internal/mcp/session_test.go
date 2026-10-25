@@ -356,7 +356,7 @@ func TestTypesettingStyles(t *testing.T) {
 	sess := startSession(t, url, docID, "mcp")
 	ctx := context.Background()
 
-	em, err := sess.SetTextStyle(ctx, odmcp.SetTextStyleInput{TextStyleBody: odmcp.TextStyleBody{Name: "Label", Kind: "character", SmallCaps: true, Script: "superscript", Color: &odmcp.RGBA{R: 1, A: 1}}})
+	em, err := sess.SetTextStyle(ctx, odmcp.SetTextStyleInput{TextStyleBody: odmcp.TextStyleBody{Name: "Label", Kind: "character", SmallCaps: true, TextFormat: odmcp.TextFormat{Script: "superscript"}, Color: &odmcp.RGBA{R: 1, A: 1}}})
 	if err != nil {
 		t.Fatalf("character style: %v", err)
 	}
@@ -606,8 +606,29 @@ func TestGradientFillThroughTools(t *testing.T) {
 		t.Fatalf("fill = %v, want a linear gradient with 2 stops ending blue", got)
 	}
 
+	// Angular and diamond gradients are accepted and stored as their own paint kinds.
+	for _, kind := range []string{"angular", "diamond"} {
+		g := odmcp.RGBA{Gradient: &odmcp.GradientSpec{Kind: kind, X1: 0.5, Y1: 0.5, X2: 1, Y2: 0.5, Stops: grad.Gradient.Stops}}
+		if _, err := sess.SetProperties(ctx, odmcp.SetPropertiesInput{Id: created.NodeId, Fills: []odmcp.RGBA{g}}); err != nil {
+			t.Fatalf("SetProperties %s gradient: %v", kind, err)
+		}
+		open, err := direct.OpenDocument(ctx, connect.NewRequest(&opendesignerv1.OpenRequest{DocId: docID}))
+		if err != nil {
+			t.Fatalf("OpenDocument: %v", err)
+		}
+		var p *opendesignerv1.Paint
+		for _, n := range open.Msg.GetSnapshot().GetNodes() {
+			if n.GetId() == created.NodeId && len(n.GetFills()) == 1 {
+				p = n.GetFills()[0]
+			}
+		}
+		if (kind == "angular" && p.GetAngular() == nil) || (kind == "diamond" && p.GetDiamond() == nil) {
+			t.Errorf("%s gradient stored as %v", kind, p)
+		}
+	}
+
 	bad := []odmcp.RGBA{
-		{Gradient: &odmcp.GradientSpec{Kind: "conic", X2: 1, Stops: grad.Gradient.Stops}},
+		{Gradient: &odmcp.GradientSpec{Kind: "sweep", X2: 1, Stops: grad.Gradient.Stops}},
 		{Gradient: &odmcp.GradientSpec{Kind: "linear", X2: 1, Stops: grad.Gradient.Stops[:1]}},
 		{Gradient: &odmcp.GradientSpec{Kind: "radial", Stops: grad.Gradient.Stops}},
 	}
@@ -1085,6 +1106,30 @@ func TestDocumentSettingsAndPageSetup(t *testing.T) {
 	bad := "cinema"
 	if _, err := sess.SetDocumentSettings(ctx, odmcp.SetDocumentSettingsInput{Vertical: &bad}); err == nil {
 		t.Fatal("an unknown vertical should be refused")
+	}
+
+	// The Present device frame: generic by default, set per document, other fields untouched.
+	if doc.PresentDevice != "generic" {
+		t.Fatalf("default device = %q, want generic", doc.PresentDevice)
+	}
+	phone := "phone"
+	if _, err := sess.SetDocumentSettings(ctx, odmcp.SetDocumentSettingsInput{PresentDevice: &phone}); err != nil {
+		t.Fatal(err)
+	}
+	doc, _ = sess.GetDocument(ctx, struct{}{})
+	if doc.PresentDevice != "phone" || doc.BaselineIncrement != 14 {
+		t.Fatalf("after setting the device: %q / %v", doc.PresentDevice, doc.BaselineIncrement)
+	}
+	watch := "watch"
+	if _, err := sess.SetDocumentSettings(ctx, odmcp.SetDocumentSettingsInput{PresentDevice: &watch}); err == nil {
+		t.Fatal("an unknown device should be refused")
+	}
+	generic := "generic"
+	if _, err := sess.SetDocumentSettings(ctx, odmcp.SetDocumentSettingsInput{PresentDevice: &generic}); err != nil {
+		t.Fatal(err)
+	}
+	if doc, _ = sess.GetDocument(ctx, struct{}{}); doc.PresentDevice != "generic" {
+		t.Fatalf("device after going back to generic = %q", doc.PresentDevice)
 	}
 
 	w, h, mt, cols, gut := 420.0, 595.0, 40.0, uint32(2), 18.0
@@ -1675,14 +1720,6 @@ func TestStructureAndVectorCommandsAreWired(t *testing.T) {
 			}
 		}
 	}
-	if _, err := sess.GroupNodes(ctx, odmcp.NodeIdsInput{NodeIds: []string{"a", "b"}}); err != nil {
-		t.Fatal(err)
-	}
-	check("group_nodes", map[string]any{"nodeIds": []any{"a", "b"}})
-	if _, err := sess.UngroupNodes(ctx, odmcp.NodeIdsInput{NodeIds: []string{"g"}}); err != nil {
-		t.Fatal(err)
-	}
-	check("ungroup_nodes", nil)
 	if a, err := sess.AlignNodes(ctx, odmcp.AlignNodesInput{NodeIds: []string{"a", "b"}, Command: "hcenter"}); err != nil || a.Moved != 2 {
 		t.Fatalf("align: %+v %v", a, err)
 	}
@@ -1699,10 +1736,6 @@ func TestStructureAndVectorCommandsAreWired(t *testing.T) {
 		t.Fatal(err)
 	}
 	check("outline_stroke", map[string]any{"nodeId": "n"})
-	if d, err := sess.DuplicateNodes(ctx, odmcp.NodeIdsInput{NodeIds: []string{"a"}}); err != nil || d.NodeIds[0] != "c" {
-		t.Fatalf("duplicate: %+v %v", d, err)
-	}
-	check("duplicate_nodes", nil)
 	if _, err := sess.ReorderNode(ctx, odmcp.ReorderInput{NodeId: "a", To: "front"}); err != nil {
 		t.Fatal(err)
 	}

@@ -1,6 +1,7 @@
 package core
 
 import (
+	"errors"
 	"fmt"
 
 	opendesignerv1 "github.com/bernardoforcillo/opendesigner/gen/opendesigner/v1"
@@ -70,6 +71,12 @@ var TransitionAnimations = []string{
 // ValidTransitionAnimation: "" (a cut) or one of TransitionAnimations.
 func ValidTransitionAnimation(a string) bool { return a == "" || inSet(TransitionAnimations, a) }
 
+// MaxTransitionOrder bounds Transition.order (the position in an if / else if / else chain).
+const MaxTransitionOrder = 1000
+
+// ErrTransitionOrder: Transition.order outside 0..MaxTransitionOrder.
+var ErrTransitionOrder = errors.New("core: invalid transition order")
+
 func applySetTransition(doc *opendesignerv1.Document, s *opendesignerv1.SetTransition) error {
 	t := s.GetTransition()
 	if t == nil || t.GetId() == "" {
@@ -91,6 +98,9 @@ func applySetTransition(doc *opendesignerv1.Document, s *opendesignerv1.SetTrans
 	}
 	if t.GetDurationMs() < 0 || t.GetDurationMs() > 10000 || t.GetDelayMs() < 0 || t.GetDelayMs() > 60000 || !ValidEasing(t.GetEasing()) {
 		return fmt.Errorf("%w: timing (transition %s)", ErrTransitionAnim, t.GetId())
+	}
+	if t.GetOrder() < 0 || t.GetOrder() > MaxTransitionOrder {
+		return fmt.Errorf("%w: order %d (transition %s)", ErrTransitionOrder, t.GetOrder(), t.GetId())
 	}
 	if doc.Transitions == nil {
 		doc.Transitions = map[string]*opendesignerv1.Transition{}

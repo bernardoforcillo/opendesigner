@@ -62,6 +62,31 @@ func TestExportCodeTool(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(dir, "index.html")); err != nil {
 		t.Errorf("html: index.html missing: %v", err)
 	}
+	// The native targets: same document, Swift / Kotlin sources.
+	swiftDir := filepath.Join(t.TempDir(), "ios")
+	if out, err := s.ExportCode(ctx, odmcp.ExportCodeInput{OutDir: swiftDir, Target: "swiftui"}); err != nil || out.Target != "swiftui" {
+		t.Fatalf("swiftui: %+v %v", out, err)
+	}
+	loginSwift, err := os.ReadFile(filepath.Join(swiftDir, "Sources/Screens/Login.swift"))
+	if err != nil || !strings.Contains(string(loginSwift), "router.go(.home)") {
+		t.Errorf("Login.swift without the wiring (%v):\n%s", err, loginSwift)
+	}
+	ktDir := filepath.Join(t.TempDir(), "android")
+	if _, err := s.ExportCode(ctx, odmcp.ExportCodeInput{OutDir: ktDir, Target: "compose"}); err != nil {
+		t.Fatalf("compose: %v", err)
+	}
+	loginKt, err := os.ReadFile(filepath.Join(ktDir, "app/src/main/kotlin/design/generated/screens/Login.kt"))
+	if err != nil || !strings.Contains(string(loginKt), `onNavigate("Home")`) {
+		t.Errorf("Login.kt without the wiring (%v):\n%s", err, loginKt)
+	}
+	rsDir := filepath.Join(t.TempDir(), "leptos")
+	if out, err := s.ExportCode(ctx, odmcp.ExportCodeInput{OutDir: rsDir, Target: "leptos"}); err != nil || out.Target != "leptos" {
+		t.Fatalf("leptos: %+v %v", out, err)
+	}
+	loginRs, err := os.ReadFile(filepath.Join(rsDir, "src/screens/login.rs"))
+	if err != nil || !strings.Contains(string(loginRs), `navigate("/home"`) {
+		t.Errorf("login.rs without the wiring (%v):\n%s", err, loginRs)
+	}
 	// Clear errors.
 	if _, err := s.ExportCode(ctx, odmcp.ExportCodeInput{}); err == nil {
 		t.Error("empty outDir accepted")

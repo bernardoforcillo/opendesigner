@@ -7,6 +7,7 @@ import { deriveMasters } from "./masters";
 import { deriveThreads } from "./threads";
 import { taggedOf } from "./tagged";
 import { resolveTextStyleNode } from "./typography";
+import { resolvePaintStylesNode, usesPaintStyle } from "./paintStyles";
 import { hasRich, resolveRichNode } from "./richText";
 import { deriveTextTokens } from "./textTokens";
 import { deriveWrap } from "./wrap";
@@ -20,6 +21,12 @@ import type { CollectionLite, FillLite, NodeLite, SceneState, VariableLite, Vari
 // fixture testdata/golden/variables.json runs both sides. See the invariants at
 // the top of that file.
 
+/** The auto layout lengths a number variable can drive. */
+const LAYOUT_NUMBER_KEYS: ReadonlySet<string> = new Set(["spacing", "cross_spacing", "padding_left", "padding_top", "padding_right", "padding_bottom"]);
+
+/** A binding key the layout engine reads (store/layout.ts re-lays-out when one of these changes). */
+export const isLayoutKey = (key: string): boolean => key === "visible" || LAYOUT_NUMBER_KEYS.has(key);
+
 /**
  * The variable type a binding key accepts, or null if the key is not in the
  * grammar. Parity with core.BindingType.
@@ -28,10 +35,14 @@ import type { CollectionLite, FillLite, NodeLite, SceneState, VariableLite, Vari
  *   font_size (text nodes)                                   number
  *   fills.N | strokes.N                                      color
  *   text (text nodes)                                        string
+ *   visible                                                  boolean
+ *   spacing | cross_spacing | padding_left | padding_top
+ *     | padding_right | padding_bottom (auto layout frames)   number
  */
 export function bindingType(key: string): VariableTypeLite | null {
-  if (key === "opacity" || key === "rotation" || key === "corner_radius" || key === "font_size") return "number";
+  if (key === "opacity" || key === "rotation" || key === "corner_radius" || key === "font_size" || LAYOUT_NUMBER_KEYS.has(key)) return "number";
   if (key === "text") return "string";
+  if (key === "visible") return "boolean";
   const parts = key.split(".");
   if (parts.length < 2 || parts.length > 3) return null;
   if (parts[0] !== "fills" && parts[0] !== "strokes") return null;
@@ -67,8 +78,8 @@ export function isValidVariable(state: SceneState, v: PbVariable | undefined): v
   if (!v || v.id === "") return false;
   const col = state.collections[v.collectionId];
   if (!col) return false;
-  if (v.type !== VariableType.COLOR && v.type !== VariableType.NUMBER && v.type !== VariableType.STRING) return false;
-  const type: VariableTypeLite = v.type === VariableType.COLOR ? "color" : v.type === VariableType.STRING ? "string" : "number";
+  if (v.type !== VariableType.COLOR && v.type !== VariableType.NUMBER && v.type !== VariableType.STRING && v.type !== VariableType.BOOLEAN) return false;
+  const type: VariableTypeLite = v.type === VariableType.COLOR ? "color" : v.type === VariableType.STRING ? "string" : v.type === VariableType.BOOLEAN ? "boolean" : "number";
   const prev = state.variables[v.id];
   if (prev && (prev.type !== type || prev.collectionId !== v.collectionId)) return false;
   if (!isValidSwatch(state, v)) return false;
@@ -82,6 +93,8 @@ export function isValidVariable(state: SceneState, v: PbVariable | undefined): v
       if (![r, g, b, a].every(unit)) return false;
     } else if (type === "string") {
       if (val.kind.case !== "text") return false;
+    } else if (type === "boolean") {
+      if (val.kind.case !== "boolean") return false;
     } else if (val.kind.case !== "number" || !Number.isFinite(val.kind.value)) return false;
   }
   return true;
@@ -211,7 +224,7 @@ export function activeMode(state: SceneState, nodeId: string, collectionId: stri
 }
 
 /** The value of `v` in `mode`, falling back to the collection's default mode. Parity with core.VariableValueIn. */
-export function variableValueIn(state: SceneState, v: VariableLite, mode: string): FillLite | number | string | undefined {
+export function variableValueIn(state: SceneState, v: VariableLite, mode: string): FillLite | number | string | boolean | undefined {
   // An alias follows its chain to the variable that holds the values: at each
   // hop `mode` is kept when the target's collection has a mode with that id,
   // else the target's first mode is used.
@@ -238,7 +251,7 @@ const clamp01 = (n: number) => Math.min(1, Math.max(0, n));
  */
 export function resolveNode(state: SceneState, n: NodeLite): NodeLite {
   // Formatting last: its paragraphs build on the node's final style (shared style and bindings applied).
-  return resolveRichNode(state, resolveBindings(state, resolveObjectStyleNode(state, resolveTextStyleNode(state, n))));
+  return resolveRichNode(state, resolveBindings(state, resolveObjectStyleNode(state, resolvePaintStylesNode(state, resolveTextStyleNode(state, n)))));
 }
 
 function resolveBindings(state: SceneState, n: NodeLite): NodeLite {
@@ -251,13 +264,31 @@ function resolveBindings(state: SceneState, n: NodeLite): NodeLite {
     const val = variableValueIn(state, v, activeMode(state, n.id, v.collectionId));
     if (val === undefined) continue;
     const parts = key.split(".");
+    if (typeof val === "boolean") {
+      if (key === "visible") edit().visible = val;
+      continue;
+    }
     if (typeof val === "string") {
       // Only "text" takes a string, and only a text node has content.
       if (key === "text" && n.text) { const o = edit(); o.text = { ...o.text!, content: val }; }
       continue;
     }
     if (typeof val === "number") {
-      if (key === "font_size") { if (n.text && val > 0) { const o = edit(); o.text = { ...o.text!, style: { ...o.text!.style, fontSize: val } }; } }
+      if (LAYOUT_NUMBER_KEYS.has(key)) {
+        // Auto layout frames only; a negative value is clamped like a literal one cannot be.
+        if (n.autoLayout) {
+          const v = Math.max(0, val);
+          const al = { ...((out as NodeLite | null)?.autoLayout ?? n.autoLayout) };
+          if (key === "spacing") al.spacing = v;
+          else if (key === "cross_spacing") al.crossSpacing = v;
+          else if (key === "padding_left") al.paddingLeft = v;
+          else if (key === "padding_top") al.paddingTop = v;
+          else if (key === "padding_right") al.paddingRight = v;
+          else al.paddingBottom = v;
+          edit().autoLayout = al;
+        }
+      }
+      else if (key === "font_size") { if (n.text && val > 0) { const o = edit(); o.text = { ...o.text!, style: { ...o.text!.style, fontSize: val } }; } }
       else if (key === "opacity") edit().opacity = clamp01(val);
       else if (key === "rotation") edit().rotation = val;
       else if (key === "corner_radius") { if (n.kind === "rect") edit().cornerRadius = Math.max(0, val); }
@@ -305,7 +336,7 @@ function resolveBase(raw: SceneState): SceneState {
   const changed: string[] = [];
   for (const id of taggedOf(scene).bound) {
     const n = scene.nodes.get(id);
-    if (!n || (!n.bindings && !n.textStyleId && !n.objectStyleId && !hasRich(n))) continue;
+    if (!n || (!n.bindings && !n.textStyleId && !n.objectStyleId && !hasRich(n) && !usesPaintStyle(n))) continue;
     const r = resolveNode(scene, n);
     if (r === n) continue;
     (edit ??= scene.nodes.edit()).set(n.id, r);

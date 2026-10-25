@@ -86,7 +86,7 @@ export function withMode(c: CollectionLite): CollectionLite {
 
 /** A new variable in `collection`, with the same default value in every mode. */
 export function newVariable(collection: CollectionLite, type: VariableTypeLite, name: string): VariableLite {
-  const value = type === "color" ? DEFAULT_COLOR : type === "string" ? "" : 0;
+  const value = type === "color" ? DEFAULT_COLOR : type === "string" ? "" : type === "boolean" ? true : 0;
   return {
     id: uuid(), collectionId: collection.id, name, type,
     values: Object.fromEntries(collection.modes.map((m) => [m.id, value])),
@@ -94,7 +94,7 @@ export function newVariable(collection: CollectionLite, type: VariableTypeLite, 
 }
 
 /** `v` with `mode` set to `value`. */
-export function withValue(v: VariableLite, mode: string, value: FillLite | number | string): VariableLite {
+export function withValue(v: VariableLite, mode: string, value: FillLite | number | string | boolean): VariableLite {
   return { ...v, values: { ...v.values, [mode]: value } };
 }
 

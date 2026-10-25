@@ -617,11 +617,38 @@ func cowClone(d *opendesignerv1.Document) *opendesignerv1.Document {
 			next.TextStyles[k] = proto.Clone(t).(*opendesignerv1.TextStyleDef)
 		}
 	}
+	// Shared paint and effect styles: few, deep-cloned.
+	if len(d.GetPaintStyles()) > 0 {
+		next.PaintStyles = make(map[string]*opendesignerv1.PaintStyleDef, len(d.GetPaintStyles()))
+		for k, p := range d.GetPaintStyles() {
+			next.PaintStyles[k] = proto.Clone(p).(*opendesignerv1.PaintStyleDef)
+		}
+	}
+	if len(d.GetEffectStyles()) > 0 {
+		next.EffectStyles = make(map[string]*opendesignerv1.EffectStyleDef, len(d.GetEffectStyles()))
+		for k, e := range d.GetEffectStyles() {
+			next.EffectStyles[k] = proto.Clone(e).(*opendesignerv1.EffectStyleDef)
+		}
+	}
 	// Comments: few, deep-cloned.
 	if len(d.GetComments()) > 0 {
 		next.Comments = make(map[string]*opendesignerv1.Comment, len(d.GetComments()))
 		for k, c := range d.GetComments() {
 			next.Comments[k] = proto.Clone(c).(*opendesignerv1.Comment)
+		}
+	}
+	// Dev mode: annotations are few and deep-cloned; a ready entry carries a snapshot of a
+	// whole frame, so entries are shared (core replaces them, it never edits one in place).
+	if len(d.GetAnnotations()) > 0 {
+		next.Annotations = make(map[string]*opendesignerv1.Annotation, len(d.GetAnnotations()))
+		for k, a := range d.GetAnnotations() {
+			next.Annotations[k] = proto.Clone(a).(*opendesignerv1.Annotation)
+		}
+	}
+	if len(d.GetReadyForDev()) > 0 {
+		next.ReadyForDev = make(map[string]*opendesignerv1.ReadyForDev, len(d.GetReadyForDev()))
+		for k, r := range d.GetReadyForDev() {
+			next.ReadyForDev[k] = r
 		}
 	}
 	// Component sets: few, deep-cloned.

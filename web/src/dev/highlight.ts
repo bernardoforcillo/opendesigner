@@ -12,11 +12,12 @@ export interface Token {
   k: TokenKind;
   s: string;
 }
-export type Lang = "tsx" | "html" | "css" | "json" | "md" | "text";
+export type Lang = "tsx" | "swift" | "kotlin" | "rust" | "html" | "css" | "json" | "md" | "text";
 
 const EXT: Record<string, Lang> = {
   ts: "tsx", tsx: "tsx", js: "tsx", jsx: "tsx", mjs: "tsx", cjs: "tsx",
   html: "html", htm: "html", css: "css", json: "json", md: "md",
+  swift: "swift", kt: "kotlin", kts: "kotlin", rs: "rust",
 };
 
 export function langOf(path: string): Lang {
@@ -28,6 +29,21 @@ const JS_KEYWORDS = new Set((
   "import export from default const let var function return if else for while do switch case break continue new " +
   "class extends interface type as of in typeof instanceof void async await try catch finally throw " +
   "true false null undefined this satisfies readonly enum declare"
+).split(" "));
+
+const SWIFT_KEYWORDS = new Set((
+  "import struct class enum func var let some body return if else for in switch case default true false nil self " +
+  "static private public init extension protocol where guard defer throw try catch as is any"
+).split(" "));
+
+const KOTLIN_KEYWORDS = new Set((
+  "package import fun val var class object interface return if else for in when is as true false null this " +
+  "override private public data sealed companion by"
+).split(" "));
+
+const RUST_KEYWORDS = new Set((
+  "use mod pub fn let mut const static struct enum impl trait for in while loop if else match return move ref as " +
+  "true false self Self super crate where dyn async await type unsafe"
 ).split(" "));
 
 const isIdStart = (c: string) => /[A-Za-z_$]/.test(c);
@@ -66,7 +82,7 @@ function stringEnd(s: string, i: number): number {
 
 // --- TSX / JS ----------------------------------------------------------------
 
-function scanTsx(s: string, out: Out): void {
+function scanTsx(s: string, out: Out, keywords: ReadonlySet<string> = JS_KEYWORDS, jsx = true): void {
   let i = 0;
   let prev = ""; // last significant character (non-space), to tell `<Tag` from `a < b`
   let tagDepth = -1; // >= 0 inside a JSX tag: the brace level at which it was opened
@@ -88,7 +104,7 @@ function scanTsx(s: string, out: Out): void {
       out.push("str", s.slice(i, j));
       i = j;
       prev = c;
-    } else if (c === "<" && /[A-Za-z/>]/.test(s[i + 1] ?? "") && !/[A-Za-z0-9_$)\]]/.test(prev)) {
+    } else if (jsx && c === "<" && /[A-Za-z/>]/.test(s[i + 1] ?? "") && !/[A-Za-z0-9_$)\]]/.test(prev)) {
       // Opening or closing of a JSX tag (or fragment `<>`).
       let j = i + 1;
       if (s[j] === "/") j++;
@@ -111,7 +127,7 @@ function scanTsx(s: string, out: Out): void {
       const word = s.slice(i, j);
       const after = skipWs(s, j);
       if (tagDepth >= 0 && braces === tagDepth) out.push("attr", word);
-      else if (JS_KEYWORDS.has(word)) out.push("kw", word);
+      else if (keywords.has(word)) out.push("kw", word);
       else if (s[after] === "(") out.push("fn", word);
       else if (/^[A-Z]/.test(word)) out.push("type", word);
       else out.push("plain", word);
@@ -302,6 +318,9 @@ export function highlight(code: string, lang: Lang): Token[][] {
   const out = new Out();
   switch (lang) {
     case "tsx": scanTsx(code, out); break;
+    case "swift": scanTsx(code, out, SWIFT_KEYWORDS, false); break;
+    case "kotlin": scanTsx(code, out, KOTLIN_KEYWORDS, false); break;
+    case "rust": scanTsx(code, out, RUST_KEYWORDS, false); break;
     case "html": scanHtml(code, out); break;
     case "css": scanCss(code, out); break;
     case "json": scanJson(code, out); break;

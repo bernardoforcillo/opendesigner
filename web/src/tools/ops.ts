@@ -2,10 +2,10 @@ import { create, type MessageInitShape } from "@bufbuild/protobuf";
 import { NodeSchema, OpSchema } from "../gen/opendesigner/v1/opendesigner_pb";
 import type { Node, Op } from "../gen/opendesigner/v1/opendesigner_pb";
 import { useScene } from "../store/store";
-import { settingsToMsg, toPbComment, toPbClip, toPbComponentProperty, toPbComponentSet, toPbCollection, toPbVariable, toPbFont, toPbTextStyleDef, toPbObjectStyleDef, toPbLayer, toPbFlow, toPbInstanceOverride, toPbSubPaths, toPbTextStyle, toPbTransition } from "../store/types";
+import { toPbAnnotation, toPbReady, toPbComment, toPbClip, toPbComponentProperty, toPbComponentSet, toPbCollection, toPbVariable, toPbFont, toPbTextStyleDef, toPbPaintStyleDef, toPbEffectStyleDef, toPbFlow, toPbInstanceOverride, toPbInstance, toPbSubPaths, toPbTextStyle, toPbTransition, settingsToMsg, toPbObjectStyleDef, toPbLayer } from "../store/types";
 import { pageToPb } from "../store/masters";
 import type { DocSettingsLite, PageLite } from "../store/types";
-import type { CommentLite, ClipLite, CollectionLite, ComponentPropertyLite, ComponentSetLite, FontLite, LayerLite, ObjectStyleLite, TextStyleDefLite, VariableLite, FlowLite, InstanceOverrideLite, SubPathLite, TextStyleLite, TransitionLite } from "../store/types";
+import type { AnnotationLite, ReadyLite, CommentLite, ClipLite, CollectionLite, ComponentPropertyLite, ComponentSetLite, FontLite, TextStyleDefLite, PaintStyleDefLite, EffectStyleDefLite, VariableLite, FlowLite, InstanceLite, InstanceOverrideLite, SubPathLite, TextStyleLite, TransitionLite, LayerLite, ObjectStyleLite } from "../store/types";
 import type { MaskPath } from "../store/maskPaths";
 
 // Centralized construction of Ops: every tool goes through here, so opId and docId
@@ -171,7 +171,7 @@ export function makeSetImageOp(id: string, image: { assetHash: string; originalN
   });
 }
 
-/** Absolute upsert of the document settings (vertical, baseline grid). */
+/** Absolute upsert of the document settings (vertical, baseline grid, facing pages, Present device frame). */
 export function makeSetDocSettingsOp(s: DocSettingsLite): Op {
   return create(OpSchema, {
     opId: uuid(), docId: docId(),
@@ -307,6 +307,10 @@ export function makeSetComponentDefOp(
     componentId, setId, variant: { ...variant }, properties: properties.map(toPbComponentProperty),
   } } });
 }
+/** Replaces an instance's payload wholesale: swap it to another component, or reset it. */
+export function makeSetInstanceOp(instanceId: string, instance: InstanceLite): Op {
+  return create(OpSchema, { opId: uuid(), docId: docId(), kind: { case: "setInstance", value: { instanceId, instance: toPbInstance(instance) } } });
+}
 export function makeSetInstancePropsOp(
   instanceId: string, propertyValues: Record<string, string>, variantProps: Record<string, string>,
 ): Op {
@@ -321,6 +325,20 @@ export function makeSetCommentOp(c: CommentLite): Op {
 }
 export function makeDeleteCommentOp(id: string): Op {
   return create(OpSchema, { opId: uuid(), docId: docId(), kind: { case: "deleteComment", value: { id } } });
+}
+// --- dev mode ---------------------------------------------------------------
+export function makeSetAnnotationOp(a: AnnotationLite): Op {
+  return create(OpSchema, { opId: uuid(), docId: docId(), kind: { case: "setAnnotation", value: { annotation: toPbAnnotation(a) } } });
+}
+export function makeDeleteAnnotationOp(id: string): Op {
+  return create(OpSchema, { opId: uuid(), docId: docId(), kind: { case: "deleteAnnotation", value: { id } } });
+}
+/** Marks a frame ready for dev, or marks it again (a new baseline). The server takes the snapshot. */
+export function makeSetReadyForDevOp(r: ReadyLite): Op {
+  return create(OpSchema, { opId: uuid(), docId: docId(), kind: { case: "setReadyForDev", value: { ready: toPbReady(r) } } });
+}
+export function makeClearReadyForDevOp(nodeId: string): Op {
+  return create(OpSchema, { opId: uuid(), docId: docId(), kind: { case: "clearReadyForDev", value: { nodeId } } });
 }
 export function makeSetFontOp(f: FontLite): Op {
   return create(OpSchema, { opId: uuid(), docId: docId(), kind: { case: "setFont", value: { font: toPbFont(f) } } });
@@ -345,6 +363,18 @@ export function makeDeleteLayerOp(id: string): Op {
 }
 export function makeDeleteTextStyleDefOp(id: string): Op {
   return create(OpSchema, { opId: uuid(), docId: docId(), kind: { case: "deleteTextStyleDef", value: { id } } });
+}
+export function makeSetPaintStyleDefOp(d: PaintStyleDefLite): Op {
+  return create(OpSchema, { opId: uuid(), docId: docId(), kind: { case: "setPaintStyleDef", value: { paintStyle: toPbPaintStyleDef(d) } } });
+}
+export function makeDeletePaintStyleDefOp(id: string): Op {
+  return create(OpSchema, { opId: uuid(), docId: docId(), kind: { case: "deletePaintStyleDef", value: { id } } });
+}
+export function makeSetEffectStyleDefOp(d: EffectStyleDefLite): Op {
+  return create(OpSchema, { opId: uuid(), docId: docId(), kind: { case: "setEffectStyleDef", value: { effectStyle: toPbEffectStyleDef(d) } } });
+}
+export function makeDeleteEffectStyleDefOp(id: string): Op {
+  return create(OpSchema, { opId: uuid(), docId: docId(), kind: { case: "deleteEffectStyleDef", value: { id } } });
 }
 
 // --- animation -------------------------------------------------------------

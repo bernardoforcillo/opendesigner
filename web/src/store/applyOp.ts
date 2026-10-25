@@ -3,7 +3,7 @@ import { NodeSchema } from "../gen/opendesigner/v1/opendesigner_pb";
 import type { Node as PbNode, Op } from "../gen/opendesigner/v1/opendesigner_pb";
 import { isValidEasing } from "../animation/engine";
 import { isValidClip } from "../animation/validate";
-import { type SceneState, type ClipLite, toComponentPropertyLite, toComponentSetLite, toCollectionLite, toVariableLite, toFontLite, toTextStyleDefLite, toObjectStyleLite, toLayerLite, type NodeLite, type TransitionLite, TRANSITION_ANIMATIONS, toFlowLite, toClipLite, toTransitionLite, toCommentLite, toNodeLite, toTextStyleLite, toSubPathsLite, toInstanceOverrideLite } from "./types";
+import { type SceneState, type ClipLite, toPaintStyleDefLite, toEffectStyleDefLite, toComponentPropertyLite, toComponentSetLite, toCollectionLite, toVariableLite, toFontLite, toTextStyleDefLite, type NodeLite, type TransitionLite, TRANSITION_ANIMATIONS, MAX_TRANSITION_ORDER, toFlowLite, toClipLite, toTransitionLite, toAnnotationLite, toReadyLite, toCommentLite, toNodeLite, toTextStyleLite, toSubPathsLite, toInstanceOverrideLite, toInstanceLite, toObjectStyleLite, toLayerLite } from "./types";
 import { type MaskPath, isMaskPath } from "./maskPaths";
 import { layoutTargets, relayout, resizeChildren } from "./layout";
 import { recordDelta } from "./sceneDelta";
@@ -11,10 +11,16 @@ import { carryRenames, cascadeComponentTargets, detachInvalidMembers, isValidCom
 import { isValidFont, isValidTextStyleDef, isValidTextStyleId, unstyleNodes } from "./typography";
 import { detachNodes, isValidLayer, isValidLayerId, isValidObjectStyle, isValidObjectStyleId } from "./graphics";
 import { areValidLayoutGrids } from "./layoutGrids";
+import { isValidGridCell, isValidGridLayout } from "./layoutGrid";
+import { areValidEffects } from "./effects";
 import { arePaintsValid } from "./paints";
+import { areStrokeExtrasValid, isValidShape, isValidShapePath, SHAPE_PATHS, writeShapePath } from "./shapes";
+import { isValidEffectStyleDef, isValidPaintStyleDef, isValidStyleId, STYLE_PATHS, unstyleNodesByPaint } from "./paintStyles";
 import { isValidComment, withoutComment } from "./comments";
+import { annotationsOfScene, isValidAnnotation, isValidReady, readyOfScene } from "./devMode";
 import { areValidBindings, areValidModes, dropRemovedModes, isValidCollection, isValidVariable, unbindNodes, withAliases } from "./variables";
 import { childrenOf, isAncestorOf, parentExists, subtreeOf } from "./tree";
+import { isValidInstanceBody } from "./instanceOps";
 import { clampRich, isValidRich, richFields } from "./richText";
 import { isValidDocSettings, isValidPageSetup, toDocSettings } from "./docSettings";
 import { deletePageAllowed, masterFieldsValid, pageOf, updatePageAllowed } from "./masters";
@@ -25,6 +31,9 @@ import { deletePageAllowed, masterFieldsValid, pageOf, updatePageAllowed } from 
 // node makes that behavior explicit instead of silently diverging
 // from the server. Shared across calls: applyOp is pure and does not mutate it.
 const NIL_PATCH: PbNode = create(NodeSchema, {});
+
+// The size-limit mask paths and the NodeLite / Node field each one writes.
+const camelLimit = { min_width: "minWidth", max_width: "maxWidth", min_height: "minHeight", max_height: "maxHeight" } as const;
 
 // applyOp is pure: it does NOT mutate state, it returns a new object. Parity with core.Apply (Go).
 //
@@ -76,12 +85,15 @@ function applyOpRaw(state: SceneState, op: Op): SceneState {
       // something the server never accepted).
       if (!pb || pb.id === "" || state.nodes.at(pb.id)) return state;
       if (!arePaintsValid(pb.fills, pb.strokes)) return state;                // ErrPaint
+      if (!isValidShape(pb) || !areStrokeExtrasValid(pb.strokes)) return state;  // ErrShapeValue / ErrStrokeExtra
       // The parent must EXIST (another node, or a Page for roots):
       // ErrParentNotFound in core.applyCreate (Go). A node with a nonexistent
       // parent is not reachable from any page -- invisible on the
       // canvas and in the layers panel, but present in the map -- and the server
       // rejected it anyway: creating it here is the usual silent divergence.
       if (!parentExists(state, pb.parentId)) return state;
+      if (!isValidStyleId(state, "fill_style_id", pb.fillStyleId) || !isValidStyleId(state, "stroke_style_id", pb.strokeStyleId)
+        || !isValidStyleId(state, "effect_style_id", pb.effectStyleId)) return state;   // ErrPaintStyleMissing
       // An INSTANCE must reference an EXISTING component: parity with
       // core.applyCreate (Go), which replies ErrComponentNotFound. Without it, the instance
       // would render nothing -- its subtree is derived from the master -- and the
@@ -146,9 +158,20 @@ function applyOpRaw(state: SceneState, op: Op): SceneState {
       if (paths.includes("constraint_y") && !(p.constraintY >= 0 && p.constraintY <= 5)) return state;
       if (paths.includes("layout_grids") && (cur.kind !== "frame" || !areValidLayoutGrids(p.layoutGrids))) return state;
       if ((paths.includes("fills") || paths.includes("strokes")) && !arePaintsValid(p.fills, p.strokes)) return state;
+      // Shape-parameter paths apply only to the shape that owns the field (core.checkShapePath).
+      if (paths.some((path) => SHAPE_PATHS.has(path) && !isValidShapePath(cur, p, path))) return state;
+      if (paths.includes("strokes") && !areStrokeExtrasValid(p.strokes)) return state;
+      if (paths.some((path) => STYLE_PATHS.has(path) && !isValidStyleId(state, path, path === "fill_style_id" ? p.fillStyleId : path === "stroke_style_id" ? p.strokeStyleId : p.effectStyleId))) return state;
       if (paths.includes("blend_mode") && !(p.blendMode >= 0 && p.blendMode <= 15)) return state;
+      if (paths.includes("effects") && !areValidEffects(p.effects)) return state;
       if (paths.includes("layout_sizing_x") && !(p.layoutSizingX >= 0 && p.layoutSizingX <= 1)) return state;
       if (paths.includes("layout_sizing_y") && !(p.layoutSizingY >= 0 && p.layoutSizingY <= 1)) return state;
+      for (const lim of ["min_width", "max_width", "min_height", "max_height"] as const) {
+        if (paths.includes(lim) && !(Number.isFinite(p[camelLimit[lim]]) && p[camelLimit[lim]] >= 0)) return state;
+      }
+      if (paths.includes("layout_positioning") && !(p.layoutPositioning >= 0 && p.layoutPositioning <= 1)) return state;
+      if (paths.includes("grid_cell") && !isValidGridCell(p.gridCell)) return state;
+      if (paths.includes("auto_layout") && !isValidGridLayout(p.shape.case === "frame" ? p.shape.value.autoLayout : undefined)) return state;
       const next: NodeLite = { ...cur };
       for (const path of paths as readonly MaskPath[]) {
         switch (path) {
@@ -207,6 +230,12 @@ function applyOpRaw(state: SceneState, op: Op): SceneState {
             if (p.textStyleId !== "") next.textStyleId = p.textStyleId; else delete next.textStyleId;
             break;
           }
+          case "fill_style_id": if (p.fillStyleId !== "") next.fillStyleId = p.fillStyleId; else delete next.fillStyleId; break;
+          case "stroke_style_id": if (p.strokeStyleId !== "") next.strokeStyleId = p.strokeStyleId; else delete next.strokeStyleId; break;
+          case "effect_style_id": if (p.effectStyleId !== "") next.effectStyleId = p.effectStyleId; else delete next.effectStyleId; break;
+          case "corner_smoothing": case "radii": case "arc_start": case "arc_sweep": case "inner_ratio": case "sides": case "points":
+            writeShapePath(next, p, path);
+            break;
           case "object_style_id": {
             if (p.objectStyleId !== "") next.objectStyleId = p.objectStyleId; else delete next.objectStyleId;
             break;
@@ -239,6 +268,23 @@ function applyOpRaw(state: SceneState, op: Op): SceneState {
           case "layout_sizing_y": {
             const c = toNodeLite(p).layoutSizingY;
             if (c) next.layoutSizingY = c; else delete next.layoutSizingY;
+            break;
+          }
+          // The limits and the positioning go through toNodeLite too: 0 / AUTO remove the field.
+          case "min_width": case "max_width": case "min_height": case "max_height": {
+            const key = camelLimit[path];
+            const v = toNodeLite(p)[key];
+            if (v) next[key] = v; else delete next[key];
+            break;
+          }
+          case "layout_positioning": {
+            const c = toNodeLite(p).layoutPositioning;
+            if (c) next.layoutPositioning = c; else delete next.layoutPositioning;
+            break;
+          }
+          case "grid_cell": {
+            const c = toNodeLite(p).gridCell;
+            if (c) next.gridCell = c; else delete next.gridCell;
             break;
           }
           // As for "fills", the value is extracted from the patch by going through
@@ -491,6 +537,7 @@ function applyOpRaw(state: SceneState, op: Op): SceneState {
       // ErrTransitionAnim: a closed animation set and sane timing (parity with core.applySetTransition).
       if (t.animation !== "" && !(TRANSITION_ANIMATIONS as readonly string[]).includes(t.animation)) return state;
       if (t.durationMs < 0 || t.durationMs > 10000 || t.delayMs < 0 || t.delayMs > 60000 || !isValidEasing(t.easing)) return state;
+      if (t.order < 0 || t.order > MAX_TRANSITION_ORDER) return state;      // ErrTransitionOrder
       return { ...state, transitions: { ...state.transitions, [t.id]: toTransitionLite(t) } };
     }
     case "deleteTransition": {
@@ -620,6 +667,34 @@ function applyOpRaw(state: SceneState, op: Op): SceneState {
       if (!state.comments[id]) return state;                                // ErrCommentNotFound
       return { ...state, comments: withoutComment(state, id) };
     }
+    // Dev mode (parity with core.applySetAnnotation ... applyClearReadyForDev, internal/core/devmode.go).
+    // The ready entry's snapshot is the server's business: here only the mark is kept.
+    case "setAnnotation": {
+      const a = op.kind.value.annotation;
+      if (!isValidAnnotation(state, a)) return state;
+      const dev = state.dev ?? { annotations: {}, ready: {} };
+      return { ...state, dev: { ...dev, annotations: { ...dev.annotations, [a.id]: toAnnotationLite(a) } } };
+    }
+    case "deleteAnnotation": {
+      const { id } = op.kind.value;
+      if (!annotationsOfScene(state)[id]) return state;                     // ErrAnnotationNotFound
+      const annotations = { ...annotationsOfScene(state) };
+      delete annotations[id];
+      return { ...state, dev: { annotations, ready: readyOfScene(state) } };
+    }
+    case "setReadyForDev": {
+      const r = op.kind.value.ready;
+      if (!isValidReady(state, r)) return state;
+      const dev = state.dev ?? { annotations: {}, ready: {} };
+      return { ...state, dev: { ...dev, ready: { ...dev.ready, [r.nodeId]: toReadyLite(r) } } };
+    }
+    case "clearReadyForDev": {
+      const { nodeId } = op.kind.value;
+      if (!readyOfScene(state)[nodeId]) return state;                       // ErrReadyNotFound
+      const ready = { ...readyOfScene(state) };
+      delete ready[nodeId];
+      return { ...state, dev: { annotations: annotationsOfScene(state), ready } };
+    }
     case "setFont": {
       const f = op.kind.value.font;
       if (!isValidFont(state, f)) return state;
@@ -680,6 +755,40 @@ function applyOpRaw(state: SceneState, op: Op): SceneState {
       const textStyles = { ...state.textStyles };
       delete textStyles[id];
       return { ...state, textStyles, nodes: unstyleNodes(state, id) };
+    }
+    // Shared paint / effect styles (parity with core.applySetPaintStyleDef & co, internal/core/styles.go).
+    case "setPaintStyleDef": {
+      const d = op.kind.value.paintStyle;
+      if (!isValidPaintStyleDef(d)) return state;
+      return { ...state, paintStyles: { ...state.paintStyles, [d.id]: toPaintStyleDefLite(d) } };
+    }
+    case "deletePaintStyleDef": {
+      const { id } = op.kind.value;
+      if (!state.paintStyles[id]) return state;                             // ErrPaintStyleMissing
+      const paintStyles = { ...state.paintStyles };
+      delete paintStyles[id];
+      return { ...state, paintStyles, nodes: unstyleNodesByPaint(state, id, "paint") };
+    }
+    case "setEffectStyleDef": {
+      const d = op.kind.value.effectStyle;
+      if (!isValidEffectStyleDef(d)) return state;
+      return { ...state, effectStyles: { ...state.effectStyles, [d.id]: toEffectStyleDefLite(d) } };
+    }
+    case "deleteEffectStyleDef": {
+      const { id } = op.kind.value;
+      if (!state.effectStyles[id]) return state;                            // ErrEffectStyleMissing
+      const effectStyles = { ...state.effectStyles };
+      delete effectStyles[id];
+      return { ...state, effectStyles, nodes: unstyleNodesByPaint(state, id, "effect") };
+    }
+    // Replaces an instance's payload wholesale (swap, reset). Parity with core.applySetInstance.
+    case "setInstance": {
+      const { instanceId, instance } = op.kind.value;
+      const cur = state.nodes.at(instanceId);
+      if (!cur) return state;                                               // ErrNodeNotFound
+      if (cur.kind !== "instance" || !cur.instance) return state;           // ErrNotInstanceNode
+      if (!isValidInstanceBody(state, instanceId, instance)) return state;
+      return { ...state, nodes: state.nodes.set(instanceId, { ...cur, instance: toInstanceLite(instance) }) };
     }
     case "setInstanceOverride": {
       const { instanceId, override } = op.kind.value;

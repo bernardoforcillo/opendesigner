@@ -150,6 +150,7 @@ function CollectionEditor({ col, vars, onDeleted }: { col: CollectionLite; vars:
         <Button icon="plus" onPress={() => addVariable("color")}>Color</Button>
         <Button icon="plus" onPress={() => addVariable("number")}>Number</Button>
         <Button icon="plus" onPress={() => addVariable("string")}>String</Button>
+        <Button icon="plus" onPress={() => addVariable("boolean")}>Boolean</Button>
       </div>
     </div>
   );
@@ -178,6 +179,9 @@ function VariableRow({ v, col }: { v: VariableLite; col: CollectionLite }) {
             ) : v.type === "color" ? (
               <ColorField label={`${v.name} ${m.name}`} value={val as FillLite | undefined ?? null}
                 onCommit={(rgb) => run(setVariableOps(withValue(v, m.id, { ...rgb, a: (val as FillLite | undefined)?.a ?? 1 })))} />
+            ) : v.type === "boolean" ? (
+              <input type="checkbox" aria-label={`${v.name} ${m.name}`} checked={val === true}
+                onChange={(e) => run(setVariableOps(withValue(v, m.id, e.target.checked)))} />
             ) : v.type === "string" ? (
               <input key={m.id + String(val)} aria-label={`${v.name} ${m.name}`} className={cls.input} defaultValue={typeof val === "string" ? val : ""}
                 onBlur={(e) => { if (e.target.value !== val) run(setVariableOps(withValue(v, m.id, e.target.value))); }}
@@ -202,7 +206,7 @@ function VariableRow({ v, col }: { v: VariableLite; col: CollectionLite }) {
 }
 
 /** The value an alias resolves to in one mode: shown, not editable (edit the target). */
-function Resolved({ label, value }: { label: string; value: FillLite | number | string | undefined }) {
+function Resolved({ label, value }: { label: string; value: FillLite | number | string | boolean | undefined }) {
   if (value === undefined) return <span aria-label={label} className="text-fg-subtle">–</span>;
   if (typeof value === "object") {
     const c = `rgba(${Math.round(value.r * 255)}, ${Math.round(value.g * 255)}, ${Math.round(value.b * 255)}, ${value.a})`;

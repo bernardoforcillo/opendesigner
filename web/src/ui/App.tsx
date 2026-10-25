@@ -29,6 +29,7 @@ import { SETTLE_MS } from "../renderer/layerCache";
 import { SceneSurface } from "../renderer/sceneSurface";
 import { useRenderer } from "../store/rendererChoice";
 import { drawOverlay, drawNodeEdit } from "../renderer/overlayRenderer";
+import { drawBuilderPreview, drawWidthEdit } from "../renderer/vectorToolsOverlay";
 import { screenToWorld } from "../canvas/camera";
 import { attachTools, eventToCanvasPoint } from "../tools/toolManager";
 import { attachClipboardShortcuts } from "../tools/clipboard";
@@ -59,10 +60,14 @@ import { attachTimelineShortcuts } from "./timeline/shortcuts";
 import { resolveFlow, useFlowUi, type EditorMode } from "../store/flowUi";
 import { drawFlows } from "../renderer/flowRenderer";
 import type { Tool, ToolContext, ToolId } from "../tools/types";
-import { selectTool } from "../tools/selectTool";
+import { pickTarget, selectTool } from "../tools/selectTool";
+import { ContextMenuHost } from "./ContextMenu";
+import { openContextMenu } from "./contextMenuItems";
 import { rectTool } from "../tools/rectTool";
 import { frameTool } from "../tools/frameTool";
 import { ellipseTool } from "../tools/ellipseTool";
+import { polygonTool } from "../tools/polygonTool";
+import { starTool } from "../tools/starTool";
 import { textTool } from "../tools/textTool";
 import { penTool } from "../tools/penTool";
 import { handTool } from "../tools/handTool";
@@ -71,6 +76,8 @@ import { linkTool } from "../tools/linkTool";
 import { stickyTool } from "../tools/stickyTool";
 import { voteTool } from "../tools/voteTool";
 import { nodeTool } from "../tools/nodeTool";
+import { widthTool } from "../tools/widthTool";
+import { builderTool } from "../tools/builderTool";
 import { withFlowArrows } from "../tools/flowSelect";
 
 // Registry of the available tools: the toolbar picks a key, attachTools
@@ -89,6 +96,8 @@ export const TOOLS: Partial<Record<ToolId, Tool>> = {
   frame: frameTool,
   rect: rectTool,
   ellipse: ellipseTool,
+  polygon: polygonTool,
+  star: starTool,
   text: textTool,
   pen: penTool,
   hand: handTool,
@@ -97,6 +106,8 @@ export const TOOLS: Partial<Record<ToolId, Tool>> = {
   link: linkTool,
   vote: voteTool,
   node: nodeTool,
+  width: widthTool,
+  builder: builderTool,
 };
 
 export const TOOL_LABELS: { id: ToolId; label: string }[] = [
@@ -108,9 +119,13 @@ export const TOOL_LABELS: { id: ToolId; label: string }[] = [
   { id: "frame", label: "Frame" },
   { id: "rect", label: "Rectangle" },
   { id: "ellipse", label: "Ellipse" },
+  { id: "polygon", label: "Polygon" },
+  { id: "star", label: "Star" },
   { id: "text", label: "Text" },
   { id: "pen", label: "Pen" },
   { id: "node", label: "Node" },
+  { id: "width", label: "Variable width" },
+  { id: "builder", label: "Shape builder" },
   { id: "hand", label: "Hand" },
   { id: "comment", label: "Comment" },
 ];
@@ -200,6 +215,7 @@ export function App() {
     toolRef.current = id;
     setToolId(id);
     useScene.getState().enterNodeEdit(id === "node");
+    useScene.getState().enterWidthEdit(id === "width");
   };
   // An op rejected by the server is undone locally (the optimistic change
   // disappears from the canvas, see store/store.ts::rejectPending). A
@@ -470,6 +486,10 @@ export function App() {
           {
             const ne = useScene.getState().nodeEdit;
             if (ne) drawNodeEdit(octx, scene, camera, selection, ne.sel);
+            const we = useScene.getState().widthEdit;
+            if (we) drawWidthEdit(octx, scene, camera, selection, we.sel);
+            const bp = useScene.getState().builderPreview;
+            if (bp) drawBuilderPreview(octx, camera, bp);
           }
           {
             const votes = tally(peers, useFacilitation.getState().votes);
@@ -669,6 +689,7 @@ export function App() {
 
   return (
     <div className="flex h-screen flex-col gap-px bg-line text-fg">
+      <ContextMenuHost />
       {/* Two different notices because the two situations ask for different things: while
           reconnecting the user can wait (changes stay queued and
           the backlog will confirm them), with attempts exhausted they cannot. */}
@@ -774,6 +795,18 @@ export function App() {
             ref={canvasRef}
             style={{ cursor: (TOOLS[toolId] ?? selectTool).cursor }}
             className="absolute inset-0 block h-full w-full touch-none"
+            // Right click: the menu of the node under the pointer (it becomes the selection unless it
+            // already is part of it). Design mode, with write access, like every edit.
+            onContextMenu={(e) => {
+              e.preventDefault();
+              const st = useScene.getState();
+              if (!st.scene || mode !== "design" || !canWrite(role)) return;
+              const p = eventToCanvasPoint(e.currentTarget, e);
+              const world = screenToWorld(st.camera, p.x, p.y);
+              const pick = pickTarget(st.scene, world, false, st.selection, st.camera.zoom, st.currentPageId);
+              if (pick.mode === "marquee") return;
+              openContextMenu(e.clientX, e.clientY, pick.mode === "single" ? pick.id : undefined);
+            }}
           />
           {/* overlay: selection bbox + handles + marquee, in screen space.
               pointer-events-none: all listeners stay on the "scene" canvas,

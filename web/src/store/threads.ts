@@ -1,5 +1,5 @@
 import { withMeta } from "../flow/meta";
-import { fontString, layoutRich, layoutText, lineHeightOf, fontSizeOf, trackedMeasure, trackedMeasureFor } from "../renderer/text";
+import { fontString, insetOf, layoutRich, layoutText, lineHeightOf, fontSizeOf, trackedMeasure, trackedMeasureFor } from "../renderer/text";
 import { worldTransformOf } from "../canvas/transform";
 import { paragraphCount, resolveRich } from "./richText";
 import { keepBreak } from "./keeps";
@@ -169,8 +169,9 @@ function flowRich(scene: SceneState, chain: NodeLite[]): { texts: TextLite[]; ov
     const rich = resolveRich(scene, whole, base, boxY, wrapRects[fi]);
     let end = 0;
     if (rich && frame.width > 0) {
-      const lay = layoutRich(mf, content, base, rich, frame.width);
-      const fit = lay.lines.filter((l) => l.top + l.height <= frame.height + 1e-6).length;
+      const inset = insetOf(base);
+      const lay = layoutRich(mf, content, base, rich, Math.max(0, frame.width - 2 * inset));
+      const fit = lay.lines.filter((l) => l.top + l.height <= frame.height - 2 * inset + 1e-6).length;
       // Keep rules (widows, orphans, keep with next) may move the break up.
       const k = fit === lay.lines.length ? fit : keepBreak(lay.lines, fit, rich.paragraphs);
       end = k === lay.lines.length ? content.length : k > 0 ? lay.lines[k - 1].end : 0;

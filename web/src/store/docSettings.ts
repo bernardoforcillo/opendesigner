@@ -1,10 +1,12 @@
 import type { BookMsg, DocSettingsLite, DocSettingsMsg, GuideLite, PageLite, SceneState, Vertical } from "./types";
 import type { Bounds } from "../canvas/geometry";
+import { DEVICES } from "../flow/devices";
 import { settingsOf } from "./types";
 
 // DOCUMENT SETTINGS and PAGE SETUP -- the twin of internal/core/docsettings.go (Go is the authority).
 //
 //   1. the vertical is "", "publishing", "design" or "product" ("" is "product"); it only shapes the editor;
+//   1b. the Present device frame is "" (generic) or one of flow/devices.ts::DEVICES;
 //   2. the baseline grid has a finite increment in 0..1000 (0 = no grid) and a finite start >= 0;
 //   3. a page's size is 0 (unbounded) or 1..100000 in each direction; margins, gutter and bleed are
 //      finite and non-negative (bleed up to 1000); columns are 0..24;
@@ -28,6 +30,7 @@ const finiteIn = (v: number, lo: number, hi: number) => Number.isFinite(v) && v 
 export function isValidDocSettings(s: DocSettingsMsg | undefined): boolean {
   if (!s) return false;
   if (s.vertical !== "" && !isVertical(s.vertical)) return false;
+  if (s.presentDevice && !DEVICES.some((d) => d.id === s.presentDevice)) return false;
   if (s.colorMode !== undefined && s.colorMode !== "" && s.colorMode !== "cmyk") return false;
   const icc = s.iccProfile ?? "";
   // eslint-disable-next-line no-control-regex
