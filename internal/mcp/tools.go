@@ -1068,5 +1068,9 @@ func RegisterTools(srv *mcp.Server, s *Session) {
 	registerVariantTools(srv, s)
 	registerConstraintTools(srv, s)
 	registerCodegenTools(srv, s)
+	registerJobTools(srv, s)
+	registerOnixTools(srv, s)
+	registerPageCopyTools(srv, s)
+	registerCommandTools(srv, s)
 	registerDiagramTools(srv, s)
 }

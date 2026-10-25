@@ -1436,6 +1436,50 @@ message WatchPresenceRequest { string doc_id = 1; string client_id = 2; string n
 message UpdatePresenceRequest { string doc_id = 1; PresenceState state = 2; }
 message UpdatePresenceResponse {}
 
+// ---------- editor jobs ----------
+// Some outputs (PDF, EPUB, PNG, SVG, the print package, the full preflight) are produced by the editor itself, in the browser,
+// because they need the text layout and the fonts the editor has. An agent asks for one with RunJob; the server hands the
+// job to an editor that has the document open (WatchJobs), waits for it to answer (CompleteJob) and returns the result.
+// With no editor open the job fails with a message saying so -- nothing is queued.
+message EditorJob {
+  string job_id = 1;
+  string kind = 2;
+  string options_json = 3;
+  bytes payload = 4;        // an input file (an image to place, a PDF to import...), up to 32 MiB
+  string payload_name = 5;  // its file name
+}
+message WatchJobsRequest { string doc_id = 1; string client_id = 2; }
+message RunJobRequest {
+  string doc_id = 1;
+  string kind = 2;          // export_pdf | export_package | export_epub | export_epub_reflow | export_png | export_svg | preflight | command
+  string options_json = 3;  // the kind's options, a JSON object
+  uint32 timeout_seconds = 4; // 0 => 120
+  bytes payload = 5;        // an input file for kinds that take one (command: place_image, import_pdf...)
+  string payload_name = 6;
+}
+message RunJobResponse {
+  bool ok = 1;
+  string message = 2;       // the reason when not ok, or a note from the editor (e.g. images that could not be read)
+  string result_id = 3;     // the produced file, served at /export-api/{doc_id}/{result_id}; empty for text-only results
+  string filename = 4;
+  string content_type = 5;
+  uint64 size = 6;
+  string text = 7;          // a text result (preflight as JSON), up to 256 KiB
+  bytes data = 8;           // the file itself, so the caller need not fetch it (also served at /export-api/...)
+}
+message CompleteJobRequest {
+  string doc_id = 1;
+  string job_id = 2;
+  string client_id = 3;
+  bool ok = 4;
+  string message = 5;
+  string filename = 6;
+  string content_type = 7;
+  bytes data = 8;           // the file, up to 64 MiB
+  string text = 9;
+}
+message CompleteJobResponse {}
+
 service DocumentService {
   rpc RenderBoard(RenderBoardRequest) returns (RenderBoardResponse);
   rpc ReviewDesign(ReviewDesignRequest) returns (ReviewDesignResponse);
@@ -1474,6 +1518,10 @@ service DocumentService {
   rpc WatchPresence(WatchPresenceRequest) returns (stream PresenceEvent);
   // Updates the client's cursor/selection (which must have an open stream).
   rpc UpdatePresence(UpdatePresenceRequest) returns (UpdatePresenceResponse);
+  // Editor jobs (see EditorJob): the editor watches, an agent runs, the editor completes.
+  rpc WatchJobs(WatchJobsRequest) returns (stream EditorJob);
+  rpc RunJob(RunJobRequest) returns (RunJobResponse);
+  rpc CompleteJob(CompleteJobRequest) returns (CompleteJobResponse);
   // Flow analysis (screen graph): unreachable screens, dead ends, paths.
   // Computed by the server (internal/flow), so UI, CLI and MCP agents see the
   // same result.

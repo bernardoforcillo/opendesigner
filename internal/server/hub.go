@@ -138,6 +138,9 @@ type Hub struct {
 	// independent of the op-log (see presence.go).
 	presence *presenceRoom
 
+	// jobs hands outputs only an editor can make (PDF, EPUB...) to an editor that has the document open (see jobs.go).
+	jobs *jobRoom
+
 	// historyBase is the seq of the newest record NOT in history: everything
 	// at or below it has been snapshotted and dropped. Subscribe uses it to
 	// tell "you are up to date" from "what you are asking for is gone".
@@ -193,6 +196,7 @@ func newHub(b documentBundle) (*Hub, error) {
 		historyBase:   base,
 		subs:          map[*subscriber]struct{}{},
 		presence:      newPresenceRoom(),
+		jobs:          newJobRoom(),
 		snapshotEvery: snapshotEveryOps,
 	}, nil
 }

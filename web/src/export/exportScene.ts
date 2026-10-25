@@ -12,7 +12,7 @@ import { buildReflowEpub, type ReflowImage } from "./epubReflow";
 import { dataUrlBytes } from "../pdf/write/pdfImages";
 import { nodesToSvg, type MeasureText, type ResolveImageHref } from "./svg";
 import { canvasToPngBlob, renderRegionToCanvas, type ExportScale } from "./png";
-import { hasErrors, preflightReport, preflightScene } from "./preflight";
+import { hasErrors, preflightReport, preflightScene, type PreflightIssue } from "./preflight";
 import { buildPackage } from "./packageForPrint";
 import { buildDocumentPdf, buildRegionPdf, canvasRasterize, type PrintPdfOptions } from "./printPdf";
 import type { Rasterize } from "../pdf/write/pdfImages";
@@ -40,6 +40,10 @@ export type ExportFormat = "png" | "svg" | "pdf";
 export interface ExportRequest {
   format: ExportFormat;
   scope: ExportScope;
+  /** The page to export (default: the one on screen) -- how an agent exports a page without moving the editor. */
+  pageId?: string;
+  /** For a selection export: these nodes instead of the editor's selection. */
+  nodeIds?: readonly string[];
   // Used only by the PNG: the SVG is vector, a "scale" means nothing.
   scale: ExportScale;
 }
@@ -318,7 +322,10 @@ function svgMarkup(region: ExportRegion, measure: MeasureText, assets: ResolvedA
  * produces no op. It is the only function of the app that only reads the scene.
  */
 export async function runExport(req: ExportRequest, deps: ExportDeps = {}): Promise<boolean> {
-  const { scene: raw, selection, currentPageId } = useScene.getState();
+  const state = useScene.getState();
+  const { scene: raw } = state;
+  const selection = req.nodeIds ?? state.selection;
+  const currentPageId = req.pageId ?? state.currentPageId;
   if (!raw) return false;
   // What is exported is what is drawn: variables resolved for each node's active mode, the
   // master page's content in place, and only the page on screen.
@@ -492,4 +499,19 @@ export async function runPackage(deps: DocumentExportDeps = {}, opts: PrintPdfOp
     useScene.setState({ notice: `export failed: ${err instanceof Error ? err.message : String(err)}` });
     return false;
   }
+}
+
+/**
+ * The preflight of the document as the editor would show it: what the document says (fonts, bleed, overset text...)
+ * plus what the PDF writer finds while writing it (image resolution, missing glyphs, transparency under X-1a...).
+ * Nothing is downloaded. `null` when there is no document or every page is empty.
+ */
+export async function runPreflight(deps: DocumentExportDeps = {}, opts: PrintPdfOptions = {}): Promise<PreflightIssue[] | null> {
+  const { scene: raw } = useScene.getState();
+  if (!raw) return null;
+  const scene = resolveScene(raw);
+  const measure = deps.measure ?? canvasMeasure(deps.createCanvas ?? defaultCanvas);
+  const pdf = await buildDocumentPdf(scene, (pageId, sheet) => exportRegion(onPage(scene, pageId), [], "page", measure, sheet ?? sheetOf(scene.pages.find((p) => p.id === pageId))), opts, { ...printDeps(deps, measure), now: deps.now });
+  if (!pdf) return null;
+  return [...preflightScene(scene, opts, measure), ...preflightReport(pdf.report, opts, pdf.missingImages, pdf.missingFonts)];
 }

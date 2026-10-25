@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ONIXMessage release="3.0" xmlns="http://ns.editeur.org/onix/3.0/reference">
+  <Header>
+    <Sender>
+      <SenderName>OpenDesigner</SenderName>
+    </Sender>
+    <SentDateTime>20260102T0304Z</SentDateTime>
+  </Header>
+  <Product>
+    <RecordReference>urn:isbn:9788804668237</RecordReference>
+    <NotificationType>03</NotificationType>
+    <ProductIdentifier>
+      <ProductIDType>15</ProductIDType>
+      <IDValue>9788804668237</IDValue>
+    </ProductIdentifier>
+    <DescriptiveDetail>
+      <ProductComposition>00</ProductComposition>
+      <ProductForm>BC</ProductForm>
+      <TitleDetail>
+        <TitleType>01</TitleType>
+        <TitleElement>
+          <TitleElementLevel>01</TitleElementLevel>
+          <TitleText>T</TitleText>
+        </TitleElement>
+      </TitleDetail>
+    </DescriptiveDetail>
+  </Product>
+</ONIXMessage>

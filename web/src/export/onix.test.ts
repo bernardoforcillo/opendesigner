@@ -1,4 +1,6 @@
 import { describe, it, expect } from "vitest";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { buildOnix, contributorNames, onixDateTime, onixProblems } from "./onix";
 import type { BookLite } from "../store/types";
 
@@ -92,5 +94,20 @@ describe("helpers", () => {
     expect(contributorNames(book)).toEqual(["Umberto Eco"]);
     expect(contributorNames(book, ["A01", "B06"])).toEqual(["Umberto Eco", "W. Weaver"]);
     expect(contributorNames(undefined)).toEqual([]);
+  });
+});
+
+describe("parity with the server (internal/onix)", () => {
+  // The same fixtures are checked by internal/onix/onix_test.go: the editor and the MCP tool write the same bytes.
+  const fixture = (name: string) => readFileSync(join(process.cwd(), "..", "testdata", "onix", name), "utf8");
+  it("writes the shared fixtures byte for byte", () => {
+    const at = new Date(Date.UTC(2026, 0, 2, 3, 4, 59));
+    const full: BookLite = {
+      ...book, description: "First paragraph.\nSame paragraph.\n\nSecond one.\n\n\nThird.",
+      subjects: [{ scheme: "10", code: "FIC014000", heading: "Historical" }, { scheme: "93", code: "FF" }],
+      prices: [{ priceType: "02", amount: "9.99", currency: "EUR" }, { priceType: "01", amount: "8.18", currency: "EUR" }],
+    };
+    expect(buildOnix(full, at, "3.1")).toBe(fixture("full.3.1.xml"));
+    expect(buildOnix({ isbn13: "9788804668237", title: "T", productForm: "BC" }, at, "3.0")).toBe(fixture("minimal.3.0.xml"));
   });
 });

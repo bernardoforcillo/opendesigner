@@ -1,4 +1,6 @@
 import { describe, it, expect, beforeEach } from "vitest";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { fieldsIn, mergeOps, parseTable, placeholdersOnPage, substitute } from "./dataMerge";
 import { useScene } from "../store/store";
 import { emptyScene } from "../store/types";
@@ -80,5 +82,23 @@ describe("mergeOps", () => {
 
   it("does nothing for an empty table", () => {
     expect(mergeOps(useScene.getState().scene!, "page1", { headers: ["Name"], rows: [] }).ops).toEqual([]);
+  });
+});
+
+describe("parity with the server (internal/datamerge)", () => {
+  // The same cases are checked by internal/datamerge/datamerge_test.go: the editor and the MCP tool read and merge alike.
+  const cases = JSON.parse(readFileSync(join(process.cwd(), "..", "testdata", "merge", "cases.json"), "utf8")) as {
+    tables: { in: string; headers: string[]; rows: string[][] }[];
+    substitutions: { content: string; record: Record<string, string>; text: string; maps: [number, number][] }[];
+  };
+  it("reads the shared tables", () => {
+    for (const c of cases.tables) expect(parseTable(c.in)).toEqual({ headers: c.headers, rows: c.rows });
+  });
+  it("substitutes the shared texts and maps the shared offsets", () => {
+    for (const c of cases.substitutions) {
+      const s = substitute(c.content, c.record);
+      expect(s.text).toBe(c.text);
+      for (const [from, to] of c.maps) expect(s.map(from)).toBe(to);
+    }
   });
 });
