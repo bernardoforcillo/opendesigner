@@ -65,6 +65,19 @@ The limits are read by the layout, so they only act on children of (and on) an a
 frame; a node in a plain frame is not clamped. Removing a limit does not bring back the size
 it had before it clamped, but undo does (the inverse also writes the previous size).
 
+### Baseline alignment
+
+`cross_align = BASELINE` in a **horizontal** layout lines the children's first baselines up
+(in a vertical layout, and as a main alignment, it behaves as `START`). With no font metrics
+in the document a text's baseline sits `font_size * (line_height - 1) / 2 + font_size * 0.8`
+below its top (a line box of `line_height` x `font_size` with an ascent of 0.8 em; 16 and 1.2
+when unset), and any other node's is its bottom edge, like a replaced element in CSS. The line's
+baseline is the largest of them, the children hang from it, and a hugging cross axis takes the
+extent they cover. A child that fills the cross axis stays at the start. When the layout wraps,
+each line has its own baseline. Exported code uses `align-items: baseline`. It is an estimate:
+the canvas draws text from the top of its box, so a font whose ascent is not 0.8 em is off by
+a pixel or two against the real glyph baseline.
+
 ### Absolute children
 
 `Node.layout_positioning = ABSOLUTE` takes a child out of its auto layout parent's flow: it
@@ -110,7 +123,7 @@ clamped (`STRETCH` below zero) and the scaled (`SCALE`) cases.
   out** into the frame's parent, centered on the pointer (the row closes up).
 - **MCP**: `set_constraints`, `set_layout_sizing`, `set_layout_limits`,
   `set_layout_positioning` (node views report `minWidth`.., `layoutPositioning`); `create_frame` / `set_auto_layout` take
-  `wrap` and `crossSpacing`; node views report `constraintX/Y` and `layoutSizingX/Y`.
+  `wrap` and `crossSpacing` (and `crossAlign` takes `baseline`); node views report `constraintX/Y` and `layoutSizingX/Y`.
 
 ## Not yet
 

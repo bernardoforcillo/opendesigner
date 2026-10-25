@@ -18,6 +18,8 @@ Legend: [x] done · [ ] to do
 - [x] Auto layout: children that fill the space (fill), wrapping onto several lines, dragging a child OUT of the frame, instances as children; see docs/layout.md
 - [x] Auto layout: min/max sizes (fill children redistribute around them) and absolute children that stay constrained to the frame; see docs/layout.md
 - [ ] Auto layout: groups as children
+- [x] Auto layout: baseline alignment on the cross axis of a row (estimated from font size and line height)
+- [ ] Auto layout: grid mode (rows / columns tracks with fixed, hug and fr sizes, cell spans)
 - [x] Constraints and responsive resize (min/max/stretch/center/scale per axis, recursive, exact undo); see docs/layout.md
 - [x] Variants and component properties: component sets with axes, instances that choose a variant, boolean (show/hide) and text properties, editor dialog and instance controls, MCP tools, exported code; see docs/components.md
 - [x] Instance swap (carrying over the overrides that fit), detach instance, reset overrides (all / per layer), go to main component; see docs/components.md

@@ -180,6 +180,10 @@ enum LayoutAlign {
   // Only for main_align: distributes the free space between the children. On
   // the cross axis it behaves as START.
   LAYOUT_ALIGN_SPACE_BETWEEN = 4;
+  // Only for cross_align of a HORIZONTAL layout: the children's first baselines coincide (a text's
+  // from its font size and line height, any other node's from its bottom edge). On the main axis
+  // and in a vertical layout it behaves as START.
+  LAYOUT_ALIGN_BASELINE = 5;
 }
 message AutoLayout {
   LayoutDirection direction = 1;

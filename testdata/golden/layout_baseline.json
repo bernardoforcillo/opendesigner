@@ -1,0 +1,533 @@
+{
+ "_comment": [
+  "Baseline alignment: cross_align BASELINE of a horizontal auto layout lines the children's first baselines up (a text's from its font size and line height, any other node's from its bottom edge; a child that fills the cross axis stays at the start), also line by line when wrapping. In a vertical layout it behaves as start."
+ ],
+ "docId": "doc1",
+ "expected": {
+  "id": "doc1",
+  "name": "Untitled",
+  "nodes": {
+   "big": {
+    "height": 36,
+    "id": "big",
+    "name": "big",
+    "opacity": 1,
+    "orderKey": "big",
+    "parentId": "row",
+    "text": {
+     "content": "Big",
+     "style": {
+      "fontSize": 24,
+      "lineHeight": 1.5
+     }
+    },
+    "visible": true,
+    "width": 50,
+    "x": 3.25,
+    "y": 2.5
+   },
+   "box": {
+    "height": 18.5,
+    "id": "box",
+    "name": "box",
+    "opacity": 1,
+    "orderKey": "box",
+    "parentId": "row",
+    "rect": {},
+    "visible": true,
+    "width": 20,
+    "x": 59.75,
+    "y": 9.200000000000003
+   },
+   "c1": {
+    "height": 12,
+    "id": "c1",
+    "name": "c1",
+    "opacity": 1,
+    "orderKey": "c1",
+    "parentId": "col",
+    "text": {
+     "content": "a",
+     "style": {
+      "fontSize": 10
+     }
+    },
+    "visible": true,
+    "width": 30
+   },
+   "c2": {
+    "height": 36,
+    "id": "c2",
+    "name": "c2",
+    "opacity": 1,
+    "orderKey": "c2",
+    "parentId": "col",
+    "text": {
+     "content": "b",
+     "style": {
+      "fontSize": 30
+     }
+    },
+    "visible": true,
+    "width": 50,
+    "y": 12
+   },
+   "col": {
+    "frame": {
+     "autoLayout": {
+      "crossAlign": "LAYOUT_ALIGN_BASELINE",
+      "direction": "LAYOUT_DIRECTION_VERTICAL",
+      "hugHeight": true
+     }
+    },
+    "height": 48,
+    "id": "col",
+    "name": "col",
+    "opacity": 1,
+    "orderKey": "col",
+    "parentId": "page1",
+    "visible": true,
+    "width": 120,
+    "x": 999,
+    "y": 999
+   },
+   "fill": {
+    "height": 5.5,
+    "id": "fill",
+    "layoutSizingY": "LAYOUT_SIZING_FILL",
+    "name": "fill",
+    "opacity": 1,
+    "orderKey": "fill",
+    "parentId": "row",
+    "rect": {},
+    "visible": true,
+    "width": 20,
+    "x": 86.25,
+    "y": 22.200000000000003
+   },
+   "row": {
+    "frame": {
+     "autoLayout": {
+      "crossAlign": "LAYOUT_ALIGN_BASELINE",
+      "direction": "LAYOUT_DIRECTION_HORIZONTAL",
+      "hugHeight": true,
+      "paddingBottom": 2.5,
+      "paddingLeft": 3.25,
+      "paddingRight": 3.25,
+      "paddingTop": 2.5,
+      "spacing": 6.5
+     },
+     "clipsContent": true
+    },
+    "height": 41,
+    "id": "row",
+    "name": "row",
+    "opacity": 1,
+    "orderKey": "row",
+    "parentId": "page1",
+    "visible": true,
+    "width": 240,
+    "x": 999,
+    "y": 999
+   },
+   "small": {
+    "height": 14.4,
+    "id": "small",
+    "name": "small",
+    "opacity": 1,
+    "orderKey": "small",
+    "parentId": "row",
+    "text": {
+     "content": "Small",
+     "style": {
+      "fontSize": 12
+     }
+    },
+    "visible": true,
+    "width": 40,
+    "x": 112.75,
+    "y": 16.900000000000002
+   },
+   "w1": {
+    "height": 17,
+    "id": "w1",
+    "name": "w1",
+    "opacity": 1,
+    "orderKey": "w1",
+    "parentId": "wrapped",
+    "text": {
+     "content": "one",
+     "style": {
+      "fontSize": 14
+     }
+    },
+    "visible": true,
+    "width": 60,
+    "x": 3.25,
+    "y": 6.899999999999999
+   },
+   "w2": {
+    "height": 22,
+    "id": "w2",
+    "name": "w2",
+    "opacity": 1,
+    "orderKey": "w2",
+    "parentId": "wrapped",
+    "text": {
+     "content": "two",
+     "style": {
+      "fontSize": 20,
+      "lineHeight": 1.1
+     }
+    },
+    "visible": true,
+    "width": 60,
+    "x": 69.75,
+    "y": 2.5
+   },
+   "w3": {
+    "height": 9,
+    "id": "w3",
+    "name": "w3",
+    "opacity": 1,
+    "orderKey": "w3",
+    "parentId": "wrapped",
+    "rect": {},
+    "visible": true,
+    "width": 60,
+    "x": 3.25,
+    "y": 29
+   },
+   "wrapped": {
+    "frame": {
+     "autoLayout": {
+      "crossAlign": "LAYOUT_ALIGN_BASELINE",
+      "crossSpacing": 4.5,
+      "direction": "LAYOUT_DIRECTION_HORIZONTAL",
+      "hugHeight": true,
+      "paddingBottom": 2.5,
+      "paddingLeft": 3.25,
+      "paddingRight": 3.25,
+      "paddingTop": 2.5,
+      "spacing": 6.5,
+      "wrap": true
+     },
+     "clipsContent": true
+    },
+    "height": 40.5,
+    "id": "wrapped",
+    "name": "wrapped",
+    "opacity": 1,
+    "orderKey": "wrapped",
+    "parentId": "page1",
+    "visible": true,
+    "width": 140,
+    "x": 999,
+    "y": 999
+   }
+  },
+  "pages": [
+   {
+    "id": "page1",
+    "name": "Page 1"
+   }
+  ],
+  "schemaVersion": 1
+ },
+ "ops": [
+  {
+   "createNode": {
+    "node": {
+     "frame": {
+      "autoLayout": {
+       "crossAlign": "LAYOUT_ALIGN_BASELINE",
+       "direction": "LAYOUT_DIRECTION_HORIZONTAL",
+       "hugHeight": true,
+       "paddingBottom": 2.5,
+       "paddingLeft": 3.25,
+       "paddingRight": 3.25,
+       "paddingTop": 2.5,
+       "spacing": 6.5
+      },
+      "clipsContent": true
+     },
+     "height": 50,
+     "id": "row",
+     "name": "row",
+     "opacity": 1,
+     "orderKey": "row",
+     "parentId": "page1",
+     "visible": true,
+     "width": 240,
+     "x": 999,
+     "y": 999
+    }
+   },
+   "docId": "doc1",
+   "opId": "op1"
+  },
+  {
+   "createNode": {
+    "node": {
+     "height": 14.4,
+     "id": "small",
+     "name": "small",
+     "opacity": 1,
+     "orderKey": "small",
+     "parentId": "row",
+     "text": {
+      "content": "Small",
+      "style": {
+       "fontSize": 12
+      }
+     },
+     "visible": true,
+     "width": 40,
+     "x": 999,
+     "y": 999
+    }
+   },
+   "docId": "doc1",
+   "opId": "op2"
+  },
+  {
+   "createNode": {
+    "node": {
+     "height": 36,
+     "id": "big",
+     "name": "big",
+     "opacity": 1,
+     "orderKey": "big",
+     "parentId": "row",
+     "text": {
+      "content": "Big",
+      "style": {
+       "fontSize": 24,
+       "lineHeight": 1.5
+      }
+     },
+     "visible": true,
+     "width": 50,
+     "x": 999,
+     "y": 999
+    }
+   },
+   "docId": "doc1",
+   "opId": "op3"
+  },
+  {
+   "createNode": {
+    "node": {
+     "height": 18.5,
+     "id": "box",
+     "name": "box",
+     "opacity": 1,
+     "orderKey": "box",
+     "parentId": "row",
+     "rect": {},
+     "visible": true,
+     "width": 20,
+     "x": 999,
+     "y": 999
+    }
+   },
+   "docId": "doc1",
+   "opId": "op4"
+  },
+  {
+   "createNode": {
+    "node": {
+     "height": 5.5,
+     "id": "fill",
+     "layoutSizingY": "LAYOUT_SIZING_FILL",
+     "name": "fill",
+     "opacity": 1,
+     "orderKey": "fill",
+     "parentId": "row",
+     "rect": {},
+     "visible": true,
+     "width": 20,
+     "x": 999,
+     "y": 999
+    }
+   },
+   "docId": "doc1",
+   "opId": "op5"
+  },
+  {
+   "createNode": {
+    "node": {
+     "frame": {
+      "autoLayout": {
+       "crossAlign": "LAYOUT_ALIGN_BASELINE",
+       "crossSpacing": 4.5,
+       "direction": "LAYOUT_DIRECTION_HORIZONTAL",
+       "hugHeight": true,
+       "paddingBottom": 2.5,
+       "paddingLeft": 3.25,
+       "paddingRight": 3.25,
+       "paddingTop": 2.5,
+       "spacing": 6.5,
+       "wrap": true
+      },
+      "clipsContent": true
+     },
+     "height": 50,
+     "id": "wrapped",
+     "name": "wrapped",
+     "opacity": 1,
+     "orderKey": "wrapped",
+     "parentId": "page1",
+     "visible": true,
+     "width": 140,
+     "x": 999,
+     "y": 999
+    }
+   },
+   "docId": "doc1",
+   "opId": "op6"
+  },
+  {
+   "createNode": {
+    "node": {
+     "height": 17,
+     "id": "w1",
+     "name": "w1",
+     "opacity": 1,
+     "orderKey": "w1",
+     "parentId": "wrapped",
+     "text": {
+      "content": "one",
+      "style": {
+       "fontSize": 14
+      }
+     },
+     "visible": true,
+     "width": 60,
+     "x": 999,
+     "y": 999
+    }
+   },
+   "docId": "doc1",
+   "opId": "op7"
+  },
+  {
+   "createNode": {
+    "node": {
+     "height": 22,
+     "id": "w2",
+     "name": "w2",
+     "opacity": 1,
+     "orderKey": "w2",
+     "parentId": "wrapped",
+     "text": {
+      "content": "two",
+      "style": {
+       "fontSize": 20,
+       "lineHeight": 1.1
+      }
+     },
+     "visible": true,
+     "width": 60,
+     "x": 999,
+     "y": 999
+    }
+   },
+   "docId": "doc1",
+   "opId": "op8"
+  },
+  {
+   "createNode": {
+    "node": {
+     "height": 9,
+     "id": "w3",
+     "name": "w3",
+     "opacity": 1,
+     "orderKey": "w3",
+     "parentId": "wrapped",
+     "rect": {},
+     "visible": true,
+     "width": 60,
+     "x": 999,
+     "y": 999
+    }
+   },
+   "docId": "doc1",
+   "opId": "op9"
+  },
+  {
+   "createNode": {
+    "node": {
+     "frame": {
+      "autoLayout": {
+       "crossAlign": "LAYOUT_ALIGN_BASELINE",
+       "direction": "LAYOUT_DIRECTION_VERTICAL",
+       "hugHeight": true
+      }
+     },
+     "height": 30,
+     "id": "col",
+     "name": "col",
+     "opacity": 1,
+     "orderKey": "col",
+     "parentId": "page1",
+     "visible": true,
+     "width": 120,
+     "x": 999,
+     "y": 999
+    }
+   },
+   "docId": "doc1",
+   "opId": "op10"
+  },
+  {
+   "createNode": {
+    "node": {
+     "height": 12,
+     "id": "c1",
+     "name": "c1",
+     "opacity": 1,
+     "orderKey": "c1",
+     "parentId": "col",
+     "text": {
+      "content": "a",
+      "style": {
+       "fontSize": 10
+      }
+     },
+     "visible": true,
+     "width": 30,
+     "x": 999,
+     "y": 999
+    }
+   },
+   "docId": "doc1",
+   "opId": "op11"
+  },
+  {
+   "createNode": {
+    "node": {
+     "height": 36,
+     "id": "c2",
+     "name": "c2",
+     "opacity": 1,
+     "orderKey": "c2",
+     "parentId": "col",
+     "text": {
+      "content": "b",
+      "style": {
+       "fontSize": 30
+      }
+     },
+     "visible": true,
+     "width": 50,
+     "x": 999,
+     "y": 999
+    }
+   },
+   "docId": "doc1",
+   "opId": "op12"
+  }
+ ],
+ "rejected": []
+}

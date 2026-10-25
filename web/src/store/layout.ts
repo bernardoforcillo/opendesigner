@@ -39,6 +39,28 @@ export function hasLayout(n: NodeLite | undefined): n is NodeLite & { autoLayout
 
 const isFrame = (n: NodeLite | undefined): n is NodeLite => n !== undefined && n.kind === "frame";
 
+// The distance from the top of a node to its first baseline, for aligning children on a shared
+// baseline (cross_align "baseline" of a horizontal layout). A text's comes from its font size
+// and line height (half the leading plus an ascent of 0.8 em), any other node's is its bottom
+// edge. Parity with baselineOf in Go.
+function baselineOf(n: NodeLite): number {
+  if (!n.text) return n.height;
+  const fs = n.text.style.fontSize > 0 ? n.text.style.fontSize : 16;
+  const lh = n.text.style.lineHeight > 0 ? n.text.style.lineHeight : 1.2;
+  const half = (fs * (lh - 1)) / 2;
+  return half + fs * 0.8;
+}
+
+// A line's baseline (the largest baseline offset of the kids that follow it) and the cross extent
+// they take once aligned on it. `skip` excludes the kids that fill the cross axis.
+function baselineSpan(kids: readonly NodeLite[], skip: (k: NodeLite) => boolean, crossOf: (k: NodeLite) => number): { base: number; extent: number } {
+  let base = 0;
+  for (const k of kids) if (!skip(k)) base = Math.max(base, baselineOf(k));
+  let extent = 0;
+  for (const k of kids) if (!skip(k)) extent = Math.max(extent, base - baselineOf(k) + crossOf(k));
+  return { base, extent };
+}
+
 // A node in an auto layout frame that left its flow (see Node.layout_positioning).
 const isAbsolute = (n: NodeLite): boolean => n.layoutPositioning === "absolute";
 
@@ -212,6 +234,15 @@ function layoutLine(
       if (c > maxCross) maxCross = c;
     }
   }
+  // Baseline alignment (horizontal layouts only): the cross extent is what the kids take once
+  // their baselines coincide.
+  const baseline = !m.vertical && al.crossAlign === "baseline";
+  let lineBase = 0;
+  if (baseline) {
+    const span = baselineSpan(limitedKids, isFillCross, m.crossOf);
+    lineBase = span.base;
+    maxCross = span.extent;
+  }
   const gaps = kids.length > 1 ? spacing * (kids.length - 1) : 0;
 
   let frameMain = m.mainOf(frame);
@@ -265,6 +296,7 @@ function layoutLine(
     let cross = padCrossStart;
     if (al.crossAlign === "center") cross = padCrossStart + (innerCross - m.crossOf(k)) / 2;
     else if (al.crossAlign === "end") cross = padCrossStart + (innerCross - m.crossOf(k));
+    else if (baseline && !isFillCross(k)) cross = padCrossStart + (lineBase - baselineOf(k));
     const x = m.vertical ? cross : pos;
     const y = m.vertical ? pos : cross;
     placed.set(k.id, { ...k, x, y });
@@ -286,16 +318,16 @@ function layoutWrapped(
 
   // Split into lines: a child that does not fit goes to the next one (a line always has at
   // least one child, even if it is longer than the frame).
-  interface Line { from: number; to: number; sum: number; maxCross: number }
+  interface Line { from: number; to: number; sum: number; maxCross: number; base: number }
   const lines: Line[] = [];
-  let cur: Line = { from: 0, to: 0, sum: 0, maxCross: 0 };
+  let cur: Line = { from: 0, to: 0, sum: 0, maxCross: 0, base: 0 };
   kids.forEach((k, i) => {
     let need = m.mainOf(k);
     if (i > cur.from) need = (cur.sum + spacing) + m.mainOf(k);
     if (i > cur.from && need > innerMain) {
       cur.to = i;
       lines.push(cur);
-      cur = { from: i, to: 0, sum: 0, maxCross: 0 };
+      cur = { from: i, to: 0, sum: 0, maxCross: 0, base: 0 };
       need = m.mainOf(k);
     }
     cur.sum = need;
@@ -305,6 +337,14 @@ function layoutWrapped(
   if (kids.length > 0) {
     cur.to = kids.length;
     lines.push(cur);
+  }
+  const baseline = !m.vertical && al.crossAlign === "baseline";
+  if (baseline) {
+    for (const l of lines) {
+      const span = baselineSpan(kids.slice(l.from, l.to), () => false, m.crossOf);
+      l.base = span.base;
+      l.maxCross = span.extent;
+    }
   }
 
   let out = frame;
@@ -334,6 +374,7 @@ function layoutWrapped(
       let cross = crossPos;
       if (al.crossAlign === "center") cross = crossPos + (l.maxCross - m.crossOf(k)) / 2;
       else if (al.crossAlign === "end") cross = crossPos + (l.maxCross - m.crossOf(k));
+      else if (baseline) cross = crossPos + (l.base - baselineOf(k));
       const x = m.vertical ? cross : pos;
       const y = m.vertical ? pos : cross;
       placed.set(k.id, { ...k, x, y });

@@ -52,7 +52,7 @@ export interface StrokeLite { color: FillLite; weight: number; align: StrokeAlig
 // for StrokeAlignLite, enums are strings: UNSPECIFIED collapses to
 // "horizontal" / "start", which is what the computation would do anyway.
 export type LayoutDirectionLite = "horizontal" | "vertical";
-export type LayoutAlignLite = "start" | "center" | "end" | "space-between";
+export type LayoutAlignLite = "start" | "center" | "end" | "space-between" | "baseline";
 export interface AutoLayoutLite {
   direction: LayoutDirectionLite;
   spacing: number;
@@ -576,11 +576,11 @@ export function toPbEffects(effects: readonly EffectLite[]) {
 
 const LAYOUT_ALIGN_TO_LITE: Partial<Record<LayoutAlign, LayoutAlignLite>> = {
   [LayoutAlign.START]: "start", [LayoutAlign.CENTER]: "center", [LayoutAlign.END]: "end",
-  [LayoutAlign.SPACE_BETWEEN]: "space-between",
+  [LayoutAlign.SPACE_BETWEEN]: "space-between", [LayoutAlign.BASELINE]: "baseline",
 };
 const LAYOUT_ALIGN_TO_PB: Record<LayoutAlignLite, LayoutAlign> = {
   start: LayoutAlign.START, center: LayoutAlign.CENTER, end: LayoutAlign.END,
-  "space-between": LayoutAlign.SPACE_BETWEEN,
+  "space-between": LayoutAlign.SPACE_BETWEEN, baseline: LayoutAlign.BASELINE,
 };
 
 export function toAutoLayoutLite(a: PbAutoLayout): AutoLayoutLite {

@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { create, type MessageInitShape } from "@bufbuild/protobuf";
-import { Constraint, LayoutPositioning, LayoutSizing, NodeSchema, OpSchema } from "../gen/opendesigner/v1/opendesigner_pb";
+import { Constraint, LayoutAlign, LayoutDirection, LayoutPositioning, LayoutSizing, NodeSchema, OpSchema } from "../gen/opendesigner/v1/opendesigner_pb";
 import type { Op } from "../gen/opendesigner/v1/opendesigner_pb";
 import { applyOp } from "./applyOp";
 import { invertOp } from "./history";
@@ -95,5 +95,40 @@ describe("absolute children", () => {
     const grown = applyOp(s, set("F", ["width", "height"], { width: 250, height: 120 }));
     expect(grown.nodes.at("b")).toMatchObject({ x: 200, y: 100 });
     expect(grown.nodes.at("a")).toMatchObject({ x: 0, y: 0 });
+  });
+});
+
+describe("baseline alignment", () => {
+  const text = (size: number, lineHeight = 0) => ({ case: "text", value: { content: "t", style: { fontSize: size, lineHeight } } }) as const;
+  const align = (extra: object = {}) => ({ case: "frame", value: { autoLayout: { crossAlign: LayoutAlign.BASELINE, ...extra } } }) as const;
+
+  it("lines up the first baselines of a row, hugging the aligned extent", () => {
+    const s = run([
+      node("F", "page1", align({ hugHeight: true }), { width: 200 }),
+      node("small", "F", text(12), { width: 40, height: 14.4 }),
+      node("big", "F", text(24, 1.5), { width: 50, height: 36 }),
+      node("box", "F", rect, { width: 20, height: 18 }),
+    ]);
+    // Baselines: small 10.8, big 25.2, box (its bottom) 18.
+    expect(s.nodes.at("big").y).toBe(0);
+    expect(s.nodes.at("small").y).toBeCloseTo(14.4, 9);
+    expect(s.nodes.at("box").y).toBeCloseTo(7.2, 9);
+    expect(s.nodes.at("F").height).toBeCloseTo(36, 9);
+  });
+
+  it("is the start in a column, and per line when wrapping", () => {
+    const col = run([
+      node("C", "page1", { case: "frame", value: { autoLayout: { direction: LayoutDirection.VERTICAL, crossAlign: LayoutAlign.BASELINE } } }, { width: 100, height: 100 }),
+      node("a", "C", text(12), { width: 40, height: 14.4 }), node("b", "C", rect),
+    ]);
+    expect(col.nodes.at("a").x).toBe(0);
+    expect(col.nodes.at("b")).toMatchObject({ x: 0, y: 14.4 });
+    const wrapped = run([
+      node("W", "page1", align({ wrap: true, crossSpacing: 5 }), { width: 100, height: 100 }),
+      node("a", "W", text(12), { width: 50, height: 20 }), node("b", "W", text(24, 1.5), { width: 50, height: 40 }), node("c", "W", text(12), { width: 50, height: 20 }),
+    ]);
+    expect(wrapped.nodes.at("a").y).toBeCloseTo(14.4, 9);
+    expect(wrapped.nodes.at("b").y).toBe(0);
+    expect(wrapped.nodes.at("c").y).toBeCloseTo(45, 9);
   });
 });

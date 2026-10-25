@@ -65,6 +65,49 @@ func autoLayoutOf(n *opendesignerv1.Node) *opendesignerv1.AutoLayout {
 	return n.GetFrame().GetAutoLayout()
 }
 
+// baselineOf is the distance from the top of a node to its first baseline, for aligning
+// children on a shared baseline (cross_align BASELINE of a horizontal layout). Without font
+// metrics a text's baseline is where a line box of height font_size * line_height puts it
+// when the glyphs take font_size with an ascent of 0.8: half the leading plus the ascent. Any
+// other node has its bottom edge as baseline, like a replaced element in CSS.
+func baselineOf(n *opendesignerv1.Node) float64 {
+	t := n.GetText()
+	if t == nil {
+		return n.GetHeight()
+	}
+	fs, lh := t.GetStyle().GetFontSize(), t.GetStyle().GetLineHeight()
+	if !(fs > 0) {
+		fs = 16
+	}
+	if !(lh > 0) {
+		lh = 1.2
+	}
+	half := float64(fs*(lh-1)) / 2
+	return half + float64(fs*0.8)
+}
+
+// baselineSpan: the line's baseline (the largest baseline offset of the kids that follow it) and
+// the cross extent the kids take when aligned on it. `skip` excludes the kids that fill the cross axis.
+func baselineSpan(kids []*opendesignerv1.Node, skip func(*opendesignerv1.Node) bool, heightOf func(*opendesignerv1.Node) float64) (base, extent float64) {
+	for _, k := range kids {
+		if skip(k) {
+			continue
+		}
+		if b := baselineOf(k); b > base {
+			base = b
+		}
+	}
+	for _, k := range kids {
+		if skip(k) {
+			continue
+		}
+		if e := base - baselineOf(k) + heightOf(k); e > extent {
+			extent = e
+		}
+	}
+	return base, extent
+}
+
 // isAbsolute: the node sits in an auto layout frame but out of its flow (see
 // Node.layout_positioning).
 func isAbsolute(n *opendesignerv1.Node) bool {
@@ -258,6 +301,13 @@ func layoutLine(
 			}
 		}
 	}
+	// Baseline alignment (horizontal layouts only): the cross extent is what the kids take once
+	// their baselines coincide.
+	baseline := !vertical && al.GetCrossAlign() == opendesignerv1.LayoutAlign_LAYOUT_ALIGN_BASELINE
+	var lineBase float64
+	if baseline {
+		lineBase, maxCross = baselineSpan(kids, isFillCross, crossOf)
+	}
 	gaps := float64(0)
 	if len(kids) > 1 {
 		gaps = float64(spacing * float64(len(kids)-1))
@@ -338,6 +388,10 @@ func layoutLine(
 			cross = padCrossStart + (innerCross-crossOf(k))/2
 		case opendesignerv1.LayoutAlign_LAYOUT_ALIGN_END:
 			cross = padCrossStart + (innerCross - crossOf(k))
+		case opendesignerv1.LayoutAlign_LAYOUT_ALIGN_BASELINE:
+			if baseline && !isFillCross(k) {
+				cross = padCrossStart + (lineBase - baselineOf(k))
+			}
 		}
 		if vertical {
 			k.X, k.Y = cross, pos
@@ -425,6 +479,7 @@ func layoutWrapped(
 	type line struct {
 		from, to      int // kids[from:to]
 		sum, maxCross float64
+		base          float64 // baseline alignment: the line's shared baseline
 	}
 	var lines []line
 	cur := line{}
@@ -447,6 +502,12 @@ func layoutWrapped(
 	if len(kids) > 0 {
 		cur.to = len(kids)
 		lines = append(lines, cur)
+	}
+	baseline := !vertical && al.GetCrossAlign() == opendesignerv1.LayoutAlign_LAYOUT_ALIGN_BASELINE
+	if baseline {
+		for i := range lines {
+			lines[i].base, lines[i].maxCross = baselineSpan(kids[lines[i].from:lines[i].to], func(*opendesignerv1.Node) bool { return false }, crossOf)
+		}
 	}
 
 	if hugCross {
@@ -489,6 +550,10 @@ func layoutWrapped(
 				cross = crossPos + (l.maxCross-crossOf(k))/2
 			case opendesignerv1.LayoutAlign_LAYOUT_ALIGN_END:
 				cross = crossPos + (l.maxCross - crossOf(k))
+			case opendesignerv1.LayoutAlign_LAYOUT_ALIGN_BASELINE:
+				if baseline {
+					cross = crossPos + (l.base - baselineOf(k))
+				}
 			}
 			if vertical {
 				k.X, k.Y = cross, pos

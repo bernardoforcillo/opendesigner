@@ -580,7 +580,11 @@ func flexProps(el *Element, al *opendesignerv1.AutoLayout) {
 		el.addStyle("flex-direction", "column")
 	}
 	el.addStyle("justify-content", alignCSS(al.GetMainAlign(), true))
-	el.addStyle("align-items", alignCSS(al.GetCrossAlign(), false))
+	cross := al.GetCrossAlign()
+	if cross == opendesignerv1.LayoutAlign_LAYOUT_ALIGN_BASELINE && al.GetDirection() == opendesignerv1.LayoutDirection_LAYOUT_DIRECTION_VERTICAL {
+		cross = opendesignerv1.LayoutAlign_LAYOUT_ALIGN_START // baselines only line up in a row
+	}
+	el.addStyle("align-items", alignCSS(cross, false))
 	// WRAP (the core ignores it when the main axis hugs): the lines are `cross_spacing` apart, and
 	// `gap` takes row-gap then column-gap, so the two spacings swap with the direction.
 	wrap := al.GetWrap() && !((al.GetDirection() == opendesignerv1.LayoutDirection_LAYOUT_DIRECTION_VERTICAL && al.GetHugHeight()) ||
@@ -609,6 +613,11 @@ func alignCSS(a opendesignerv1.LayoutAlign, main bool) string {
 		return "center"
 	case opendesignerv1.LayoutAlign_LAYOUT_ALIGN_END:
 		return "flex-end"
+	case opendesignerv1.LayoutAlign_LAYOUT_ALIGN_BASELINE:
+		// Cross axis of a row only; on the main axis (and in a column) it behaves as START.
+		if !main {
+			return "baseline"
+		}
 	case opendesignerv1.LayoutAlign_LAYOUT_ALIGN_SPACE_BETWEEN:
 		// On the cross axis SPACE_BETWEEN behaves as START (proto).
 		if main {

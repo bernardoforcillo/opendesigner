@@ -87,7 +87,11 @@ export function AutoLayoutControls({ run }: { run: (build: (ids: readonly string
           />
           <SegButtons
             label="Cross alignment" showLabel value={al.crossAlign}
-            options={aligns(horizontal).filter((a) => a.value !== "space-between")}
+            options={[
+              ...aligns(horizontal).filter((a) => a.value !== "space-between"),
+              // Baselines only line up in a row.
+              ...(horizontal ? [] : [{ value: "baseline" as const, label: "Baseline", icon: "alignBaseline" as const }]),
+            ]}
             onPick={(crossAlign) => run((ids) => autoLayoutOps(ids, lookup, { crossAlign }))}
           />
           <div className="flex flex-col gap-1.5">
