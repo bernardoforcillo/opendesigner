@@ -137,6 +137,9 @@ func validateStrokeExtras(strokes []*opendesignerv1.Stroke) error {
 	return nil
 }
 
+// ValidateStrokes is for the MCP tools: the authority's own check of a stroke list's arrowheads and side weights.
+func ValidateStrokes(strokes []*opendesignerv1.Stroke) error { return validateStrokeExtras(strokes) }
+
 // checkShapePath validates one shape-parameter mask path against the target node (the whitelist) and
 // the patch's value for that path alone (a patch carries only the fields its mask names).
 func checkShapePath(n *opendesignerv1.Node, patch *opendesignerv1.Node, path string) error {

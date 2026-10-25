@@ -599,6 +599,19 @@ func cowClone(d *opendesignerv1.Document) *opendesignerv1.Document {
 			next.TextStyles[k] = proto.Clone(t).(*opendesignerv1.TextStyleDef)
 		}
 	}
+	// Shared paint and effect styles: few, deep-cloned.
+	if len(d.GetPaintStyles()) > 0 {
+		next.PaintStyles = make(map[string]*opendesignerv1.PaintStyleDef, len(d.GetPaintStyles()))
+		for k, p := range d.GetPaintStyles() {
+			next.PaintStyles[k] = proto.Clone(p).(*opendesignerv1.PaintStyleDef)
+		}
+	}
+	if len(d.GetEffectStyles()) > 0 {
+		next.EffectStyles = make(map[string]*opendesignerv1.EffectStyleDef, len(d.GetEffectStyles()))
+		for k, e := range d.GetEffectStyles() {
+			next.EffectStyles[k] = proto.Clone(e).(*opendesignerv1.EffectStyleDef)
+		}
+	}
 	// Comments: few, deep-cloned.
 	if len(d.GetComments()) > 0 {
 		next.Comments = make(map[string]*opendesignerv1.Comment, len(d.GetComments()))

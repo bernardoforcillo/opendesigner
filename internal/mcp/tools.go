@@ -331,11 +331,13 @@ type SetPropertiesInput struct {
 	Rotation     *float64     `json:"rotation,omitempty"`
 	Name         *string      `json:"name,omitempty"`
 	Visible      *bool        `json:"visible,omitempty"`
-	CornerRadius *float64     `json:"cornerRadius,omitempty" jsonschema:"rectangles only"`
+	CornerRadius *float64     `json:"cornerRadius,omitempty" jsonschema:"rectangles only (the single radius; see cornerRadii)"`
 	Fills        []RGBA       `json:"fills,omitempty" jsonschema:"replaces the whole fill list; [] clears it"`
 	Effects      []EffectSpec `json:"effects,omitempty" jsonschema:"replaces the whole effect list; [] clears it"`
 	IsMask       *bool        `json:"isMask,omitempty" jsonschema:"rect, ellipse, frame and vector only: the node is not drawn and its outline clips the siblings above it"`
-	BlendMode    *string      `json:"blendMode,omitempty" jsonschema:"normal | multiply | screen | overlay | darken | lighten | color-dodge | color-burn | hard-light | soft-light | difference | exclusion | hue | saturation | color | luminosity"`
+	// ShapeFields: corner smoothing / independent radii, ellipse arcs and rings, polygon sides, star points.
+	ShapeFields
+	BlendMode *string `json:"blendMode,omitempty" jsonschema:"normal | multiply | screen | overlay | darken | lighten | color-dodge | color-burn | hard-light | soft-light | difference | exclusion | hue | saturation | color | luminosity"`
 }
 
 // SetProperties applies an absolute field patch to a node via SetProperties.
@@ -403,6 +405,9 @@ func (s *Session) SetProperties(ctx context.Context, in SetPropertiesInput) (Seq
 	if in.CornerRadius != nil {
 		patch.Shape = &opendesignerv1.Node_Rect{Rect: &opendesignerv1.RectNode{CornerRadius: *in.CornerRadius}}
 		paths = append(paths, "corner_radius")
+	}
+	if err := s.addShapeFields(in.Id, in.ShapeFields, patch, &paths); err != nil {
+		return SeqOutput{}, err
 	}
 	if len(paths) == 0 {
 		return SeqOutput{}, errors.New("set_properties: no properties given")
@@ -670,6 +675,12 @@ type NodeView struct {
 	ConstraintY   string `json:"constraintY,omitempty"`
 	LayoutSizingX string `json:"layoutSizingX,omitempty" jsonschema:"fill when an auto layout parent fills its width; see set_layout_sizing"`
 	LayoutSizingY string `json:"layoutSizingY,omitempty"`
+	// Shape: the parametric part (polygon sides, star points, arc / ring, rectangle corners); see set_properties.
+	Shape *ShapeView `json:"shape,omitempty"`
+	// FillStyleId / StrokeStyleId / EffectStyleId: shared styles applied (see apply_paint_style, apply_effect_style).
+	FillStyleId   string `json:"fillStyleId,omitempty"`
+	StrokeStyleId string `json:"strokeStyleId,omitempty"`
+	EffectStyleId string `json:"effectStyleId,omitempty"`
 }
 
 // nodeKind derives the compact kind label from the shape oneof. A node with no
@@ -692,6 +703,10 @@ func nodeKind(n *opendesignerv1.Node) string {
 		return "vector"
 	case *opendesignerv1.Node_Instance:
 		return "instance"
+	case *opendesignerv1.Node_Polygon:
+		return "polygon"
+	case *opendesignerv1.Node_Star:
+		return "star"
 	default:
 		return fmt.Sprintf("%T", n.GetShape())
 	}
@@ -718,6 +733,8 @@ func toNodeView(n *opendesignerv1.Node) NodeView {
 		v.Modes = n.GetModes()
 	}
 	v.TextStyleId = n.GetTextStyleId()
+	v.Shape = shapeViewOf(n)
+	v.FillStyleId, v.StrokeStyleId, v.EffectStyleId = n.GetFillStyleId(), n.GetStrokeStyleId(), n.GetEffectStyleId()
 	v.BlendMode = blendModeName(n.GetBlendMode())
 	v.IsMask = n.GetIsMask()
 	v.ConstraintX, v.ConstraintY = constraintNames[n.GetConstraintX()], constraintNames[n.GetConstraintY()]
@@ -879,6 +896,7 @@ func RegisterTools(srv *mcp.Server, s *Session) {
 	registerAnimationTools(srv, s)
 	registerVariableTools(srv, s)
 	registerTypographyTools(srv, s)
+	registerShapeTools(srv, s)
 	registerCommentTools(srv, s)
 	registerReviewTools(srv, s)
 	registerBoardTools(srv, s)

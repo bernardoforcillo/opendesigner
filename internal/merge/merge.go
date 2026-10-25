@@ -113,7 +113,7 @@ var nodePaths = map[string]bool{
 	"x": true, "y": true, "width": true, "height": true, "rotation": true, "opacity": true, "name": true, "visible": true,
 	"fills": true, "strokes": true, "effects": true, "meta": true, "is_mask": true, "constraint_x": true, "constraint_y": true,
 	"layout_grids": true, "blend_mode": true, "layout_sizing_x": true, "layout_sizing_y": true, "bindings": true,
-	"modes": true, "text_style_id": true,
+	"modes": true, "text_style_id": true, "fill_style_id": true, "stroke_style_id": true, "effect_style_id": true,
 }
 
 // Compute compares the three documents.
@@ -146,6 +146,20 @@ func decide(base, branch, source proto.Message) side {
 	case proto.Equal(base, source):
 		return takeBranch
 	case proto.Equal(branch, source):
+		return same
+	default:
+		return conflict
+	}
+}
+
+// decideNumber is decide for a plain number.
+func decideNumber(base, branch, source float64) side {
+	switch {
+	case base == branch:
+		return untouched
+	case base == source:
+		return takeBranch
+	case branch == source:
 		return same
 	default:
 		return conflict
@@ -472,7 +486,18 @@ func (p *Plan) shapeChange(bn, brn, sn *opendesignerv1.Node) (clean, forced shap
 			Id: brn.GetId(), Patch: &opendesignerv1.Node{Shape: &opendesignerv1.Node_Rect{Rect: &opendesignerv1.RectNode{CornerRadius: b.Rect.GetCornerRadius()}}},
 			Mask: &fieldmaskpb.FieldMask{Paths: []string{"corner_radius"}},
 		}}}
-		route(&clean, &forced, decide(o.Rect, b.Rect, s.Rect), "corner_radius", op)
+		route(&clean, &forced, decideNumber(o.Rect.GetCornerRadius(), b.Rect.GetCornerRadius(), s.Rect.GetCornerRadius()), "corner_radius", op)
+		// Corner smoothing and independent radii are merged apart from the single radius.
+		smooth := &opendesignerv1.Op{Kind: &opendesignerv1.Op_SetProps{SetProps: &opendesignerv1.SetProperties{
+			Id: brn.GetId(), Patch: &opendesignerv1.Node{Shape: &opendesignerv1.Node_Rect{Rect: &opendesignerv1.RectNode{CornerSmoothing: b.Rect.GetCornerSmoothing()}}},
+			Mask: &fieldmaskpb.FieldMask{Paths: []string{"corner_smoothing"}},
+		}}}
+		route(&clean, &forced, decideNumber(o.Rect.GetCornerSmoothing(), b.Rect.GetCornerSmoothing(), s.Rect.GetCornerSmoothing()), "corner_smoothing", smooth)
+		radii := &opendesignerv1.Op{Kind: &opendesignerv1.Op_SetProps{SetProps: &opendesignerv1.SetProperties{
+			Id: brn.GetId(), Patch: &opendesignerv1.Node{Shape: &opendesignerv1.Node_Rect{Rect: &opendesignerv1.RectNode{Radii: proto.Clone(b.Rect.GetRadii()).(*opendesignerv1.CornerRadii)}}},
+			Mask: &fieldmaskpb.FieldMask{Paths: []string{"radii"}},
+		}}}
+		route(&clean, &forced, decide(o.Rect.GetRadii(), b.Rect.GetRadii(), s.Rect.GetRadii()), "radii", radii)
 	case *opendesignerv1.Node_Frame:
 		o, ok1 := bn.GetShape().(*opendesignerv1.Node_Frame)
 		s, ok2 := sn.GetShape().(*opendesignerv1.Node_Frame)

@@ -208,3 +208,28 @@ func TestIdenticalDocumentsPlanNothing(t *testing.T) {
 		t.Fatalf("identical documents must plan nothing: %+v", p)
 	}
 }
+
+// A branch that changes a rectangle's corner smoothing, independent radii and a shared style keeps them through the
+// merge (shapes-and-paints track): these were not part of the merge before and would have been dropped silently.
+func TestMergeKeepsCornerSmoothingRadiiAndPaintStyles(t *testing.T) {
+	base, branch, source := world(t)
+	apply(t, branch,
+		set("a", &opendesignerv1.Node{Shape: &opendesignerv1.Node_Rect{Rect: &opendesignerv1.RectNode{CornerSmoothing: 0.6}}}, "corner_smoothing"),
+		set("a", &opendesignerv1.Node{Shape: &opendesignerv1.Node_Rect{Rect: &opendesignerv1.RectNode{Radii: &opendesignerv1.CornerRadii{TopLeft: 4, BottomRight: 9}}}}, "radii"),
+		&opendesignerv1.Op{Kind: &opendesignerv1.Op_SetPaintStyleDef{SetPaintStyleDef: &opendesignerv1.SetPaintStyleDef{PaintStyle: &opendesignerv1.PaintStyleDef{
+			Id: "brand", Name: "Brand", Paints: []*opendesignerv1.Paint{{Kind: &opendesignerv1.Paint_Solid{Solid: &opendesignerv1.SolidPaint{Color: &opendesignerv1.Color{R: 1, A: 1}}}}},
+		}}}},
+		set("a", &opendesignerv1.Node{FillStyleId: "brand"}, "fill_style_id"),
+	)
+	p, out := merged(t, base, branch, source, false)
+	if p.Conflicts() != 0 {
+		t.Fatalf("conflicts: %+v", p.Changes)
+	}
+	r := out.Nodes["a"].GetRect()
+	if r.GetCornerSmoothing() != 0.6 || r.GetRadii().GetBottomRight() != 9 {
+		t.Fatalf("rect = %v", r)
+	}
+	if out.PaintStyles["brand"] == nil || out.Nodes["a"].GetFillStyleId() != "brand" {
+		t.Fatalf("style lost: %v / %q", out.PaintStyles, out.Nodes["a"].GetFillStyleId())
+	}
+}

@@ -167,6 +167,8 @@ const TEXT_FALLBACK_MAX = 30;
 function fallbackName(n: NodeLite): string {
   if (n.kind === "rect") return "Rectangle";
   if (n.kind === "ellipse") return "Ellipse";
+  if (n.kind === "polygon") return "Polygon";
+  if (n.kind === "star") return "Star";
   // An image usually already has a name (tools/imageDrop.ts uses the file's),
   // so this fallback shows only for a node renamed to empty or
   // arrived from a paste without a name.
@@ -347,6 +349,8 @@ function kindIcon(kind: NodeLite["kind"]): IconName {
     case "frame": return "frame";
     case "group": return "layers";
     case "ellipse": return "ellipse";
+    case "polygon": return "polygon";
+    case "star": return "star";
     case "text": return "text";
     case "image": return "image";
     case "vector": return "pen";
