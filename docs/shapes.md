@@ -14,8 +14,8 @@ Two more gradient kinds beside linear and radial (`Paint.angular`, `Paint.diamon
 | Canvas 2D | native `createConicGradient` (flat color where a browser lacks it) | rasterized (`renderer/gradientBitmap.ts`, 128 px) and drawn as a pattern, like a mesh |
 | GPU (CanvasKit) | `MakeSweepGradient` | the same bitmap as an image shader |
 | SVG export | embedded PNG `<pattern>` of the same bitmap (SVG has no conic gradient) | the same |
-| CSS code | `conic-gradient(from <deg> at x y, ...)` | `radial-gradient(circle ...)` approximation: a circle through the diamond's edge midpoints (CSS has no diamond) |
-| SVG code (vector nodes) | flat first-stop color | the same circle approximation |
+| CSS code | `conic-gradient(from <deg> at x y, ...)` | four layered `linear-gradient(45/135/225/315deg, ...)`, one per quadrant around the centre, each in a no-repeat tile (`background-size` / `background-position`): exact, because inside a quadrant `abs(dx)+abs(dy)` is linear |
+| SVG code (vector nodes) | a `<pattern>` of 120 wedges (3 degrees each), each the stops' color at its middle angle | a `<pattern>` of four `<rect>`s, each filled with a `linearGradient` along the quadrant's diagonal |
 
 MCP: `set_properties` fills, `create_*` fills and the paint-style tools accept `{gradient:{kind:"angular"|"diamond", stops, x1,y1,x2,y2}}`. `.fig` import keeps `GRADIENT_ANGULAR` and `GRADIENT_DIAMOND` instead of turning them into radial ones.
 
@@ -72,5 +72,5 @@ Panel: **Start** / **End** arrowhead pickers under the stroke for an open vector
 - An arc's angles are *parametric* (the angle of the point on the unit circle before it is stretched to the box), which is the geometric angle only on a circle.
 - Arrowheads exist for open vector paths; there is no "line" node kind other than a two-anchor vector. Dashes are not applied to the heads.
 - Per-side strokes in the SVG export have square corners, and CSS code treats CENTER as a half-weight band on each side of the edge.
-- The diamond gradient is approximated in CSS and in SVG code (a circle); the canvas, the GPU renderer and the SVG export use the exact bitmap.
+- Code export draws angular and diamond gradients faithfully (css.go `diamondLayers`, gradientsvg.go `vectorPattern`), but the angular SVG is stepped (120 wedges) and a diamond's quadrant tiles can show a hairline seam at fractional pixel sizes in some browsers; the CSS layers were checked numerically against the canvas maths (`diamond_test.go`), not in a browser. SwiftUI and Compose keep the radial approximation of the diamond (neither has the primitive).
 - The GPU paths (sweep gradient, diamond image, computed outlines, per-side bands, arrowheads) are written against the CanvasKit API and type-checked, but were not run on a GPU here: check them with `pnpm parity` on a machine that has one.

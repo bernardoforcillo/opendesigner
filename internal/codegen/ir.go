@@ -87,6 +87,10 @@ type Element struct {
 	TextProp string
 	// Dyn: inline style entries driven by a component prop (a number attribute).
 	Dyn []DynStyle
+	// NativeBG: a single-string CSS gradient the native targets read instead of
+	// background-image, where that one is a layered gradient they cannot parse back (the
+	// diamond: four quadrant layers in html/react, a radial approximation here).
+	NativeBG string
 	// SwapProp: this nested instance is replaceable through the prop of that
 	// property name; it (or its Use) is the default content.
 	SwapProp string

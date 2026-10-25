@@ -107,6 +107,10 @@ func tailwindFor(p Prop) []string {
 	case "background-color":
 		return []string{"bg-[" + arb(p.Value) + "]"}
 	case "background-image":
+		if len(splitTop(p.Value, ',')) > 1 && strings.Contains(p.Value, "-gradient(") {
+			// Several layers (the diamond): an explicit property, not a utility Tailwind has to type-guess.
+			return []string{arbProp(p)}
+		}
 		if strings.Contains(p.Value, "-gradient(") {
 			return []string{"bg-[" + arb(p.Value) + "]"}
 		}

@@ -90,6 +90,13 @@ from the centre: on a non-square box the "(0,0)->(1,1)" diagonal is not
 where two stops have different alphas the segment is split into 8 points
 already interpolated the canvas way.
 
+**Angular and diamond gradients.** Angular is `conic-gradient(from <deg> at x y, ...)` in CSS. CSS has no
+diamond, but inside each quadrant around the centre the canvas's `|dx|+|dy|` is linear, so the diamond is
+four layered `linear-gradient(45|135|225|315deg, ...)` backgrounds, each in a no-repeat tile
+(`background-size` / `background-position`) that covers one quadrant; in react they are arbitrary
+properties (`[background-image:...]`). A vector's SVG gets a `<pattern>`: 120 wedges for angular, four
+rects with a `linearGradient` each for diamond. SwiftUI and Compose keep a radial approximation of the diamond.
+
 ## Components (react)
 
 A **component set** exports as ONE file, `src/components/<Name>.tsx`, and so does a
