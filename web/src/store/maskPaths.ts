@@ -89,6 +89,9 @@ export const MASK_PATHS = [
   // Shared text style: only a text node takes one, and it must exist (or be empty
   // to detach). Multi-word like order_key: on the JSON wire it is "textStyleId".
   "text_style_id",
+  // Shared object style and layer (store/graphics.ts); empty detaches. Multi-word: "objectStyleId", "layerId".
+  "object_style_id",
+  "layer_id",
   // Constraints (how a node follows its parent frame's resize) and layout sizing (how an
   // auto layout parent sizes it), per axis. The enums are closed: an out-of-range number is rejected.
   "constraint_x",

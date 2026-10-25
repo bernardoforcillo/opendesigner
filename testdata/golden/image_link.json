@@ -1,0 +1,154 @@
+{
+ "_comment": [
+  "Linked images (op 48 SetImage, and the ImageNode fields original_name, pixel_width, pixel_height). Run from BOTH sides.",
+  "Valid: an image node created with its file name and size, then relinked to another asset (the box stays). Rejected:",
+  "relinking a node that is not an image, a missing node, a name with a control character, an absurd pixel size."
+ ],
+ "docId": "doc1",
+ "expected": {
+  "id": "doc1",
+  "name": "Untitled",
+  "nodes": {
+   "img": {
+    "height": 100,
+    "id": "img",
+    "image": {
+     "assetHash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+     "originalName": "photo-v2.jpg",
+     "pixelHeight": 1200,
+     "pixelWidth": 2400
+    },
+    "name": "photo",
+    "opacity": 1,
+    "orderKey": "a1",
+    "parentId": "page1",
+    "visible": true,
+    "width": 200
+   },
+   "r": {
+    "height": 40,
+    "id": "r",
+    "name": "r",
+    "opacity": 1,
+    "orderKey": "a2",
+    "parentId": "page1",
+    "rect": {},
+    "visible": true,
+    "width": 100
+   }
+  },
+  "pages": [
+   {
+    "id": "page1",
+    "name": "Page 1"
+   }
+  ],
+  "schemaVersion": 1
+ },
+ "ops": [
+  {
+   "createNode": {
+    "node": {
+     "height": 100,
+     "id": "img",
+     "image": {
+      "assetHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "originalName": "photo.jpg",
+      "pixelHeight": 600,
+      "pixelWidth": 1200
+     },
+     "name": "photo",
+     "opacity": 1,
+     "orderKey": "a1",
+     "parentId": "page1",
+     "visible": true,
+     "width": 200,
+     "x": 0,
+     "y": 0
+    }
+   },
+   "docId": "doc1",
+   "opId": "o1"
+  },
+  {
+   "createNode": {
+    "node": {
+     "height": 40,
+     "id": "r",
+     "name": "r",
+     "opacity": 1,
+     "orderKey": "a2",
+     "parentId": "page1",
+     "rect": {},
+     "visible": true,
+     "width": 100,
+     "x": 0,
+     "y": 0
+    }
+   },
+   "docId": "doc1",
+   "opId": "o2"
+  },
+  {
+   "docId": "doc1",
+   "opId": "o3",
+   "setImage": {
+    "id": "img",
+    "image": {
+     "assetHash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+     "originalName": "photo-v2.jpg",
+     "pixelHeight": 1200,
+     "pixelWidth": 2400
+    }
+   }
+  },
+  {
+   "docId": "doc1",
+   "opId": "o4",
+   "setImage": {
+    "id": "r",
+    "image": {
+     "assetHash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    }
+   }
+  },
+  {
+   "docId": "doc1",
+   "opId": "o5",
+   "setImage": {
+    "id": "nope",
+    "image": {
+     "assetHash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    }
+   }
+  },
+  {
+   "docId": "doc1",
+   "opId": "o6",
+   "setImage": {
+    "id": "img",
+    "image": {
+     "assetHash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+     "originalName": "a\nb"
+    }
+   }
+  },
+  {
+   "docId": "doc1",
+   "opId": "o7",
+   "setImage": {
+    "id": "img",
+    "image": {
+     "assetHash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+     "pixelWidth": 5000000
+    }
+   }
+  }
+ ],
+ "rejected": [
+  3,
+  4,
+  5,
+  6
+ ]
+}

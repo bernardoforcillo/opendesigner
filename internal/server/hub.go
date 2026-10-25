@@ -551,6 +551,20 @@ func cowClone(d *opendesignerv1.Document) *opendesignerv1.Document {
 	for k, n := range d.GetNodes() {
 		next.Nodes[k] = n
 	}
+	// Document settings, layers and object styles: tiny, deep-cloned. Forgetting one here would lose it at
+	// the next op (the live document is rebuilt from this clone on every Submit).
+	if d.GetSettings() != nil {
+		next.Settings = proto.Clone(d.GetSettings()).(*opendesignerv1.DocSettings)
+	}
+	for _, l := range d.GetLayers() {
+		next.Layers = append(next.Layers, proto.Clone(l).(*opendesignerv1.Layer))
+	}
+	if len(d.GetObjectStyles()) > 0 {
+		next.ObjectStyles = make(map[string]*opendesignerv1.ObjectStyleDef, len(d.GetObjectStyles()))
+		for k, o := range d.GetObjectStyles() {
+			next.ObjectStyles[k] = proto.Clone(o).(*opendesignerv1.ObjectStyleDef)
+		}
+	}
 	// Flows and transitions: few, deep-cloned (core does not mutate them in place).
 	if len(d.GetFlows()) > 0 {
 		next.Flows = make(map[string]*opendesignerv1.Flow, len(d.GetFlows()))

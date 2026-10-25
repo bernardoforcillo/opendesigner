@@ -211,7 +211,7 @@ export type MeasureText = (text: string, style: TextStyleLite) => number;
 // line with their own style and x, in world coordinates. `text` is then the whole line, and `x` the
 // start of the first piece.
 /** `y` (instead of the line's baseline) and `angle` (radians, around (x, y)) are set for glyphs placed along a path. */
-export interface PlacedSegment { text: string; x: number; width: number; style: TextStyleLite; y?: number; angle?: number }
+export interface PlacedSegment { text: string; x: number; width: number; style: TextStyleLite; y?: number; angle?: number; inline?: { id: string; height: number } }
 export interface PlacedLine { text: string; x: number; y: number; width: number; segments?: PlacedSegment[] }
 
 /** A measure that can be asked for any style: `measureFor(style)(text)` is the width in world units. */
@@ -490,7 +490,7 @@ function paintText(
 // much of the text a set of lines used (threaded frames flow the rest into the next frame).
 // `w` is a width fixed by the layout (a tab), `synthetic` a character that is not in the content (the
 // hyphen at a break), `leader` what fills a tab.
-interface Frag { text: string; style: TextStyleLite; at: number; w?: number; synthetic?: boolean; leader?: string }
+interface Frag { text: string; style: TextStyleLite; at: number; w?: number; synthetic?: boolean; leader?: string; inline?: { id: string; height: number } }
 export interface RichLine {
   /** The pieces, in order. */
   frags: Frag[];
@@ -537,6 +537,9 @@ function normalizedOffsets(raw: string): ((i: number) => number) | null {
   return (i) => map[Math.min(i, raw.length)];
 }
 
+// An object anchored in the text stands on the baseline: its whole height is above it.
+const metricsOfFrag = (f: Frag) => (f.inline ? { ascent: f.inline.height, descent: 0 } : metricsOf(f.style));
+
 function metricsOf(style: TextStyleLite) {
   const size = fontSizeOf(style);
   const lh = lineHeightOf(style);
@@ -571,14 +574,21 @@ function derivedStyles() {
 
 // Pieces re-styled for what the layout must do itself: tabs become their own piece, small capitals are
 // split into lowercase (drawn as smaller capitals) and the rest, super/subscript shrink and shift.
-function expandPieces(pieces: Frag[]): Frag[] {
+function expandPieces(pieces: Frag[], inlines: ReadonlyMap<number, { id: string; width: number; height: number }>): Frag[] {
   const derive = derivedStyles();
   const out: Frag[] = [];
   for (const piece of pieces) {
     let off = piece.at;
-    for (const part of piece.text.split(/(\t)/)) {
+    for (const part of piece.text.split(/(\t|\uFFFC)/)) {
       if (part === "") continue;
       if (part === "\t") { out.push(frag("\t", piece.style, off)); off += 1; continue; }
+      if (part === "\uFFFC") {
+        // An anchored object: a box in the line. One whose node is gone leaves nothing (but still counts as a character).
+        const o = inlines.get(off);
+        if (o) out.push({ ...frag("\uFFFC", piece.style, off), w: o.width, inline: { id: o.id, height: o.height } });
+        off += 1;
+        continue;
+      }
       const st = piece.style;
       if (!st.smallCaps && !st.script) { out.push(frag(part, st, off)); off += part.length; continue; }
       let chunk = "", lower = false, chunkAt = off;
@@ -605,6 +615,7 @@ export function layoutRich(
 ): RichLayout {
   const text = content.replace(/\r\n?/g, "\n");
   const norm = normalizedOffsets(content);
+  const inlineMap = new Map((rich.inlines ?? []).map((o) => [norm ? norm(o.at) : o.at, o] as const));
   const runs = rich.runs.map((r) => ({ start: norm ? norm(r.start) : r.start, end: norm ? norm(r.end) : r.end, style: r.style }));
   const lines: RichLine[] = [];
   let y = 0;
@@ -683,7 +694,7 @@ export function layoutRich(
     const minRoom = fontSizeOf(pr.style) * 1.5;
     const blocked = exclusions.length > 0 && maxWidth > 0 ? (i: number) => limitAt(i) < minRoom : undefined;
 
-    const built = wrapPieces(measureFor, expandPieces(pieces), pr, limitAt, leftOf, blocked);
+    const built = wrapPieces(measureFor, expandPieces(pieces, inlineMap), pr, limitAt, leftOf, blocked);
     // An empty paragraph is an empty line: it keeps its height.
     if (built.length === 0) built.push({ frags: [], width: 0 });
     // Justified: every line but the paragraph's last gets its spaces widened to fill the line.
@@ -697,7 +708,7 @@ export function layoutRich(
     }
     for (const [li, l] of built.entries()) {
       const empty = l.frags.length === 0;
-      const m = empty ? metricsOf(pr.style) : l.frags.map((f) => metricsOf(f.style)).reduce((a, b) => ({ ascent: Math.max(a.ascent, b.ascent), descent: Math.max(a.descent, b.descent) }));
+      const m = empty ? metricsOf(pr.style) : (l.frags.some((f) => f.inline) ? [...l.frags.map(metricsOfFrag), metricsOf(pr.style)] : l.frags.map(metricsOfFrag)).reduce((a, b) => ({ ascent: Math.max(a.ascent, b.ascent), descent: Math.max(a.descent, b.descent) }));
       const height = m.ascent + m.descent;
       // On the baseline grid: the line moves down to the next grid line when its baseline falls between two.
       if (pr.alignToGrid && rich.grid) {
@@ -774,6 +785,7 @@ function wrapPieces(measureFor: MeasureFor, pieces: Frag[], pr: ParagraphLite, l
   let cur: Word = { frags: [], sep: null };
   for (const piece of pieces) {
     if (piece.text === "\t") { words.push(cur); words.push({ frags: [], sep: null, tab: piece }); cur = { frags: [], sep: null }; continue; }
+    if (piece.inline) { words.push(cur); words.push({ frags: [piece], sep: null }); cur = { frags: [], sep: null }; continue; }
     let off = piece.at;
     piece.text.split(" ").forEach((part, i) => {
       if (i > 0) { words.push(cur); cur = { frags: [], sep: frag(" ", piece.style, off) }; off += 1; }
@@ -874,6 +886,8 @@ function wrapPieces(measureFor: MeasureFor, pieces: Frag[], pr: ParagraphLite, l
       }
       // Too wide alone: break it by characters; a single character is never refused.
       for (const f of w.frags) {
+        // An anchored object cannot be broken: it overflows.
+        if (f.w !== undefined) { place([f]); continue; }
         let at = f.at;
         for (const ch of Array.from(f.text)) {
           const cw = measureFor(f.style)(ch);
@@ -900,7 +914,10 @@ function placeRichLines(measureFor: MeasureFor, n: NodeLite, layout: RichLayout)
     const body: PlacedSegment[] = [];
     for (const f of l.frags) {
       const m = measureFor(f.style);
-      if (f.w !== undefined) {
+      if (f.inline) {
+        body.push({ text: "", x, width: f.w!, style: f.style, inline: f.inline });
+        x += f.w!;
+      } else if (f.w !== undefined) {
         // A tab: its leader repeated to fill it, or nothing.
         const lw = f.leader ? m(f.leader) : 0;
         const fill = f.leader && lw > 0 ? f.leader.repeat(Math.max(0, Math.floor(f.w / lw))) : "";
@@ -976,4 +993,29 @@ function placeOnPath(measureFor: MeasureFor, n: NodeLite, t: TextLite): PlacedLi
   void n;
   if (segments.length === 0) return [];
   return [{ text: segments.map((g) => g.text).join(""), x: segments[0].x, y: segments[0].y!, width: total, segments }];
+}
+
+// --- anchored objects -----------------------------------------------------------------------------
+
+/**
+ * Where the objects anchored in a text sit, in the space of the text's parent: the top-left of each, its box standing
+ * on the baseline of its line. Empty for a text without anchored objects.
+ */
+export function inlinePositions(measureFor: MeasureFor, n: NodeLite): Map<string, { x: number; y: number }> {
+  const out = new Map<string, { x: number; y: number }>();
+  const t = n.text;
+  if (n.kind !== "text" || !t?.rich?.inlines?.length) return out;
+  const tracked = trackedMeasureFor(measureFor);
+  const layout = layoutRich(tracked, t.content, t.style, t.rich, n.width);
+  for (const l of layout.lines) {
+    let x = n.x + l.left;
+    for (const f of l.frags) {
+      if (f.inline) {
+        out.set(f.inline.id, { x, y: n.y + l.top + l.ascent - f.inline.height });
+        x += f.w!;
+      } else if (f.w !== undefined) x += f.w;
+      else x += tracked(f.style)(f.text) + (l.justify ? (f.text.split(" ").length - 1) * l.justify : 0);
+    }
+  }
+  return out;
 }

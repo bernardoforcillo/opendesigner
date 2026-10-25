@@ -2,6 +2,7 @@ import { useScene } from "../store/store";
 import { DEFAULT_WRAP_OFFSET, isWrapper, wrapOffsetOf, wrapOps } from "../store/wrap";
 import { META_TEXT_PATH, textOnPathOps } from "../store/textPath";
 import { addColumnOps, addRowOps, cellOf, deleteColumnOps, deleteRowOps, readTable, resizeTableOps, tableIdOf } from "../tools/tableOps";
+import { anchorOps, anchorsOf, releaseAnchorOps } from "../store/anchored";
 import { Button } from "./ds";
 import { NumberField } from "./fields/NumberField";
 
@@ -62,6 +63,38 @@ export function TextOnPathControls() {
     return (
       <Box title="Text on a path">
         <Button onPress={() => run(textOnPathOps(scene, texts[0], ""))}>Release from the path</Button>
+      </Box>
+    );
+  }
+  return null;
+}
+
+export function AnchorControls() {
+  const scene = useScene((s) => s.scene);
+  const selection = useScene((s) => s.selection);
+  if (!scene) return null;
+  const texts = selection.filter((id) => scene.nodes.get(id)?.kind === "text");
+  const others = selection.filter((id) => scene.nodes.get(id)?.kind !== "text");
+  if (texts.length === 1 && others.length === 1 && selection.length === 2) {
+    return (
+      <Box title="Anchored object">
+        <Button onPress={() => run(anchorOps(scene, texts[0], others[0]))}>Anchor the object in the text</Button>
+        <p className="text-[12px] text-fg-subtle">It goes at the end of the text; move its [@…] marker in the text to place it.</p>
+      </Box>
+    );
+  }
+  if (texts.length === 1 && selection.length === 1) {
+    const text = scene.nodes.get(texts[0])!;
+    const anchors = anchorsOf(scene, text);
+    if (anchors.length === 0) return null;
+    return (
+      <Box title="Anchored objects">
+        {anchors.map((a) => (
+          <div key={a.at} className="flex items-center justify-between gap-2">
+            <span className="min-w-0 truncate text-[13px]">{a.node.name || a.node.kind}</span>
+            <Button onPress={() => run(releaseAnchorOps(scene, text.id, a.at, a.end))}>Release</Button>
+          </div>
+        ))}
       </Box>
     );
   }

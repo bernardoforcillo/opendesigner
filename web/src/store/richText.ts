@@ -228,17 +228,22 @@ export function resolveRich(state: SceneState, t: TextLite, base: TextStyleLite,
   const nested = nestedRuns(state, t.content, flats, runs);
   if (nested.length > 0) { runs.push(...nested); runs.sort((a, b) => a.start - b.start); }
   // Small capitals and super/subscript on the node's own style also need the formatted layout.
-  if (!any && runs.length === 0 && !base.smallCaps && !base.script && exclusions.length === 0) return null;
+  // Objects anchored in the text take a box in their line: their size comes from the nodes.
+  const inlines = (t.inlineObjects ?? []).flatMap((o) => {
+    const n = state.nodes.get(o.id);
+    return n ? [{ at: o.at, id: o.id, width: n.width, height: n.height }] : [];
+  });
+  if (!any && runs.length === 0 && !base.smallCaps && !base.script && exclusions.length === 0 && inlines.length === 0) return null;
   // The baseline grid matters only to paragraphs that ask for it, and only when the document has one.
   const inc = state.settings?.baselineIncrement ?? 0;
   const grid = inc > 0 && paragraphs.some((p) => p.alignToGrid) ? { increment: inc, start: state.settings?.baselineStart ?? 0, boxY } : undefined;
-  return { paragraphs, runs, ...(grid ? { grid } : {}), ...(exclusions.length > 0 ? { exclusions: exclusions.map((e) => ({ ...e })) } : {}) };
+  return { paragraphs, runs, ...(grid ? { grid } : {}), ...(exclusions.length > 0 ? { exclusions: exclusions.map((e) => ({ ...e })) } : {}), ...(inlines.length > 0 ? { inlines } : {}) };
 }
 
 /** Does the text carry any formatting at all (resolvable or not)? Decides whether the resolve pass looks at it. */
 export function hasRich(n: NodeLite): boolean {
   const t = n.text;
-  return !!t && ((t.paragraphStyles?.length ?? 0) > 0 || (t.runs?.length ?? 0) > 0 || t.style.smallCaps === true || !!t.style.script);
+  return !!t && ((t.paragraphStyles?.length ?? 0) > 0 || (t.runs?.length ?? 0) > 0 || (t.inlineObjects?.length ?? 0) > 0 || t.style.smallCaps === true || !!t.style.script);
 }
 
 /** `n` with its formatting resolved into `text.rich` (a derived field). */

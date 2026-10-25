@@ -4,7 +4,7 @@ import { pageNumbers } from "./pageNumbers";
 import { recordDelta } from "./sceneDelta";
 import type { NodeLite, PageLite, SceneState, TextLite, TextRunLite } from "./types";
 
-// TOKENS IN TEXT. Three kinds of markers live in the content of a text and are turned into something
+// TOKENS IN TEXT. Four kinds of markers live in the content of a text and are turned into something
 // else when it is drawn -- the document keeps the markers:
 //
 //   [^note text]   a FOOTNOTE: drawn as a superscript number, with the note itself set at the bottom of
@@ -13,27 +13,30 @@ import type { NodeLite, PageLite, SceneState, TextLite, TextRunLite } from "./ty
 //                  its first frame is.
 //   [#term]        an INDEX ENTRY: not drawn. The index generator (tools/contents.ts) lists the terms
 //                  with the pages they are on.
+//   [@a1b2c3d4]   an ANCHORED OBJECT: the object whose id starts with that (a shape, picture, group ...) sits in the
+//                  text like a character -- it takes a box in its line and moves with the text (store/anchored.ts).
 //   <h1> <h2> <h3> <pages> <doc>   VARIABLES, in the text of a master page (together with <#>, see
 //                  store/masters.ts): the running header (the first heading of that level on the page,
 //                  else the last one before it), the page count and the document name.
 //
 // Headings are the paragraphs whose paragraph style has an outline level (Styles… → Heading level).
 
-const TOKEN_RE = /\[\^([^\]\n]*)\]|\[#([^\]\n]*)\]/g;
+const TOKEN_RE = /\[\^([^\]\n]*)\]|\[#([^\]\n]*)\]|\[@([0-9A-Za-z_-]{4,64})\]/g;
 const SUPER = "⁰¹²³⁴⁵⁶⁷⁸⁹";
 
 /** 12 -> "¹²". */
 export const superscript = (n: number) => String(n).replace(/\d/g, (d) => SUPER[Number(d)]);
 
-export const hasTokens = (content: string) => content.includes("[^") || content.includes("[#");
+export const hasTokens = (content: string) => content.includes("[^") || content.includes("[#") || content.includes("[@");
 
-export interface Token { kind: "footnote" | "index"; text: string; at: number; end: number }
+export interface Token { kind: "footnote" | "index" | "anchor"; text: string; at: number; end: number }
 
 /** The footnote and index markers of `content`, in order. */
 export function tokensOf(content: string): Token[] {
   const out: Token[] = [];
   for (const m of content.matchAll(TOKEN_RE)) {
-    out.push(m[1] !== undefined ? { kind: "footnote", text: m[1], at: m.index!, end: m.index! + m[0].length } : { kind: "index", text: m[2], at: m.index!, end: m.index! + m[0].length });
+    const at = m.index!, end = at + m[0].length;
+    out.push(m[1] !== undefined ? { kind: "footnote", text: m[1], at, end } : m[2] !== undefined ? { kind: "index", text: m[2], at, end } : { kind: "anchor", text: m[3], at, end });
   }
   return out;
 }
@@ -43,7 +46,7 @@ export function tokensOf(content: string): Token[] {
  * began or ended inside a token is cut at the replacement). Paragraph styles are untouched: a token
  * never contains a line break.
  */
-export function rewriteTokens(t: TextLite, replace: (token: Token, index: number) => string): TextLite {
+export function rewriteTokens(t: TextLite, replace: (token: Token, index: number, offset: number) => string): TextLite {
   const tokens = tokensOf(t.content);
   if (tokens.length === 0) return t;
   let content = "";
@@ -53,7 +56,7 @@ export function rewriteTokens(t: TextLite, replace: (token: Token, index: number
   tokens.forEach((tok, i) => {
     content += t.content.slice(cursor, tok.at);
     const nat = content.length;
-    content += replace(tok, i);
+    content += replace(tok, i, content.length);
     spans.push({ at: tok.at, end: tok.end, nat, nend: content.length });
     cursor = tok.end;
   });
@@ -174,6 +177,22 @@ export function substituteVariables(content: string, scene: Pick<SceneState, "na
 // --- derive: footnotes and index markers ---------------------------------------------------------
 
 const derived = new WeakMap<SceneState, SceneState>();
+/** What an anchored object leaves in the drawn text: the Unicode object replacement character. */
+export const OBJECT_CHAR = "\uFFFC";
+
+/** The node an anchor marker names: the one whose id is `ref` or the only one that starts with it (never the text itself). */
+export function anchorTarget(scene: SceneState, ref: string, exceptId: string): NodeLite | null {
+  const exact = scene.nodes.get(ref);
+  if (exact) return exact.id === exceptId ? null : exact;
+  let found: NodeLite | null = null;
+  for (const n of scene.nodes.values()) {
+    if (n.id === exceptId || !n.id.startsWith(ref)) continue;
+    if (found) return null; // ambiguous
+    found = n;
+  }
+  return found;
+}
+
 const NOTE_SIZE = 0.8;
 const RULE_GAP = 6;
 
@@ -198,13 +217,20 @@ export function deriveTextTokens(scene: SceneState): SceneState {
   let counter = 0;
   for (const { node, pageId } of textNodesInReadingOrder(scene)) {
     if (!hasTokens(node.text!.content)) continue;
-    const text = rewriteTokens(node.text!, (tok) => {
+    const inline: { at: number; id: string }[] = [];
+    const text = rewriteTokens(node.text!, (tok, _i, offset) => {
       if (tok.kind === "index") return "";
+      if (tok.kind === "anchor") {
+        const target = anchorTarget(scene, tok.text, node.id);
+        if (!target) return "";
+        inline.push({ at: offset, id: target.id });
+        return OBJECT_CHAR;
+      }
       counter++;
       notes.set(pageId, [...(notes.get(pageId) ?? []), { n: counter, text: tok.text, node }]);
       return superscript(counter);
     });
-    edit.set(node.id, { ...node, text });
+    edit.set(node.id, { ...node, text: inline.length > 0 ? { ...text, inlineObjects: inline } : text });
     changed.push(node.id);
   }
   const pagesById = new Map(scene.pages.map((p) => [p.id, p] as const));

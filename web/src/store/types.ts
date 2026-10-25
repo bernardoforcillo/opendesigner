@@ -1,8 +1,8 @@
 import { NodeMap } from "./nodeMap";
 import { create } from "@bufbuild/protobuf";
-import { BlendMode, ImageScaleMode, ListKind, TabAlign, TextScript, TextStyleKind, LayoutGridKind, CommentSchema, ClipSchema, Constraint, LayoutSizing, ComponentPropertySchema, ComponentPropertyType, ComponentSetSchema, FlowSchema, FontFaceSchema, TextStyleDefSchema, VariableCollectionSchema, VariableSchema, VariableType, TransitionSchema, LayoutAlign, LayoutDirection, NodeSchema, StrokeAlign, TextAlign } from "../gen/opendesigner/v1/opendesigner_pb";
+import { BlendMode, ImageScaleMode, LayerSchema, ListKind, ObjectStyleDefSchema, TabAlign, TextScript, TextStyleKind, LayoutGridKind, CommentSchema, ClipSchema, Constraint, LayoutSizing, ComponentPropertySchema, ComponentPropertyType, ComponentSetSchema, FlowSchema, FontFaceSchema, TextStyleDefSchema, VariableCollectionSchema, VariableSchema, VariableType, TransitionSchema, LayoutAlign, LayoutDirection, NodeSchema, StrokeAlign, TextAlign } from "../gen/opendesigner/v1/opendesigner_pb";
 import type {
-  Document, Component as PbComponent, ComponentProperty as PbComponentProperty, ComponentSet as PbComponentSet, FontFace as PbFont, TextStyleDef as PbTextStyleDef, VariableCollection as PbCollection, Variable as PbVariable, Clip as PbClip, Flow as PbFlow, Transition as PbTransition, Node as PbNode, Comment as PbComment, LayoutGrid as PbLayoutGrid, Paint as PbPaint, Stroke as PbStroke, Effect as PbEffect, AutoLayout as PbAutoLayout,
+  Document, Component as PbComponent, ComponentProperty as PbComponentProperty, ComponentSet as PbComponentSet, FontFace as PbFont, TextStyleDef as PbTextStyleDef, ObjectStyleDef as PbObjectStyleDef, Layer as PbLayer, VariableCollection as PbCollection, Variable as PbVariable, Clip as PbClip, Flow as PbFlow, Transition as PbTransition, Node as PbNode, Comment as PbComment, LayoutGrid as PbLayoutGrid, Paint as PbPaint, Stroke as PbStroke, Effect as PbEffect, AutoLayout as PbAutoLayout,
   TextNode as PbTextNode, TextStyle as PbTextStyle,
   SubPath as PbSubPath, VectorNode as PbVectorNode,
   InstanceNode as PbInstanceNode, InstanceOverride as PbInstanceOverride,
@@ -26,7 +26,7 @@ export interface GuideLite { vertical: boolean; position: number }
 /** The kind of work a document is for: it shapes the editor, never limits the document. Absent = "product". */
 export type Vertical = "publishing" | "design" | "product";
 /** Document-wide settings, each absent at its default. */
-export interface DocSettingsLite { vertical?: Exclude<Vertical, "product">; baselineIncrement?: number; baselineStart?: number; facingPages?: boolean }
+export interface DocSettingsLite { vertical?: Exclude<Vertical, "product">; baselineIncrement?: number; baselineStart?: number; facingPages?: boolean; colorMode?: "cmyk"; iccProfile?: string }
 export interface GradientStopLite { color: { r: number; g: number; b: number; a: number }; position: number; }
 // A gradient in NORMALIZED box coordinates (see GradientPaint in the proto).
 // Linear: axis (x1,y1)->(x2,y2). Radial: center (x1,y1), radius = |p2-p1| in
@@ -169,6 +169,8 @@ export interface RichText {
   grid?: { increment: number; start: number; boxY: number };
   /** Boxes (relative to the text box's top-left) the lines avoid: objects that wrap the text (store/wrap.ts). */
   exclusions?: { x: number; y: number; width: number; height: number }[];
+  /** Objects anchored in the text with their size: each takes a box in its line (see store/anchored.ts). */
+  inlines?: { at: number; id: string; width: number; height: number }[];
 }
 
 export interface TabStopLite { position: number; align?: "center" | "right"; leader?: string }
@@ -177,6 +179,8 @@ export interface NestedStyleLite { styleId: string; delimiter: string; count: nu
 export interface TextLite {
   /** DERIVED (store/textPath.ts): the polyline the text runs along, in the text's parent space. */
   onPath?: { x: number; y: number }[];
+  /** DERIVED (store/textTokens.ts): where objects anchored in the text sit in its content (a U+FFFC each), by node id. */
+  inlineObjects?: { at: number; id: string }[];
   content: string; style: TextStyleLite;
   paragraphStyles?: string[];
   runs?: TextRunLite[];
@@ -190,7 +194,11 @@ export interface TextLite {
 // The model contains no pixels, and this is the property not to lose: a
 // NodeLite ends up inside ops, inside the snapshot and inside the clipboard
 // payload, and none of those three places must ever carry an image.
-export interface ImageLite { assetHash: string; }
+export interface ImageLite {
+  assetHash: string;
+  /** The name of the file the image was placed from, and its size in pixels (what relinking and the effective resolution need). */
+  originalName?: string; pixelWidth?: number; pixelHeight?: number;
+}
 
 // Vector geometry. Mirrors opendesigner.v1.Anchor/SubPath/VectorNode one to
 // one: no default resolved here and no "convenient" shape (no precomputed
@@ -346,6 +354,11 @@ export interface NodeLite {
   modes?: Record<string, string>;
   // Shared text style id (text nodes only); absent when none. See TextStyleDefLite.
   textStyleId?: string;
+  /** Shared object style (store/graphics.ts) and layer; absent when none. */
+  objectStyleId?: string;
+  layerId?: string;
+  /** DERIVED (store/graphics.ts): the node is on a locked layer -- drawn, but not picked. */
+  locked?: boolean;
   // Constraints and layout sizing (see ConstraintLite); absent = the default (unspecified / fixed).
   constraintX?: ConstraintLite;
   constraintY?: ConstraintLite;
@@ -411,10 +424,28 @@ export interface VariableLite {
   values: Record<string, FillLite | number | string>;
   // Present for an alias: the variable it reads (then `values` is empty).
   aliasOf?: string;
+  // SWATCH data (store/graphics.ts): a color variable listed in the Swatches panel, with its print definition.
+  swatch?: boolean;
+  cmyk?: { c: number; m: number; y: number; k: number };
+  spotName?: string;
+  tintOf?: string; tint?: number;
 }
 
 // TYPOGRAPHY: uploaded font faces and shared text styles. See proto FontFace /
 // TextStyleDef and internal/core/typography.go.
+// OBJECT STYLES and LAYERS (store/graphics.ts, internal/core/graphics.go).
+export const OBJECT_STYLE_PROPS = ["fills", "strokes", "effects", "opacity", "corner_radius", "blend_mode"] as const;
+export type ObjectStyleProp = (typeof OBJECT_STYLE_PROPS)[number];
+export interface ObjectStyleLite {
+  id: string; name: string;
+  /** Which of the properties below the style sets; the others are left to the node. */
+  sets: ObjectStyleProp[];
+  fills?: FillLite[]; strokes?: StrokeLite[]; effects?: EffectLite[];
+  opacity?: number; cornerRadius?: number; blendMode?: BlendModeLite;
+  basedOn?: string;
+}
+export interface LayerLite { id: string; name: string; hidden?: boolean; locked?: boolean; noPrint?: boolean }
+
 export interface FontLite { id: string; family: string; weight: string; style: "normal" | "italic"; assetHash: string }
 // Optional fields are absent at their default (paragraph kind, no base, no next style, zeros).
 export interface TextStyleDefLite {
@@ -455,6 +486,8 @@ export interface SceneState {
   // Typography, like variables: an empty record when there are none.
   fonts: Record<string, FontLite>;
   textStyles: Record<string, TextStyleDefLite>;
+  objectStyles: Record<string, ObjectStyleLite>;
+  layers: LayerLite[];
   // Comments, like clips: an empty record when there are none.
   comments: Record<string, CommentLite>;
   // Only in scenes derived from playback (animation/pose.ts): see AnimInfo.
@@ -491,19 +524,37 @@ export function toPageLite(p: {
   };
 }
 
-/** `{ settings }` for a scene when the message has any non-default setting, else `{}`. */
-export function settingsField(s: { vertical: string; baselineIncrement: number; baselineStart: number; facingPages?: boolean }): { settings?: DocSettingsLite } {
-  const out: DocSettingsLite = {
+/** The message form of document settings: every field written, "" / 0 / false when absent. */
+export interface DocSettingsMsg { vertical: string; baselineIncrement: number; baselineStart: number; facingPages?: boolean; colorMode?: string; iccProfile?: string }
+
+/** Document settings as the init shape of a DocSettings message. */
+export function settingsToMsg(s: DocSettingsLite): DocSettingsMsg {
+  return {
+    vertical: s.vertical ?? "", baselineIncrement: s.baselineIncrement ?? 0, baselineStart: s.baselineStart ?? 0,
+    facingPages: s.facingPages === true, colorMode: s.colorMode ?? "", iccProfile: s.iccProfile ?? "",
+  };
+}
+
+/** The settings of a message with only the non-default fields, or `{}`-free: undefined when all are default. */
+export function settingsOf(s: DocSettingsMsg): DocSettingsLite {
+  return {
     ...(s.vertical === "publishing" || s.vertical === "design" ? { vertical: s.vertical } : {}),
     ...(s.baselineIncrement ? { baselineIncrement: s.baselineIncrement } : {}),
     ...(s.baselineStart ? { baselineStart: s.baselineStart } : {}),
     ...(s.facingPages ? { facingPages: true } : {}),
+    ...(s.colorMode === "cmyk" ? { colorMode: "cmyk" as const } : {}),
+    ...(s.iccProfile ? { iccProfile: s.iccProfile } : {}),
   };
+}
+
+/** `{ settings }` for a scene when the message has any non-default setting, else `{}`. */
+export function settingsField(s: DocSettingsMsg): { settings?: DocSettingsLite } {
+  const out = settingsOf(s);
   return Object.keys(out).length > 0 ? { settings: out } : {};
 }
 
 export function emptyScene(id: string, name: string): SceneState {
-  return { id, name, schemaVersion: 1, pages: [{ id: "page1", name: "Page 1" }], nodes: NodeMap.empty, flows: {}, transitions: {}, clips: {}, collections: {}, variables: {}, fonts: {}, textStyles: {}, comments: {}, components: {}, componentSets: {} };
+  return { id, name, schemaVersion: 1, pages: [{ id: "page1", name: "Page 1" }], nodes: NodeMap.empty, flows: {}, transitions: {}, clips: {}, collections: {}, variables: {}, fonts: {}, textStyles: {}, objectStyles: {}, layers: [], comments: {}, components: {}, componentSets: {} };
 }
 
 const ALIGN_TO_LITE: Record<TextAlign, TextAlignLite> = {
@@ -925,7 +976,14 @@ export function toNodeLite(n: PbNode): NodeLite {
     clipsContent: n.shape.case === "frame" ? n.shape.value.clipsContent : false,
     ...(n.shape.case === "frame" && n.shape.value.autoLayout ? { autoLayout: toAutoLayoutLite(n.shape.value.autoLayout) } : {}),
     ...(n.shape.case === "text" ? { text: toTextLite(n.shape.value) } : {}),
-    ...(n.shape.case === "image" ? { image: { assetHash: n.shape.value.assetHash } } : {}),
+    ...(n.shape.case === "image" ? {
+      image: {
+        assetHash: n.shape.value.assetHash,
+        ...(n.shape.value.originalName ? { originalName: n.shape.value.originalName } : {}),
+        ...(n.shape.value.pixelWidth ? { pixelWidth: n.shape.value.pixelWidth } : {}),
+        ...(n.shape.value.pixelHeight ? { pixelHeight: n.shape.value.pixelHeight } : {}),
+      },
+    } : {}),
     ...(n.shape.case === "vector" ? { vector: toVectorLite(n.shape.value) } : {}),
     ...(n.shape.case === "instance" ? { instance: toInstanceLite(n.shape.value) } : {}),
     // The unknown branch travels whole and intact: see NodeLite.unknownShape.
@@ -934,6 +992,8 @@ export function toNodeLite(n: PbNode): NodeLite {
     ...(Object.keys(n.bindings).length > 0 ? { bindings: { ...n.bindings } } : {}),
     ...(Object.keys(n.modes).length > 0 ? { modes: { ...n.modes } } : {}),
     ...(n.textStyleId !== "" ? { textStyleId: n.textStyleId } : {}),
+    ...(n.objectStyleId !== "" ? { objectStyleId: n.objectStyleId } : {}),
+    ...(n.layerId !== "" ? { layerId: n.layerId } : {}),
     ...(n.constraintX !== Constraint.UNSPECIFIED ? { constraintX: CONSTRAINT_TO_LITE[n.constraintX] } : {}),
     ...(n.constraintY !== Constraint.UNSPECIFIED ? { constraintY: CONSTRAINT_TO_LITE[n.constraintY] } : {}),
     ...(n.layoutSizingX === LayoutSizing.FILL ? { layoutSizingX: "fill" as const } : {}),
@@ -961,6 +1021,8 @@ export function toPbNode(n: NodeLite): PbNode {
     bindings: n.bindings ? { ...n.bindings } : {},
     modes: n.modes ? { ...n.modes } : {},
     textStyleId: n.textStyleId ?? "",
+    objectStyleId: n.objectStyleId ?? "",
+    layerId: n.layerId ?? "",
     constraintX: n.constraintX ? CONSTRAINT_TO_PB[n.constraintX] : Constraint.UNSPECIFIED,
     constraintY: n.constraintY ? CONSTRAINT_TO_PB[n.constraintY] : Constraint.UNSPECIFIED,
     layoutSizingX: n.layoutSizingX === "fill" ? LayoutSizing.FILL : LayoutSizing.FIXED,
@@ -984,7 +1046,7 @@ export function toPbNode(n: NodeLite): PbNode {
         // an empty hash -- that is, to an image whose asset is not found, which the
         // renderer draws as a placeholder -- and never to a rectangle: a silent
         // shape change inside an undo would be much worse.
-        ? { case: "image" as const, value: { assetHash: n.image?.assetHash ?? "" } }
+        ? { case: "image" as const, value: { assetHash: n.image?.assetHash ?? "", originalName: n.image?.originalName ?? "", pixelWidth: n.image?.pixelWidth ?? 0, pixelHeight: n.image?.pixelHeight ?? 0 } }
       : n.kind === "vector"
         // As for text: a missing `vector` on a vector node is a
         // state toNodeLite never produces (the two move together), and the
@@ -1088,7 +1150,13 @@ export function toVariableLite(v: PbVariable): VariableLite {
     } else if (val.kind.case === "number") values[mode] = val.kind.value;
     else if (val.kind.case === "text") values[mode] = val.kind.value;
   }
-  return { id: v.id, collectionId: v.collectionId, name: v.name, type, values, ...(v.aliasOf !== "" ? { aliasOf: v.aliasOf } : {}) };
+  return {
+    id: v.id, collectionId: v.collectionId, name: v.name, type, values, ...(v.aliasOf !== "" ? { aliasOf: v.aliasOf } : {}),
+    ...(v.swatch ? { swatch: true as const } : {}),
+    ...(v.cmyk ? { cmyk: { c: v.cmyk.c, m: v.cmyk.m, y: v.cmyk.y, k: v.cmyk.k } } : {}),
+    ...(v.spotName !== "" ? { spotName: v.spotName } : {}),
+    ...(v.tintOf !== "" ? { tintOf: v.tintOf, tint: v.tint } : {}),
+  };
 }
 export function toPbVariable(v: VariableLite): PbVariable {
   const values: Record<string, { kind: { case: "color"; value: { r: number; g: number; b: number; a: number } } | { case: "number"; value: number } | { case: "text"; value: string } }> = {};
@@ -1101,8 +1169,37 @@ export function toPbVariable(v: VariableLite): PbVariable {
   }
   return create(VariableSchema, {
     id: v.id, collectionId: v.collectionId, name: v.name, aliasOf: v.aliasOf ?? "",
+    swatch: v.swatch === true, spotName: v.spotName ?? "", tintOf: v.tintOf ?? "", tint: v.tint ?? 0,
+    ...(v.cmyk ? { cmyk: v.cmyk } : {}),
     type: v.type === "color" ? VariableType.COLOR : v.type === "string" ? VariableType.STRING : VariableType.NUMBER, values,
   });
+}
+
+export function toObjectStyleLite(d: PbObjectStyleDef): ObjectStyleLite {
+  const sets = d.sets.filter((p): p is ObjectStyleProp => (OBJECT_STYLE_PROPS as readonly string[]).includes(p));
+  return {
+    id: d.id, name: d.name, sets,
+    ...(d.fills.length > 0 ? { fills: d.fills.map(toFillLite) } : {}),
+    ...(d.strokes.length > 0 ? { strokes: d.strokes.map(toStrokeLite) } : {}),
+    ...(d.effects.length > 0 ? { effects: d.effects.map(toEffectLite) } : {}),
+    ...(d.opacity ? { opacity: d.opacity } : {}),
+    ...(d.cornerRadius ? { cornerRadius: d.cornerRadius } : {}),
+    ...(blendToLite(d.blendMode) ? { blendMode: blendToLite(d.blendMode) } : {}),
+    ...(d.basedOn ? { basedOn: d.basedOn } : {}),
+  };
+}
+export function toPbObjectStyleDef(d: ObjectStyleLite): PbObjectStyleDef {
+  return create(ObjectStyleDefSchema, {
+    id: d.id, name: d.name, sets: [...d.sets],
+    fills: toPbFills(d.fills ?? []), strokes: toPbStrokes(d.strokes ?? []), effects: toPbEffects(d.effects ?? []),
+    opacity: d.opacity ?? 0, cornerRadius: d.cornerRadius ?? 0, blendMode: toPbBlend(d.blendMode), basedOn: d.basedOn ?? "",
+  });
+}
+export function toLayerLite(l: PbLayer): LayerLite {
+  return { id: l.id, name: l.name, ...(l.hidden ? { hidden: true } : {}), ...(l.locked ? { locked: true } : {}), ...(l.noPrint ? { noPrint: true } : {}) };
+}
+export function toPbLayer(l: LayerLite): PbLayer {
+  return create(LayerSchema, { id: l.id, name: l.name, hidden: l.hidden === true, locked: l.locked === true, noPrint: l.noPrint === true });
 }
 
 export function toFontLite(f: PbFont): FontLite {
@@ -1200,6 +1297,8 @@ export function fromDocument(doc: Document): SceneState {
     variables: Object.fromEntries(Object.entries(doc.variables).map(([id, v]) => [id, toVariableLite(v)])),
     fonts: Object.fromEntries(Object.entries(doc.fonts).map(([id, f]) => [id, toFontLite(f)])),
     textStyles: Object.fromEntries(Object.entries(doc.textStyles).map(([id, d]) => [id, toTextStyleDefLite(d)])),
+    objectStyles: Object.fromEntries(Object.entries(doc.objectStyles).map(([id, d]) => [id, toObjectStyleLite(d)])),
+    layers: doc.layers.map(toLayerLite),
     comments: Object.fromEntries(Object.entries(doc.comments).map(([id, c]) => [id, toCommentLite(c)])),
   };
 }

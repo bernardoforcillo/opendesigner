@@ -20,7 +20,8 @@ import { ExportSection } from "./ExportSection";
 import { VariablesSection } from "./VariablesSection";
 import { boundColor } from "./variableOps";
 import { TypographyControls } from "./TypographyControls";
-import { TableControls, TextOnPathControls, WrapControls } from "./TextLayoutControls";
+import { AnchorControls, TableControls, TextOnPathControls, WrapControls } from "./TextLayoutControls";
+import { ImageLinkControls, LayerControls, ObjectStyleControls } from "./GraphicsControls";
 import { ThreadControls } from "./ThreadControls";
 import { InstanceControls } from "./InstanceControls";
 import { LayoutRelationControls } from "./LayoutRelationControls";
@@ -803,8 +804,12 @@ export function PropertiesPanel() {
       <ConnectorControls />
       <PathControls />
       <TextOnPathControls />
+      <AnchorControls />
       <TableControls />
       <WrapControls />
+      <ImageLinkControls />
+      <ObjectStyleControls />
+      <LayerControls />
 
       {/* LAYOUT: position, size, rotation and (rectangles) radius, in a
           two-column grid of fields with the prefix INSIDE (X, Y, W, H, °, R). */}

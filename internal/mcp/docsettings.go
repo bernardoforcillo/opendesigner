@@ -22,6 +22,8 @@ type SetDocumentSettingsInput struct {
 	Vertical          *string  `json:"vertical,omitempty" jsonschema:"publishing (books, magazines, reports: pages, masters, text frames, PDF/EPUB) | design (illustration, UI design, boards) | product (design and development together: flows, prototype, code). Shapes the editor, never limits what the document can hold"`
 	BaselineIncrement *float64 `json:"baselineIncrement,omitempty" jsonschema:"distance between baseline grid lines, 0..1000; 0 = no grid"`
 	BaselineStart     *float64 `json:"baselineStart,omitempty" jsonschema:"where the first baseline grid line sits, from the top of the page"`
+	ColorMode         *string  `json:"colorMode,omitempty" jsonschema:"rgb (screens) | cmyk (print): swatches and colour fields work in CMYK and exports convert to it"`
+	IccProfile        *string  `json:"iccProfile,omitempty" jsonschema:"the output condition the colours are meant for (FOGRA39, SWOP v2 ...), recorded as the PDF output intent; empty = none"`
 	FacingPages       *bool    `json:"facingPages,omitempty" jsonschema:"pages are laid out as spreads (odd page numbers on the right): margins left/right become inside/outside"`
 }
 
@@ -45,6 +47,16 @@ func (s *Session) SetDocumentSettings(ctx context.Context, in SetDocumentSetting
 	}
 	if in.BaselineStart != nil {
 		next.BaselineStart = *in.BaselineStart
+	}
+	if in.ColorMode != nil {
+		m := *in.ColorMode
+		if m == "rgb" {
+			m = "" // the default is stored as nothing
+		}
+		next.ColorMode = m
+	}
+	if in.IccProfile != nil {
+		next.IccProfile = *in.IccProfile
 	}
 	if in.FacingPages != nil {
 		next.FacingPages = *in.FacingPages

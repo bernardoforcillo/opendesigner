@@ -1061,6 +1061,7 @@ func RegisterTools(srv *mcp.Server, s *Session) {
 	registerAnimationTools(srv, s)
 	registerVariableTools(srv, s)
 	registerTypographyTools(srv, s)
+	registerGraphicsTools(srv, s)
 	registerCommentTools(srv, s)
 	registerReviewTools(srv, s)
 	registerBoardTools(srv, s)

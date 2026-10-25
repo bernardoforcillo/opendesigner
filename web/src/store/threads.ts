@@ -90,11 +90,13 @@ export function chainsOf(scene: SceneState): NodeLite[][] {
 type MeasureFor = (style: TextStyleLite) => (s: string) => number;
 
 let injected: MeasureFor | null = null;
+/** The measure the derived passes use (the injected one in tests, else the canvas). */
+export const derivedMeasureFor = (): MeasureFor => injected ?? defaultMeasureFor;
 /** Tests (and anything with a better measure) can replace how lines are measured; null restores the default. */
 export function setThreadMeasure(m: MeasureFor | null): void { injected = m; }
 
 let canvasCtx: CanvasRenderingContext2D | null | undefined;
-function defaultMeasureFor(style: TextStyleLite): (s: string) => number {
+export function defaultMeasureFor(style: TextStyleLite): (s: string) => number {
   if (canvasCtx === undefined) {
     canvasCtx = null;
     // jsdom has no 2D context (and logs when asked): do not even try there.
@@ -157,11 +159,12 @@ function flowRich(scene: SceneState, chain: NodeLite[]): { texts: TextLite[]; ov
   let content = head.content;
   let paras = head.paragraphStyles ?? [];
   let runs: TextRunLite[] = head.runs ?? [];
+  let inl = head.inlineObjects ?? [];
   const texts: TextLite[] = [];
   for (const [fi, frame] of chain.entries()) {
     if (content === "") { texts.push({ content: "", style: base }); continue; }
     const boxY = frame.y + worldTransformOf(scene, frame.parentId).f;
-    const whole: TextLite = { content, style: base, paragraphStyles: paras, runs };
+    const whole: TextLite = { content, style: base, paragraphStyles: paras, runs, ...(inl.length > 0 ? { inlineObjects: inl } : {}) };
     const rich = resolveRich(scene, whole, base, boxY, wrapRects[fi]);
     let end = 0;
     if (rich && frame.width > 0) {
@@ -172,11 +175,13 @@ function flowRich(scene: SceneState, chain: NodeLite[]): { texts: TextLite[]; ov
     const slice = content.slice(0, end);
     const sliceParas = paras.slice(0, paragraphCount(slice));
     const sliceRuns = runs.filter((r) => r.start < end).map((r) => ({ ...r, end: Math.min(r.end, end) }));
-    const sliceRich = resolveRich(scene, { content: slice, style: base, paragraphStyles: sliceParas, runs: sliceRuns }, base, boxY, wrapRects[fi]);
+    const sliceInl = inl.filter((o) => o.at < end);
+    const sliceRich = resolveRich(scene, { content: slice, style: base, paragraphStyles: sliceParas, runs: sliceRuns, ...(sliceInl.length > 0 ? { inlineObjects: sliceInl } : {}) }, base, boxY, wrapRects[fi]);
     texts.push({
       content: slice, style: base,
       ...(sliceParas.some((p) => p !== "") ? { paragraphStyles: sliceParas } : {}),
       ...(sliceRuns.length > 0 ? { runs: sliceRuns } : {}),
+      ...(sliceInl.length > 0 ? { inlineObjects: sliceInl } : {}),
       ...(sliceRich ? { rich: sliceRich } : {}),
     });
     // The rest: past the line break (one space, or the newline that ended the paragraph).
@@ -185,6 +190,7 @@ function flowRich(scene: SceneState, chain: NodeLite[]): { texts: TextLite[]; ov
     const breaks = content.slice(0, cursor).split("\n").length - 1;
     paras = paras.slice(breaks);
     runs = runs.filter((r) => r.end > cursor).map((r) => ({ ...r, start: Math.max(r.start, cursor) - cursor, end: r.end - cursor }));
+    inl = inl.filter((o) => o.at >= cursor).map((o) => ({ ...o, at: o.at - cursor }));
     content = content.slice(cursor);
   }
   return { texts, overset: content.trim() !== "" };

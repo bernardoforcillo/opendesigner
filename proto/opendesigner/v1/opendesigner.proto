@@ -296,7 +296,14 @@ message TextRun { int32 start = 1; int32 end = 2; string style_id = 3; }
 // compacts -- the same photo dragged ten times would weigh ten times as much,
 // and every Subscribe catch-up would send it over the wire again. With the hash
 // the op stays a few dozen bytes and the pixels never enter the op flow.
-message ImageNode { string asset_hash = 1; }
+message ImageNode {
+  string asset_hash = 1;
+  // About the file the image was made from, recorded when it is placed: the name it had (what "relink"
+  // shows) and its size in pixels (what the effective resolution is computed from). 0 = unknown.
+  string original_name = 2;
+  uint32 pixel_width = 3;
+  uint32 pixel_height = 4;
+}
 
 // An anchor point of a vector path.
 //
@@ -549,6 +556,10 @@ message Node {
   // Layout grids of a FRAME (see LayoutGrid): editor guides and snap targets, never exported.
   // The "layout_grids" mask path REPLACES the whole list; only frames take one.
   repeated LayoutGrid layout_grids = 50;
+  // Shared object style (see ObjectStyleDef) and layer (see Layer). The "object_style_id" and "layer_id" mask
+  // paths write them; empty detaches. A style applies to any node but groups and instances.
+  string object_style_id = 51;
+  string layer_id = 52;
 }
 
 enum LayoutGridKind {
@@ -707,7 +718,19 @@ message Variable {
   // collection active on the node, when the target's collection has a mode with
   // that id, else in the target's first mode.
   string alias_of = 6;
+  // SWATCHES. A color variable can also be a swatch: a named color of the document's palette, defined for print.
+  //   swatch     the variable is listed in the Swatches panel
+  //   cmyk       a process color defined in CMYK (`values` keep its RGB conversion for the screen)
+  //   spot_name  a spot color: the name of the ink (e.g. "PANTONE 485 C"), printed on its own plate
+  //   tint_of    the swatch this is a tint of, with `tint` percent (1..100) of its ink; editing the base
+  //              swatch in the editor re-derives its tints
+  bool swatch = 7;
+  Cmyk cmyk = 8;
+  string spot_name = 9;
+  string tint_of = 10;
+  double tint = 11;
 }
+message Cmyk { float c = 1; float m = 2; float y = 3; float k = 4; } // 0..1
 
 // ---------- flows ----------
 // A FLOW is a user path through the screens: a set of TRANSITIONS (edges)
@@ -805,6 +828,38 @@ message Document {
   // Comments: commentId -> comment (see Comment).
   map<string, Comment> comments = 15;
   DocSettings settings = 16;
+  // Object styles: objectStyleId -> shared look of shapes (see ObjectStyleDef).
+  map<string, ObjectStyleDef> object_styles = 17;
+  // Layers shared by all pages, in panel order (see Layer).
+  repeated Layer layers = 18;
+}
+
+// An OBJECT STYLE is a shared look for shapes: the properties named in `sets` (fills, strokes, effects,
+// opacity, corner_radius, blend_mode) are taken from the style by every node that applies it
+// (Node.object_style_id); the node's own values stay as the fallback, so detaching gives them back.
+// `based_on` names another object style whose settings this one starts from.
+message ObjectStyleDef {
+  string id = 1;
+  string name = 2;
+  repeated string sets = 3;
+  repeated Paint fills = 4;
+  repeated Stroke strokes = 5;
+  repeated Effect effects = 6;
+  double opacity = 7;
+  double corner_radius = 8;
+  BlendMode blend_mode = 9;
+  string based_on = 10;
+}
+
+// A LAYER spans all pages: a node names its layer (Node.layer_id) and hiding or locking the layer hides or
+// locks everything on it, on every page. Nodes without a layer belong to none. `no_print` keeps the layer
+// out of PDF export.
+message Layer {
+  string id = 1;
+  string name = 2;
+  bool hidden = 3;
+  bool locked = 4;
+  bool no_print = 5;
 }
 
 // Settings of the document as a whole.
@@ -822,6 +877,12 @@ message DocSettings {
   // Facing pages: pages are read in spreads (the first alone, on the right; then pairs). For the margins
   // of a page, margin_left is the INSIDE (towards the fold) and margin_right the OUTSIDE.
   bool facing_pages = 4;
+  // Colour mode for output: "" (RGB, screens) or "cmyk" (print): swatches and the colour fields work in CMYK,
+  // exports convert to CMYK. `icc_profile` names the output condition the colours are meant for
+  // ("FOGRA39", "SWOP v2", "sRGB" ...), recorded as the PDF output intent; "" = none. The conversions are
+  // simple (not profile based).
+  string color_mode = 5;
+  string icc_profile = 6;
 }
 
 // ---------- ops ----------
@@ -988,6 +1049,11 @@ message Op {
     UpdatePage          update_page           = 41; // master pages — a page's name, master flag and applied master
     SetDocSettings      set_doc_settings      = 42; // vertical and baseline grid (absolute upsert)
     MovePage            move_page             = 43; // reorder pages
+    SetObjectStyleDef    set_object_style_def    = 44; // object styles — upsert
+    DeleteObjectStyleDef delete_object_style_def = 45;
+    SetLayer             set_layer               = 46; // layers — upsert (appends when new)
+    DeleteLayer          delete_layer            = 47;
+    SetImage             set_image               = 48; // relink: replaces the source of an image node
   }
 }
 // A comment pinned on the canvas. A THREAD is a root comment (parent_id empty) plus its
@@ -1022,6 +1088,15 @@ message SetFont            { FontFace font = 1; }
 message DeleteFont         { string id = 1; }
 message SetTextStyleDef    { TextStyleDef text_style = 1; }
 message DeleteTextStyleDef { string id = 1; }
+message SetObjectStyleDef    { ObjectStyleDef object_style = 1; }
+message DeleteObjectStyleDef { string id = 1; }
+// Upserts a layer (a new id is appended to the layer list). Deleting a layer detaches its nodes.
+// `position` (1-based, 0 = keep) puts the layer at that place in the list; beyond the end means last.
+message SetLayer    { Layer layer = 1; uint32 position = 2; }
+message DeleteLayer { string id = 1; }
+// Replaces what an image node shows: the asset, the name of the file it came from and its size in pixels. The node's
+// box is left alone. Only image nodes take it.
+message SetImage { string id = 1; ImageNode image = 2; }
 // Replaces a component set. The renames say that an axis / option of the OLD set is the
 // same thing under a new name, so members and instances keep their choices instead of
 // being detached or reset. `OptionRename.axis` is the axis's NEW name.

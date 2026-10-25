@@ -2,11 +2,12 @@ import { create } from "@bufbuild/protobuf";
 import { OpSchema } from "../gen/opendesigner/v1/opendesigner_pb";
 import type { Node as PbNode, Op } from "../gen/opendesigner/v1/opendesigner_pb";
 import type { NodeLite, VariableLite } from "./types";
-import { toPbNode, toPbFlow, toPbClip, toClipLite, toPbTransition, toPbCollection, toPbVariable, toPbFont, toPbTextStyleDef, toPbComponentProperty, toPbComponentSet, toPbTextStyle, toPbSubPaths, toPbInstanceOverride, type SceneState } from "./types";
+import { settingsToMsg, toPbNode, toPbFlow, toPbClip, toClipLite, toPbTransition, toPbCollection, toPbVariable, toPbFont, toPbTextStyleDef, toPbObjectStyleDef, toPbLayer, toPbComponentProperty, toPbComponentSet, toPbTextStyle, toPbSubPaths, toPbInstanceOverride, type SceneState } from "./types";
 import { isValidClip } from "../animation/validate";
 import { applyOp } from "./applyOp";
 import { isValidCollection, isValidVariable, withAliases } from "./variables";
 import { isValidFont, isValidTextStyleDef } from "./typography";
+import { isValidLayer, isValidObjectStyle } from "./graphics";
 import { assignmentValid, isValidComponentDef, isValidComponentSet, isValidInstanceProps, makeRenamer, renameChoice, reverseRenames } from "./components";
 import { childrenOf, isAncestorOf, parentExists, subtreeOf } from "./tree";
 import { deletePageAllowed, masterFieldsValid, pageOf, pageToPb, updatePageAllowed } from "./masters";
@@ -188,7 +189,7 @@ export function invertOp(scene: SceneState, op: Op): Op[] | null {
       const prev = scene.settings ?? {};
       return [create(OpSchema, {
         opId: newOpId(), docId: op.docId,
-        kind: { case: "setDocSettings", value: { settings: { vertical: prev.vertical ?? "", baselineIncrement: prev.baselineIncrement ?? 0, baselineStart: prev.baselineStart ?? 0, facingPages: prev.facingPages === true } } },
+        kind: { case: "setDocSettings", value: { settings: settingsToMsg(prev) } },
       })];
     }
     // The inverse of a move is moving the page back to where it was.
@@ -246,6 +247,18 @@ export function invertOp(scene: SceneState, op: Op): Op[] | null {
       return [create(OpSchema, {
         opId: newOpId(), docId: op.docId,
         kind: { case: "renamePage", value: { id, name: page.name } },
+      })];
+    }
+    case "setImage": {
+      // The previous source in full; null when the direct op would be rejected (see applyOp).
+      const { id, image } = op.kind.value;
+      const prev = scene.nodes.at(id);
+      if (!prev || prev.kind !== "image" || !prev.image || !image) return null;
+      if (applyOp(scene, op) === scene) return null;
+      const p = prev.image;
+      return [create(OpSchema, {
+        opId: newOpId(), docId: op.docId,
+        kind: { case: "setImage", value: { id, image: { assetHash: p.assetHash, originalName: p.originalName ?? "", pixelWidth: p.pixelWidth ?? 0, pixelHeight: p.pixelHeight ?? 0 } } },
       })];
     }
     case "setVectorPath": {
@@ -431,6 +444,8 @@ export function invertOp(scene: SceneState, op: Op): Op[] | null {
       const gone = new Set(vars.map((v) => v.id));
       return [
         ...vars.map((v) => setVariableOp(op.docId, toPbVariable(v))),
+        // Tints of the deleted swatches, as they were (the delete cleared their base).
+        ...Object.values(scene.variables).filter((v) => v.tintOf !== undefined && gone.has(v.tintOf) && !gone.has(v.id)).map((v) => setVariableOp(op.docId, toPbVariable(v))),
         ...restoreNodeMapsOps(scene, op.docId, (n) => bindsAny(n, gone), ["bindings"]),
       ];
     }
@@ -513,6 +528,48 @@ export function invertOp(scene: SceneState, op: Op): Op[] | null {
           ? { case: "setTextStyleDef", value: { textStyle: toPbTextStyleDef(prev) } }
           : { case: "deleteTextStyleDef", value: { id: d.id } },
       })];
+    }
+    case "setObjectStyleDef": {
+      const d = op.kind.value.objectStyle;
+      if (!isValidObjectStyle(scene, d)) return null;
+      const prev = scene.objectStyles[d.id];
+      return [create(OpSchema, {
+        opId: newOpId(), docId: op.docId,
+        kind: prev
+          ? { case: "setObjectStyleDef", value: { objectStyle: toPbObjectStyleDef(prev) } }
+          : { case: "deleteObjectStyleDef", value: { id: d.id } },
+      })];
+    }
+    case "deleteObjectStyleDef": {
+      const { id } = op.kind.value;
+      const prev = scene.objectStyles[id];
+      if (!prev) return null;
+      // Back: the style, the styles that were based on it, and the nodes that used it.
+      return [
+        create(OpSchema, { opId: newOpId(), docId: op.docId, kind: { case: "setObjectStyleDef", value: { objectStyle: toPbObjectStyleDef(prev) } } }),
+        ...Object.values(scene.objectStyles).filter((d) => d.basedOn === id).map((d) =>
+          create(OpSchema, { opId: newOpId(), docId: op.docId, kind: { case: "setObjectStyleDef", value: { objectStyle: toPbObjectStyleDef(d) } } })),
+        ...restoreNodeMapsOps(scene, op.docId, (n) => n.objectStyleId === id, ["object_style_id"]),
+      ];
+    }
+    case "setLayer": {
+      const l = op.kind.value.layer;
+      if (!isValidLayer(scene, l)) return null;
+      const at = scene.layers.findIndex((x) => x.id === l.id);
+      return [create(OpSchema, {
+        opId: newOpId(), docId: op.docId,
+        // Back where it was in the list, as it was.
+        kind: at >= 0 ? { case: "setLayer", value: { layer: toPbLayer(scene.layers[at]), position: at + 1 } } : { case: "deleteLayer", value: { id: l.id } },
+      })];
+    }
+    case "deleteLayer": {
+      const { id } = op.kind.value;
+      const at = scene.layers.findIndex((l) => l.id === id);
+      if (at < 0) return null;
+      return [
+        create(OpSchema, { opId: newOpId(), docId: op.docId, kind: { case: "setLayer", value: { layer: toPbLayer(scene.layers[at]), position: at + 1 } } }),
+        ...restoreNodeMapsOps(scene, op.docId, (n) => n.layerId === id, ["layer_id"]),
+      ];
     }
     case "deleteTextStyleDef": {
       const { id } = op.kind.value;

@@ -1,5 +1,6 @@
-import type { DocSettingsLite, GuideLite, PageLite, SceneState, Vertical } from "./types";
+import type { DocSettingsLite, DocSettingsMsg, GuideLite, PageLite, SceneState, Vertical } from "./types";
 import type { Bounds } from "../canvas/geometry";
+import { settingsOf } from "./types";
 
 // DOCUMENT SETTINGS and PAGE SETUP -- the twin of internal/core/docsettings.go (Go is the authority).
 //
@@ -24,20 +25,19 @@ export function verticalOf(scene: Pick<SceneState, "settings"> | null | undefine
 const finiteIn = (v: number, lo: number, hi: number) => Number.isFinite(v) && v >= lo && v <= hi;
 
 /** Parity with core.validateDocSettings (the message form: vertical "" for the default). */
-export function isValidDocSettings(s: { vertical: string; baselineIncrement: number; baselineStart: number; facingPages?: boolean } | undefined): boolean {
+export function isValidDocSettings(s: DocSettingsMsg | undefined): boolean {
   if (!s) return false;
   if (s.vertical !== "" && !isVertical(s.vertical)) return false;
+  if (s.colorMode !== undefined && s.colorMode !== "" && s.colorMode !== "cmyk") return false;
+  const icc = s.iccProfile ?? "";
+  // eslint-disable-next-line no-control-regex
+  if (icc.length > 64 || icc.trim() !== icc || /[\u0000-\u001f\u007f]/.test(icc)) return false;
   return finiteIn(s.baselineIncrement, 0, 1000) && Number.isFinite(s.baselineStart) && s.baselineStart >= 0;
 }
 
-/** A DocSettingsLite from the message form, or null when invalid. */
-export function toDocSettings(s: { vertical: string; baselineIncrement: number; baselineStart: number; facingPages?: boolean }): DocSettingsLite {
-  return {
-    ...(s.vertical === "publishing" || s.vertical === "design" ? { vertical: s.vertical } : {}),
-    ...(s.baselineIncrement ? { baselineIncrement: s.baselineIncrement } : {}),
-    ...(s.baselineStart ? { baselineStart: s.baselineStart } : {}),
-    ...(s.facingPages ? { facingPages: true } : {}),
-  };
+/** A DocSettingsLite from the message form. */
+export function toDocSettings(s: DocSettingsMsg): DocSettingsLite {
+  return settingsOf(s);
 }
 
 type PageSetupFields = Pick<PageLite, "width" | "height" | "marginTop" | "marginRight" | "marginBottom" | "marginLeft" | "columns" | "gutter" | "bleed" | "slug" | "numberStyle" | "numberStart" | "slug" | "guides" | "hiddenMasterItems">;

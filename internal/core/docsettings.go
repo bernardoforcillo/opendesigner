@@ -22,6 +22,7 @@ var (
 	ErrBadVertical    = errors.New("core: vertical must be publishing, design or product")
 	ErrBadBaseline    = errors.New("core: baseline grid needs a finite increment between 0 and 1000 and a start >= 0")
 	ErrBadPageSetup   = errors.New("core: invalid page setup (size, margins, columns or bleed)")
+	ErrBadDocSettings = errors.New("core: invalid document settings (colour mode or profile)")
 	errNilDocSettings = errors.New("core: nil document settings")
 )
 
@@ -45,7 +46,7 @@ func validateDocSettings(s *opendesignerv1.DocSettings) error {
 	if math.IsNaN(inc) || math.IsInf(inc, 0) || inc < 0 || inc > 1000 || math.IsNaN(start) || math.IsInf(start, 0) || start < 0 {
 		return ErrBadBaseline
 	}
-	return nil
+	return validateColorMode(s)
 }
 
 func applySetDocSettings(doc *opendesignerv1.Document, s *opendesignerv1.SetDocSettings) error {

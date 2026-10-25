@@ -75,7 +75,7 @@ Pages and structure
 - [x] Page size, margins, columns, gutter and bleed per page (Page setup…), drawn on the sheet, snapped to, and exported as the sheet; PDF for print with bleed
 - [x] Slug areas, ruler guides per page, different margins for left and right pages
 - [ ] Slug and spreads in the PDF/EPUB export
-- [ ] Layers shared across pages
+- [x] Layers shared across pages (hide, lock, keep out of print); see docs/graphics-colour.md
 
 Text
 - [ ] Text frames with columns, inset and vertical alignment
@@ -90,7 +90,7 @@ Text
 - [ ] Widows/orphans, keep-with-next
 - [x] Bullets and numbered lists, tabs, indents
 - [x] Text wrap around objects (bounding box, gap); see docs/text-frames.md
-- [ ] Anchored (inline) objects
+- [x] Anchored (inline) objects, tied to a place in the text; see docs/graphics-colour.md
 - [x] Footnotes, tables (rows, columns, header), table of contents, index; see docs/text-frames.md
 - [ ] Table and cell styles, cell spanning, index sub-entries
 - [x] Find/change (text, word, regex), browser spell check, text variables (running headers, page count, document name)
@@ -98,9 +98,12 @@ Text
 - [x] OpenType feature settings per style (SVG output and editing field; not drawn on the canvas)
 
 Graphics and colour
-- [ ] Placed (linked) images with update-on-change, fitting options, image frames, effective resolution
-- [ ] Swatches (spot, tint, gradient), CMYK document mode, overprint, ICC profiles (see section 1b)
-- [ ] Object styles, anchored and nested frames, frame fitting
+- [x] Linked images: file name and pixel size, effective resolution with a low-resolution warning, fitting from pixel size, relink, Links panel
+- [ ] Update-on-change from disk, image frames with fitting inside them
+- [x] Swatches (process CMYK, RGB, spot, tints that follow their base), CMYK document mode and a recorded output profile
+- [ ] Gradient swatches, overprint, profile-managed conversion
+- [x] Object styles (fill, stroke, effects, opacity, corner radius, blend mode; based-on)
+- [ ] Nested frames, frame fitting
 - [ ] Transparency flattening for print, drop shadows and effects in PDF output
 
 Output

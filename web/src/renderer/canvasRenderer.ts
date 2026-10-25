@@ -1046,7 +1046,7 @@ function pickIn(
   for (let i = siblings.length - 1; i >= 0; i--) {
     const n = siblings[i];
     // A master page's copy is drawn but not hit: it belongs to the master, not to this page.
-    if (!n.visible || n.fromMaster || seen.has(n.id) || overrides?.get(n.id)?.hidden) continue;
+    if (!n.visible || n.fromMaster || n.locked || seen.has(n.id) || overrides?.get(n.id)?.hidden) continue;
     if (n.isMask && isMaskShape(n)) continue;
     if (masks.some((m) => m.at < i && !hitTestNode(m.shape, px, py, zoom))) continue;
     if (prune && n.kind !== "instance") {
@@ -1158,7 +1158,7 @@ function collectIn(
   prune: { extent: { get(id: string): Bounds | undefined }; probe: Bounds } | null,
 ): void {
   for (const n of siblings) {
-    if (!n.visible || n.fromMaster || seen.has(n.id)) continue;
+    if (!n.visible || n.fromMaster || n.locked || seen.has(n.id)) continue;
     // The subtree whose extent does not even touch the widened band has
     // nothing to offer. Not inside an instance (extent in the place of origin) and not
     // for an instance itself, which has its derived bounds below. `probe` is

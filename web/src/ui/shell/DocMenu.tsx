@@ -16,6 +16,10 @@ import { FontsDialog } from "../FontsDialog";
 import { StylesDialog } from "../StylesDialog";
 import { PageSetupDialog } from "../PageSetupDialog";
 import { FindReplaceDialog } from "../FindReplaceDialog";
+import { SwatchesDialog } from "../SwatchesDialog";
+import { ObjectStylesDialog } from "../ObjectStylesDialog";
+import { LayersDialog } from "../LayersDialog";
+import { LinksDialog } from "../LinksDialog";
 import { InsertTableDialog } from "../InsertTableDialog";
 import { generateContentsOps } from "../../tools/contents";
 import { VersionsDialog } from "../VersionsDialog";
@@ -63,6 +67,10 @@ export function DocMenu({ onNewDocument }: { onNewDocument: () => void }) {
   const [shareOpen, setShareOpen] = useState(false);
   const [boardOpen, setBoardOpen] = useState(false);
   const [findOpen, setFindOpen] = useState(false);
+  const [swatchesOpen, setSwatchesOpen] = useState(false);
+  const [objectStylesOpen, setObjectStylesOpen] = useState(false);
+  const [layersOpen, setLayersOpen] = useState(false);
+  const [linksOpen, setLinksOpen] = useState(false);
   const [tableOpen, setTableOpen] = useState(false);
   // What this kind of document needs: entries of other kinds of work are tucked away, not removed.
   const vertical = useScene((s) => verticalOf(s.scene));
@@ -105,6 +113,10 @@ export function DocMenu({ onNewDocument }: { onNewDocument: () => void }) {
           else if (k === "fonts") setFontsOpen(true);
           else if (k === "styles") setStylesOpen(true);
           else if (k === "find") setFindOpen(true);
+          else if (k === "swatches") setSwatchesOpen(true);
+          else if (k === "object-styles") setObjectStylesOpen(true);
+          else if (k === "layers") setLayersOpen(true);
+          else if (k === "links") setLinksOpen(true);
           else if (k === "table") setTableOpen(true);
           else if (k === "contents" || k === "index") generateContents(k === "contents" ? "toc" : "index");
           else if (k === "versions") setVersionsOpen(true);
@@ -182,6 +194,18 @@ export function DocMenu({ onNewDocument }: { onNewDocument: () => void }) {
               <MenuItem id="styles" className={ITEM}>
                 <Icon name="plus" size={14} /> Styles (paragraph, character)…
               </MenuItem>
+              <MenuItem id="swatches" className={ITEM}>
+                <Icon name="grid" size={14} /> Swatches and colour mode…
+              </MenuItem>
+              <MenuItem id="object-styles" className={ITEM}>
+                <Icon name="plus" size={14} /> Object styles…
+              </MenuItem>
+              <MenuItem id="layers" className={ITEM}>
+                <Icon name="layers" size={14} /> Layers (shared by all pages)…
+              </MenuItem>
+              <MenuItem id="links" className={ITEM}>
+                <Icon name="link" size={14} /> Links (images)…
+              </MenuItem>
               <MenuItem id="find" className={ITEM}>
                 <Icon name="search" size={14} /> Find and change…
               </MenuItem>
@@ -251,6 +275,10 @@ export function DocMenu({ onNewDocument }: { onNewDocument: () => void }) {
     <ShareDialog isOpen={shareOpen} onOpenChange={setShareOpen} />
     <BoardDialog isOpen={boardOpen} onOpenChange={setBoardOpen} />
     <FindReplaceDialog isOpen={findOpen} onOpenChange={setFindOpen} />
+    <SwatchesDialog isOpen={swatchesOpen} onOpenChange={setSwatchesOpen} />
+    <ObjectStylesDialog isOpen={objectStylesOpen} onOpenChange={setObjectStylesOpen} />
+    <LayersDialog isOpen={layersOpen} onOpenChange={setLayersOpen} />
+    <LinksDialog isOpen={linksOpen} onOpenChange={setLinksOpen} />
     <InsertTableDialog isOpen={tableOpen} onOpenChange={setTableOpen} />
     </>
   );

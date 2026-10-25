@@ -21,7 +21,7 @@ const cache = new WeakMap<SceneState, Tagged>();
 
 const isBoolean = (n: NodeLite) => booleanOpOf(n) !== null;
 const isConnector = (n: NodeLite) => connectorOf(n) !== null;
-const isBound = (n: NodeLite) => !!n.bindings || !!n.textStyleId || hasRich(n);
+const isBound = (n: NodeLite) => !!n.bindings || !!n.textStyleId || !!n.objectStyleId || hasRich(n);
 
 function scan(scene: SceneState): Tagged {
   const t = { booleans: new Set<string>(), connectors: new Set<string>(), bound: new Set<string>() };

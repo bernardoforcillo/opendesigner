@@ -1070,3 +1070,92 @@ func TestDocumentSettingsAndPageSetup(t *testing.T) {
 		t.Fatal("margins larger than the sheet should be refused")
 	}
 }
+
+// TestGraphicsTools covers object styles, layers and swatches.
+func TestGraphicsTools(t *testing.T) {
+	url := serveInMemory(t)
+	docID := newDoc(t, odmcp.NewClient(url))
+	sess := startSession(t, url, docID, "mcp")
+	ctx := context.Background()
+
+	rect, err := sess.CreateRectangle(ctx, odmcp.CreateShapeInput{Width: 100, Height: 50, Name: "card"})
+	if err != nil {
+		t.Fatalf("CreateRect: %v", err)
+	}
+	// Object styles: from a node, applied, listed, deleted.
+	st, err := sess.SetObjectStyle(ctx, odmcp.SetObjectStyleInput{Name: "Card", Sets: []string{"fills", "opacity"}, FromNodeId: rect.NodeId})
+	if err != nil {
+		t.Fatalf("SetObjectStyle: %v", err)
+	}
+	if _, err := sess.SetObjectStyle(ctx, odmcp.SetObjectStyleInput{Name: "Bad", Sets: []string{"width"}}); err == nil {
+		t.Fatal("an unknown property should be refused")
+	}
+	if out, err := sess.ApplyObjectStyle(ctx, odmcp.ApplyObjectStyleInput{NodeIds: []string{rect.NodeId}, ObjectStyleId: st.ObjectStyleId}); err != nil || out.Changed != 1 {
+		t.Fatalf("ApplyObjectStyle = %+v, %v", out, err)
+	}
+	if _, err := sess.ApplyObjectStyle(ctx, odmcp.ApplyObjectStyleInput{NodeIds: []string{rect.NodeId}, ObjectStyleId: "nope"}); err == nil {
+		t.Fatal("a missing style should be refused")
+	}
+	styles, _ := sess.ListObjectStyles(ctx, struct{}{})
+	if len(styles.ObjectStyles) != 1 || styles.ObjectStyles[0].Name != "Card" || styles.ObjectStyles[0].Opacity != 1 {
+		t.Fatalf("styles = %+v", styles)
+	}
+	if _, err := sess.DeleteObjectStyle(ctx, odmcp.IdInput{Id: st.ObjectStyleId}); err != nil {
+		t.Fatalf("DeleteObjectStyle: %v", err)
+	}
+
+	// Layers.
+	art, err := sess.SetLayer(ctx, odmcp.SetLayerInput{Name: "Art"})
+	if err != nil {
+		t.Fatalf("SetLayer: %v", err)
+	}
+	notes, _ := sess.SetLayer(ctx, odmcp.SetLayerInput{Name: "Notes", Locked: true, Position: 1})
+	if _, err := sess.AssignLayer(ctx, odmcp.AssignLayerInput{NodeIds: []string{rect.NodeId}, LayerId: art.LayerId}); err != nil {
+		t.Fatalf("AssignLayer: %v", err)
+	}
+	layers, _ := sess.ListLayers(ctx, struct{}{})
+	if len(layers.Layers) != 2 || layers.Layers[0].Id != notes.LayerId || !layers.Layers[0].Locked || layers.Layers[1].Nodes != 1 {
+		t.Fatalf("layers = %+v", layers)
+	}
+	if _, err := sess.AssignLayer(ctx, odmcp.AssignLayerInput{NodeIds: []string{rect.NodeId}, LayerId: "nope"}); err == nil {
+		t.Fatal("a missing layer should be refused")
+	}
+	if _, err := sess.DeleteLayer(ctx, odmcp.IdInput{Id: art.LayerId}); err != nil {
+		t.Fatalf("DeleteLayer: %v", err)
+	}
+
+	// Swatches and colour mode.
+	red, err := sess.SetSwatch(ctx, odmcp.SetSwatchInput{Name: "Red", Cmyk: &odmcp.CmykIO{M: 100, Y: 100}})
+	if err != nil {
+		t.Fatalf("SetSwatch: %v", err)
+	}
+	if _, err := sess.SetSwatch(ctx, odmcp.SetSwatchInput{Name: "Red 50", TintOf: red.SwatchId, Tint: 50}); err != nil {
+		t.Fatalf("tint: %v", err)
+	}
+	if _, err := sess.SetSwatch(ctx, odmcp.SetSwatchInput{Name: "x", TintOf: "nope", Tint: 50}); err == nil {
+		t.Fatal("a tint of nothing should be refused")
+	}
+	mode, profile := "cmyk", "FOGRA39"
+	if _, err := sess.SetDocumentSettings(ctx, odmcp.SetDocumentSettingsInput{ColorMode: &mode, IccProfile: &profile}); err != nil {
+		t.Fatalf("colour mode: %v", err)
+	}
+	bad := "lab"
+	if _, err := sess.SetDocumentSettings(ctx, odmcp.SetDocumentSettingsInput{ColorMode: &bad}); err == nil {
+		t.Fatal("an unknown colour mode should be refused")
+	}
+	sw, _ := sess.ListSwatches(ctx, struct{}{})
+	if len(sw.Swatches) != 2 || sw.ColorMode != "cmyk" || sw.Profile != "FOGRA39" || sw.Swatches[0].Name != "Red" || sw.Swatches[0].Cmyk == nil || sw.Swatches[1].Tint != 50 {
+		t.Fatalf("swatches = %+v", sw)
+	}
+	if sw.Swatches[1].Color.G < 0.49 || sw.Swatches[1].Color.G > 0.51 {
+		t.Fatalf("tint colour = %+v", sw.Swatches[1].Color)
+	}
+	// A swatch used by a node can be deleted: the node is detached.
+	if _, err := sess.DeleteSwatch(ctx, odmcp.IdInput{Id: red.SwatchId}); err != nil {
+		t.Fatalf("DeleteSwatch: %v", err)
+	}
+	sw, _ = sess.ListSwatches(ctx, struct{}{})
+	if len(sw.Swatches) != 1 || sw.Swatches[0].TintOf != "" {
+		t.Fatalf("after delete = %+v", sw)
+	}
+}
