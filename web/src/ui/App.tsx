@@ -1,3 +1,4 @@
+import { effectiveGuides, isLeftPage } from "../store/masters";
 import { useEffect, useRef, useState } from "react";
 import { Code, ConnectError } from "@connectrpc/connect";
 import { Tab, TabList, TabPanel, Tabs } from "react-aria-components";
@@ -39,6 +40,7 @@ import { CanvasOnboarding } from "../home/CanvasOnboarding";
 import { TextEditorOverlay } from "./TextEditorOverlay";
 import { LayersPanel } from "./LayersPanel";
 import { ComponentsPanel } from "./ComponentsPanel";
+import { PagesPanel } from "./PagesPanel";
 import { PropertiesPanel } from "./PropertiesPanel";
 import { PageBar } from "./PageBar";
 import { FlowPanel } from "./FlowPanel";
@@ -50,6 +52,8 @@ import { ShipPanel } from "./dev/ShipPanel";
 import { TimelinePanel } from "./timeline/TimelinePanel";
 import { useTimeline } from "../animation/timelineStore";
 import { posedScene } from "../animation/posedScene";
+import { verticalOf } from "../store/docSettings";
+import { modeFor } from "../verticals";
 import { attachTimelineShortcuts } from "./timeline/shortcuts";
 import { resolveFlow, useFlowUi, type EditorMode } from "../store/flowUi";
 import { drawFlows } from "../renderer/flowRenderer";
@@ -452,7 +456,8 @@ export function App() {
           // While the clip PLAYS the handles are not drawn: they would sit on
           // a geometry that changes every frame (and the animated scale is not in the
           // selection box). Paused or scrubbing they follow the posed geometry.
-          drawOverlay(octx, scene, camera, useTimeline.getState().playing ? [] : selection, marquee, snapGuides, penPreview, linkPreview);
+          const pageNow = scene.pages.find((p) => p.id === useScene.getState().currentPageId) ?? scene.pages[0];
+          drawOverlay(octx, scene, camera, useTimeline.getState().playing ? [] : selection, marquee, snapGuides, penPreview, linkPreview, pageNow ? { page: pageNow, settings: scene.settings, left: isLeftPage(scene, pageNow), guides: effectiveGuides(scene, pageNow) } : null);
           const peers = usePresence.getState().peers;
           if (Object.keys(peers).length > 0) {
             drawPeers(octx, scene, camera, peers, useScene.getState().currentPageId ?? null);
@@ -602,6 +607,19 @@ export function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // A document of a vertical only has its modes (a book has no flows): if the one on screen is not
+  // among them -- the document was just opened, or its vertical changed -- go to the vertical's first.
+  const vertical = useScene((s) => verticalOf(s.scene));
+  useEffect(() => {
+    const wanted = modeFor(vertical, useFlowUi.getState().mode);
+    if (wanted !== useFlowUi.getState().mode) useFlowUi.getState().setMode(wanted);
+  }, [vertical, mode]);
+  // A publication opens on its pages; another kind of document has no Pages tab to stay on.
+  useEffect(() => {
+    if (vertical === "publishing") setLeftTab((t) => (t === "layers" ? "pages" : t));
+    else setLeftTab((t) => (t === "pages" ? "layers" : t));
+  }, [vertical]);
+
   // Leaving Flows brings the tool back to "Select" if it was "Connect"; entering
   // Flows does so if it was a drawing tool: nothing is drawn in flows.
   useEffect(() => {
@@ -692,7 +710,7 @@ export function App() {
               {/* Tabs and page selector in the SAME row: 40px less. */}
               <div className="flex shrink-0 items-center border-b border-line pr-1.5">
               <TabList aria-label="Panel" className="flex min-w-0 flex-1 gap-0.5 px-1.5 pt-1">
-                {([["layers", "Layers", "layers"], ["components", "Components", "components"], ["comments", "Comments", "comment"]] as const).map(([id, label, icon]) => (
+                {([...(vertical === "publishing" ? [["pages", "Pages", "page"] as const] : []), ["layers", "Layers", "layers"], ["components", "Components", "components"], ["comments", "Comments", "comment"]] as const).map(([id, label, icon]) => (
                   <Tab
                     key={id}
                     id={id}
@@ -716,6 +734,9 @@ export function App() {
               </TabList>
               <PageBar compact />
               </div>
+              <TabPanel id="pages" className="min-h-0 flex-1 overflow-hidden outline-none">
+                <PagesPanel />
+              </TabPanel>
               <TabPanel id="layers" className="min-h-0 flex-1 overflow-hidden outline-none">
                 <LayersPanel />
               </TabPanel>

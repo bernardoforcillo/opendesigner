@@ -453,3 +453,22 @@ describe("mesh paints", () => {
     expect(out).toContain('fill="url(#p0)"');
   });
 });
+
+describe("letter spacing in the SVG", () => {
+  it("writes letter-spacing on the text and on a piece that differs", () => {
+    const style = { fontFamily: "", fontSize: 10, fontWeight: "", lineHeight: 1, align: "left" as const, letterSpacing: 2 };
+    const n = {
+      id: "t", parentId: "page1", orderKey: "a0", name: "t", visible: true, opacity: 1, x: 0, y: 0, width: 200, height: 20, rotation: 0,
+      fills: [{ r: 0, g: 0, b: 0, a: 1 }], strokes: [], kind: "text" as const, cornerRadius: 0, clipsContent: false,
+      text: {
+        content: "aa bb", style,
+        rich: { paragraphs: [{ style, spaceBefore: 0, spaceAfter: 0, indentFirst: 0, indentLeft: 0 }], runs: [{ start: 3, end: 5, style: { ...style, fontSize: 0, letterSpacing: 6 } }] },
+      },
+    };
+    const svg = nodesToSvg([n], { x: 0, y: 0, width: 200, height: 20 }, (s) => s.length * 5);
+    expect(svg).toContain('letter-spacing="2"');
+    expect(svg).toContain('letter-spacing="6"');
+    const plain = nodesToSvg([{ ...n, text: { content: "aa", style } }], { x: 0, y: 0, width: 200, height: 20 }, (s) => s.length * 5);
+    expect(plain).toContain('letter-spacing="2"');
+  });
+});

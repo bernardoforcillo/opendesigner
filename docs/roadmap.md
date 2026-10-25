@@ -46,6 +46,7 @@ Legend: [x] done · [ ] to do
 - [ ] Advanced strokes: variable width profiles, brushes, arrowheads
 - [x] Gradient mesh (a color grid blended over the box; the points do not move; code export uses the average color)
 - [x] SVG export and PDF (the SVG through the browser's print dialog, Save as PDF)
+- [x] PDF import (editable text with embedded fonts and shared text styles, shapes and images, one page per PDF page), and export of all pages as PDF or EPUB (fixed layout); see docs/pdf-epub.md
 - [ ] AI/EPS export
 - [ ] Color: ICC profiles and color-managed print (CMYK read-out/entry exists, plain conversion only)
 
@@ -56,6 +57,57 @@ Legend: [x] done · [ ] to do
 - [x] Templates: brainstorm, retrospective, user flow, customer journey
 - [x] Cursor chat, reactions, timer, dot voting, follow mode (ephemeral, through presence)
 - [ ] Mermaid import/export in both directions
+
+## 1d. Publishing (InDesign parity)
+
+Verticals (docs/publishing.md): a document is for publishing, design or design × development, and the editor, the Home and the templates follow.
+- [x] Verticals per document (publishing, design, design × development): modes, menu, Home and templates; document type switch
+- [x] Publishing templates (book, magazine, report) and design templates (poster, brand sheet); Pages panel with thumbnails
+
+
+Multi-page documents, long text and print output. Already there: pages, layout grids (columns, rows), uploaded fonts and shared text styles, PDF import with editable text, PDF/EPUB export of all pages (docs/pdf-epub.md).
+
+Pages and structure
+- [x] Page sizes and presets (A3-A6, Letter, Legal, Tabloid, book, square, custom)
+- [x] Facing pages and spreads (inside/outside margins, left/right pages), numbering sections with styles 1, i, I, a, A; see docs/publishing.md
+- [x] Master pages: template pages drawn behind the pages that apply them, `<#>` page-number token, editor, MCP (`update_page`), export; see docs/master-pages.md
+- [x] Master pages: overrides per page, left/right masters, a master based on another (chains), ruler guides from the master
+- [x] Pages panel with thumbnails (open, add page / master, setup)
+- [x] Pages panel: reorder, duplicate, spreads, sections with their own numbering
+- [x] Page size, margins, columns, gutter and bleed per page (Page setup…), drawn on the sheet, snapped to, and exported as the sheet; PDF for print with bleed
+- [x] Slug areas, ruler guides per page, different margins for left and right pages
+- [ ] Slug and spreads in the PDF/EPUB export
+- [ ] Layers shared across pages
+
+Text
+- [ ] Text frames with columns, inset and vertical alignment
+- [x] Threaded frames (text flows from one frame to the next, across pages), overset indicator; thread/unlink/add next frame, MCP (`thread_text_frames`); see docs/text-frames.md
+- [ ] Threading by dragging from a frame's port, a story editor, columns in a single frame
+- [x] Paragraph styles and character styles (based-on, next style, space before/after, indents), underline and strikethrough, editor pickers, MCP (`format_text`); see docs/rich-text.md
+- [ ] Nested styles, colour in styles, bullets and numbering, tabs
+- [x] Baseline grid (document setting, drawn on the page, snap target) and paragraphs that align to it; see docs/rich-text.md
+- [x] Letter spacing (tracking) and underline / strikethrough
+- [ ] Kerning control, horizontal scale, small caps, super/subscript
+- [ ] Hyphenation and justification, widows/orphans, keep-with-next, drop caps
+- [ ] Bullets and numbered lists, tabs, indents
+- [ ] Text wrap around objects, anchored (inline) objects
+- [ ] Footnotes, tables with cell and table styles, table of contents, index
+- [ ] Find/change, spell check, text variables (running headers, page numbers)
+- [ ] Text on a path; OpenType features (ligatures, stylistic sets, tabular figures)
+
+Graphics and colour
+- [ ] Placed (linked) images with update-on-change, fitting options, image frames, effective resolution
+- [ ] Swatches (spot, tint, gradient), CMYK document mode, overprint, ICC profiles (see section 1b)
+- [ ] Object styles, anchored and nested frames, frame fitting
+- [ ] Transparency flattening for print, drop shadows and effects in PDF output
+
+Output
+- [ ] Print-ready PDF writer (PDF/X-1a, PDF/X-4): fonts embedded, bleed, crop marks, colour bars, CMYK
+- [ ] Preflight panel (missing fonts, low-res images, overset text, RGB in CMYK documents)
+- [ ] Package (document + fonts + links)
+- [ ] EPUB: reflowable export from threaded text and styles (today: fixed layout), with a table of contents
+- [ ] Interactive PDF (links, bookmarks, forms), HTML export of text
+- [ ] Data merge (variable data from CSV), book (several documents with shared styles and numbering)
 
 ## 2. Collaboration
 - [x] Multiplayer on the same network: nickname, avatar, others' cursors and selections, `/doc/<id>` link to join the same document (no accounts, on purpose)

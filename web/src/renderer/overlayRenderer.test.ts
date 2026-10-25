@@ -676,3 +676,53 @@ describe("drawOverlay: the pen tool preview", () => {
     expect(PEN_ANCHOR_GRAB_PX).toBeGreaterThanOrEqual(PEN_ANCHOR_SIZE / 2);
   });
 });
+
+describe("drawOverlay: the sheet of a sized page", () => {
+  function sheetCtx() {
+    const f = fakeCtx(800, 600);
+    const rects: number[][] = [];
+    const strokeRects: number[][] = [];
+    const ctx = f.ctx as unknown as Record<string, unknown>;
+    ctx.rect = (...a: number[]) => { rects.push(a); };
+    ctx.fill = () => {};
+    ctx.setLineDash = () => {};
+    const baseStroke = ctx.strokeRect as (...a: number[]) => void;
+    ctx.strokeRect = (...a: number[]) => { strokeRects.push(a); baseStroke(...a); };
+    return { ...f, rects, strokeRects };
+  }
+  const page = { id: "p", name: "p", width: 400, height: 600, bleed: 10, marginTop: 40, marginBottom: 40, marginLeft: 30, marginRight: 30, columns: 2, gutter: 20 };
+
+  it("draws nothing for an unbounded page", () => {
+    const { ctx, rects } = sheetCtx();
+    drawOverlay(ctx, emptyScene("d", "n"), identityCam, [], null, [], null, null, { page: { id: "p", name: "p" } });
+    expect(rects).toHaveLength(0);
+  });
+
+  it("dims the outside of the sheet, outlines it, its bleed and its margins", () => {
+    const { ctx, rects, strokeRects } = sheetCtx();
+    drawOverlay(ctx, emptyScene("d", "n"), { x: 0, y: 0, zoom: 1 }, [], null, [], null, null, { page });
+    // The full canvas and the sheet (evenodd fill leaves the sheet clear).
+    expect(rects).toEqual([[0, 0, 800, 600], [0, 0, 400, 600]]);
+    // Sheet, bleed (-10,-10 .. 410,610) and margins (30,40 .. 370,560).
+    expect(strokeRects).toEqual([[0.5, 0.5, 400, 600], [-9.5, -9.5, 420, 620], [30.5, 40.5, 340, 520]]);
+  });
+
+  it("draws the baseline grid only when its lines are far enough apart, following the zoom", () => {
+    const grid = { baselineIncrement: 20 };
+    const near = sheetCtx();
+    drawOverlay(near.ctx, emptyScene("d", "n"), { x: 0, y: 0, zoom: 1 }, [], null, [], null, null, { page, settings: grid });
+    const horizontal = near.segments.filter((s) => s.y0 === s.y1 && s.x0 === 0 && s.x1 === 400);
+    expect(horizontal).toHaveLength(31); // 0, 20, ... 600
+    const far = sheetCtx();
+    drawOverlay(far.ctx, emptyScene("d", "n"), { x: 0, y: 0, zoom: 0.1 }, [], null, [], null, null, { page, settings: grid });
+    expect(far.segments.filter((s) => s.y0 === s.y1)).toHaveLength(0);
+  });
+
+  it("draws the column edges", () => {
+    const { ctx, segments } = sheetCtx();
+    drawOverlay(ctx, emptyScene("d", "n"), { x: 0, y: 0, zoom: 1 }, [], null, [], null, null, { page });
+    const xs = new Set(segments.filter((s) => s.x0 === s.x1).map((s) => s.x0));
+    // Two columns of 160 inside the 340 between the margins: 30..190 and 210..370.
+    expect(xs).toEqual(new Set([30.5, 190.5, 210.5, 370.5]));
+  });
+});

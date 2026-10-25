@@ -113,3 +113,33 @@ func TestHomeLifecycleRPCs(t *testing.T) {
 		t.Fatalf("double delete: %v", err)
 	}
 }
+
+// A document is born with its vertical, and the Home list reports it.
+func TestCreateDocumentWithVertical(t *testing.T) {
+	ws := t.TempDir()
+	ctx := context.Background()
+	c, _ := newTestClientWithManager(t, ws)
+
+	book, err := c.CreateDocument(ctx, connect.NewRequest(&opendesignerv1.CreateDocumentRequest{Name: "Book", Vertical: "publishing"}))
+	if err != nil || book.Msg.GetVertical() != "publishing" {
+		t.Fatalf("CreateDocument = %v, %v", book, err)
+	}
+	if _, err := c.CreateDocument(ctx, connect.NewRequest(&opendesignerv1.CreateDocumentRequest{Name: "App"})); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := c.CreateDocument(ctx, connect.NewRequest(&opendesignerv1.CreateDocumentRequest{Name: "Bad", Vertical: "cinema"})); connect.CodeOf(err) != connect.CodeInvalidArgument {
+		t.Fatalf("an unknown vertical should be InvalidArgument, got %v", err)
+	}
+	open, err := c.OpenDocument(ctx, connect.NewRequest(&opendesignerv1.OpenRequest{DocId: book.Msg.GetId()}))
+	if err != nil || open.Msg.GetSnapshot().GetSettings().GetVertical() != "publishing" {
+		t.Fatalf("snapshot settings = %v, %v", open.Msg.GetSnapshot().GetSettings(), err)
+	}
+	list, _ := c.ListDocuments(ctx, connect.NewRequest(&opendesignerv1.ListDocumentsRequest{}))
+	byName := map[string]string{}
+	for _, d := range list.Msg.GetDocs() {
+		byName[d.GetName()] = d.GetVertical()
+	}
+	if byName["Book"] != "publishing" || byName["App"] != "" || len(byName) != 2 {
+		t.Fatalf("listed verticals = %v", byName)
+	}
+}

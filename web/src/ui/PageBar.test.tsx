@@ -119,4 +119,48 @@ describe("PageBar", () => {
     fireEvent.keyDown(field, { key: "Enter" }); // unchanged value
     expect(sync.sent).toHaveLength(0);
   });
+
+  describe("master pages", () => {
+    it("creates a master, applies it to a page and detaches it again", () => {
+      render(<PageBar />);
+      fireEvent.click(screen.getByRole("button", { name: "Page 1" }));
+      fireEvent.click(screen.getByRole("button", { name: "Add a master page" }));
+      let scene = useScene.getState().scene!;
+      const master = scene.pages.find((p) => p.isMaster)!;
+      expect(master.name).toBe("A-Master");
+      // The new master is open for editing; go back to Page 1 and apply it.
+      useScene.getState().setCurrentPage("page1");
+      fireEvent.click(screen.getByRole("button", { name: /Page 1|A-Master/ }));
+      fireEvent.change(screen.getByLabelText("Master for this page"), { target: { value: master.id } });
+      scene = useScene.getState().scene!;
+      expect(scene.pages.find((p) => p.id === "page1")!.masterId).toBe(master.id);
+      fireEvent.change(screen.getByLabelText("Master for this page"), { target: { value: "" } });
+      expect(useScene.getState().scene!.pages.find((p) => p.id === "page1")!.masterId).toBeUndefined();
+    });
+
+    it("deletes a master that pages apply by detaching them in the same gesture (one undo)", () => {
+      useScene.getState().setScene({
+        ...emptyScene("doc1", "Untitled"),
+        pages: [{ id: "page1", name: "Page 1", masterId: "m1" }, { id: "m1", name: "A-Master", isMaster: true }],
+      });
+      render(<PageBar />);
+      fireEvent.click(screen.getByRole("button", { name: "Page 1" }));
+      fireEvent.click(screen.getByRole("button", { name: "Delete A-Master" }));
+      expect(useScene.getState().scene!.pages).toEqual([{ id: "page1", name: "Page 1" }]);
+      useScene.getState().undo();
+      expect(useScene.getState().scene!.pages).toEqual([
+        { id: "page1", name: "Page 1", masterId: "m1" },
+        { id: "m1", name: "A-Master", isMaster: true },
+      ]);
+    });
+
+    it("never offers to delete the last normal page", () => {
+      useScene.getState().setScene({
+        ...emptyScene("doc1", "Untitled"),
+        pages: [{ id: "page1", name: "Page 1" }, { id: "m1", name: "A-Master", isMaster: true }],
+      });
+      render(<PageBar />);
+      expect(screen.getByRole("button", { name: "Delete page" })).toBeDisabled();
+    });
+  });
 });

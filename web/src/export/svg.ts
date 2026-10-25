@@ -322,10 +322,26 @@ function ellipseElement(n: NodeLite, defs: string[]): string {
 function textElement(n: NodeLite, measure: MeasureText, defs: string[]): string {
   const style = n.text?.style;
   if (!style) return "";
-  const lines = placeTextLines((s) => measure(s, style), n);
+  const lines = placeTextLines((s) => measure(s, style), n, (st) => (s) => measure(s, st));
   if (lines.length === 0) return "";
+  // A rich line is one <tspan> per piece (each with its own x, font and decoration); the first
+  // carries the line's y, and so does every other: an absolute y per piece keeps the baseline shared.
   const spans = lines
-    .map((l) => `<tspan${attrs([attr("x", l.x), attr("y", l.y)])}>${esc(l.text)}</tspan>`)
+    .flatMap((l) =>
+      (l.segments ?? [{ text: l.text, x: l.x, width: l.width, style }]).map((seg) => {
+        const own = l.segments !== undefined;
+        const decoration = [seg.style.underline ? "underline" : "", seg.style.strikethrough ? "line-through" : ""].filter(Boolean).join(" ");
+        return `<tspan${attrs([
+          attr("x", seg.x), attr("y", l.y),
+          ...(own && fontFamilyOf(seg.style) !== fontFamilyOf(style) ? [attr("font-family", fontFamilyOf(seg.style))] : []),
+          ...(own && fontSizeOf(seg.style) !== fontSizeOf(style) ? [attr("font-size", fontSizeOf(seg.style))] : []),
+          ...(own && fontWeightOf(seg.style) !== fontWeightOf(style) ? [attr("font-weight", fontWeightOf(seg.style))] : []),
+          ...(own && !!seg.style.italic !== !!style.italic ? [attr("font-style", seg.style.italic ? "italic" : "normal")] : []),
+          ...(decoration ? [attr("text-decoration", decoration)] : []),
+          ...(own && (seg.style.letterSpacing ?? 0) !== (style.letterSpacing ?? 0) ? [attr("letter-spacing", seg.style.letterSpacing ?? 0)] : []),
+        ])}>${esc(seg.text)}</tspan>`;
+      }),
+    )
     .join("");
   // xml:space="preserve" serves a line's LEADING spaces, which the canvas
   // draws and which SVG would otherwise collapse. The price is that every whitespace
@@ -336,6 +352,7 @@ function textElement(n: NodeLite, measure: MeasureText, defs: string[]): string 
     attr("font-size", fontSizeOf(style)),
     attr("font-weight", fontWeightOf(style)),
     ...(style.italic ? [attr("font-style", "italic")] : []),
+    ...(style.letterSpacing ? [attr("letter-spacing", style.letterSpacing)] : []),
     ...paintAttrs(n, defs),
   ])} xml:space="preserve">${spans}</text>`;
 }

@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { runExport, exportFileName, downloadBlob } from "./exportScene";
-import type { ExportDeps } from "./exportScene";
+import type { ExportDeps, DocumentExportDeps } from "./exportScene";
+import { runDocumentExport } from "./exportScene";
 import { useScene } from "../store/store";
 import { emptyScene } from "../store/types";
 import type { NodeLite, SceneState } from "../store/types";
@@ -504,5 +505,131 @@ describe("runExport — PNG and images", () => {
     expect(useScene.getState().notice).toBe(pngNotice);
     expect(await d.saved[1].blob.text()).not.toContain("<image");
     expect(crosses).toBe(1); // the PNG drew the same cross
+  });
+});
+
+describe("runDocumentExport", () => {
+  const fakeDeps = (): DocumentExportDeps & { saved: { blob: Blob; filename: string }[]; printed: unknown[][] } => {
+    const saved: { blob: Blob; filename: string }[] = [];
+    const printed: unknown[][] = [];
+    return {
+      saved, printed,
+      measure: (s) => s.length * 10,
+      download: (blob, filename) => { saved.push({ blob, filename }); },
+      printPages: (pages) => { printed.push(pages); },
+      now: () => new Date("2026-01-01T00:00:00Z"),
+    };
+  };
+
+  function twoPages(): SceneState {
+    const s = sceneWith("Book", node({ id: "a", parentId: "page1", width: 100, height: 50 }), node({ id: "b", parentId: "p2", width: 30, height: 40 }));
+    s.pages = [...s.pages, { id: "p2", name: "Second" }];
+    return s;
+  }
+
+  it("prints every non-empty page with its own size", async () => {
+    install(twoPages());
+    const d = fakeDeps();
+    expect(await runDocumentExport("pdf", d)).toBe(true);
+    expect(d.printed).toHaveLength(1);
+    expect(d.printed[0].map((p) => [(p as { width: number }).width, (p as { height: number }).height])).toEqual([[100, 50], [30, 40]]);
+  });
+
+  it("downloads an EPUB with one spine item per page", async () => {
+    install(twoPages());
+    const d = fakeDeps();
+    expect(await runDocumentExport("epub", d)).toBe(true);
+    expect(d.saved[0].filename).toBe("Book.epub");
+    const text = new TextDecoder().decode(new Uint8Array(await d.saved[0].blob.arrayBuffer()));
+    expect(text).toContain("page-001.xhtml");
+    expect(text).toContain("page-002.xhtml");
+    expect(text).toContain("Second");
+  });
+
+  it("skips empty pages and refuses an entirely empty document", async () => {
+    const empty = sceneWith("E");
+    install(empty);
+    const d = fakeDeps();
+    expect(await runDocumentExport("epub", d)).toBe(false);
+    expect(useScene.getState().notice).toMatch(/every page is empty/);
+    expect(d.saved).toHaveLength(0);
+  });
+});
+
+describe("master pages in the export", () => {
+  it("draws a master's content on each page that applies it and skips the master itself", async () => {
+    const s = sceneWith("Book",
+      node({ id: "body", parentId: "page1", x: 100, y: 100, width: 20, height: 20 }),
+      node({ id: "band", parentId: "m1", x: 0, y: 0, width: 400, height: 10 }),
+      node({ id: "n", parentId: "m1", kind: "text", x: 0, y: 20, width: 100, height: 20, text: { content: "No. <#>", style: { fontFamily: "", fontSize: 16, fontWeight: "", lineHeight: 0, align: "left" } } }),
+      node({ id: "b2", parentId: "p2", x: 0, y: 0, width: 5, height: 5 }),
+    );
+    s.pages = [{ id: "page1", name: "One", masterId: "m1" }, { id: "m1", name: "A-Master", isMaster: true }, { id: "p2", name: "Two", masterId: "m1" }];
+    install(s);
+    const printed: { svg: string; width: number }[][] = [];
+    expect(await runDocumentExport("pdf", { measure: (t) => t.length * 10, printPages: (p) => { printed.push(p); } })).toBe(true);
+    // Two output pages (the master is not one), each with the master's band at width 400.
+    expect(printed[0]).toHaveLength(2);
+    expect(printed[0].every((p) => p.width === 400)).toBe(true);
+    expect(printed[0][0].svg).toContain("No. 1");
+    expect(printed[0][1].svg).toContain("No. 2");
+  });
+
+  it("exports only the page on screen, master content included", async () => {
+    const s = sceneWith("Book",
+      node({ id: "a", parentId: "page1", width: 10, height: 10 }),
+      node({ id: "other", parentId: "p2", x: 500, y: 500, width: 10, height: 10 }),
+    );
+    s.pages = [{ id: "page1", name: "One" }, { id: "p2", name: "Two" }];
+    install(s);
+    useScene.setState({ currentPageId: "page1" });
+    const d = deps();
+    await runExport({ format: "svg", scope: "page", scale: 1 }, d);
+    const svg = await d.saved[0].blob.text();
+    expect(svg).toContain('width="10"');
+    expect(svg).not.toContain("510");
+  });
+});
+
+describe("threaded text frames in the export", () => {
+  it("exports each frame with the part of the story that flows into it", async () => {
+    const style = { fontFamily: "", fontSize: 16, fontWeight: "", lineHeight: 1.25, align: "left" as const };
+    const a = node({ id: "A", kind: "text", x: 0, y: 0, width: 100, height: 20, meta: { "text.next": "B" }, text: { content: "aaaa bbbb cccc dddd", style } });
+    const b = node({ id: "B", kind: "text", x: 200, y: 0, width: 100, height: 40, text: { content: "", style } });
+    install(sceneWith("Story", a, b));
+    const d = deps();
+    expect(await runExport({ format: "svg", scope: "page", scale: 1 }, d)).toBe(true);
+    const svg = await d.saved[0].blob.text();
+    expect(svg).toContain(">aaaa bbbb<");
+    expect(svg).toContain(">cccc dddd<");
+  });
+});
+
+describe("sized pages in the export", () => {
+  function sheetScene(): SceneState {
+    const s = sceneWith("Book", node({ id: "a", parentId: "page1", x: 50, y: 60, width: 10, height: 10 }), node({ id: "off", parentId: "page1", x: 900, y: 900, width: 10, height: 10 }));
+    s.pages = [{ id: "page1", name: "One", width: 400, height: 600, bleed: 9 }, { id: "p2", name: "Empty sheet", width: 400, height: 600, bleed: 9 }, { id: "free", name: "Free" }];
+    return s;
+  }
+
+  it("exports a sized page as its sheet, cropping what lies outside and not its bounding box", async () => {
+    install(sheetScene());
+    useScene.setState({ currentPageId: "page1" });
+    const d = deps();
+    expect(await runExport({ format: "svg", scope: "page", scale: 1 }, d)).toBe(true);
+    const svg = await d.saved[0].blob.text();
+    expect(svg).toContain('viewBox="0 0 400 600"');
+  });
+
+  it("keeps an empty sheet as a page of the document export, and adds the bleed for print", async () => {
+    install(sheetScene());
+    const printed: { svg: string; width: number; height: number }[][] = [];
+    const printPages = (p: { svg: string; width: number; height: number }[]) => { printed.push(p); };
+    expect(await runDocumentExport("pdf", { measure: (t) => t.length * 10, printPages })).toBe(true);
+    // Two sheets (the empty one counts); the unbounded page is empty and is left out.
+    expect(printed[0].map((p) => [p.width, p.height])).toEqual([[400, 600], [400, 600]]);
+    expect(await runDocumentExport("pdf", { measure: (t) => t.length * 10, printPages }, { bleed: true })).toBe(true);
+    expect(printed[1].map((p) => [p.width, p.height])).toEqual([[418, 618], [418, 618]]);
+    expect(printed[1][0].svg).toContain('viewBox="-9 -9 418 618"');
   });
 });

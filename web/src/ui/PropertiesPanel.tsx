@@ -20,6 +20,7 @@ import { ExportSection } from "./ExportSection";
 import { VariablesSection } from "./VariablesSection";
 import { boundColor } from "./variableOps";
 import { TypographyControls } from "./TypographyControls";
+import { ThreadControls } from "./ThreadControls";
 import { InstanceControls } from "./InstanceControls";
 import { LayoutRelationControls } from "./LayoutRelationControls";
 import { effectiveStyle, styleOps } from "./typographyOps";
@@ -935,6 +936,7 @@ export function PropertiesPanel() {
               onChange={(v) => runGesture((ids) => textStyleOps(ids, { align: v as TextAlignLite }))}
             />
             <TypographyControls />
+            <ThreadControls />
           </div>
         </Section>
       )}
