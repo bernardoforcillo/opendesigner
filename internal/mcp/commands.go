@@ -279,6 +279,178 @@ func (s *Session) UploadFont(ctx context.Context, in UploadFontInput) (UploadFon
 	return out, s.runCommandWith(ctx, "upload_font", "upload_font", a, in.Path, &out)
 }
 
+// --- structure ---------------------------------------------------------------------------------------------
+
+type NodeIdsInput struct {
+	NodeIds []string `json:"nodeIds" jsonschema:"the nodes (a node inside a selected container is carried by the container)"`
+}
+
+type SelectionOutput struct {
+	Selection []string `json:"selection,omitempty" jsonschema:"the nodes the operation produced or kept selected"`
+}
+
+// GroupNodes wraps nodes in a group.
+func (s *Session) GroupNodes(ctx context.Context, in NodeIdsInput) (SelectionOutput, error) {
+	var out SelectionOutput
+	return out, s.runCommand(ctx, "group_nodes", "group_nodes", map[string]any{"nodeIds": in.NodeIds}, &out)
+}
+
+// UngroupNodes dissolves groups, keeping their children in place.
+func (s *Session) UngroupNodes(ctx context.Context, in NodeIdsInput) (SelectionOutput, error) {
+	var out SelectionOutput
+	return out, s.runCommand(ctx, "ungroup_nodes", "ungroup_nodes", map[string]any{"nodeIds": in.NodeIds}, &out)
+}
+
+type AlignNodesInput struct {
+	NodeIds []string `json:"nodeIds"`
+	Command string   `json:"command" jsonschema:"left | hcenter | right | top | middle | bottom (to the selection's box, or the parent frame for one node) | distribute-h | distribute-v (equal gaps, three or more nodes)"`
+}
+
+type AlignOutput struct {
+	Moved int `json:"moved" jsonschema:"how many nodes changed position"`
+}
+
+// AlignNodes aligns or distributes nodes.
+func (s *Session) AlignNodes(ctx context.Context, in AlignNodesInput) (AlignOutput, error) {
+	var out AlignOutput
+	return out, s.runCommand(ctx, "align_nodes", "align_nodes", map[string]any{"nodeIds": in.NodeIds, "command": in.Command}, &out)
+}
+
+type BooleanInput struct {
+	NodeIds []string `json:"nodeIds" jsonschema:"two or more shapes (rectangles, ellipses, vectors), or ONE live boolean group to change its operation"`
+	Op      string   `json:"op" jsonschema:"union | subtract (the bottom shape minus the others) | intersect | exclude"`
+}
+
+type GroupIdOutput struct {
+	GroupId string `json:"groupId"`
+}
+
+// BooleanOperation combines shapes into a live boolean group.
+func (s *Session) BooleanOperation(ctx context.Context, in BooleanInput) (GroupIdOutput, error) {
+	var out GroupIdOutput
+	return out, s.runCommand(ctx, "boolean_operation", "boolean_operation", map[string]any{"nodeIds": in.NodeIds, "op": in.Op}, &out)
+}
+
+type FlattenInput struct {
+	GroupId string `json:"groupId" jsonschema:"a live boolean group (or any group of shapes)"`
+}
+
+type NodeOnlyOutput struct {
+	NodeId string `json:"nodeId"`
+}
+
+// FlattenBoolean turns a boolean group into one plain vector.
+func (s *Session) FlattenBoolean(ctx context.Context, in FlattenInput) (NodeOnlyOutput, error) {
+	var out NodeOnlyOutput
+	return out, s.runCommand(ctx, "flatten_boolean", "flatten_boolean", map[string]any{"groupId": in.GroupId}, &out)
+}
+
+type OutlineStrokeInput struct {
+	NodeId string `json:"nodeId"`
+}
+
+// OutlineStroke turns a node's stroke into a filled vector.
+func (s *Session) OutlineStroke(ctx context.Context, in OutlineStrokeInput) (NodeOnlyOutput, error) {
+	var out NodeOnlyOutput
+	return out, s.runCommand(ctx, "outline_stroke", "outline_stroke", map[string]any{"nodeId": in.NodeId}, &out)
+}
+
+type DuplicateNodesOutput struct {
+	NodeIds []string `json:"nodeIds" jsonschema:"the copies, offset from the originals like a paste"`
+}
+
+// DuplicateNodes copies nodes next to themselves.
+func (s *Session) DuplicateNodes(ctx context.Context, in NodeIdsInput) (DuplicateNodesOutput, error) {
+	var out DuplicateNodesOutput
+	return out, s.runCommand(ctx, "duplicate_nodes", "duplicate_nodes", map[string]any{"nodeIds": in.NodeIds}, &out)
+}
+
+type ReorderInput struct {
+	NodeId string `json:"nodeId"`
+	To     string `json:"to" jsonschema:"front | back | forward | backward: its place in the stack among its siblings (the last is drawn on top)"`
+}
+
+type MovedOutput struct {
+	Moved bool `json:"moved" jsonschema:"false when it was already there"`
+}
+
+// ReorderNode moves a node in the stacking order.
+func (s *Session) ReorderNode(ctx context.Context, in ReorderInput) (MovedOutput, error) {
+	var out MovedOutput
+	return out, s.runCommand(ctx, "reorder_node", "reorder_node", map[string]any{"nodeId": in.NodeId, "to": in.To}, &out)
+}
+
+// --- vectors ------------------------------------------------------------------------------------------
+
+type AnchorIO struct {
+	X    float64 `json:"x" jsonschema:"in the parent's coordinates"`
+	Y    float64 `json:"y"`
+	InX  float64 `json:"inX,omitempty" jsonschema:"incoming handle, RELATIVE to the anchor; 0,0 = none (a straight segment)"`
+	InY  float64 `json:"inY,omitempty"`
+	OutX float64 `json:"outX,omitempty" jsonschema:"outgoing handle, relative to the anchor"`
+	OutY float64 `json:"outY,omitempty"`
+}
+
+type PathIO struct {
+	Closed  bool       `json:"closed,omitempty" jsonschema:"closed paths are filled; an open one is a line"`
+	Anchors []AnchorIO `json:"anchors"`
+}
+
+type StrokeIO struct {
+	Color  RGBA    `json:"color"`
+	Weight float64 `json:"weight"`
+}
+
+type CreateVectorInput struct {
+	PageId   string    `json:"pageId,omitempty"`
+	ParentId string    `json:"parentId,omitempty" jsonschema:"a frame or group to put it in (default: the page)"`
+	Name     string    `json:"name,omitempty"`
+	Paths    []PathIO  `json:"paths" jsonschema:"one or more paths (an outline and its holes, or several shapes as one object)"`
+	Fill     *RGBA     `json:"fill,omitempty"`
+	Stroke   *StrokeIO `json:"stroke,omitempty"`
+}
+
+type VectorOutput struct {
+	NodeId string  `json:"nodeId"`
+	X      float64 `json:"x"`
+	Y      float64 `json:"y"`
+	Width  float64 `json:"width" jsonschema:"the true bounds of the curve, which the editor computes"`
+	Height float64 `json:"height"`
+}
+
+// CreateVector draws a vector node from anchors and handles.
+func (s *Session) CreateVector(ctx context.Context, in CreateVectorInput) (VectorOutput, error) {
+	args := map[string]any{"paths": in.Paths}
+	if in.PageId != "" {
+		args["pageId"] = in.PageId
+	}
+	if in.ParentId != "" {
+		args["parentId"] = in.ParentId
+	}
+	if in.Name != "" {
+		args["nodeName"] = in.Name
+	}
+	if in.Fill != nil {
+		args["fill"] = map[string]any{"r": in.Fill.R, "g": in.Fill.G, "b": in.Fill.B, "a": in.Fill.A}
+	}
+	if in.Stroke != nil {
+		args["stroke"] = map[string]any{"color": map[string]any{"r": in.Stroke.Color.R, "g": in.Stroke.Color.G, "b": in.Stroke.Color.B, "a": in.Stroke.Color.A}, "weight": in.Stroke.Weight}
+	}
+	var out VectorOutput
+	return out, s.runCommand(ctx, "create_vector", "create_vector", args, &out)
+}
+
+type SetVectorPathInput struct {
+	NodeId string   `json:"nodeId" jsonschema:"a vector node"`
+	Paths  []PathIO `json:"paths" jsonschema:"replaces the geometry; the node's box follows it"`
+}
+
+// SetVectorPath replaces a vector's geometry.
+func (s *Session) SetVectorPath(ctx context.Context, in SetVectorPathInput) (VectorOutput, error) {
+	var out VectorOutput
+	return out, s.runCommand(ctx, "set_vector_path", "set_vector_path", map[string]any{"nodeId": in.NodeId, "paths": in.Paths}, &out)
+}
+
 func registerCommandTools(srv *mcp.Server, s *Session) {
 	addTool(srv, "generate_contents", "Write (or refresh) the document's table of contents or index into a generated text frame. The contents lists the headings (paragraphs whose paragraph style has an outline level, set_text_style outlineLevel) with page numbers; the index lists the terms marked [#term] in the text."+jobNote, s.GenerateContents)
 	addTool(srv, "insert_table", "Build a table (rows x cols of equal cells, header rows) on a page. A table is a group of rectangles and texts; edit it with edit_table and set_text on its cells."+jobNote, s.InsertTable)
@@ -290,5 +462,15 @@ func registerCommandTools(srv *mcp.Server, s *Session) {
 	addTool(srv, "import_pdf", "Import a PDF: every page becomes a page of the document; mode editable (default) turns text, shapes and images into nodes and extracts the embedded fonts, mode image makes one picture per page. Up to 200 pages."+jobNote, s.ImportPdf)
 	addTool(srv, "import_fig", "Import a Figma .fig file (experimental reader; says what it could not carry over)."+jobNote, s.ImportFig)
 	addTool(srv, "upload_font", "Upload a font file and register it as a document font (family, weight, style); text styles whose fontFamily is that family then draw with it, and the PDF export embeds it."+jobNote, s.UploadFont)
+	addTool(srv, "create_vector", "Draw a vector from paths of anchors with optional bezier handles (handles are offsets from their anchor). The editor computes the curve's true bounds for the node's box (one implementation of that geometry), so use this rather than writing a vector by hand."+jobNote, s.CreateVector)
+	addTool(srv, "set_vector_path", "Replace a vector node's geometry; its box follows the new curve in the same step."+jobNote, s.SetVectorPath)
+	addTool(srv, "group_nodes", "Wrap nodes in a group (they keep their stacking order inside it)."+jobNote, s.GroupNodes)
+	addTool(srv, "ungroup_nodes", "Dissolve groups, leaving their children in place."+jobNote, s.UngroupNodes)
+	addTool(srv, "align_nodes", "Align (left, hcenter, right, top, middle, bottom) or distribute (distribute-h, distribute-v) nodes."+jobNote, s.AlignNodes)
+	addTool(srv, "boolean_operation", "Union, subtract, intersect or exclude shapes into a LIVE boolean group (the shapes stay editable children); pass one existing boolean group to change its operation."+jobNote, s.BooleanOperation)
+	addTool(srv, "flatten_boolean", "Turn a boolean group into one plain vector node (the shapes go)."+jobNote, s.FlattenBoolean)
+	addTool(srv, "outline_stroke", "Turn a node's stroke into a filled vector outline."+jobNote, s.OutlineStroke)
+	addTool(srv, "duplicate_nodes", "Copy nodes, offset from the originals like a paste."+jobNote, s.DuplicateNodes)
+	addTool(srv, "reorder_node", "Move a node in the stacking order among its siblings: front, back, forward one, backward one."+jobNote, s.ReorderNode)
 	addTool(srv, "override_master_item", "Give a page its own editable copy of an item that comes from its master (the master's item stops being drawn on that page)."+jobNote, s.OverrideMasterItem)
 }

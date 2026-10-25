@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"sync"
 	"testing"
@@ -1525,4 +1526,202 @@ func TestEditorCommandsWithFiles(t *testing.T) {
 	if _, err := sess.RelinkImage(ctx, odmcp.RelinkImageInput{NodeId: "img", Path: file}); err != nil || got.opts["nodeId"] != "img" {
 		t.Fatalf("relink: %v %v", err, got.opts)
 	}
+}
+
+// TestDocumentsVersionsAndBranches covers the document-level tools.
+func TestDocumentsVersionsAndBranches(t *testing.T) {
+	url := serveInMemory(t)
+	docID := newDoc(t, odmcp.NewClient(url))
+	sess := startSession(t, url, docID, "mcp")
+	ctx := context.Background()
+
+	made, err := sess.CreateDocument(ctx, odmcp.CreateDocumentInput{Name: "Brochure", Vertical: "publishing"})
+	if err != nil || made.Vertical != "publishing" || made.Id == "" {
+		t.Fatalf("create: %+v %v", made, err)
+	}
+	if _, err := sess.RenameDocument(ctx, odmcp.RenameDocumentInput{DocId: made.Id, Name: "Brochure 2"}); err != nil {
+		t.Fatal(err)
+	}
+	list, _ := sess.ListDocuments(ctx, struct{}{})
+	names := map[string]bool{}
+	for _, d := range list.Documents {
+		names[d.Name] = true
+	}
+	if !names["Brochure 2"] || len(list.Documents) < 2 {
+		t.Fatalf("documents = %+v", list.Documents)
+	}
+	if _, err := sess.DeleteDocument(ctx, odmcp.DeleteDocumentInput{DocId: made.Id}); err == nil {
+		t.Fatal("a delete without confirm must be refused")
+	}
+	if _, err := sess.DeleteDocument(ctx, odmcp.DeleteDocumentInput{Confirm: true}); err == nil {
+		t.Fatal("a delete without a docId must be refused (never the session's own)")
+	}
+	if _, err := sess.DeleteDocument(ctx, odmcp.DeleteDocumentInput{DocId: made.Id, Confirm: true}); err != nil {
+		t.Fatalf("delete: %v", err)
+	}
+
+	v, err := sess.CreateVersion(ctx, odmcp.CreateVersionInput{Name: "v1"})
+	if err != nil || v.Name != "v1" {
+		t.Fatalf("version: %+v %v", v, err)
+	}
+	vs, _ := sess.ListVersions(ctx, struct{}{})
+	if len(vs.Versions) != 1 || vs.Versions[0].Id != v.Id {
+		t.Fatalf("versions = %+v", vs)
+	}
+
+	branch, err := sess.BranchDocument(ctx, odmcp.BranchInput{VersionId: v.Id, Name: "Branch"})
+	if err != nil || branch.Name != "Branch" {
+		t.Fatalf("branch: %+v %v", branch, err)
+	}
+	bs := startSession(t, url, branch.Id, "branch")
+	if o, _ := bs.GetBranchOrigin(ctx, struct{}{}); !o.IsBranch || o.SourceDocId != docID || !o.SourceExists {
+		t.Fatalf("origin = %+v", o)
+	}
+	if o, _ := sess.GetBranchOrigin(ctx, struct{}{}); o.IsBranch {
+		t.Fatalf("the original is not a branch: %+v", o)
+	}
+	if _, err := bs.CreatePage(ctx, odmcp.CreatePageInput{Name: "Added on the branch"}); err != nil {
+		t.Fatal(err)
+	}
+	rev, err := bs.ReviewMerge(ctx, struct{}{})
+	if err != nil || rev.SourceDocId != docID || len(rev.Changes) == 0 {
+		t.Fatalf("review: %+v %v", rev, err)
+	}
+	merged, err := bs.MergeBranch(ctx, odmcp.MergeBranchInput{})
+	if err != nil || merged.Applied == 0 {
+		t.Fatalf("merge: %+v %v", merged, err)
+	}
+	if _, err := sess.DeleteVersion(ctx, odmcp.DeleteVersionInput{VersionId: v.Id}); err != nil {
+		t.Fatal(err)
+	}
+	acc, err := sess.GetAccess(ctx, struct{}{})
+	if err != nil || acc.Protected || acc.Role != "open" {
+		t.Fatalf("access = %+v %v", acc, err)
+	}
+}
+
+// TestStrokesAndLayoutGrids covers the strokes and layoutGrids of set_properties, and the structure commands' wiring.
+func TestStrokesAndLayoutGrids(t *testing.T) {
+	url := serveInMemory(t)
+	docID := newDoc(t, odmcp.NewClient(url))
+	sess := startSession(t, url, docID, "mcp")
+	ctx := context.Background()
+
+	fr, err := sess.CreateFrame(ctx, odmcp.CreateFrameInput{Width: 200, Height: 100})
+	if err != nil {
+		t.Fatal(err)
+	}
+	three := int32(3)
+	_ = three
+	_, err = sess.SetProperties(ctx, odmcp.SetPropertiesInput{Id: fr.NodeId,
+		Strokes:     []odmcp.StrokeSpec{{Color: odmcp.RGBA{R: 1, A: 1}, Weight: 2, Align: "inside"}},
+		LayoutGrids: []odmcp.GridSpec{{Kind: "columns", Count: 3, Gutter: 8, Margin: 4}, {Kind: "grid", Size: 8}},
+	})
+	if err != nil {
+		t.Fatalf("set: %v", err)
+	}
+	nodes, _ := sess.ListNodes(ctx, odmcp.ListNodesInput{})
+	var found bool
+	for _, n := range nodes.Nodes {
+		if n.Id == fr.NodeId {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatal("frame missing")
+	}
+	if _, err := sess.SetProperties(ctx, odmcp.SetPropertiesInput{Id: fr.NodeId, Strokes: []odmcp.StrokeSpec{{Weight: -1}}}); err == nil {
+		t.Fatal("a negative weight should be refused")
+	}
+	if _, err := sess.SetProperties(ctx, odmcp.SetPropertiesInput{Id: fr.NodeId, Strokes: []odmcp.StrokeSpec{{Weight: 1, Align: "around"}}}); err == nil {
+		t.Fatal("an unknown align should be refused")
+	}
+	if _, err := sess.SetProperties(ctx, odmcp.SetPropertiesInput{Id: fr.NodeId, LayoutGrids: []odmcp.GridSpec{{Kind: "hexagons"}}}); err == nil {
+		t.Fatal("an unknown grid kind should be refused")
+	}
+	if _, err := sess.SetProperties(ctx, odmcp.SetPropertiesInput{Id: fr.NodeId, LayoutGrids: []odmcp.GridSpec{{Kind: "columns", Count: 0}}}); err == nil {
+		t.Fatal("zero columns should be refused by the document")
+	}
+	if _, err := sess.SetProperties(ctx, odmcp.SetPropertiesInput{Id: fr.NodeId, Strokes: []odmcp.StrokeSpec{}, LayoutGrids: []odmcp.GridSpec{}}); err != nil {
+		t.Fatalf("empty lists clear: %v", err)
+	}
+}
+
+// TestStructureAndVectorCommandsAreWired checks the names and arguments the structure and vector tools send.
+func TestStructureAndVectorCommandsAreWired(t *testing.T) {
+	url := serveInMemory(t)
+	docID := newDoc(t, odmcp.NewClient(url))
+	sess := startSession(t, url, docID, "mcp")
+	ctx := context.Background()
+
+	var last map[string]any
+	fakeEditor(t, url, docID, func(job *opendesignerv1.EditorJob) *opendesignerv1.CompleteJobRequest {
+		last = nil
+		_ = json.Unmarshal([]byte(job.GetOptionsJson()), &last)
+		text := `{"nodeId":"v","groupId":"g","nodeIds":["c"],"selection":["s"],"width":60,"moved":true}`
+		if last["name"] == "align_nodes" {
+			text = `{"moved":2}`
+		}
+		return &opendesignerv1.CompleteJobRequest{Ok: true, Text: text}
+	})
+	check := func(name string, want map[string]any) {
+		t.Helper()
+		if last["name"] != name {
+			t.Fatalf("command = %v, want %s", last["name"], name)
+		}
+		for k, v := range want {
+			if !reflect.DeepEqual(last[k], v) {
+				t.Fatalf("%s: %s = %#v, want %#v", name, k, last[k], v)
+			}
+		}
+	}
+	if _, err := sess.GroupNodes(ctx, odmcp.NodeIdsInput{NodeIds: []string{"a", "b"}}); err != nil {
+		t.Fatal(err)
+	}
+	check("group_nodes", map[string]any{"nodeIds": []any{"a", "b"}})
+	if _, err := sess.UngroupNodes(ctx, odmcp.NodeIdsInput{NodeIds: []string{"g"}}); err != nil {
+		t.Fatal(err)
+	}
+	check("ungroup_nodes", nil)
+	if a, err := sess.AlignNodes(ctx, odmcp.AlignNodesInput{NodeIds: []string{"a", "b"}, Command: "hcenter"}); err != nil || a.Moved != 2 {
+		t.Fatalf("align: %+v %v", a, err)
+	}
+	check("align_nodes", map[string]any{"command": "hcenter"})
+	if g, err := sess.BooleanOperation(ctx, odmcp.BooleanInput{NodeIds: []string{"a", "b"}, Op: "subtract"}); err != nil || g.GroupId != "g" {
+		t.Fatalf("boolean: %+v %v", g, err)
+	}
+	check("boolean_operation", map[string]any{"op": "subtract"})
+	if _, err := sess.FlattenBoolean(ctx, odmcp.FlattenInput{GroupId: "g"}); err != nil {
+		t.Fatal(err)
+	}
+	check("flatten_boolean", map[string]any{"groupId": "g"})
+	if _, err := sess.OutlineStroke(ctx, odmcp.OutlineStrokeInput{NodeId: "n"}); err != nil {
+		t.Fatal(err)
+	}
+	check("outline_stroke", map[string]any{"nodeId": "n"})
+	if d, err := sess.DuplicateNodes(ctx, odmcp.NodeIdsInput{NodeIds: []string{"a"}}); err != nil || d.NodeIds[0] != "c" {
+		t.Fatalf("duplicate: %+v %v", d, err)
+	}
+	check("duplicate_nodes", nil)
+	if _, err := sess.ReorderNode(ctx, odmcp.ReorderInput{NodeId: "a", To: "front"}); err != nil {
+		t.Fatal(err)
+	}
+	check("reorder_node", map[string]any{"to": "front"})
+	v, err := sess.CreateVector(ctx, odmcp.CreateVectorInput{
+		Name:  "Tri",
+		Paths: []odmcp.PathIO{{Closed: true, Anchors: []odmcp.AnchorIO{{X: 0, Y: 0}, {X: 60, Y: 0, OutY: 5}, {X: 30, Y: 60}}}},
+		Fill:  &odmcp.RGBA{R: 1, A: 1}, Stroke: &odmcp.StrokeIO{Color: odmcp.RGBA{A: 1}, Weight: 2},
+	})
+	if err != nil || v.NodeId != "v" || v.Width != 60 {
+		t.Fatalf("vector: %+v %v", v, err)
+	}
+	check("create_vector", map[string]any{"nodeName": "Tri"})
+	paths := last["paths"].([]any)[0].(map[string]any)
+	if paths["closed"] != true || len(paths["anchors"].([]any)) != 3 {
+		t.Fatalf("paths sent = %v", paths)
+	}
+	if _, err := sess.SetVectorPath(ctx, odmcp.SetVectorPathInput{NodeId: "v", Paths: []odmcp.PathIO{{Anchors: []odmcp.AnchorIO{{X: 1, Y: 1}}}}}); err != nil {
+		t.Fatal(err)
+	}
+	check("set_vector_path", map[string]any{"nodeId": "v"})
 }

@@ -25,10 +25,17 @@ Nothing is queued: **with no editor open the tool fails at once**, saying so. A 
 | `find_change` | list or replace text across the document (plain, whole word, regex) |
 | `override_master_item` | a page's own copy of a master item |
 | `place_image`, `import_svg`, `relink_image`, `import_pdf`, `import_fig`, `upload_font` | take a file from disk and bring it into the document |
+| `group_nodes`, `ungroup_nodes`, `align_nodes`, `duplicate_nodes`, `reorder_node` | structure and stacking, as the menus and arrange commands do it |
+| `boolean_operation`, `flatten_boolean`, `outline_stroke` | live boolean groups, flattening, stroke to outline |
+| `create_vector`, `set_vector_path` | draw or rewrite a vector from anchors and handles; the editor computes the curve's true bounds (that geometry exists once, on purpose) |
 
 ## Tools made by the server (no editor needed)
 
-`export_onix` (ONIX 3.1 / 3.0 from the book record, byte-identical to the editor's, checked against shared fixtures in `testdata/onix`), `data_merge` (a template page repeated per record of a CSV, sharing cases with the editor in `testdata/merge`), `duplicate_page`, and `set_document_settings { book }` for the book record.
+`export_onix` (ONIX 3.1 / 3.0 from the book record, byte-identical to the editor's, checked against shared fixtures in `testdata/onix`), `data_merge` (a template page repeated per record of a CSV, sharing cases with the editor in `testdata/merge`), `duplicate_page`, `set_document_settings { book }` for the book record, and `set_properties` with `strokes` and `layoutGrids`.
+
+Documents, versions and branches: `list_documents`, `create_document`, `rename_document`, `delete_document` (needs the id and `confirm: true`, never defaults to the session's own document), `list_versions`, `create_version`, `delete_version`, `branch_document`, `get_branch_origin`, `review_merge`, `merge_branch`, `get_access`.
+
+**Left to a person on purpose:** protecting a document and making or revoking share links. An agent can read who may open a document (`get_access`) but not change it.
 
 ## Limits
 

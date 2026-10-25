@@ -411,7 +411,7 @@ func (s *Session) DeleteTransition(ctx context.Context, in NodeIdInput) (SeqOutp
 // SetNodeMetaInput merges keys into a node's metadata.
 type SetNodeMetaInput struct {
 	Id    string            `json:"id" jsonschema:"id of the node"`
-	Meta  map[string]string `json:"meta,omitempty" jsonschema:"keys to set, merged with the existing ones. Conventions: flow.kind (screen|decision|action|start|end|note), code.route, code.component, test.id, test.text, status (planned|implemented|tested)"`
+	Meta  map[string]string `json:"meta,omitempty" jsonschema:"keys to set, merged with the existing ones. Conventions: flow.kind (screen|decision|action|start|end|note), code.route, code.component, test.id, test.text, status (planned|implemented|tested). Publishing and drawing conventions: link.url (a URL a PDF link annotation opens; may hold {{Field}} for data_merge), text.path (id of a vector the text runs along), text.next (id of the next threaded frame; prefer thread_text_frames), wrap.mode (box: the text of frames below it flows around its bounds; see docs/text-frames.md) and wrap.offset (gap, px), boolean.op (union|subtract|intersect|exclude on a group: a live boolean), connector.from / connector.to / connector.route / connector.head (a connector between two nodes), stroke.cap (butt|round|square), stroke.join (miter|round|bevel), stroke.miter, stroke.dash (e.g. 4,2), stroke.dashOffset, vector.fillRule (nonzero|evenodd), table.cols / table.rows / table.head (a table group: prefer insert_table and edit_table)"`
 	Unset []string          `json:"unset,omitempty" jsonschema:"keys to remove"`
 }
 

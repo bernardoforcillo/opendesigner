@@ -150,3 +150,104 @@ describe("commands that take a file", () => {
     expect((await cmd({ name: "relink_image", nodeId: "t1" }, { name: "a.png", data: bytes("x") })).ok).toBe(false);
   });
 });
+
+describe("structure commands", () => {
+  const rect = (id: string, x: number, key: string, over: Partial<NodeLite> = {}): NodeLite => ({
+    id, parentId: "page1", orderKey: key, name: id, visible: true, opacity: 1, x, y: 0, width: 20, height: 20, rotation: 0,
+    fills: [{ r: 0, g: 0, b: 0, a: 1 }], strokes: [], kind: "rect", cornerRadius: 0, clipsContent: false, ...over,
+  });
+  beforeEach(() => {
+    const s = useScene.getState().scene!;
+    useScene.getState().setScene({ ...s, nodes: s.nodes.delete("t1").set("A", rect("A", 0, "a1")).set("B", rect("B", 50, "a2")).set("C", rect("C", 130, "a3")) });
+  });
+  const orderOf = () => nodes().filter((n) => n.parentId === "page1" && n.kind === "rect").sort((a, b) => (a.orderKey < b.orderKey ? -1 : 1)).map((n) => n.id);
+
+  it("groups and ungroups", async () => {
+    const g = await cmd({ name: "group_nodes", nodeIds: ["A", "B"] });
+    expect(g.ok).toBe(true);
+    const group = nodes().find((n) => n.kind === "group")!;
+    expect(nodes().find((n) => n.id === "A")!.parentId).toBe(group.id);
+    expect((await cmd({ name: "ungroup_nodes", nodeIds: [group.id] })).ok).toBe(true);
+    expect(nodes().find((n) => n.id === "A")!.parentId).toBe("page1");
+    expect((await cmd({ name: "ungroup_nodes", nodeIds: ["A"] })).message).toBe("none of those nodes is a group");
+    expect((await cmd({ name: "group_nodes", nodeIds: ["ghost"] })).message).toBe("no node ghost");
+    expect((await cmd({ name: "group_nodes", nodeIds: [] })).message).toMatch(/non-empty list/);
+  });
+
+  it("aligns and distributes", async () => {
+    expect((await cmd({ name: "align_nodes", nodeIds: ["A", "B", "C"], command: "left" })).data.moved).toBe(2);
+    expect(nodes().find((n) => n.id === "C")!.x).toBe(0);
+    await cmd({ name: "align_nodes", nodeIds: ["A", "B", "C"], command: "left" });
+    expect((await cmd({ name: "align_nodes", nodeIds: ["A", "B"], command: "distribute-h" })).message).toMatch(/at least three/);
+    expect((await cmd({ name: "align_nodes", nodeIds: ["A", "B"], command: "diagonal" })).message).toMatch(/command must be/);
+  });
+
+  it("makes a live boolean group and changes its operation", async () => {
+    const r = await cmd({ name: "boolean_operation", nodeIds: ["A", "B"], op: "union" });
+    expect(r.ok).toBe(true);
+    const gid = r.data.groupId as string;
+    expect(nodes().find((n) => n.id === gid)!.meta!["boolean.op"] ?? Object.values(nodes().find((n) => n.id === gid)!.meta ?? {})[0]).toBeTruthy();
+    expect((await cmd({ name: "boolean_operation", nodeIds: [gid], op: "subtract" })).ok).toBe(true);
+    expect((await cmd({ name: "boolean_operation", nodeIds: ["C"], op: "union" })).ok).toBe(false);
+    expect((await cmd({ name: "boolean_operation", nodeIds: ["C"], op: "xor" })).message).toMatch(/op must be/);
+    expect((await cmd({ name: "flatten_boolean", groupId: gid })).ok).toBe(true);
+    expect((await cmd({ name: "flatten_boolean", groupId: "C" })).ok).toBe(false);
+  });
+
+  it("changes the stacking order", async () => {
+    expect(orderOf()).toEqual(["A", "B", "C"]);
+    await cmd({ name: "reorder_node", nodeId: "A", to: "front" });
+    expect(orderOf()).toEqual(["B", "C", "A"]);
+    await cmd({ name: "reorder_node", nodeId: "A", to: "backward" });
+    expect(orderOf()).toEqual(["B", "A", "C"]);
+    await cmd({ name: "reorder_node", nodeId: "A", to: "forward" });
+    expect(orderOf()).toEqual(["B", "C", "A"]);
+    await cmd({ name: "reorder_node", nodeId: "A", to: "back" });
+    expect(orderOf()).toEqual(["A", "B", "C"]);
+    expect((await cmd({ name: "reorder_node", nodeId: "A", to: "back" })).data.moved).toBe(false);
+    expect((await cmd({ name: "reorder_node", nodeId: "A", to: "up" })).message).toMatch(/to must be/);
+  });
+
+  it("duplicates nodes", async () => {
+    const r = await cmd({ name: "duplicate_nodes", nodeIds: ["A"] });
+    expect(r.ok).toBe(true);
+    expect(r.data.nodeIds).toHaveLength(1);
+    expect(nodes().filter((n) => n.kind === "rect")).toHaveLength(4);
+  });
+});
+
+describe("vectors", () => {
+  const tri = [{ closed: true, anchors: [{ x: 100, y: 100 }, { x: 160, y: 100 }, { x: 130, y: 160 }] }];
+
+  it("creates a vector whose box is the true bounds of its geometry", async () => {
+    const r = await cmd({ name: "create_vector", paths: tri, fill: { r: 1, g: 0, b: 0 }, stroke: { color: { r: 0, g: 0, b: 0 }, weight: 2 }, nodeName: "Triangle" });
+    expect(r.ok).toBe(true);
+    expect(r.data).toMatchObject({ x: 100, y: 100, width: 60, height: 60 });
+    const n = nodes().find((x) => x.id === r.data.nodeId)!;
+    expect(n.kind).toBe("vector");
+    expect(n.name).toBe("Triangle");
+    expect(n.vector!.subpaths[0]!.anchors[0]).toMatchObject({ x: 0, y: 0 }); // normalised: the box carries the position
+    expect(n.fills[0]).toMatchObject({ r: 1, g: 0, b: 0, a: 1 });
+    expect(n.strokes[0]!.weight).toBe(2);
+  });
+
+  it("a curve's box is its true bounds, not its control points'", async () => {
+    const r = await cmd({ name: "create_vector", paths: [{ anchors: [{ x: 0, y: 0, outX: 0, outY: 100 }, { x: 100, y: 0, inX: 0, inY: 100 }] }] });
+    expect(r.data.height).toBeCloseTo(75, 5); // a cubic with both handles at 100 reaches 0.75 of it
+  });
+
+  it("rewrites a path and keeps the box in step", async () => {
+    const made = await cmd({ name: "create_vector", paths: tri });
+    const r = await cmd({ name: "set_vector_path", nodeId: made.data.nodeId, paths: [{ closed: true, anchors: [{ x: 10, y: 10 }, { x: 50, y: 10 }, { x: 50, y: 30 }] }] });
+    expect(r.ok).toBe(true);
+    const n = nodes().find((x) => x.id === made.data.nodeId)!;
+    expect(n).toMatchObject({ x: 10, y: 10, width: 40, height: 20 });
+  });
+
+  it("refuses bad paths", async () => {
+    expect((await cmd({ name: "create_vector", paths: [] })).message).toMatch(/1..200 paths/);
+    expect((await cmd({ name: "create_vector", paths: [{ anchors: [{ x: 1 }] }] })).message).toMatch(/numeric x and y/);
+    expect((await cmd({ name: "create_vector", paths: tri, fill: { r: "red" } })).message).toMatch(/r, g and b/);
+    expect((await cmd({ name: "set_vector_path", nodeId: "t1", paths: tri })).message).toBe("nodeId is not a vector node");
+  });
+});

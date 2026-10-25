@@ -329,6 +329,8 @@ type SetPropertiesInput struct {
 	Fills        []RGBA       `json:"fills,omitempty" jsonschema:"replaces the whole fill list; [] clears it"`
 	Effects      []EffectSpec `json:"effects,omitempty" jsonschema:"replaces the whole effect list; [] clears it"`
 	IsMask       *bool        `json:"isMask,omitempty" jsonschema:"rect, ellipse, frame and vector only: the node is not drawn and its outline clips the siblings above it"`
+	Strokes      []StrokeSpec `json:"strokes,omitempty" jsonschema:"replaces the whole stroke list; [] clears it. The first stroke with a positive weight is the one drawn"`
+	LayoutGrids  []GridSpec   `json:"layoutGrids,omitempty" jsonschema:"frames only: replaces the whole list of layout grids (guides and snap targets, never exported); [] clears it"`
 	BlendMode    *string      `json:"blendMode,omitempty" jsonschema:"normal | multiply | screen | overlay | darken | lighten | color-dodge | color-burn | hard-light | soft-light | difference | exclusion | hue | saturation | color | luminosity"`
 }
 
@@ -393,6 +395,34 @@ func (s *Session) SetProperties(ctx context.Context, in SetPropertiesInput) (Seq
 		}
 		patch.Fills = toPaints(in.Fills)
 		paths = append(paths, "fills")
+	}
+	if in.Strokes != nil {
+		colors := make([]RGBA, len(in.Strokes))
+		for i, st := range in.Strokes {
+			if st.Weight < 0 {
+				return SeqOutput{}, fmt.Errorf("strokes[%d].weight must be >= 0", i)
+			}
+			colors[i] = st.Color
+		}
+		if err := validateFills(colors); err != nil {
+			return SeqOutput{}, err
+		}
+		for i, p := range toPaints(colors) {
+			align, err := strokeAlignEnum(in.Strokes[i].Align)
+			if err != nil {
+				return SeqOutput{}, err
+			}
+			patch.Strokes = append(patch.Strokes, &opendesignerv1.Stroke{Paint: p, Weight: in.Strokes[i].Weight, Align: align})
+		}
+		paths = append(paths, "strokes")
+	}
+	if in.LayoutGrids != nil {
+		grids, err := toLayoutGrids(in.LayoutGrids)
+		if err != nil {
+			return SeqOutput{}, err
+		}
+		patch.LayoutGrids = grids
+		paths = append(paths, "layout_grids")
 	}
 	if in.CornerRadius != nil {
 		patch.Shape = &opendesignerv1.Node_Rect{Rect: &opendesignerv1.RectNode{CornerRadius: *in.CornerRadius}}
@@ -1037,7 +1067,7 @@ func RegisterTools(srv *mcp.Server, s *Session) {
 	addTool(srv, "create_frame", "Create a frame: a container with its own box. Optionally clipsContent, and autoLayout to have the server arrange its children in a row or column (the children's x/y are then computed for you). parentId defaults to the first page.", s.CreateFrame)
 	addTool(srv, "set_auto_layout", "Turn auto layout on, change it, or (autoLayout omitted) off for a frame. After every change the server repositions the frame's children; reposition by editing the layout, not the children's x/y, which it overrides.", s.SetAutoLayout)
 	addTool(srv, "create_text", "Create a text node with the given content. parentId defaults to the first page. Returns the new node id.", s.CreateText)
-	addTool(srv, "set_properties", "Set absolute properties on a node (x/y/width/height/opacity/rotation/name/visible/cornerRadius/fills/effects). Effects (any number of shadows): [{kind:dropShadow|innerShadow,color,offsetX,offsetY,blur}|{kind:layerBlur|backgroundBlur,radius}]. blendMode: normal|multiply|screen|overlay|... (CSS names). isMask: true makes the shape a mask for the siblings above it. A fill is a solid {r,g,b,a} or a {gradient:{kind:linear|radial,stops,x1,y1,x2,y2}} in box-normalised coordinates. Only provided fields change.", s.SetProperties)
+	addTool(srv, "set_properties", "Set absolute properties on a node (x/y/width/height/opacity/rotation/name/visible/cornerRadius/fills/strokes/effects/layoutGrids). Effects (any number of shadows): [{kind:dropShadow|innerShadow,color,offsetX,offsetY,blur}|{kind:layerBlur|backgroundBlur,radius}]. blendMode: normal|multiply|screen|overlay|... (CSS names). isMask: true makes the shape a mask for the siblings above it. A fill is a solid {r,g,b,a} or a {gradient:{kind:linear|radial,stops,x1,y1,x2,y2}} in box-normalised coordinates. Only provided fields change.", s.SetProperties)
 	addTool(srv, "set_text", "Set a text node's content, and optionally replace its style.", s.SetText)
 	addTool(srv, "delete_node", "Delete a node and its whole subtree.", s.DeleteNode)
 	addTool(srv, "reparent_node", "Move a node under a new parent (node or page), with an optional order key.", s.ReparentNode)
@@ -1072,5 +1102,58 @@ func RegisterTools(srv *mcp.Server, s *Session) {
 	registerOnixTools(srv, s)
 	registerPageCopyTools(srv, s)
 	registerCommandTools(srv, s)
+	registerDocumentTools(srv, s)
 	registerDiagramTools(srv, s)
+}
+
+// StrokeSpec is one stroke: a colour (or gradient), a weight and where it sits on the outline.
+type StrokeSpec struct {
+	Color  RGBA    `json:"color"`
+	Weight float64 `json:"weight" jsonschema:"world units, >= 0"`
+	Align  string  `json:"align,omitempty" jsonschema:"center (default) | inside | outside"`
+}
+
+func strokeAlignEnum(s string) (opendesignerv1.StrokeAlign, error) {
+	switch s {
+	case "", "center":
+		return opendesignerv1.StrokeAlign_STROKE_ALIGN_CENTER, nil
+	case "inside":
+		return opendesignerv1.StrokeAlign_STROKE_ALIGN_INSIDE, nil
+	case "outside":
+		return opendesignerv1.StrokeAlign_STROKE_ALIGN_OUTSIDE, nil
+	}
+	return 0, fmt.Errorf("stroke align must be center, inside or outside, got %q", s)
+}
+
+// GridSpec is a layout grid of a frame.
+type GridSpec struct {
+	Kind   string  `json:"kind" jsonschema:"grid (square cells of size) | columns | rows (count of them between the margins, gutter apart)"`
+	Size   float64 `json:"size,omitempty" jsonschema:"grid only, > 0"`
+	Count  int32   `json:"count,omitempty" jsonschema:"columns / rows: 1..1000"`
+	Gutter float64 `json:"gutter,omitempty"`
+	Margin float64 `json:"margin,omitempty"`
+	Color  *RGBA   `json:"color,omitempty" jsonschema:"overlay tint, alpha included"`
+}
+
+func toLayoutGrids(in []GridSpec) ([]*opendesignerv1.LayoutGrid, error) {
+	out := make([]*opendesignerv1.LayoutGrid, 0, len(in))
+	for i, g := range in {
+		var kind opendesignerv1.LayoutGridKind
+		switch g.Kind {
+		case "grid":
+			kind = opendesignerv1.LayoutGridKind_LAYOUT_GRID_KIND_GRID
+		case "columns":
+			kind = opendesignerv1.LayoutGridKind_LAYOUT_GRID_KIND_COLUMNS
+		case "rows":
+			kind = opendesignerv1.LayoutGridKind_LAYOUT_GRID_KIND_ROWS
+		default:
+			return nil, fmt.Errorf("layoutGrids[%d].kind must be grid, columns or rows, got %q", i, g.Kind)
+		}
+		pg := &opendesignerv1.LayoutGrid{Kind: kind, Size: g.Size, Count: g.Count, Gutter: g.Gutter, Margin: g.Margin}
+		if g.Color != nil {
+			pg.Color = &opendesignerv1.Color{R: float32(g.Color.R), G: float32(g.Color.G), B: float32(g.Color.B), A: float32(g.Color.A)}
+		}
+		out = append(out, pg)
+	}
+	return out, nil
 }

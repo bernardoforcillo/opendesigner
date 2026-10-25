@@ -8,6 +8,21 @@ import { importSvgFile } from "../tools/svgImport";
 import { addFontOp } from "../ui/typographyOps";
 import { findAll, replaceOps } from "../store/findReplace";
 import { useScene } from "../store/store";
+import { alignOps, type AlignCommand } from "../selection/align";
+import { orderKeyBetween } from "../store/orderKey";
+import { childrenOf } from "../store/tree";
+import { duplicateSelection } from "../tools/clipboard";
+import { groupOps, ungroupOps } from "../tools/grouping";
+import { makeSetPropsOp } from "../tools/ops";
+import { flattenGroupOps, liveBooleanOps, setBooleanOpOps, type BooleanOp } from "../vector/boolean";
+import { outlineStrokeOps } from "../vector/outlineStroke";
+import { booleanOpOf } from "../vector/regions";
+import { create } from "@bufbuild/protobuf";
+import { NodeSchema } from "../gen/opendesigner/v1/opendesigner_pb";
+import { nextOrderKey } from "../store/orderKey";
+import { normalizeVector } from "../store/vectorGeometry";
+import { toPbFills, toPbStrokes, toPbSubPaths, type FillLite, type SubPathLite } from "../store/types";
+import { makeCreateNodeOp, makeSetVectorPathOp, uuid } from "../tools/ops";
 import { generateContentsOps } from "../tools/contents";
 import { overrideMasterItemOps } from "../tools/pageOps";
 import { MAX_TABLE_SIDE, addColumnOps, addRowOps, createTableOps, deleteColumnOps, deleteRowOps, resizeTableOps, tableIdOf } from "../tools/tableOps";
@@ -30,6 +45,42 @@ function commit(ops: Op[]): void {
 const isStr = (v: unknown): v is string => typeof v === "string";
 const isNum = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v);
 const isBool = (v: unknown): v is boolean => typeof v === "boolean";
+
+/** The node ids of `nodeIds`, or a message saying what is wrong with them. */
+function nodeIdsOf(o: Record<string, unknown>, scene: { nodes: { has(id: string): boolean } }): string[] | string {
+  if (!Array.isArray(o.nodeIds) || o.nodeIds.length === 0 || !o.nodeIds.every(isStr)) return "nodeIds must be a non-empty list of ids";
+  const missing = (o.nodeIds as string[]).find((id) => !scene.nodes.has(id));
+  return missing ? `no node ${missing}` : (o.nodeIds as string[]);
+}
+
+/** Paths from the command's options (absolute coordinates, handles relative to their anchor), or a message. */
+function pathsOf(v: unknown): SubPathLite[] | string {
+  if (!Array.isArray(v) || v.length === 0 || v.length > 200) return "paths must be a list of 1..200 paths";
+  const out: SubPathLite[] = [];
+  for (const [i, p] of v.entries()) {
+    if (typeof p !== "object" || p === null || !Array.isArray((p as { anchors?: unknown }).anchors)) return `paths[${i}].anchors must be a list`;
+    const raw = (p as { anchors: unknown[]; closed?: unknown }).anchors;
+    if (raw.length === 0 || raw.length > 10000) return `paths[${i}] needs 1..10000 anchors`;
+    const anchors: SubPathLite["anchors"] = [];
+    for (const [k, a] of raw.entries()) {
+      const o = a as Record<string, unknown>;
+      const num = (key: string, dflt?: number) => (o?.[key] === undefined && dflt !== undefined ? dflt : o?.[key]);
+      const vals = [num("x"), num("y"), num("inX", 0), num("inY", 0), num("outX", 0), num("outY", 0)];
+      if (!vals.every(isNum)) return `paths[${i}].anchors[${k}] needs numeric x and y (and optional inX, inY, outX, outY)`;
+      anchors.push({ x: vals[0] as number, y: vals[1] as number, inX: vals[2] as number, inY: vals[3] as number, outX: vals[4] as number, outY: vals[5] as number });
+    }
+    out.push({ anchors, closed: (p as { closed?: unknown }).closed === true });
+  }
+  return out;
+}
+
+function fillOf(v: unknown): FillLite | string {
+  const c = v as Record<string, unknown> | undefined;
+  if (!c || ![c.r, c.g, c.b].every(isNum)) return "a colour needs r, g and b from 0 to 1";
+  const a = c.a === undefined ? 1 : c.a;
+  if (!isNum(a)) return "a colour needs r, g and b from 0 to 1";
+  return { r: c.r as number, g: c.g as number, b: c.b as number, a };
+}
 
 /** The first regular (non-master) page, or the one named. */
 function pageIdFrom(o: Record<string, unknown>): string | string[] {
@@ -182,6 +233,120 @@ export async function runCommand(o: Record<string, unknown>, file: File | null =
       const ops = replaceOps(scene, found, opts, o.replace);
       if (ops.length > 0) commit(ops);
       return ok({ replaced: found.length });
+    }
+    case "group_nodes":
+    case "ungroup_nodes": {
+      const ids = nodeIdsOf(o, scene);
+      if (typeof ids === "string") return fail(ids);
+      const made = o.name === "group_nodes" ? groupOps(scene, ids) : ungroupOps(scene, ids);
+      if (!made) return fail(o.name === "group_nodes" ? "nothing to group" : "none of those nodes is a group");
+      commit(made.ops);
+      return ok({ selection: "selection" in made ? made.selection : [] });
+    }
+    case "align_nodes": {
+      const ids = nodeIdsOf(o, scene);
+      if (typeof ids === "string") return fail(ids);
+      const cmds = ["left", "hcenter", "right", "top", "middle", "bottom", "distribute-h", "distribute-v"];
+      if (!isStr(o.command) || !cmds.includes(o.command)) return fail(`command must be one of ${cmds.join(", ")}`);
+      if (o.command.startsWith("distribute") && ids.length < 3) return fail("distributing needs at least three nodes");
+      const ops = alignOps(scene, ids, o.command as AlignCommand);
+      if (ops.length === 0) return ok({ moved: 0 });
+      commit(ops);
+      return ok({ moved: ops.length });
+    }
+    case "boolean_operation": {
+      const BOOL = ["union", "subtract", "intersect", "exclude"];
+      if (!isStr(o.op) || !BOOL.includes(o.op)) return fail(`op must be one of ${BOOL.join(", ")}`);
+      const ids = nodeIdsOf(o, scene);
+      if (typeof ids === "string") return fail(ids);
+      const only = ids.length === 1 ? scene.nodes.get(ids[0]!) : undefined;
+      if (only && booleanOpOf(only)) {
+        const ops = setBooleanOpOps(only, o.op as BooleanOp);
+        if (ops.length > 0) commit(ops);
+        return ok({ groupId: only.id });
+      }
+      const made = liveBooleanOps(scene, ids, o.op as BooleanOp);
+      if (!made) return fail("a boolean operation needs two or more shapes with an outline (rectangles, ellipses, vectors) that produce a result");
+      commit(made.ops);
+      return ok({ groupId: made.selection[0] });
+    }
+    case "flatten_boolean": {
+      if (!isStr(o.groupId)) return fail("groupId is required");
+      const made = flattenGroupOps(scene, o.groupId);
+      if (!made) return fail("groupId is not a group of shapes");
+      commit(made.ops);
+      return ok({ nodeId: made.selection[0] });
+    }
+    case "outline_stroke": {
+      if (!isStr(o.nodeId)) return fail("nodeId is required");
+      const made = outlineStrokeOps(scene, o.nodeId);
+      if (!made) return fail("that node has no stroke that can be outlined");
+      commit(made.ops);
+      return ok({ nodeId: made.selection[0] });
+    }
+    case "duplicate_nodes": {
+      const ids = nodeIdsOf(o, scene);
+      if (typeof ids === "string") return fail(ids);
+      useScene.getState().setSelection(ids);
+      const copies = duplicateSelection();
+      return copies.length > 0 ? ok({ nodeIds: copies }) : fail("nothing was duplicated (an edit may be in progress)");
+    }
+    case "reorder_node": {
+      if (!isStr(o.nodeId)) return fail("nodeId is required");
+      const n = scene.nodes.get(o.nodeId);
+      if (!n) return fail(`no node ${o.nodeId}`);
+      if (!["front", "back", "forward", "backward"].includes(String(o.to))) return fail("to must be front, back, forward or backward");
+      const sibs = childrenOf(scene, n.parentId);
+      const i = sibs.findIndex((x) => x.id === n.id);
+      const key = (k: number) => sibs[k]?.orderKey ?? null;
+      let order: string | null = null;
+      if (o.to === "front" && i < sibs.length - 1) order = orderKeyBetween(sibs.at(-1)!.orderKey, null);
+      else if (o.to === "back" && i > 0) order = orderKeyBetween(null, sibs[0]!.orderKey);
+      else if (o.to === "forward" && i < sibs.length - 1) order = orderKeyBetween(key(i + 1), key(i + 2));
+      else if (o.to === "backward" && i > 0) order = orderKeyBetween(key(i - 2), key(i - 1));
+      if (order === null) return ok({ moved: false });
+      commit([makeSetPropsOp(n.id, { orderKey: order }, ["order_key"])]);
+      return ok({ moved: true });
+    }
+    case "create_vector": {
+      const paths = pathsOf(o.paths);
+      if (typeof paths === "string") return fail(paths);
+      const page = pageIdFrom(o);
+      if (Array.isArray(page)) return fail(page[0]!);
+      const parent = o.parentId === undefined ? page : o.parentId;
+      if (!isStr(parent) || (!scene.nodes.has(parent) && !scene.pages.some((p) => p.id === parent))) return fail("parentId is not a page or a node");
+      const fills: FillLite[] = [];
+      if (o.fill !== undefined) { const f = fillOf(o.fill); if (typeof f === "string") return fail(f); fills.push(f); }
+      const strokes = [];
+      if (o.stroke !== undefined) {
+        const st = o.stroke as { color?: unknown; weight?: unknown };
+        const c = fillOf(st.color);
+        if (typeof c === "string" || !isNum(st.weight) || st.weight < 0) return fail("stroke needs a colour and a weight >= 0");
+        strokes.push({ color: c, weight: st.weight, align: "center" as const });
+      }
+      const norm = normalizeVector({ x: 0, y: 0 }, paths);
+      const id = uuid();
+      commit([makeCreateNodeOp(create(NodeSchema, {
+        id, parentId: parent, orderKey: nextOrderKey(scene), name: isStr(o.nodeName) ? o.nodeName : "Vector", visible: true, opacity: 1,
+        x: norm.box.x, y: norm.box.y, width: norm.box.width, height: norm.box.height, rotation: 0,
+        fills: toPbFills(fills), strokes: toPbStrokes(strokes),
+        shape: { case: "vector", value: { subpaths: toPbSubPaths(norm.subpaths) } },
+      }))]);
+      return ok({ nodeId: id, x: norm.box.x, y: norm.box.y, width: norm.box.width, height: norm.box.height });
+    }
+    case "set_vector_path": {
+      if (!isStr(o.nodeId)) return fail("nodeId is required");
+      const n = scene.nodes.get(o.nodeId);
+      if (!n || n.kind !== "vector") return fail("nodeId is not a vector node");
+      const paths = pathsOf(o.paths);
+      if (typeof paths === "string") return fail(paths);
+      // The box follows the geometry in the same gesture (the writer's invariant, store/vectorGeometry.ts).
+      const norm = normalizeVector({ x: 0, y: 0 }, paths);
+      commit([
+        makeSetVectorPathOp(n.id, norm.subpaths),
+        makeSetPropsOp(n.id, { x: norm.box.x, y: norm.box.y, width: norm.box.width, height: norm.box.height }, ["x", "y", "width", "height"]),
+      ]);
+      return ok({ nodeId: n.id, x: norm.box.x, y: norm.box.y, width: norm.box.width, height: norm.box.height });
     }
     case "override_master_item": {
       if (!isStr(o.pageId) || !isStr(o.masterNodeId)) return fail("pageId and masterNodeId are required");
