@@ -25,6 +25,19 @@ describe("importFigFile", () => {
     expect(await importFigFile(file, down, vi.fn())).toMatchObject({ ok: false, message: expect.stringContaining("did not answer") });
   });
 
+  it("creates the imported collections, then the variables, ahead of the nodes", async () => {
+    const collections = [{ id: "c1", name: "Theme", modes: [{ id: "m1", name: "Light" }] }];
+    const variables = [{ id: "v1", name: "bg", collectionId: "c1" }, { id: "v2", name: "alias", collectionId: "c1", aliasOf: "v1" }];
+    const client = { importFig: vi.fn().mockResolvedValue({ nodes: [{}, {}], width: 1, height: 1, warnings: [], collections, variables }) };
+    const insert = vi.fn().mockReturnValue("root");
+    const r = await importFigFile(file, client as never, insert);
+    const leading = insert.mock.calls[0][3] as { kind: { case: string; value: Record<string, { id: string }> } }[];
+    expect(leading.map((o) => o.kind.case)).toEqual(["setCollection", "setVariable", "setVariable"]);
+    expect(leading[0].kind.value.collection.id).toBe("c1");
+    expect(leading[2].kind.value.variable.id).toBe("v2");
+    expect(r.message).toBe("Imported 1 layers and 2 variables in 1 collection from Design.fig.");
+  });
+
   it("says so when it cannot insert", async () => {
     const client = { importFig: vi.fn().mockResolvedValue({ nodes: [{}], width: 1, height: 1, warnings: [] }) };
     expect(await importFigFile(file, client, vi.fn().mockReturnValue(null))).toMatchObject({ ok: false });

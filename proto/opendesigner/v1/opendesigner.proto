@@ -1544,6 +1544,11 @@ message ImportFigResponse {
   double width = 2;
   double height = 3;
   repeated string warnings = 4;  // what could not be carried over
+  // The file's variables: the editor creates the collections, then the variables (in this order: the
+  // target of an alias comes before the alias) before inserting the nodes, whose bindings and modes
+  // name them. Empty for a file without variables.
+  repeated VariableCollection collections = 5;
+  repeated Variable variables = 6;
 }
 
 // MERGING A BRANCH BACK. A branch remembers the document it came from and the state it started

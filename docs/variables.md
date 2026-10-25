@@ -126,6 +126,8 @@ Enforced by `core.Apply` (Go, the authority) and mirrored in
   `set_variable` (`aliasOf`, string and boolean values), `delete_variable`, `bind_variable`, `set_node_mode`;
   `get_document` includes `variables` and each node's `bindings` / `modes`.
 
+- **`.fig` import**: the variables of a Figma file come in with their modes, aliases and bindings (docs/handoff.md).
+
 ## Not yet
 
 - Variables for font family, and for widths / heights / size limits of auto layout children.

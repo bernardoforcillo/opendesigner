@@ -6,7 +6,7 @@ and which it did not.
 
 ## Ported
 
-- **Plugins and import**: WebAssembly plugins (docs/handoff.md; a command-list ABI instead of FigCraft's host calls), and the `.fig` import tail: connectors, tables, sticky notes and similar layers, per-kind import counts (synthetic files only).
+- **Plugins and import**: WebAssembly plugins (docs/handoff.md; a command-list ABI instead of FigCraft's host calls), the `.fig` import tail (connectors placed by their ends, tables, sticky notes and similar layers, per-kind import counts) and `.fig` variables (collections, modes, aliases, layer bindings and pinned modes), all on synthetic files only; robustness tests on generated files (truncation, bit flips, junk, hostile counts).
 - **Shapes and paints** (docs/shapes.md): angular and diamond gradients, polygon, star, arc and ring,
   corner smoothing and independent radii, arrowheads, per-side stroke weights, shared paint and effect styles.
 - **Layout and components**: min/max sizes, absolute children, baseline alignment, swap / detach /
@@ -33,7 +33,7 @@ and which it did not.
 
 - Vector-network editing tools, noise/glass refraction.
 - Accessibility tree, accounts and teams.
-- Variables from `.fig` files (only a warning counts the layers that use them), live connector ends, table structure beyond frames, real-file `.fig` fidelity, Display P3, `.fig` export.
+- Variable fields with no counterpart here (width / height / min-max sizes, per-corner radii, gradient stops, font family, letter spacing, line height) and expression variables stay literals in a `.fig` import; live connector ends, table structure beyond frames, **real-file `.fig` fidelity (no file saved by Figma exists in this repository or in FigCraft's, so none of the `.fig` work was checked against one)**, Display P3, `.fig` export.
 
 ## Unverified
 
