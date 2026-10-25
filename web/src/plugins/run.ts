@@ -1,5 +1,6 @@
 import { PluginError, PluginSession } from "./api";
 import type { Plugin } from "./manifest";
+import { runWasmPlugin } from "./wasmRun";
 
 // RUNNING A PLUGIN. The code runs in a sandboxed <iframe> (sandbox="allow-scripts" only: an opaque
 // origin, so no access to the editor, its storage or its cookies) whose CSP forbids every network
@@ -63,6 +64,7 @@ export function runPlugin(
   plugin: Plugin,
   opts: { notify?: (message: string) => void; timeoutMs?: number; frame?: Frame } = {},
 ): Promise<RunResult> {
+  if (plugin.wasm !== undefined) return runWasmPlugin(plugin, { notify: opts.notify, timeoutMs: opts.timeoutMs });
   const frame = opts.frame ?? createSandboxFrame();
   const session = new PluginSession(plugin.permissions, opts.notify);
   return new Promise<RunResult>((resolve) => {
