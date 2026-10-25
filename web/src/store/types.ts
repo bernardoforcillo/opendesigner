@@ -26,7 +26,17 @@ export interface GuideLite { vertical: boolean; position: number }
 /** The kind of work a document is for: it shapes the editor, never limits the document. Absent = "product". */
 export type Vertical = "publishing" | "design" | "product";
 /** Document-wide settings, each absent at its default. */
-export interface DocSettingsLite { vertical?: Exclude<Vertical, "product">; baselineIncrement?: number; baselineStart?: number; facingPages?: boolean; colorMode?: "cmyk"; iccProfile?: string }
+export interface ContributorLite { role: string; personName: string; biography?: string }
+export interface SubjectLite { scheme: string; code: string; heading?: string }
+export interface PriceLite { priceType: string; amount: string; currency: string }
+/** Bibliographic record of the document as a book (docs/onix.md); every field absent at its default. */
+export interface BookLite {
+  isbn13?: string; title?: string; subtitle?: string; seriesName?: string; seriesNumber?: string; editionNumber?: string;
+  contributors?: ContributorLite[]; language?: string; publisherName?: string; imprint?: string; publicationDate?: string;
+  description?: string; subjects?: SubjectLite[]; pageCount?: number; prices?: PriceLite[];
+  senderName?: string; senderEmail?: string; productForm?: string;
+}
+export interface DocSettingsLite { vertical?: Exclude<Vertical, "product">; baselineIncrement?: number; baselineStart?: number; facingPages?: boolean; colorMode?: "cmyk"; iccProfile?: string; book?: BookLite }
 export interface GradientStopLite { color: { r: number; g: number; b: number; a: number }; position: number; }
 // A gradient in NORMALIZED box coordinates (see GradientPaint in the proto).
 // Linear: axis (x1,y1)->(x2,y2). Radial: center (x1,y1), radius = |p2-p1| in
@@ -545,13 +555,49 @@ export function toPageLite(p: {
 }
 
 /** The message form of document settings: every field written, "" / 0 / false when absent. */
-export interface DocSettingsMsg { vertical: string; baselineIncrement: number; baselineStart: number; facingPages?: boolean; colorMode?: string; iccProfile?: string }
+export interface BookMsg {
+  isbn13: string; title: string; subtitle: string; seriesName: string; seriesNumber: string; editionNumber: string;
+  contributors: { role: string; personName: string; biography: string }[]; language: string; publisherName: string; imprint: string;
+  publicationDate: string; description: string; subjects: { scheme: string; code: string; heading: string }[]; pageCount: number;
+  prices: { priceType: string; amount: string; currency: string }[]; senderName: string; senderEmail: string; productForm: string;
+}
+export interface DocSettingsMsg { vertical: string; baselineIncrement: number; baselineStart: number; facingPages?: boolean; colorMode?: string; iccProfile?: string; book?: BookMsg }
+
+/** The message form of a book record (every field written). */
+export function bookToMsg(b: BookLite): BookMsg {
+  return {
+    isbn13: b.isbn13 ?? "", title: b.title ?? "", subtitle: b.subtitle ?? "", seriesName: b.seriesName ?? "", seriesNumber: b.seriesNumber ?? "", editionNumber: b.editionNumber ?? "",
+    contributors: (b.contributors ?? []).map((c) => ({ role: c.role, personName: c.personName, biography: c.biography ?? "" })),
+    language: b.language ?? "", publisherName: b.publisherName ?? "", imprint: b.imprint ?? "", publicationDate: b.publicationDate ?? "", description: b.description ?? "",
+    subjects: (b.subjects ?? []).map((x) => ({ scheme: x.scheme, code: x.code, heading: x.heading ?? "" })), pageCount: b.pageCount ?? 0,
+    prices: (b.prices ?? []).map((x) => ({ priceType: x.priceType, amount: x.amount, currency: x.currency })),
+    senderName: b.senderName ?? "", senderEmail: b.senderEmail ?? "", productForm: b.productForm ?? "",
+  };
+}
+
+/** A book record with only its non-default fields; undefined when it says nothing. */
+export function bookOf(m: BookMsg | undefined): BookLite | undefined {
+  if (!m) return undefined;
+  const out: BookLite = {
+    ...(m.isbn13 ? { isbn13: m.isbn13 } : {}), ...(m.title ? { title: m.title } : {}), ...(m.subtitle ? { subtitle: m.subtitle } : {}),
+    ...(m.seriesName ? { seriesName: m.seriesName } : {}), ...(m.seriesNumber ? { seriesNumber: m.seriesNumber } : {}), ...(m.editionNumber ? { editionNumber: m.editionNumber } : {}),
+    ...(m.contributors.length ? { contributors: m.contributors.map((c) => ({ role: c.role, personName: c.personName, ...(c.biography ? { biography: c.biography } : {}) })) } : {}),
+    ...(m.language ? { language: m.language } : {}), ...(m.publisherName ? { publisherName: m.publisherName } : {}), ...(m.imprint ? { imprint: m.imprint } : {}),
+    ...(m.publicationDate ? { publicationDate: m.publicationDate } : {}), ...(m.description ? { description: m.description } : {}),
+    ...(m.subjects.length ? { subjects: m.subjects.map((x) => ({ scheme: x.scheme, code: x.code, ...(x.heading ? { heading: x.heading } : {}) })) } : {}),
+    ...(m.pageCount ? { pageCount: m.pageCount } : {}),
+    ...(m.prices.length ? { prices: m.prices.map((x) => ({ priceType: x.priceType, amount: x.amount, currency: x.currency })) } : {}),
+    ...(m.senderName ? { senderName: m.senderName } : {}), ...(m.senderEmail ? { senderEmail: m.senderEmail } : {}), ...(m.productForm ? { productForm: m.productForm } : {}),
+  };
+  return Object.keys(out).length > 0 ? out : undefined;
+}
 
 /** Document settings as the init shape of a DocSettings message. */
 export function settingsToMsg(s: DocSettingsLite): DocSettingsMsg {
   return {
     vertical: s.vertical ?? "", baselineIncrement: s.baselineIncrement ?? 0, baselineStart: s.baselineStart ?? 0,
     facingPages: s.facingPages === true, colorMode: s.colorMode ?? "", iccProfile: s.iccProfile ?? "",
+    ...(s.book ? { book: bookToMsg(s.book) } : {}),
   };
 }
 
@@ -564,6 +610,7 @@ export function settingsOf(s: DocSettingsMsg): DocSettingsLite {
     ...(s.facingPages ? { facingPages: true } : {}),
     ...(s.colorMode === "cmyk" ? { colorMode: "cmyk" as const } : {}),
     ...(s.iccProfile ? { iccProfile: s.iccProfile } : {}),
+    ...(bookOf(s.book) ? { book: bookOf(s.book)! } : {}),
   };
 }
 

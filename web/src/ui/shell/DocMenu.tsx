@@ -22,6 +22,7 @@ import { LayersDialog } from "../LayersDialog";
 import { LinksDialog } from "../LinksDialog";
 import { PrintPdfDialog } from "../PrintPdfDialog";
 import { DataMergeDialog } from "../DataMergeDialog";
+import { BookMetadataDialog } from "../BookMetadataDialog";
 import { InsertTableDialog } from "../InsertTableDialog";
 import { generateContentsOps } from "../../tools/contents";
 import { VersionsDialog } from "../VersionsDialog";
@@ -75,6 +76,7 @@ export function DocMenu({ onNewDocument }: { onNewDocument: () => void }) {
   const [linksOpen, setLinksOpen] = useState(false);
   const [printOpen, setPrintOpen] = useState(false);
   const [mergeOpen, setMergeOpen] = useState(false);
+  const [bookOpen, setBookOpen] = useState(false);
   const [tableOpen, setTableOpen] = useState(false);
   // What this kind of document needs: entries of other kinds of work are tucked away, not removed.
   const vertical = useScene((s) => verticalOf(s.scene));
@@ -123,6 +125,7 @@ export function DocMenu({ onNewDocument }: { onNewDocument: () => void }) {
           else if (k === "layers") setLayersOpen(true);
           else if (k === "links") setLinksOpen(true);
           else if (k === "data-merge") setMergeOpen(true);
+          else if (k === "book-metadata") setBookOpen(true);
           else if (k === "table") setTableOpen(true);
           else if (k === "contents" || k === "index") generateContents(k === "contents" ? "toc" : "index");
           else if (k === "versions") setVersionsOpen(true);
@@ -217,6 +220,9 @@ export function DocMenu({ onNewDocument }: { onNewDocument: () => void }) {
               <MenuItem id="links" className={ITEM}>
                 <Icon name="link" size={14} /> Links (images)…
               </MenuItem>
+              <MenuItem id="book-metadata" className={ITEM}>
+                <Icon name="plus" size={14} /> Book metadata (ONIX)…
+              </MenuItem>
               <MenuItem id="data-merge" className={ITEM}>
                 <Icon name="plus" size={14} /> Data merge (CSV)…
               </MenuItem>
@@ -295,6 +301,7 @@ export function DocMenu({ onNewDocument }: { onNewDocument: () => void }) {
     <LinksDialog isOpen={linksOpen} onOpenChange={setLinksOpen} />
     <PrintPdfDialog isOpen={printOpen} onOpenChange={setPrintOpen} />
     <DataMergeDialog isOpen={mergeOpen} onOpenChange={setMergeOpen} />
+    <BookMetadataDialog isOpen={bookOpen} onOpenChange={setBookOpen} />
     <InsertTableDialog isOpen={tableOpen} onOpenChange={setTableOpen} />
     </>
   );

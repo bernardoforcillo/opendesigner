@@ -437,7 +437,7 @@ export async function runDocumentExport(
           if (d) images.set(hash, { bytes: d.bytes, mime: d.mime });
         } catch { /* an unreachable image is left out of the book */ }
       }));
-      const data = buildReflowEpub(raw, { title: scene.name || FALLBACK_NAME, identifier: `urn:opendesigner:${scene.id}`, modified: (deps.now?.() ?? new Date()).toISOString() }, images);
+      const data = buildReflowEpub(raw, { title: scene.name || FALLBACK_NAME, identifier: `urn:opendesigner:${scene.id}`, modified: (deps.now?.() ?? new Date()).toISOString(), book: scene.settings?.book }, images);
       (deps.download ?? downloadBlob)(new Blob([data as BlobPart], { type: EPUB_MIME }), documentFileName(scene.name, "epub").replace(/\.epub$/, "-reflow.epub"));
       return true;
     }
@@ -457,7 +457,7 @@ export async function runDocumentExport(
     const assets = await resolveAssets(all, scene.id, "svg", deps);
     for (const p of pages) p.svg = svgMarkup(p.region, measure, assets);
 
-    const data = buildEpub(pages, { title: scene.name || FALLBACK_NAME, identifier: `urn:opendesigner:${scene.id}`, modified: (deps.now?.() ?? new Date()).toISOString() });
+    const data = buildEpub(pages, { title: scene.name || FALLBACK_NAME, identifier: `urn:opendesigner:${scene.id}`, modified: (deps.now?.() ?? new Date()).toISOString(), book: scene.settings?.book });
     (deps.download ?? downloadBlob)(new Blob([data as BlobPart], { type: EPUB_MIME }), documentFileName(scene.name, "epub"));
     if (assets.missing > 0) useScene.setState({ notice: missingImagesNotice(assets.missing) });
     return true;

@@ -1193,3 +1193,25 @@ func TestGraphicsTools(t *testing.T) {
 		t.Fatalf("after delete = %+v", sw)
 	}
 }
+
+// TestBookMetadata covers the book record of set_document_settings.
+func TestBookMetadata(t *testing.T) {
+	url := serveInMemory(t)
+	docID := newDoc(t, odmcp.NewClient(url))
+	sess := startSession(t, url, docID, "mcp")
+	ctx := context.Background()
+
+	_, err := sess.SetDocumentSettings(ctx, odmcp.SetDocumentSettingsInput{Book: &odmcp.BookIO{
+		Isbn13: "9788804668237", Title: "Il nome della rosa", Language: "ita", PublicationDate: "20240229",
+		Contributors: []odmcp.ContributorIO{{Role: "A01", PersonName: "Umberto Eco"}}, Prices: []odmcp.PriceIO{{PriceType: "02", Amount: "9.99", Currency: "EUR"}},
+	}})
+	if err != nil {
+		t.Fatalf("book: %v", err)
+	}
+	if _, err := sess.SetDocumentSettings(ctx, odmcp.SetDocumentSettingsInput{Book: &odmcp.BookIO{Isbn13: "9788804668238"}}); err == nil {
+		t.Fatal("a wrong ISBN check digit should be refused")
+	}
+	if _, err := sess.SetDocumentSettings(ctx, odmcp.SetDocumentSettingsInput{Book: &odmcp.BookIO{}}); err != nil {
+		t.Fatalf("an empty book clears the record: %v", err)
+	}
+}

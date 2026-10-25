@@ -5,6 +5,7 @@ import { isRightPage, pageNumbers } from "../store/pageNumbers";
 import { buildPdf, MARKS_MARGIN, type PdfLink, type PdfOutlineItem, type PdfPageSpec, type PdfReport, type PdfXMode } from "../pdf/write/pdfDocument";
 import { dataUrlBytes, prepareImage, type PreparedImage, type Rasterize } from "../pdf/write/pdfImages";
 import type { MeasureText } from "../renderer/text";
+import { contributorNames } from "./onix";
 import type { ExportRegion } from "./region";
 
 // THE PDF OF A DOCUMENT, from the resolved scene. This module decides WHAT goes on each PDF page (the
@@ -171,7 +172,8 @@ export async function buildDocumentPdf(
 
   const { bytes, report } = await buildPdf({
     pages: specs, images, faces, scene, measure: deps.measure,
-    title: scene.name || "opendesigner", created: (deps.now?.() ?? new Date()),
+    title: scene.settings?.book?.title || scene.name || "opendesigner", created: (deps.now?.() ?? new Date()),
+    author: contributorNames(scene.settings?.book).join(", ") || undefined, subject: scene.settings?.book?.description,
     cmyk: scene.settings?.colorMode === "cmyk", pdfx: opts.pdfx ?? "none", condition: scene.settings?.iccProfile,
     marks: opts.marks === true, outline, docId: scene.id,
     skip: (n) => !!n.layerId && noPrint.has(n.layerId),
@@ -208,7 +210,8 @@ export async function buildRegionPdf(scene: SceneState, region: ExportRegion, de
   const [{ images, missing }, { faces, missing: missingFonts }] = await Promise.all([loadImages(region.nodes, scene.id, deps), loadFaces(scene.fonts, scene.id, deps)]);
   const { bytes, report } = await buildPdf({
     pages: [{ name: scene.name, media: region.bounds, trim: region.bounds, bleed: 0, nodes: region.nodes }],
-    images, faces, scene, measure: deps.measure, title: scene.name || "opendesigner", created: deps.now?.() ?? new Date(),
+    images, faces, scene, measure: deps.measure, title: scene.settings?.book?.title || scene.name || "opendesigner", created: deps.now?.() ?? new Date(),
+    author: contributorNames(scene.settings?.book).join(", ") || undefined, subject: scene.settings?.book?.description,
     cmyk: scene.settings?.colorMode === "cmyk", docId: scene.id, skip: (n) => !!n.layerId && noPrint.has(n.layerId),
   });
   return { bytes, report, missingImages: missing, missingFonts };

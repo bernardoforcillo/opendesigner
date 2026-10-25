@@ -909,7 +909,35 @@ message DocSettings {
   // simple (not profile based).
   string color_mode = 5;
   string icc_profile = 6;
+  // Bibliographic metadata of the document as a book, for the ONIX export and the EPUB / PDF metadata.
+  BookMetadata book = 7;
 }
+
+// Book metadata, named after the ONIX for Books 3.0 composites it feeds (docs/onix.md). Every field is optional;
+// codes are those of the ONIX code lists (roles list 17, subject schemes list 27, price types list 58).
+message BookMetadata {
+  string isbn13 = 1;          // 13 digits, valid check digit (hyphens are not stored)
+  string title = 2;
+  string subtitle = 3;
+  string series_name = 4;
+  string series_number = 5;   // "3" or "III": a short string
+  string edition_number = 6;  // digits
+  repeated Contributor contributors = 7;
+  string language = 8;        // ISO 639-2/B code, lower case: eng, ita, fre
+  string publisher_name = 9;
+  string imprint = 10;
+  string publication_date = 11; // YYYYMMDD
+  string description = 12;    // plain text, paragraphs separated by a blank line
+  repeated Subject subjects = 13;
+  uint32 page_count = 14;
+  repeated Price prices = 15;
+  string sender_name = 16;    // the ONIX message header
+  string sender_email = 17;
+  string product_form = 18;   // ONIX list 150, e.g. "ED" (digital download), "BC" (paperback), "BB" (hardback); "" => ED
+}
+message Contributor { string role = 1; string person_name = 2; string biography = 3; } // role: list 17, e.g. A01 author, B01 editor, A12 illustrator, B06 translator
+message Subject { string scheme = 1; string code = 2; string heading = 3; }             // scheme: list 27, e.g. "10" BISAC, "93" Thema, "12" BIC
+message Price { string price_type = 1; string amount = 2; string currency = 3; }         // type: list 58, "02" RRP including tax, "01" RRP excluding tax
 
 // ---------- ops ----------
 message CreateNode { Node node = 1; }

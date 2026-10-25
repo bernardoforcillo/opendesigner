@@ -1,3 +1,4 @@
+import type { BookLite } from "../store/types";
 import { zipStore, type ZipEntry } from "./zip";
 
 // EPUB 3, FIXED LAYOUT: every page of the document is one XHTML spine item that
@@ -20,6 +21,42 @@ export interface EpubMeta {
   language?: string;
   /** ISO timestamp for dcterms:modified (injectable for reproducible output). */
   modified?: string;
+  /** The document's book record (ONIX data): fills the package metadata when present. */
+  book?: BookLite;
+}
+
+const ROLE_REL: Record<string, string> = { A01: "aut", B01: "edt", A12: "ill", B06: "trl", A06: "cmp", A13: "pht" };
+
+/**
+ * The <metadata> content of an OPF package: identifier (the ISBN as a urn when the book record has one), title,
+ * language, modification date, and from the book record the creators, contributors, publisher, date,
+ * description, subjects and series.
+ */
+export function opfMetadata(meta: EpubMeta, extra = ""): string {
+  const b = meta.book;
+  const lang = meta.language ?? b?.language ?? "en";
+  const title = xmlEscape(b?.title || meta.title);
+  const id = xmlEscape(b?.isbn13 ? `urn:isbn:${b.isbn13}` : meta.identifier ?? `urn:opendesigner:${encodeURIComponent(meta.title)}`);
+  const modified = (meta.modified ?? new Date().toISOString()).replace(/\.\d+Z$/, "Z");
+  let m = `<dc:identifier id="uid">${id}</dc:identifier><dc:title id="t1">${title}</dc:title>`;
+  if (b?.subtitle) m += `<dc:title id="t2">${xmlEscape(b.subtitle)}</dc:title><meta refines="#t2" property="title-type">subtitle</meta>`;
+  m += `<dc:language>${xmlEscape(lang)}</dc:language>`;
+  (b?.contributors ?? []).forEach((c, i) => {
+    const authoring = c.role === "A01";
+    const el = authoring ? "dc:creator" : "dc:contributor";
+    m += `<${el} id="c${i + 1}">${xmlEscape(c.personName)}</${el}>`;
+    const rel = ROLE_REL[c.role];
+    if (rel) m += `<meta refines="#c${i + 1}" property="role" scheme="marc:relators">${rel}</meta>`;
+  });
+  if (b?.publisherName) m += `<dc:publisher>${xmlEscape(b.publisherName)}</dc:publisher>`;
+  if (b?.publicationDate) m += `<dc:date>${b.publicationDate.slice(0, 4)}-${b.publicationDate.slice(4, 6)}-${b.publicationDate.slice(6, 8)}</dc:date>`;
+  if (b?.description) m += `<dc:description>${xmlEscape(b.description)}</dc:description>`;
+  for (const s of b?.subjects ?? []) m += `<dc:subject>${xmlEscape(s.heading || s.code)}</dc:subject>`;
+  if (b?.seriesName) {
+    m += `<meta property="belongs-to-collection" id="series">${xmlEscape(b.seriesName)}</meta><meta refines="#series" property="collection-type">series</meta>`;
+    if (b.seriesNumber) m += `<meta refines="#series" property="group-position">${xmlEscape(b.seriesNumber)}</meta>`;
+  }
+  return `${m}<meta property="dcterms:modified">${modified}</meta>${extra}`;
 }
 
 const encoder = new TextEncoder();
@@ -43,10 +80,8 @@ const fileOf = (i: number) => `page-${String(i + 1).padStart(3, "0")}.xhtml`;
 
 export function buildEpub(pages: readonly EpubPage[], meta: EpubMeta): Uint8Array {
   if (pages.length === 0) throw new Error("an EPUB needs at least one page");
-  const lang = meta.language ?? "en";
-  const title = xmlEscape(meta.title);
-  const id = xmlEscape(meta.identifier ?? `urn:opendesigner:${encodeURIComponent(meta.title)}`);
-  const modified = (meta.modified ?? new Date().toISOString()).replace(/\.\d+Z$/, "Z");
+  const lang = meta.language ?? meta.book?.language ?? "en";
+  const title = xmlEscape(meta.book?.title || meta.title);
 
   const entries: ZipEntry[] = [
     // MUST be first and uncompressed (zipStore never compresses).
@@ -66,9 +101,7 @@ export function buildEpub(pages: readonly EpubPage[], meta: EpubMeta): Uint8Arra
     data: bytes(
       `<?xml version="1.0" encoding="UTF-8"?>\n<package xmlns="http://www.idpf.org/2007/opf" version="3.0" unique-identifier="uid" prefix="rendition: http://www.idpf.org/vocab/rendition/#">` +
         `<metadata xmlns:dc="http://purl.org/dc/elements/1.1/">` +
-        `<dc:identifier id="uid">${id}</dc:identifier><dc:title>${title}</dc:title><dc:language>${xmlEscape(lang)}</dc:language>` +
-        `<meta property="dcterms:modified">${modified}</meta>` +
-        `<meta property="rendition:layout">pre-paginated</meta><meta property="rendition:orientation">auto</meta><meta property="rendition:spread">none</meta>` +
+        opfMetadata(meta, `<meta property="rendition:layout">pre-paginated</meta><meta property="rendition:orientation">auto</meta><meta property="rendition:spread">none</meta>`) +
         `</metadata><manifest><item id="nav" href="nav.xhtml" media-type="application/xhtml+xml" properties="nav"/>${manifest.join("")}</manifest>` +
         `<spine>${spine.join("")}</spine></package>`,
     ),

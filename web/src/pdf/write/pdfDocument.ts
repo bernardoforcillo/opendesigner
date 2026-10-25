@@ -40,6 +40,7 @@ export interface PdfBuild {
   measure: MeasureText;
   title: string;
   author?: string;
+  subject?: string;
   created: Date;
   /** The document is in CMYK mode (or PDF/X-1a forces it). */
   cmyk?: boolean;
@@ -192,7 +193,7 @@ export async function buildPdf(b: PdfBuild): Promise<{ bytes: Uint8Array; report
   file.set(root, `<</Type/Catalog/Pages ${pagesNode} 0 R${outlines}${intent}${xmp}>>`);
   file.set(
     info,
-    `<</Title${pdfText(b.title)}${b.author ? `/Author${pdfText(b.author)}` : ""}/Producer(OpenDesigner)/Creator(OpenDesigner)/CreationDate(${pdfDate(b.created)})/ModDate(${pdfDate(b.created)})` +
+    `<</Title${pdfText(b.title)}${b.author ? `/Author${pdfText(b.author)}` : ""}${b.subject ? `/Subject${pdfText(b.subject.slice(0, 2000))}` : ""}/Producer(OpenDesigner)/Creator(OpenDesigner)/CreationDate(${pdfDate(b.created)})/ModDate(${pdfDate(b.created)})` +
     `${mode === "none" ? "" : `/GTS_PDFXVersion(${PDFX_NAME[mode]})/Trapped/False`}>>`,
   );
 

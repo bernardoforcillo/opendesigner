@@ -115,6 +115,7 @@ Output (docs/output.md)
 - [x] EPUB: reflowable export from the stories (headings, paragraph and character styles as CSS, footnotes as notes, images, nested navigation); the fixed-layout export stays
 - [x] Interactive PDF: bookmarks from headings, link annotations (URL in a node's `link.url`, prototype transitions between pages); no forms
 - [x] Data merge from a CSV/TSV table (`{{Field}}` in text and link URLs, one page per record); no image fields
+- [x] ONIX 3.0 book metadata: record in the document, ONIX message export, EPUB and PDF metadata; see docs/onix.md (not validated against the schema or code lists)
 - [ ] HTML export of text
 - [ ] Book (several documents with shared styles and continuous numbering): not built. A document already holds sections with their own numbering; a multi-document book needs a server-side entity and cross-document style sync
 - [ ] PDF/X validation and an embedded ICC profile; font subsetting; OpenType layout (ligatures, alternates) in the PDF; blur and inner shadows; gradient transparency stops

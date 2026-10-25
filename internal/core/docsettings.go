@@ -46,7 +46,10 @@ func validateDocSettings(s *opendesignerv1.DocSettings) error {
 	if math.IsNaN(inc) || math.IsInf(inc, 0) || inc < 0 || inc > 1000 || math.IsNaN(start) || math.IsInf(start, 0) || start < 0 {
 		return ErrBadBaseline
 	}
-	return validateColorMode(s)
+	if err := validateColorMode(s); err != nil {
+		return err
+	}
+	return validateBook(s.GetBook())
 }
 
 func applySetDocSettings(doc *opendesignerv1.Document, s *opendesignerv1.SetDocSettings) error {

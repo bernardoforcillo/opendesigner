@@ -2,7 +2,7 @@ import type { NodeLite, SceneState, TextStyleLite } from "../store/types";
 import { flattenStyle, type FlatStyle } from "../store/richText";
 import { textNodesInReadingOrder, tokensOf } from "../store/textTokens";
 import { zipStore, type ZipEntry } from "./zip";
-import { xmlEscape, type EpubMeta } from "./epub";
+import { opfMetadata, xmlEscape, type EpubMeta } from "./epub";
 
 // EPUB 3, REFLOWABLE: the document's stories in reading order as real text -- headings, paragraphs,
 // character styling, footnotes as notes, images -- with the paragraph and character styles turned into
@@ -49,7 +49,7 @@ interface Chapter { title: string; blocks: (Block | Fig)[]; headings: { level: n
 
 /** The EPUB, ready to download. `images` holds the bytes of each image asset by hash. */
 export function buildReflowEpub(scene: SceneState, meta: EpubMeta, images: ReadonlyMap<string, ReflowImage>): Uint8Array {
-  const lang = meta.language ?? "en";
+  const lang = meta.language ?? meta.book?.language ?? "en";
   const classOf = new Map<string, string>(); // style id -> css class
   const css: string[] = ["body{font-family:serif;line-height:1.35}img{max-width:100%;height:auto}figure{margin:1em 0;text-align:center}aside.note{font-size:.85em}"];
   const cls = (prefix: string, id: string, rule: string) => {
@@ -180,11 +180,9 @@ export function buildReflowEpub(scene: SceneState, meta: EpubMeta, images: Reado
     ...chapters.map((_, i) => `<item id="c${i + 1}" href="${fileOf(i)}" media-type="application/xhtml+xml"/>`),
     ...[...assetFiles.values()].map((f, i) => `<item id="i${i + 1}" href="${f.href}" media-type="${f.mime}"/>`),
   ];
-  const id = xmlEscape(meta.identifier ?? `urn:opendesigner:${encodeURIComponent(meta.title)}`);
-  const modified = (meta.modified ?? new Date().toISOString()).replace(/\.\d+Z$/, "Z");
   entries.splice(2, 0, {
     name: "OEBPS/content.opf",
-    data: bytes(`<?xml version="1.0" encoding="UTF-8"?>\n<package xmlns="http://www.idpf.org/2007/opf" version="3.0" unique-identifier="uid"><metadata xmlns:dc="http://purl.org/dc/elements/1.1/"><dc:identifier id="uid">${id}</dc:identifier><dc:title>${title}</dc:title><dc:language>${xmlEscape(lang)}</dc:language><meta property="dcterms:modified">${modified}</meta></metadata><manifest>${manifest.join("")}</manifest><spine>${chapters.map((_, i) => `<itemref idref="c${i + 1}"/>`).join("")}</spine></package>`),
+    data: bytes(`<?xml version="1.0" encoding="UTF-8"?>\n<package xmlns="http://www.idpf.org/2007/opf" version="3.0" unique-identifier="uid"><metadata xmlns:dc="http://purl.org/dc/elements/1.1/">${opfMetadata(meta)}</metadata><manifest>${manifest.join("")}</manifest><spine>${chapters.map((_, i) => `<itemref idref="c${i + 1}"/>`).join("")}</spine></package>`),
   });
   return zipStore(entries);
 }
