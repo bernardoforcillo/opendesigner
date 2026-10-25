@@ -1,3 +1,4 @@
+import { forPdf } from "../../renderer/bidi";
 import type { BlendModeLite, FillLite, GradientLite, NodeLite } from "../../store/types";
 import type { Bounds } from "../../canvas/geometry";
 import { decorationBars, fontSizeOf, paragraphDecorations, placeTextLines, type MeasureText } from "../../renderer/text";
@@ -70,6 +71,20 @@ class Page {
   transparency = false;
   flattened: string[] = [];
   constructor(readonly d: PageDeps) {}
+
+  /** Overprint graphics state for fills and/or strokes (OPM 1: a 0% plate in a colour does not knock out). */
+  overprint(mode: string): string {
+    const fill = mode === "fill" || mode === "both", stroke = mode === "stroke" || mode === "both";
+    if (!fill && !stroke) return "";
+    const name = `OP${fill ? "f" : ""}${stroke ? "s" : ""}`;
+    if (!this.gsKey.has(`op/${name}`)) {
+      this.gsKey.set(`op/${name}`, name);
+      this.gstates.push(`${pdfName(name)}<</Type/ExtGState${fill ? "/op true" : ""}${stroke ? "/OP true" : ""}/OPM 1>>`);
+    }
+    this.overprinted++;
+    return `${pdfName(name)} gs\n`;
+  }
+  overprinted = 0;
 
   gs(ca: number, CA: number, blend?: BlendModeLite): string {
     if (ca >= 1 && CA >= 1 && !blend) return "";
@@ -303,7 +318,7 @@ function drawText(pg: Page, n: NodeLite): void {
       pg.out.push(
         `${pg.gs(color.a, color.a)}${pg.d.colors.ops(paint, false)}${pdfName(font.res)} ${num(fontSizeOf(st))} Tf\n` +
         `${num(st.letterSpacing ?? 0)} Tc ${num((st.horizontalScale ?? 1) * 100)} Tz\n` +
-        `${num(c)} ${num(s)} ${num(s)} ${num(-c)} ${num(seg.x)} ${num(y)} Tm\n${font.encode(seg.text)} Tj\n`,
+        `${num(c)} ${num(s)} ${num(s)} ${num(-c)} ${num(seg.x)} ${num(y)} Tm\n${font.encode(forPdf(seg.text))} Tj\n`,
       );
     }
   }
@@ -360,6 +375,7 @@ export function renderPage(deps: PageDeps, nodes: readonly NodeLite[], bounds: B
       } else pg.out.push("/Artifact BMC\n");
     }
     pg.out.push("q\n");
+    if (n.meta?.["overprint"]) pg.out.push(pg.overprint(n.meta["overprint"]));
     if (clip && !clipOpen.has(n.id)) pg.out.push(`${clip}W* n\n`);
     // Node opacity and blend mode wrap the whole node; the paint's own alpha is applied inside.
     if (n.opacity !== 1 || n.blendMode) pg.out.push(pg.gs(n.opacity, n.opacity, n.blendMode));

@@ -1891,3 +1891,51 @@ func TestFormatJobs(t *testing.T) {
 		t.Fatalf("place: %+v %v %v", pd, err, last)
 	}
 }
+
+// TestInkAndBatchCommands covers the ink manager, overprint and batch tools.
+func TestInkAndBatchCommands(t *testing.T) {
+	url := serveInMemory(t)
+	docID := newDoc(t, odmcp.NewClient(url))
+	sess := startSession(t, url, docID, "mcp")
+	ctx := context.Background()
+
+	var last map[string]any
+	fakeEditor(t, url, docID, func(job *opendesignerv1.EditorJob) *opendesignerv1.CompleteJobRequest {
+		last = nil
+		_ = json.Unmarshal([]byte(job.GetOptionsJson()), &last)
+		switch last["name"] {
+		case "ink_report":
+			return &opendesignerv1.CompleteJobRequest{Ok: true, Text: `{"process":{"swatches":2,"objects":5},"spots":[{"name":"PANTONE 871 C","swatches":["Gold"],"objects":3,"alt":{"c":0.1,"m":0.3,"y":0.9,"k":0}}],"overprint":1,"overLimit":[{"swatch":"Rich black","total":310}]}`}
+		case "convert_spots_to_process":
+			return &opendesignerv1.CompleteJobRequest{Ok: true, Text: `{"converted":2}`}
+		case "merge_spot_inks":
+			return &opendesignerv1.CompleteJobRequest{Ok: true, Text: `{"swatches":1}`}
+		case "set_overprint":
+			return &opendesignerv1.CompleteJobRequest{Ok: true, Text: `{"changed":2}`}
+		case "batch":
+			return &opendesignerv1.CompleteJobRequest{Ok: true, Text: `{"results":[{"changed":1},null]}`}
+		}
+		return &opendesignerv1.CompleteJobRequest{Ok: true, Text: `{"commands":["a","b"],"fileCommands":["place_image"]}`}
+	})
+	r, err := sess.InkReport(ctx, odmcp.InkReportInput{Limit: 280})
+	if err != nil || r.Process.Objects != 5 || r.Spots[0].Name != "PANTONE 871 C" || r.Spots[0].Alt.Y != 0.9 || r.OverLimit[0].Total != 310 || last["limit"] != float64(280) {
+		t.Fatalf("report: %+v %v %v", r, err, last)
+	}
+	if c, err := sess.ConvertSpotsToProcess(ctx, odmcp.ConvertSpotsInput{Inks: []string{"x"}}); err != nil || c.Converted != 2 || last["inks"] == nil {
+		t.Fatalf("convert: %+v %v", c, err)
+	}
+	if m, err := sess.MergeSpotInks(ctx, odmcp.MergeSpotInksInput{From: "a", To: "b"}); err != nil || m.Swatches != 1 || last["to"] != "b" {
+		t.Fatalf("merge: %+v %v", m, err)
+	}
+	if o, err := sess.SetOverprint(ctx, odmcp.SetOverprintInput{NodeIds: []string{"n"}, Mode: "both"}); err != nil || o.Changed != 2 || last["mode"] != "both" {
+		t.Fatalf("overprint: %+v %v", o, err)
+	}
+	b, err := sess.Batch(ctx, odmcp.BatchInput{Commands: []map[string]any{{"name": "set_overprint", "nodeIds": []string{"n"}, "mode": "fill"}, {"name": "ink_report"}}})
+	if err != nil || len(b.Results) != 2 || len(last["commands"].([]any)) != 2 {
+		t.Fatalf("batch: %+v %v %v", b, err, last)
+	}
+	l, err := sess.ListEditorCommands(ctx, struct{}{})
+	if err != nil || len(l.Commands) != 2 || l.FileCommands[0] != "place_image" || last["name"] != "list_commands" {
+		t.Fatalf("list: %+v %v %v", l, err, last)
+	}
+}

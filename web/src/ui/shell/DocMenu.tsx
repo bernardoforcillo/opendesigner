@@ -27,6 +27,7 @@ import { DataMergeDialog } from "../DataMergeDialog";
 import { BookMetadataDialog } from "../BookMetadataDialog";
 import { LongDocumentDialog } from "../LongDocumentDialog";
 import { ObjectToolsDialog } from "../ObjectToolsDialog";
+import { InkManagerDialog } from "../InkManagerDialog";
 import { InsertTableDialog } from "../InsertTableDialog";
 import { generateContentsOps } from "../../tools/contents";
 import { VersionsDialog } from "../VersionsDialog";
@@ -83,6 +84,7 @@ export function DocMenu({ onNewDocument }: { onNewDocument: () => void }) {
   const [bookOpen, setBookOpen] = useState(false);
   const [longOpen, setLongOpen] = useState(false);
   const [objectToolsOpen, setObjectToolsOpen] = useState(false);
+  const [inksOpen, setInksOpen] = useState(false);
   const [tableOpen, setTableOpen] = useState(false);
   // What this kind of document needs: entries of other kinds of work are tucked away, not removed.
   const vertical = useScene((s) => verticalOf(s.scene));
@@ -146,6 +148,7 @@ export function DocMenu({ onNewDocument }: { onNewDocument: () => void }) {
           else if (k === "book-metadata") setBookOpen(true);
           else if (k === "long-document") setLongOpen(true);
           else if (k === "object-tools") setObjectToolsOpen(true);
+          else if (k === "ink-manager") setInksOpen(true);
           else if (k === "table") setTableOpen(true);
           else if (k === "contents" || k === "index" || k === "endnotes") generateContents(k === "contents" ? "toc" : k === "index" ? "index" : "endnotes");
           else if (k === "versions") setVersionsOpen(true);
@@ -255,6 +258,9 @@ export function DocMenu({ onNewDocument }: { onNewDocument: () => void }) {
               <MenuItem id="links" className={ITEM}>
                 <Icon name="link" size={14} /> Links (images)…
               </MenuItem>
+              <MenuItem id="ink-manager" className={ITEM}>
+                <Icon name="plus" size={14} /> Ink manager (spot inks, overprint)…
+              </MenuItem>
               <MenuItem id="object-tools" className={ITEM}>
                 <Icon name="plus" size={14} /> Object tools (repeat, gap, QR, clip, snippets)…
               </MenuItem>
@@ -348,6 +354,7 @@ export function DocMenu({ onNewDocument }: { onNewDocument: () => void }) {
     <BookMetadataDialog isOpen={bookOpen} onOpenChange={setBookOpen} />
     <LongDocumentDialog isOpen={longOpen} onOpenChange={setLongOpen} />
     <ObjectToolsDialog isOpen={objectToolsOpen} onOpenChange={setObjectToolsOpen} />
+    <InkManagerDialog isOpen={inksOpen} onOpenChange={setInksOpen} />
     <InsertTableDialog isOpen={tableOpen} onOpenChange={setTableOpen} />
     </>
   );

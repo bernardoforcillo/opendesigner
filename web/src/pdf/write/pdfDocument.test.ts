@@ -260,3 +260,51 @@ describe("buildPdf — tagged", () => {
     expect(await contentOf(bytes)).not.toContain("BDC");
   });
 });
+
+describe("buildPdf — overprint", () => {
+  it("writes an overprint graphics state for the nodes that ask for it, and only for them", async () => {
+    const { bytes } = await build([page([
+      node({ id: "a", x: 0, y: 0, meta: { overprint: "fill" } }),
+      node({ id: "b", x: 20, y: 0, meta: { overprint: "both" } }),
+      node({ id: "c", x: 40, y: 0 }),
+    ])]);
+    const raw = Buffer.from(bytes).toString("latin1");
+    expect(raw).toContain("/Type/ExtGState/op true/OPM 1");
+    expect(raw).toContain("/Type/ExtGState/op true/OP true/OPM 1");
+    const content = await contentOf(bytes);
+    expect((content.match(/\/OPf gs/g) ?? []).length).toBe(1);
+    expect((content.match(/\/OPfs gs/g) ?? []).length).toBe(1);
+  });
+});
+
+describe("buildPdf — right-to-left and CJK text with a real font", () => {
+  const { existsSync, readFileSync } = require("node:fs") as typeof import("node:fs");
+  const free = "/usr/share/fonts/truetype/freefont/FreeSerif.ttf";
+  const textOf = async (bytes: Uint8Array) => {
+    const doc = await read(bytes);
+    const items = (await (await doc.getPage(1)).getTextContent()).items as { str: string }[];
+    return items.map((i) => i.str).join("");
+  };
+  const embedded = (family: string, path: string, content: string, over: Partial<PdfBuild> = {}) => build(
+    [page([node({ id: "t", kind: "text", x: 10, y: 10, width: 180, height: 40, text: { content, style: style({ fontFamily: family }) } })])],
+    { faces: [{ face: { id: "f", family, weight: "400", style: "normal", assetHash: "x" }, data: new Uint8Array(readFileSync(path)) }], ...over },
+  );
+
+  it.skipIf(!existsSync(free))("shapes Arabic into joined forms and reorders it, so the PDF reads right to left", async () => {
+    const { bytes, report } = await embedded("FreeSerif", free, "بيت");
+    expect(report.missingGlyphs).toEqual([]);
+    // pdf.js returns right-to-left text in logical order: beh initial, yeh medial, teh final. Joined forms mean the glyphs were drawn
+    // shaped and in visual order (unshaped input would come back as the plain letters).
+    expect(await textOf(bytes)).toBe("\ufe91\ufef4\ufe96");
+  });
+
+  it.skipIf(!existsSync(free))("orders Hebrew and keeps embedded Latin words readable", async () => {
+    const { bytes } = await embedded("FreeSerif", free, "אב abc ג");
+    expect(await textOf(bytes)).toBe("אב abc ג"); // read back in logical order by pdf.js, so it was drawn in visual order
+  });
+
+  it.skipIf(!existsSync(free))("leaves left-to-right text untouched", async () => {
+    const { bytes } = await embedded("FreeSerif", free, "Plain text");
+    expect(await textOf(bytes)).toBe("Plain text");
+  });
+});

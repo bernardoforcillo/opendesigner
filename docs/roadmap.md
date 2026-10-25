@@ -160,3 +160,7 @@ Output (docs/output.md)
 ## Formats (block 9)
 - [x] HTML, PowerPoint and IDML export; IDML import; place Word, RTF and Excel; tagged PDF; booklet imposition (see docs/formats.md; all over MCP)
 - [ ] INDD (not feasible), images in IDML/PPTX-other-types, PDF/UA validation, creep for booklets
+
+## Platform (block 10)
+- [x] Ink manager (spot -> process, aliases, total ink), overprint in the PDF; CJK line breaking with kinsoku; Arabic shaping and bidi ordering in the PDF; `batch` and `list_editor_commands` (see docs/platform.md)
+- [ ] Paragraph direction, vertical writing, ruby, Indic/Thai shaping, separation preview, trapping, overprint preview

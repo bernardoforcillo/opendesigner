@@ -399,3 +399,43 @@ describe("import_idml", () => {
     expect(useScene.getState().scene!.pages.length).toBe(pagesBefore);
   });
 });
+
+describe("ink, overprint and batch commands", () => {
+  it("reports inks, sets overprint and converts spots", async () => {
+    const { createSwatchOps } = await import("../tools/swatches");
+    const s0 = useScene.getState().scene!;
+    const made = createSwatchOps(s0, { name: "Gold", cmyk: { c: 10, m: 30, y: 90, k: 0 }, spotName: "PANTONE 871 C" })!;
+    for (const op of made.ops) useScene.getState().apply(op);
+    expect((await cmd({ name: "ink_report" })).data.spots[0].name).toBe("PANTONE 871 C");
+    expect((await cmd({ name: "ink_report", limit: 5 })).message).toMatch(/limit/);
+    expect((await cmd({ name: "set_overprint", nodeIds: ["t1"], mode: "both" })).data.changed).toBe(1);
+    expect(useScene.getState().scene!.nodes.get("t1")!.meta!.overprint).toBe("both");
+    expect((await cmd({ name: "set_overprint", nodeIds: ["t1"], mode: "x" })).message).toMatch(/mode must be/);
+    expect((await cmd({ name: "convert_spots_to_process", inks: ["nope"] })).message).toMatch(/no spot ink/);
+    expect((await cmd({ name: "convert_spots_to_process" })).data.converted).toBe(1);
+    expect((await cmd({ name: "ink_report" })).data.spots).toEqual([]);
+  });
+
+  it("runs a batch in order, stops at the first failure and refuses nesting and file commands", async () => {
+    const ok = await cmd({ name: "batch", commands: [{ name: "set_overprint", nodeIds: ["t1"], mode: "fill" }, { name: "ink_report" }] });
+    expect(ok.ok).toBe(true);
+    expect(ok.data.results).toHaveLength(2);
+    const bad = await cmd({ name: "batch", commands: [{ name: "set_overprint", nodeIds: ["t1"], mode: "off" }, { name: "set_overprint", nodeIds: ["nope"], mode: "fill" }, { name: "ink_report" }] });
+    expect(bad.message).toMatch(/commands\[1\] \(set_overprint\) failed: no node nope.*1 before it/);
+    expect(useScene.getState().scene!.nodes.get("t1")!.meta?.overprint).toBeUndefined();
+    expect((await cmd({ name: "batch", commands: [{ name: "batch", commands: [] }] })).message).toMatch(/cannot contain a batch/);
+    expect((await cmd({ name: "batch", commands: [{ name: "place_image" }] })).message).toMatch(/needs a file/);
+    expect((await cmd({ name: "batch", commands: [] })).message).toMatch(/1\.\.50/);
+  });
+
+  it("lists exactly the commands the switch handles", async () => {
+    const { readFileSync } = await import("node:fs");
+    const { join } = await import("node:path");
+    const src = readFileSync(join(process.cwd(), "src/jobs/commands.ts"), "utf8");
+    const main = src.slice(src.indexOf("export async function runCommand"));
+    const inner = new Set(["add_row", "add_column", "delete_row", "delete_column", "resize_row", "resize_column"]); // the edit_table sub-cases
+    const handled = [...main.matchAll(/case "([a-z_]+)":/g)].map((m) => m[1]!).filter((n) => !inner.has(n)).sort();
+    const listed = (await cmd({ name: "list_commands" })).data.commands as string[];
+    expect([...new Set(handled)]).toEqual(listed);
+  });
+});

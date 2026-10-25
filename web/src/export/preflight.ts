@@ -75,6 +75,18 @@ export function preflightScene(scene: SceneState, opts: PreflightOptions = {}, m
   if (x && !scene.settings?.iccProfile) {
     out.push({ severity: "warning", code: "no-condition", message: "No output condition (ICC profile name) is set in Swatches and colour mode; the output intent will read \"Custom\"." });
   }
+  for (const n of scene.nodes.values()) {
+    const mode = n.meta?.["overprint"];
+    if (!mode || n.fromMaster) continue;
+    const white = (f: { r: number; g: number; b: number } | undefined) => !!f && f.r >= 0.995 && f.g >= 0.995 && f.b >= 0.995;
+    if (((mode === "fill" || mode === "both") && white(n.fills[0])) || ((mode === "stroke" || mode === "both") && white(n.strokes[0]?.color))) {
+      out.push({ severity: "warning", code: "overprint-white", nodeId: n.id, pageId: pageIdOf(n), message: `"${n.name}" overprints white: it will not show on press (white knocks nothing out).` });
+    }
+  }
+  if (x && (opts.pdfx === "x1a" || opts.pdfx === "x3")) {
+    const total = Object.values(scene.variables).filter((v) => v.swatch && v.cmyk && !v.spotName && Math.round((v.cmyk.c + v.cmyk.m + v.cmyk.y + v.cmyk.k) * 100) > 300);
+    if (total.length > 0) out.push({ severity: "warning", code: "ink-limit", message: `Total ink over 300% in: ${total.map((v) => v.name).join(", ")}.` });
+  }
   const spots = Object.values(scene.variables).filter((v) => v.swatch && v.spotName);
   if (spots.length > 0) out.push({ severity: "info", code: "spot-colours", message: `Spot colours become separations: ${[...new Set(spots.map((s) => s.spotName))].join(", ")}.` });
   return out;

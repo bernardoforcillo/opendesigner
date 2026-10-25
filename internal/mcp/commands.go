@@ -719,6 +719,116 @@ func (s *Session) PlaceSnippet(ctx context.Context, in PlaceSnippetInput) (Dupli
 	return out, s.runCommand(ctx, "place_snippet", "place_snippet", a, &out)
 }
 
+// --- inks, overprint, batch -------------------------------------------------------------------------------
+
+type InkReportInput struct {
+	Limit int `json:"limit,omitempty" jsonschema:"total ink limit in percent to report swatches over (100..400, default 300)"`
+}
+
+type SpotInkView struct {
+	Name     string   `json:"name"`
+	Swatches []string `json:"swatches"`
+	Objects  int      `json:"objects" jsonschema:"objects painted with it"`
+	Alt      *struct {
+		C float64 `json:"c"`
+		M float64 `json:"m"`
+		Y float64 `json:"y"`
+		K float64 `json:"k"`
+	} `json:"alt,omitempty" jsonschema:"CMYK alternate, 0..1"`
+}
+
+type InkReportOutput struct {
+	Process struct {
+		Swatches int `json:"swatches"`
+		Objects  int `json:"objects"`
+	} `json:"process"`
+	Spots     []SpotInkView `json:"spots"`
+	Overprint int           `json:"overprint" jsonschema:"objects set to overprint"`
+	OverLimit []struct {
+		Swatch string `json:"swatch"`
+		Total  int    `json:"total"`
+	} `json:"overLimit"`
+}
+
+// InkReport is the ink manager's list: process and spot inks, overprint, total-ink problems.
+func (s *Session) InkReport(ctx context.Context, in InkReportInput) (InkReportOutput, error) {
+	a := map[string]any{}
+	if in.Limit != 0 {
+		a["limit"] = in.Limit
+	}
+	var out InkReportOutput
+	return out, s.runCommand(ctx, "ink_report", "ink_report", a, &out)
+}
+
+type ConvertSpotsInput struct {
+	Inks []string `json:"inks,omitempty" jsonschema:"spot ink names to convert (default: all); tints follow their base"`
+}
+
+type ConvertedOutput struct {
+	Converted int `json:"converted" jsonschema:"swatches turned into process colours (their CMYK alternate)"`
+}
+
+// ConvertSpotsToProcess turns spot inks into process colours.
+func (s *Session) ConvertSpotsToProcess(ctx context.Context, in ConvertSpotsInput) (ConvertedOutput, error) {
+	a := map[string]any{}
+	if len(in.Inks) > 0 {
+		a["inks"] = in.Inks
+	}
+	var out ConvertedOutput
+	return out, s.runCommand(ctx, "convert_spots_to_process", "convert_spots_to_process", a, &out)
+}
+
+type MergeSpotInksInput struct {
+	From string `json:"from" jsonschema:"a spot ink name in use"`
+	To   string `json:"to" jsonschema:"the ink it becomes (an alias: both print on one plate)"`
+}
+
+type MergedOutput struct {
+	Swatches int `json:"swatches"`
+}
+
+// MergeSpotInks aliases one spot ink to another.
+func (s *Session) MergeSpotInks(ctx context.Context, in MergeSpotInksInput) (MergedOutput, error) {
+	var out MergedOutput
+	return out, s.runCommand(ctx, "merge_spot_inks", "merge_spot_inks", map[string]any{"from": in.From, "to": in.To}, &out)
+}
+
+type SetOverprintInput struct {
+	NodeIds []string `json:"nodeIds"`
+	Mode    string   `json:"mode" jsonschema:"fill | stroke | both | off. Written to the PDF as overprint (not simulated on screen); overprinting white shows nothing on press and the preflight says so"`
+}
+
+// SetOverprint sets overprint on objects.
+func (s *Session) SetOverprint(ctx context.Context, in SetOverprintInput) (ChangedOutput, error) {
+	var out ChangedOutput
+	return out, s.runCommand(ctx, "set_overprint", "set_overprint", map[string]any{"nodeIds": in.NodeIds, "mode": in.Mode}, &out)
+}
+
+type BatchInput struct {
+	Commands []map[string]any `json:"commands" jsonschema:"1..50 editor commands, each an object with a name (a tool name of this server that runs in the editor, e.g. set_overprint) and that tool's arguments in the editor's own spelling (see list_editor_commands); run in order, stopping at the first failure"`
+}
+
+type BatchOutput struct {
+	Results []json.RawMessage `json:"results"`
+}
+
+// Batch runs several editor commands in one round trip.
+func (s *Session) Batch(ctx context.Context, in BatchInput) (BatchOutput, error) {
+	var out BatchOutput
+	return out, s.runCommand(ctx, "batch", "batch", map[string]any{"commands": in.Commands}, &out)
+}
+
+type ListEditorCommandsOutput struct {
+	Commands     []string `json:"commands"`
+	FileCommands []string `json:"fileCommands" jsonschema:"commands that need an input file and cannot run in a batch"`
+}
+
+// ListEditorCommands lists the commands the connected editor runs.
+func (s *Session) ListEditorCommands(ctx context.Context, _ struct{}) (ListEditorCommandsOutput, error) {
+	var out ListEditorCommandsOutput
+	return out, s.runCommand(ctx, "list_editor_commands", "list_commands", nil, &out)
+}
+
 // --- vectors ------------------------------------------------------------------------------------------
 
 type AnchorIO struct {
@@ -815,6 +925,12 @@ func registerCommandTools(srv *mcp.Server, s *Session) {
 	addTool(srv, "change_objects", "Find/change on objects: find nodes as find_objects does and change fill, stroke, stroke weight, opacity, visibility or name in one undo step. With a fill colour in the query, only fills of that colour are replaced."+jobNote, s.ChangeObjects)
 	addTool(srv, "export_snippet", "Turn nodes and their children into a snippet (text) to keep in a library and place later, here or in another document. Images keep their asset reference, so they show only where that asset exists."+jobNote, s.ExportSnippet)
 	addTool(srv, "place_snippet", "Place a snippet made by export_snippet with its top-left corner at x, y."+jobNote, s.PlaceSnippet)
+	addTool(srv, "ink_report", "The ink manager's list: process inks (swatches and objects in CMYK), spot inks with their swatches, objects and CMYK alternate, objects set to overprint, and swatches over the total-ink limit."+jobNote, s.InkReport)
+	addTool(srv, "convert_spots_to_process", "Turn spot inks into process colours (their CMYK alternate), all or the named ones; they then print on the four process plates."+jobNote, s.ConvertSpotsToProcess)
+	addTool(srv, "merge_spot_inks", "Ink alias: every swatch of spot ink `from` prints as spot ink `to` (one plate)."+jobNote, s.MergeSpotInks)
+	addTool(srv, "set_overprint", "Set overprint (fill, stroke, both, off) on objects; the PDF export writes the overprint graphics state. Not simulated on screen."+jobNote, s.SetOverprint)
+	addTool(srv, "batch", "Run up to 50 editor commands in order in one round trip, stopping at the first failure (each is its own undo step). Commands that need a file, and nested batches, are refused."+jobNote, s.Batch)
+	addTool(srv, "list_editor_commands", "List the command names the connected editor runs (the names `batch` takes)."+jobNote, s.ListEditorCommands)
 	addTool(srv, "create_vector", "Draw a vector from paths of anchors with optional bezier handles (handles are offsets from their anchor). The editor computes the curve's true bounds for the node's box (one implementation of that geometry), so use this rather than writing a vector by hand."+jobNote, s.CreateVector)
 	addTool(srv, "set_vector_path", "Replace a vector node's geometry; its box follows the new curve in the same step."+jobNote, s.SetVectorPath)
 	addTool(srv, "group_nodes", "Wrap nodes in a group (they keep their stacking order inside it)."+jobNote, s.GroupNodes)

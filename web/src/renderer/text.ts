@@ -1,3 +1,4 @@
+import { cjkSplit } from "./cjk";
 import type { NodeLite, TextAlignLite, TextLite, TextStyleLite } from "../store/types";
 import { hyphenPoints } from "./hyphenate";
 import type { Bounds } from "../canvas/geometry";
@@ -147,12 +148,14 @@ function wrapParagraph(
     return chunks[chunks.length - 1] ?? "";
   };
 
-  for (const word of para.split(" ")) {
+  // Each space-separated word, cut where CJK text may break (the cuts after the first join without a space).
+  const units: { word: string; space: boolean }[] = para.split(" ").flatMap((w) => cjkSplit(w).map((part, i) => ({ word: part, space: i === 0 })));
+  for (const { word, space } of units) {
     if (line === null) { line = placeAlone(word); continue; }
     // Necessary annotation: without it, inference goes in circles (the narrowed
     // type of `line` depends on `candidate`, which depends on `line`) and tsc
     // stops the build with TS7022.
-    const candidate: string = `${line} ${word}`;
+    const candidate: string = `${line}${space ? " " : ""}${word}`;
     if (fits(candidate)) { line = candidate; continue; }
     out.push(line);
     line = placeAlone(word);
@@ -860,8 +863,12 @@ function wrapPieces(measureFor: MeasureFor, pieces: Frag[], pr: ParagraphLite, l
     let off = piece.at;
     piece.text.split(" ").forEach((part, i) => {
       if (i > 0) { words.push(cur); cur = { frags: [], sep: frag(" ", piece.style, off) }; off += 1; }
-      if (part !== "") cur.frags.push(frag(part, piece.style, off));
-      off += part.length;
+      // CJK text may break between characters (kinsoku rules apply): each cut starts a word with no separator.
+      cjkSplit(part).forEach((sub, k) => {
+        if (k > 0) { words.push(cur); cur = { frags: [], sep: null }; }
+        if (sub !== "") cur.frags.push(frag(sub, piece.style, off));
+        off += sub.length;
+      });
     });
   }
   words.push(cur);

@@ -27,6 +27,7 @@ import { changeObjectsOps, clipWithShapeOps, exportSnippet, findObjects, fitOps,
 import { QR_LEVELS, type QrLevel } from "../tools/qrcode";
 import { PlaceError, parseDocx, parseRtf, parseXlsx, placeTableOps, placeTextOps } from "../tools/placeDocument";
 import { IdmlError, idmlOps, parseIdml } from "../export/idml";
+import { convertSpotsOps, inkReport, mergeSpotsOps, overprintOps, type OverprintMode } from "../tools/inks";
 import { applyTableStyleOps } from "../tools/tableOps";
 import { CHECK_CODES, checkText, type CheckCode } from "../tools/textChecks";
 import { editorialNotes } from "../store/textTokens";
@@ -99,6 +100,9 @@ function pageIdFrom(o: Record<string, unknown>): string | string[] {
   }
   return scene.pages.find((p) => !p.isMaster)?.id ?? scene.pages[0]!.id;
 }
+
+/** Every command the editor runs (kept in step with the switch below by a test). */
+const COMMAND_NAMES = ["align_nodes", "apply_table_style", "batch", "boolean_operation", "change_objects", "check_text", "clip_with_shape", "convert_spots_to_process", "create_qr_code", "create_vector", "duplicate_nodes", "edit_table", "export_snippet", "find_change", "find_objects", "fit_frame", "flatten_boolean", "generate_contents", "group_nodes", "ink_report", "insert_table", "list_commands", "list_editorial_notes", "merge_spot_inks", "outline_stroke", "override_master_item", "place_snippet", "reorder_node", "set_gap", "set_overprint", "set_vector_path", "step_and_repeat", "ungroup_nodes"];
 
 /** Commands that read an input file sent with the job. */
 const FILE_COMMANDS = new Set(["place_image", "relink_image", "import_svg", "import_pdf", "import_fig", "upload_font", "place_document", "import_idml"]);
@@ -511,6 +515,48 @@ export async function runCommand(o: Record<string, unknown>, file: File | null =
       commit(made.ops);
       return ok({ nodeIds: made.ids });
     }
+    case "ink_report": {
+      if (o.limit !== undefined && (!isNum(o.limit) || o.limit < 100 || o.limit > 400)) return fail("limit must be a total ink percentage from 100 to 400");
+      return ok(inkReport(scene, isNum(o.limit) ? o.limit : 300));
+    }
+    case "convert_spots_to_process": {
+      if (o.inks !== undefined && !(Array.isArray(o.inks) && o.inks.every(isStr))) return fail("inks must be a list of spot ink names");
+      const ops = convertSpotsOps(scene, o.inks as string[] | undefined);
+      if (typeof ops === "string") return fail(ops);
+      if (ops.length > 0) commit(ops);
+      return ok({ converted: ops.length });
+    }
+    case "merge_spot_inks": {
+      if (!isStr(o.from) || !isStr(o.to)) return fail("from and to are required");
+      const ops = mergeSpotsOps(scene, o.from, o.to);
+      if (typeof ops === "string") return fail(ops);
+      commit(ops);
+      return ok({ swatches: ops.length });
+    }
+    case "set_overprint": {
+      const ids = nodeIdsOf(o, scene);
+      if (typeof ids === "string") return fail(ids);
+      const ops = overprintOps(scene, ids, String(o.mode) as OverprintMode);
+      if (typeof ops === "string") return fail(ops);
+      if (ops.length > 0) commit(ops);
+      return ok({ changed: ops.length });
+    }
+    case "batch": {
+      if (!Array.isArray(o.commands) || o.commands.length === 0 || o.commands.length > 50) return fail("commands must be a list of 1..50 commands");
+      const results: unknown[] = [];
+      for (const [i, c] of o.commands.entries()) {
+        if (typeof c !== "object" || c === null || !isStr((c as { name?: unknown }).name)) return fail(`commands[${i}] needs a name`);
+        const name = (c as { name: string }).name;
+        if (name === "batch") return fail("a batch cannot contain a batch");
+        if (FILE_COMMANDS.has(name)) return fail(`commands[${i}]: ${name} needs a file and cannot run in a batch`);
+        const r = await runCommand(c as Record<string, unknown>, null);
+        if (!r.ok) return { ok: false, message: `commands[${i}] (${name}) failed: ${r.message}. The ${i} before it were applied (each is its own undo step).` };
+        results.push(r.text ? JSON.parse(r.text) : null);
+      }
+      return ok({ results });
+    }
+    case "list_commands":
+      return ok({ commands: COMMAND_NAMES, fileCommands: [...FILE_COMMANDS] });
     case "override_master_item": {
       if (!isStr(o.pageId) || !isStr(o.masterNodeId)) return fail("pageId and masterNodeId are required");
       const page = scene.pages.find((p) => p.id === o.pageId);

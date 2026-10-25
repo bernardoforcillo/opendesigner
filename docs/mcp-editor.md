@@ -51,3 +51,6 @@ Documents, versions and branches: `list_documents`, `create_document`, `rename_d
 
 ## Format jobs
 `export_html`, `export_pptx`, `export_idml` (files), `import_idml`, `place_document` (commands with an input file), and the `booklet` / `tagged` options of `export_pdf`; see formats.md.
+
+## Platform tools
+`ink_report`, `convert_spots_to_process`, `merge_spot_inks`, `set_overprint`, `batch`, `list_editor_commands`; see platform.md.
