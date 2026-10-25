@@ -267,6 +267,33 @@ describe("PrototypePlayer: device frames and hotspot hints", () => {
     expect(screen.getByRole("combobox", { name: "Device frame" })).toHaveValue("phone");
   });
 
+  it("the document's device frame is the default; a person's own pick overrides it; Reset goes back", () => {
+    install({ ...demo(), settings: { presentDevice: "tablet" } });
+    render(<PrototypePlayer onClose={() => {}} />);
+    expect(document.querySelector('[data-device="tablet"]')).not.toBeNull();
+    const select = screen.getByRole("combobox", { name: "Device frame" });
+    expect(select).toHaveValue("tablet");
+    expect(screen.queryByRole("button", { name: "Use the document's device frame" })).toBeNull();
+
+    fireEvent.change(select, { target: { value: "phone" } });
+    expect(document.querySelector('[data-device="phone"]')).not.toBeNull();
+    expect(localStorage.getItem("od.protoDevice")).toBe("phone");
+    fireEvent.click(screen.getByRole("button", { name: "Use the document's device frame" }));
+    expect(document.querySelector('[data-device="tablet"]')).not.toBeNull();
+    expect(localStorage.getItem("od.protoDevice")).toBeNull();
+  });
+
+  it("Make default writes the choice into the document settings and drops the personal override", () => {
+    render(<PrototypePlayer onClose={() => {}} />);
+    expect(screen.queryByRole("button", { name: "Make this the document's device frame" })).toBeNull();
+    fireEvent.change(screen.getByRole("combobox", { name: "Device frame" }), { target: { value: "desktop" } });
+    fireEvent.click(screen.getByRole("button", { name: "Make this the document's device frame" }));
+    expect(useScene.getState().scene?.settings?.presentDevice).toBe("desktop");
+    expect(localStorage.getItem("od.protoDevice")).toBeNull();
+    expect(document.querySelector('[data-device="desktop"]')).not.toBeNull();
+    expect(screen.queryByRole("button", { name: "Make this the document's device frame" })).toBeNull();
+  });
+
   it("a desktop frame shows the screen's name in its address bar; no frame draws no body", () => {
     render(<PrototypePlayer onClose={() => {}} />);
     const select = screen.getByRole("combobox", { name: "Device frame" });

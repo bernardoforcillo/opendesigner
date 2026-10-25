@@ -1,9 +1,11 @@
 import type { DocSettingsLite, GuideLite, PageLite, SceneState, Vertical } from "./types";
 import type { Bounds } from "../canvas/geometry";
+import { DEVICES } from "../flow/devices";
 
 // DOCUMENT SETTINGS and PAGE SETUP -- the twin of internal/core/docsettings.go (Go is the authority).
 //
 //   1. the vertical is "", "publishing", "design" or "product" ("" is "product"); it only shapes the editor;
+//   1b. the Present device frame is "" (generic) or one of flow/devices.ts::DEVICES;
 //   2. the baseline grid has a finite increment in 0..1000 (0 = no grid) and a finite start >= 0;
 //   3. a page's size is 0 (unbounded) or 1..100000 in each direction; margins, gutter and bleed are
 //      finite and non-negative (bleed up to 1000); columns are 0..24;
@@ -24,19 +26,21 @@ export function verticalOf(scene: Pick<SceneState, "settings"> | null | undefine
 const finiteIn = (v: number, lo: number, hi: number) => Number.isFinite(v) && v >= lo && v <= hi;
 
 /** Parity with core.validateDocSettings (the message form: vertical "" for the default). */
-export function isValidDocSettings(s: { vertical: string; baselineIncrement: number; baselineStart: number; facingPages?: boolean } | undefined): boolean {
+export function isValidDocSettings(s: { vertical: string; baselineIncrement: number; baselineStart: number; facingPages?: boolean; presentDevice?: string } | undefined): boolean {
   if (!s) return false;
   if (s.vertical !== "" && !isVertical(s.vertical)) return false;
+  if (s.presentDevice && !DEVICES.some((d) => d.id === s.presentDevice)) return false;
   return finiteIn(s.baselineIncrement, 0, 1000) && Number.isFinite(s.baselineStart) && s.baselineStart >= 0;
 }
 
 /** A DocSettingsLite from the message form, or null when invalid. */
-export function toDocSettings(s: { vertical: string; baselineIncrement: number; baselineStart: number; facingPages?: boolean }): DocSettingsLite {
+export function toDocSettings(s: { vertical: string; baselineIncrement: number; baselineStart: number; facingPages?: boolean; presentDevice?: string }): DocSettingsLite {
   return {
     ...(s.vertical === "publishing" || s.vertical === "design" ? { vertical: s.vertical } : {}),
     ...(s.baselineIncrement ? { baselineIncrement: s.baselineIncrement } : {}),
     ...(s.baselineStart ? { baselineStart: s.baselineStart } : {}),
     ...(s.facingPages ? { facingPages: true } : {}),
+    ...(s.presentDevice && s.presentDevice !== "generic" ? { presentDevice: s.presentDevice } : {}),
   };
 }
 

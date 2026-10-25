@@ -1001,6 +1001,7 @@ type DocumentView struct {
 	Vertical          string  `json:"vertical" jsonschema:"publishing | design | product"`
 	BaselineIncrement float64 `json:"baselineIncrement,omitempty"`
 	BaselineStart     float64 `json:"baselineStart,omitempty"`
+	PresentDevice     string  `json:"presentDevice" jsonschema:"the default Present device frame: generic | phone | tablet | desktop | none"`
 }
 
 // GetDocument returns the whole synced document: pages, components and every
@@ -1013,6 +1014,7 @@ func (s *Session) GetDocument(ctx context.Context, _ struct{}) (DocumentView, er
 	doc := s.doc
 	out := DocumentView{Id: doc.GetId(), Name: doc.GetName(), Seq: s.seq}
 	out.Vertical = verticalName(doc.GetSettings().GetVertical())
+	out.PresentDevice = presentDeviceName(doc.GetSettings().GetPresentDevice())
 	out.BaselineIncrement, out.BaselineStart = doc.GetSettings().GetBaselineIncrement(), doc.GetSettings().GetBaselineStart()
 	for _, p := range doc.GetPages() {
 		out.Pages = append(out.Pages, pageView(p))

@@ -1032,6 +1032,30 @@ func TestDocumentSettingsAndPageSetup(t *testing.T) {
 		t.Fatal("an unknown vertical should be refused")
 	}
 
+	// The Present device frame: generic by default, set per document, other fields untouched.
+	if doc.PresentDevice != "generic" {
+		t.Fatalf("default device = %q, want generic", doc.PresentDevice)
+	}
+	phone := "phone"
+	if _, err := sess.SetDocumentSettings(ctx, odmcp.SetDocumentSettingsInput{PresentDevice: &phone}); err != nil {
+		t.Fatal(err)
+	}
+	doc, _ = sess.GetDocument(ctx, struct{}{})
+	if doc.PresentDevice != "phone" || doc.BaselineIncrement != 14 {
+		t.Fatalf("after setting the device: %q / %v", doc.PresentDevice, doc.BaselineIncrement)
+	}
+	watch := "watch"
+	if _, err := sess.SetDocumentSettings(ctx, odmcp.SetDocumentSettingsInput{PresentDevice: &watch}); err == nil {
+		t.Fatal("an unknown device should be refused")
+	}
+	generic := "generic"
+	if _, err := sess.SetDocumentSettings(ctx, odmcp.SetDocumentSettingsInput{PresentDevice: &generic}); err != nil {
+		t.Fatal(err)
+	}
+	if doc, _ = sess.GetDocument(ctx, struct{}{}); doc.PresentDevice != "generic" {
+		t.Fatalf("device after going back to generic = %q", doc.PresentDevice)
+	}
+
 	w, h, mt, cols, gut := 420.0, 595.0, 40.0, uint32(2), 18.0
 	pg, err := sess.CreatePage(ctx, odmcp.CreatePageInput{Name: "A5", PageSetup: odmcp.PageSetup{Width: &w, Height: &h, MarginTop: &mt, Columns: &cols, Gutter: &gut}})
 	if err != nil {

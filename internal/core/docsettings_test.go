@@ -27,6 +27,7 @@ func TestSetDocSettings(t *testing.T) {
 		"negative increment":  {BaselineIncrement: -1},
 		"increment too large": {BaselineIncrement: 5000},
 		"negative start":      {BaselineStart: -3},
+		"unknown device":      {PresentDevice: "watch"},
 	} {
 		if err := Apply(doc, settingsOp(s)); err == nil {
 			t.Errorf("%s: should be rejected", name)
@@ -34,6 +35,15 @@ func TestSetDocSettings(t *testing.T) {
 	}
 	if err := Apply(doc, &opendesignerv1.Op{Kind: &opendesignerv1.Op_SetDocSettings{SetDocSettings: &opendesignerv1.SetDocSettings{}}}); err == nil {
 		t.Error("a nil settings message should be rejected")
+	}
+	mustApply(t, doc, settingsOp(&opendesignerv1.DocSettings{PresentDevice: "phone"}))
+	if doc.GetSettings().GetPresentDevice() != "phone" {
+		t.Errorf("present device = %q", doc.GetSettings().GetPresentDevice())
+	}
+	for _, d := range append([]string{""}, PresentDevices...) {
+		if !ValidPresentDevice(d) {
+			t.Errorf("device %q should be valid", d)
+		}
 	}
 	if !ValidVertical("") || !ValidVertical("product") || ValidVertical("x") {
 		t.Error("ValidVertical")

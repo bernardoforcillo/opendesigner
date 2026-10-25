@@ -163,11 +163,11 @@ export function makeMovePageOp(id: string, index: number): Op {
   return create(OpSchema, { opId: uuid(), docId: docId(), kind: { case: "movePage", value: { id, index } } });
 }
 
-/** Absolute upsert of the document settings (vertical, baseline grid). */
+/** Absolute upsert of the document settings (vertical, baseline grid, facing pages, Present device frame). */
 export function makeSetDocSettingsOp(s: DocSettingsLite): Op {
   return create(OpSchema, {
     opId: uuid(), docId: docId(),
-    kind: { case: "setDocSettings", value: { settings: { vertical: s.vertical ?? "", baselineIncrement: s.baselineIncrement ?? 0, baselineStart: s.baselineStart ?? 0, facingPages: s.facingPages === true } } },
+    kind: { case: "setDocSettings", value: { settings: { vertical: s.vertical ?? "", baselineIncrement: s.baselineIncrement ?? 0, baselineStart: s.baselineStart ?? 0, facingPages: s.facingPages === true, presentDevice: s.presentDevice ?? "" } } },
   });
 }
 

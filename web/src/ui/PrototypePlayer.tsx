@@ -14,6 +14,7 @@ import { screenName } from "../flow/screens";
 import { Badge, Icon, IconButton } from "./ds";
 import { AnyIcon, FlowIcon, FlowIconButton } from "./ds/flow-parts";
 import { DeviceBody, DeviceOverlay } from "./DeviceChrome";
+import { makeSetDocSettingsOp } from "../tools/ops";
 import { DEVICES, deviceById, deviceGeometry, type DeviceId } from "../flow/devices";
 import "./ds/flow-stage.css";
 import {
@@ -38,10 +39,15 @@ const DOCK_RESERVE = 124;
 // How long the hotspot pulse stays visible after entering a screen.
 const HINT_MS = 4200;
 const MAX_ZOOM = 2;
-// The chosen device frame is remembered (per person, in this browser).
+// The device frame has two levels: the DOCUMENT's (DocSettings.present_device, set with set_document_settings
+// or "Make default" below; generic when unset) and the person's own pick, remembered in this browser, which
+// overrides it for them. null = no personal pick: follow the document.
 const DEVICE_KEY = "od.protoDevice";
-function loadDevice(): DeviceId {
-  try { return deviceById(localStorage.getItem(DEVICE_KEY)).id; } catch { return "generic"; }
+function loadPersonalDevice(): DeviceId | null {
+  try {
+    const raw = localStorage.getItem(DEVICE_KEY);
+    return raw && DEVICES.some((d) => d.id === raw) ? (raw as DeviceId) : null;
+  } catch { return null; }
 }
 
 function fitCamera(b: Bounds, w: number, h: number) {
@@ -72,7 +78,9 @@ export function PrototypePlayer({ onClose }: { onClose: () => void }) {
   const [hint, setHint] = useState(true);
   const [flashes, setFlashes] = useState(0);
   const [pinned, setPinned] = useState(false);
-  const [device, setDevice] = useState<DeviceId>(loadDevice);
+  const [personalDevice, setPersonalDevice] = useState<DeviceId | null>(loadPersonalDevice);
+  const docDevice = deviceById(scene?.settings?.presentDevice).id;
+  const device = personalDevice ?? docDevice;
   useEffect(() => {
     setHint(true);
     const t = setTimeout(() => setHint(false), HINT_MS);
@@ -401,13 +409,41 @@ export function PrototypePlayer({ onClose }: { onClose: () => void }) {
               value={device}
               onChange={(e) => {
                 const id = deviceById(e.target.value).id;
-                setDevice(id);
+                setPersonalDevice(id);
                 try { localStorage.setItem(DEVICE_KEY, id); } catch { /* no storage */ }
               }}
               className="h-6 cursor-pointer rounded bg-transparent text-[12px] text-fg outline-none focus-visible:shadow-[var(--ring)]"
             >
               {DEVICES.map((d) => <option key={d.id} value={d.id}>{d.label}</option>)}
             </select>
+            {device !== docDevice && (
+              <RacButton
+                aria-label="Make this the document's device frame"
+                onPress={() => {
+                  const store = useScene.getState();
+                  store.beginGesture();
+                  store.endGesture([makeSetDocSettingsOp({ ...(store.scene?.settings ?? {}), presentDevice: device === "generic" ? undefined : device })]);
+                  // The document now says it, so the personal pick is no longer an override.
+                  setPersonalDevice(null);
+                  try { localStorage.removeItem(DEVICE_KEY); } catch { /* no storage */ }
+                }}
+                className="h-6 rounded px-1.5 text-[11px] text-fg-muted outline-none hover:bg-surface-3 hover:text-fg data-[focus-visible]:shadow-[var(--ring)]"
+              >
+                Make default
+              </RacButton>
+            )}
+            {personalDevice !== null && personalDevice !== docDevice && (
+              <RacButton
+                aria-label="Use the document's device frame"
+                onPress={() => {
+                  setPersonalDevice(null);
+                  try { localStorage.removeItem(DEVICE_KEY); } catch { /* no storage */ }
+                }}
+                className="h-6 rounded px-1.5 text-[11px] text-fg-muted outline-none hover:bg-surface-3 hover:text-fg data-[focus-visible]:shadow-[var(--ring)]"
+              >
+                Reset
+              </RacButton>
+            )}
           </label>
           <FlowIconButton icon="braces" label="Variables" selected={showVars} onPress={() => setShowVars((v) => !v)}>
             {state && Object.keys(state.vars).length > 0 && (

@@ -27,7 +27,7 @@ export interface GuideLite { vertical: boolean; position: number }
 /** The kind of work a document is for: it shapes the editor, never limits the document. Absent = "product". */
 export type Vertical = "publishing" | "design" | "product";
 /** Document-wide settings, each absent at its default. */
-export interface DocSettingsLite { vertical?: Exclude<Vertical, "product">; baselineIncrement?: number; baselineStart?: number; facingPages?: boolean }
+export interface DocSettingsLite { vertical?: Exclude<Vertical, "product">; baselineIncrement?: number; baselineStart?: number; facingPages?: boolean; presentDevice?: string }
 export interface GradientStopLite { color: { r: number; g: number; b: number; a: number }; position: number; }
 // A gradient in NORMALIZED box coordinates (see GradientPaint in the proto).
 // Linear: axis (x1,y1)->(x2,y2). Radial: center (x1,y1), radius = |p2-p1| in
@@ -547,12 +547,13 @@ export function toPageLite(p: {
 }
 
 /** `{ settings }` for a scene when the message has any non-default setting, else `{}`. */
-export function settingsField(s: { vertical: string; baselineIncrement: number; baselineStart: number; facingPages?: boolean }): { settings?: DocSettingsLite } {
+export function settingsField(s: { vertical: string; baselineIncrement: number; baselineStart: number; facingPages?: boolean; presentDevice?: string }): { settings?: DocSettingsLite } {
   const out: DocSettingsLite = {
     ...(s.vertical === "publishing" || s.vertical === "design" ? { vertical: s.vertical } : {}),
     ...(s.baselineIncrement ? { baselineIncrement: s.baselineIncrement } : {}),
     ...(s.baselineStart ? { baselineStart: s.baselineStart } : {}),
     ...(s.facingPages ? { facingPages: true } : {}),
+    ...(s.presentDevice && s.presentDevice !== "generic" ? { presentDevice: s.presentDevice } : {}),
   };
   return Object.keys(out).length > 0 ? { settings: out } : {};
 }

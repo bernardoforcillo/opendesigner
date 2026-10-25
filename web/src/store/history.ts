@@ -197,7 +197,7 @@ export function invertOp(scene: SceneState, op: Op): Op[] | null {
       const prev = scene.settings ?? {};
       return [create(OpSchema, {
         opId: newOpId(), docId: op.docId,
-        kind: { case: "setDocSettings", value: { settings: { vertical: prev.vertical ?? "", baselineIncrement: prev.baselineIncrement ?? 0, baselineStart: prev.baselineStart ?? 0, facingPages: prev.facingPages === true } } },
+        kind: { case: "setDocSettings", value: { settings: { vertical: prev.vertical ?? "", baselineIncrement: prev.baselineIncrement ?? 0, baselineStart: prev.baselineStart ?? 0, facingPages: prev.facingPages === true, presentDevice: prev.presentDevice ?? "" } } },
       })];
     }
     // The inverse of a move is moving the page back to where it was.
