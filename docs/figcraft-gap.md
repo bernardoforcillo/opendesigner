@@ -15,12 +15,12 @@ and which it did not.
   export, ready-for-dev and annotations, compare changes, device frames and hotspot hints in Present,
   prototype expressions and `else` guards.
 - **Type and effects** (docs/typography.md, docs/effects.md): text case, super/subscript, lists, indent,
-  OpenType features, vertical alignment and inset, progressive blur, noise, texture and glass.
+  OpenType features, vertical alignment and inset, horizontal text scale (also in rich-text runs and in
+  paragraph / character styles), progressive blur, noise, texture and glass.
 
 ## Not ported
 
 - Auto layout grid mode (fixed / hug / fr tracks, spans); groups as auto layout children.
-- Horizontal text scale; rich-text runs do not use the new case, list, script and inset features.
 - Leptos code export; ordered `else if` chains in prototypes.
 - Shape builder, variable-width strokes, vector-network editing tools, noise/glass refraction.
 - Plugins in WebAssembly, localization catalogs, accessibility tree, accounts and teams.

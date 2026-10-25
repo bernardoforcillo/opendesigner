@@ -251,6 +251,7 @@ function pickTextExtras(s: Record<string, unknown>): Partial<TextStyleLite> {
     ...(verticalAlign ? { verticalAlign } : {}),
     ...(typeof s.indent === "number" && s.indent > 0 && Number.isFinite(s.indent) ? { indent: s.indent } : {}),
     ...(typeof s.inset === "number" && s.inset > 0 && Number.isFinite(s.inset) ? { inset: s.inset } : {}),
+    ...(typeof s.textScale === "number" && s.textScale >= 1 && s.textScale <= 1000 ? { textScale: s.textScale } : {}),
     ...(typeof s.fontFeatures === "string" && isValidFontFeatures(s.fontFeatures) && s.fontFeatures !== "" ? { fontFeatures: s.fontFeatures } : {}),
   };
 }

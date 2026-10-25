@@ -152,6 +152,8 @@ export interface TextStyleLite {
   fontFeatures?: string;
   verticalAlign?: TextVAlignLite;
   inset?: number;
+  /** Horizontal scale of the glyphs in percent (proto 30); absent = 100. */
+  textScale?: number;
 }
 export type TextCaseLite = "upper" | "lower" | "title" | "smallCaps";
 export type TextScriptLite = "super" | "sub";
@@ -594,6 +596,7 @@ export function toTextStyleLite(s: PbTextStyle | undefined): TextStyleLite {
     ...(s && s.fontFeatures !== "" ? { fontFeatures: s.fontFeatures } : {}),
     ...(va ? { verticalAlign: va } : {}),
     ...(s && s.inset > 0 ? { inset: s.inset } : {}),
+    ...(s && s.textScale > 0 ? { textScale: s.textScale } : {}),
     ...(s?.underline ? { underline: true } : {}),
     ...(s?.strikethrough ? { strikethrough: true } : {}),
     ...(s?.letterSpacing ? { letterSpacing: s.letterSpacing } : {}),
@@ -720,6 +723,7 @@ export function toPbTextStyle(s: TextStyleLite) {
     fontFeatures: s.fontFeatures ?? "",
     verticalAlign: s.verticalAlign ? VALIGN_TO_PB[s.verticalAlign] : TextVAlign.UNSPECIFIED,
     inset: s.inset ?? 0,
+    textScale: s.textScale ?? 0,
     underline: s.underline === true,
     strikethrough: s.strikethrough === true,
     letterSpacing: s.letterSpacing ?? 0,

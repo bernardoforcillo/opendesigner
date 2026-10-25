@@ -5,7 +5,7 @@ import { strokeHeads } from "../renderer/arrowheads";
 import { sideBandRects } from "../renderer/strokeSides";
 import type { Bounds } from "../canvas/geometry";
 import { firstBlur, firstShadow, resolvedFill } from "../renderer/canvasRenderer";
-import { fontFamilyOf, fontFeaturesOf, fontSizeOf, fontWeightOf, placeTextLines } from "../renderer/text";
+import { fontFamilyOf, fontFeaturesOf, fontSizeOf, fontWeightOf, hscaleOf, piecesOfSegment, placeTextLines } from "../renderer/text";
 import type { MeasureText } from "../renderer/text";
 import { hasRealStroke, vectorStyleOf } from "../renderer/vectorStyle";
 import { subPathsToD } from "../svg/pathData";
@@ -399,43 +399,59 @@ function textElement(n: NodeLite, measure: MeasureText, defs: string[]): string 
   if (lines.length === 0) return "";
   // A rich line is one <tspan> per piece (each with its own x, font and decoration); the first
   // carries the line's y, and so does every other: an absolute y per piece keeps the baseline shared.
-  // A plain line made of runs (small caps, scripts, a list marker) is one tspan per piece, at its own size.
+  // A plain line made of runs (small caps, scripts, a list marker) is one tspan per piece, at its own size;
+  // so is a segment of a rich line made of runs, at its own size and baseline.
+  // A horizontal scale cannot be put on a tspan: the tspans of one scale share a <text> whose transform
+  // scales x, and their x is divided by it.
   const plainDecoration = [style.underline ? "underline" : "", style.strikethrough ? "line-through" : ""].filter(Boolean).join(" ");
-  const spans = lines
-    .flatMap((l) => l.pieces
-      ? l.pieces.map((g) => `<tspan${attrs([
-          attr("x", g.x), attr("y", g.y), g.scale === 1 ? null : attr("font-size", fontSizeOf(style) * g.scale),
-          plainDecoration ? attr("text-decoration", plainDecoration) : null,
-        ])}>${esc(g.text)}</tspan>`)
-      : (l.segments ?? [{ text: l.text, x: l.x, width: l.width, style }]).map((seg) => {
-        const own = l.segments !== undefined;
-        const decoration = [seg.style.underline ? "underline" : "", seg.style.strikethrough ? "line-through" : ""].filter(Boolean).join(" ");
-        return `<tspan${attrs([
-          attr("x", seg.x), attr("y", l.y),
-          ...(own && fontFamilyOf(seg.style) !== fontFamilyOf(style) ? [attr("font-family", fontFamilyOf(seg.style))] : []),
-          ...(own && fontSizeOf(seg.style) !== fontSizeOf(style) ? [attr("font-size", fontSizeOf(seg.style))] : []),
-          ...(own && fontWeightOf(seg.style) !== fontWeightOf(style) ? [attr("font-weight", fontWeightOf(seg.style))] : []),
-          ...(own && !!seg.style.italic !== !!style.italic ? [attr("font-style", seg.style.italic ? "italic" : "normal")] : []),
+  const rootFeatures = fontFeaturesOf(style);
+  interface Span { h: number; xml: string }
+  const spans: Span[] = lines.flatMap((l): Span[] => {
+    if (l.pieces) {
+      const h = hscaleOf(style);
+      return l.pieces.map((g) => ({ h, xml: `<tspan${attrs([
+        attr("x", g.x / h), attr("y", g.y), g.scale === 1 ? null : attr("font-size", fontSizeOf(style) * g.scale),
+        plainDecoration ? attr("text-decoration", plainDecoration) : null,
+      ])}>${esc(g.text)}</tspan>` }));
+    }
+    if (!l.segments) {
+      const h = hscaleOf(style);
+      return [{ h, xml: `<tspan${attrs([attr("x", l.x / h), attr("y", l.y), plainDecoration ? attr("text-decoration", plainDecoration) : null])}>${esc(l.text)}</tspan>` }];
+    }
+    return l.segments.flatMap((seg) => {
+      const h = hscaleOf(seg.style);
+      const decoration = [seg.style.underline ? "underline" : "", seg.style.strikethrough ? "line-through" : ""].filter(Boolean).join(" ");
+      const features = fontFeaturesOf(seg.style);
+      return piecesOfSegment(seg, l.y).map((p): Span => {
+        const size = fontSizeOf(seg.style) * p.scale;
+        return { h, xml: `<tspan${attrs([
+          attr("x", p.x / h), attr("y", p.y),
+          ...(fontFamilyOf(seg.style) !== fontFamilyOf(style) ? [attr("font-family", fontFamilyOf(seg.style))] : []),
+          ...(size !== fontSizeOf(style) ? [attr("font-size", size)] : []),
+          ...(fontWeightOf(seg.style) !== fontWeightOf(style) ? [attr("font-weight", fontWeightOf(seg.style))] : []),
+          ...(!!seg.style.italic !== !!style.italic ? [attr("font-style", seg.style.italic ? "italic" : "normal")] : []),
+          ...(features !== rootFeatures ? [attr("style", `font-feature-settings:${features === "" ? "normal" : features}`)] : []),
           ...(decoration ? [attr("text-decoration", decoration)] : []),
-          ...(own && (seg.style.letterSpacing ?? 0) !== (style.letterSpacing ?? 0) ? [attr("letter-spacing", seg.style.letterSpacing ?? 0)] : []),
-        ])}>${esc(seg.text)}</tspan>`;
-      }),
-    )
-    .join("");
-  const features = fontFeaturesOf(style);
+          ...((seg.style.letterSpacing ?? 0) !== (style.letterSpacing ?? 0) ? [attr("letter-spacing", seg.style.letterSpacing ?? 0)] : []),
+        ])}>${esc(p.text)}</tspan>` };
+      });
+    });
+  });
   // xml:space="preserve" serves a line's LEADING spaces, which the canvas
   // draws and which SVG would otherwise collapse. The price is that every whitespace
   // INSIDE <text> becomes drawn: that is why the tspans are attached
   // to one another, with no newlines or indentation.
-  return `<text${attrs([
+  const scales = [...new Set(spans.map((sp) => sp.h))];
+  return scales.map((h) => `<text${attrs([
     attr("font-family", fontFamilyOf(style)),
     attr("font-size", fontSizeOf(style)),
     attr("font-weight", fontWeightOf(style)),
     ...(style.italic ? [attr("font-style", "italic")] : []),
-    features === "" ? null : attr("style", `font-feature-settings:${features}`),
+    rootFeatures === "" ? null : attr("style", `font-feature-settings:${rootFeatures}`),
     ...(style.letterSpacing ? [attr("letter-spacing", style.letterSpacing)] : []),
+    h === 1 ? null : attr("transform", `scale(${h} 1)`),
     ...paintAttrs(n, defs),
-  ])} xml:space="preserve">${spans}</text>`;
+  ])} xml:space="preserve">${spans.filter((sp) => sp.h === h).map((sp) => sp.xml).join("")}</text>`).join("");
 }
 
 /**

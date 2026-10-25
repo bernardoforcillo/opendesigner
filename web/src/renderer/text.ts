@@ -68,6 +68,12 @@ export function scriptScaleOf(style: StyleX): number {
   return style?.textScript ? SCRIPT_SCALE : 1;
 }
 
+/** Horizontal scale of the glyphs as a factor: 1 for none (the style stores a percentage, 0 = unset). */
+export function hscaleOf(style: StyleX): number {
+  const p = style?.textScale;
+  return p !== undefined && p > 0 && Number.isFinite(p) ? p / 100 : 1;
+}
+
 /** The baseline shift of a super/subscript (negative = up), in world units. */
 export function scriptShiftOf(style: StyleX): number {
   if (style?.textScript === "super") return -fontSizeOf(style) * SUPER_RISE;
@@ -115,8 +121,9 @@ function needsRuns(style: StyleX): boolean {
 
 /** `measure` made aware of runs: linear in the size, so a run at 0.8 is 0.8 of its width. */
 export function styledMeasure(measure: (s: string) => number, style: StyleX): (s: string) => number {
-  if (!needsRuns(style)) return measure;
-  return (s) => runsOf(s, style).reduce((w, r) => w + measure(r.text) * r.scale, 0);
+  const h = hscaleOf(style);
+  const sized = needsRuns(style) ? (s: string) => runsOf(s, style).reduce((w, r) => w + measure(r.text) * r.scale, 0) : measure;
+  return h === 1 ? sized : (s) => sized(s) * h;
 }
 
 /** Padding between the box and the text on every side. */
@@ -334,7 +341,13 @@ export type MeasureText = (text: string, style: TextStyleLite) => number;
 // RICH lines (paragraph / character styles, see layoutRich) also carry `segments`: the pieces of the
 // line with their own style and x, in world coordinates. `text` is then the whole line, and `x` the
 // start of the first piece.
-export interface PlacedSegment { text: string; x: number; width: number; style: TextStyleLite }
+export interface PlacedSegment {
+  text: string; x: number; width: number; style: TextStyleLite;
+  // Present when the segment is not one run (small caps, scripts): the pieces to draw instead of text/x.
+  pieces?: PlacedPiece[];
+  // A list marker: drawn like text, but belongs to no run (it is not part of the line's text).
+  marker?: boolean;
+}
 export interface PlacedLine {
   text: string; x: number; y: number; width: number; segments?: PlacedSegment[];
   // Present only when a plain (non-rich) line is not one run -- small caps, scripts, a list marker:
@@ -347,6 +360,11 @@ export interface PlacedPiece { text: string; x: number; y: number; scale: number
 /** The pieces a plain placed line is drawn with: its pieces, or the line itself as one. */
 export function piecesOfLine(line: PlacedLine): PlacedPiece[] {
   return line.pieces ?? [{ text: line.text, x: line.x, y: line.y, scale: 1 }];
+}
+
+/** The pieces a segment of a rich line is drawn with: its own pieces, or the whole segment on the baseline. */
+export function piecesOfSegment(seg: PlacedSegment, baseline: number): PlacedPiece[] {
+  return seg.pieces ?? [{ text: seg.text, x: seg.x, y: baseline, scale: 1 }];
 }
 
 /** A measure that can be asked for any style: `measureFor(style)(text)` is the width in world units. */
@@ -395,7 +413,7 @@ export function placeTextLines(measure: (s: string) => number, n: NodeLite, meas
   // Formatted text needs to measure with several styles; without that it is laid out as plain text.
   if (t.rich && measureFor) {
     const tracked = trackedMeasureFor(measureFor);
-    return placeRichLines(tracked, n, layoutRich(tracked, t.content, t.style, t.rich, n.width));
+    return placeRichLines(tracked, n, layoutRich(tracked, t.content, t.style, t.rich, innerWidth(n, t.style)));
   }
   const m = trackedMeasure(measure, t.style);
   return placeLines(m, n, t.style, layoutText(m, t.content, t.style, innerWidth(n, t.style)));
@@ -440,7 +458,7 @@ function placeLines(
       const shift = scriptShiftOf(style);
       for (const r of runsOf(line, style)) {
         pieces.push({ text: r.text, x: cx, y: baseline + shift, scale: r.scale });
-        cx += measure(r.text) * r.scale;
+        cx += measure(r.text) * r.scale * hscaleOf(style);
       }
       placed.pieces = pieces;
     }
@@ -479,13 +497,15 @@ export function textPaintBounds(measure: MeasureText, n: NodeLite): Bounds {
   if (n.kind !== "text" || !t || t.content === "") return box;
   if (t.rich) {
     const mf: MeasureFor = trackedMeasureFor((style) => (s) => measure(s, style));
-    const layout = layoutRich(mf, t.content, t.style, t.rich, n.width);
+    const layout = layoutRich(mf, t.content, t.style, t.rich, innerWidth(n, t.style));
     let minX = n.x, maxX = n.x + n.width;
     for (const line of placeRichLines(mf, n, layout)) {
       minX = Math.min(minX, line.x);
       maxX = Math.max(maxX, line.x + line.width);
+      // A list marker sits left of the text.
+      for (const seg of line.segments ?? []) minX = Math.min(minX, seg.x);
     }
-    return { x: minX, y: n.y, width: maxX - minX, height: Math.max(n.height, layout.height) };
+    return { x: minX, y: n.y, width: maxX - minX, height: Math.max(n.height, layout.height + 2 * insetOf(t.style)) };
   }
 
   const m = trackedMeasure((s: string) => measure(s, t.style), t.style);
@@ -502,7 +522,7 @@ export function textPaintBounds(measure: MeasureText, n: NodeLite): Bounds {
   // empty lines paint nothing but occupy their slot, and the text's height
   // is the one the layout declares (layoutText invariant:
   // height === lines.length * lineHeight).
-  const height = Math.max(n.height, layout.height);
+  const height = Math.max(n.height, layout.height + 2 * insetOf(t.style));
   return { x: minX, y: n.y, width: maxX - minX, height };
 }
 
@@ -598,8 +618,12 @@ function paintText(
   // A piece with letter spacing is drawn character by character; one without, in one go.
   const piece = (text: string, x: number, y: number, style: TextStyleLite) => {
     const ls = style.letterSpacing ?? 0;
-    if (ls === 0) { paintLine(text, x, y); return; }
-    for (const c of trackedOffsets(text, x, ls, raw)) paintLine(c.ch, c.x, y);
+    // Horizontal scale: the glyphs are stretched about the start of the piece.
+    const h = hscaleOf(style);
+    if (h !== 1) { ctx.save(); ctx.translate(x, 0); ctx.scale(h, 1); ctx.translate(-x, 0); }
+    if (ls === 0) paintLine(text, x, y);
+    else for (const c of trackedOffsets(text, x, ls, raw)) paintLine(c.ch, c.x, y);
+    if (h !== 1) ctx.restore();
   };
   for (const line of placeTextLines(raw, n, ctxMeasureFor(ctx))) {
     if (!line.segments) {
@@ -612,8 +636,12 @@ function paintText(
       continue;
     }
     for (const seg of line.segments) {
-      ctx.font = fontString(seg.style);
-      piece(seg.text, seg.x, line.y, seg.style);
+      // Pieces of a segment (small caps, scripts, a marker) each have their own size and baseline.
+      if ("textRendering" in ctx) tr.textRendering = ligaturesOff(seg.style) ? "optimizeSpeed" : "auto";
+      for (const p of piecesOfSegment(seg, line.y)) {
+        ctx.font = fontString(seg.style, p.scale);
+        piece(p.text, p.x, p.y, seg.style);
+      }
     }
   }
 }
@@ -643,6 +671,8 @@ export interface RichLine {
   ascent: number;
   /** Left edge of the first piece, from the box's left edge. */
   left: number;
+  /** The list marker of the paragraph's first line (hanging in the lead): its text and left edge, and the style it is drawn in. */
+  marker?: { text: string; left: number; style: TextStyleLite };
   /** Where the line ends in the normalized content (just after its last character). */
   end: number;
 }
@@ -685,20 +715,59 @@ export function layoutRich(
   let y = 0;
   let offset = 0;
   const paragraphs = text.split("\n");
+  const prOf = (pi: number) => rich.paragraphs[pi] ?? { style: base, spaceBefore: 0, spaceAfter: 0, indentFirst: 0, indentLeft: 0 };
+  // The pieces of every paragraph, split at run boundaries and CASED (the wrap must see the glyphs that
+  // are drawn). Offsets keep indexing the typed content: a case change that alters the length of a piece
+  // is not applied.
+  const pieceSets: Frag[][] = [];
+  let at = 0;
   paragraphs.forEach((para, pi) => {
-    const pr = rich.paragraphs[pi] ?? { style: base, spaceBefore: 0, spaceAfter: 0, indentFirst: 0, indentLeft: 0 };
-    // The pieces of the paragraph: split at run boundaries.
+    const pr = prOf(pi);
     const pieces: Frag[] = [];
-    const end = offset + para.length;
-    let pos = offset;
+    const end = at + para.length;
+    let pos = at;
+    let prev = "";
     while (pos < end) {
       const run = runs.find((r) => r.start <= pos && pos < r.end);
       const next = Math.min(end, run ? run.end : Math.min(...runs.filter((r) => r.start > pos).map((r) => r.start), end));
-      pieces.push(frag(text.slice(pos, next), run ? overlayStyle(pr.style, run.style) : pr.style, pos));
+      const style = run ? overlayStyle(pr.style, run.style) : pr.style;
+      const raw = text.slice(pos, next);
+      pieces.push(frag(caseAfter(prev, raw, style), style, pos));
+      prev = raw.slice(-1);
       pos = next;
     }
+    pieceSets.push(pieces);
+    at = end + 1;
+  });
+
+  // Lists: an item per non-empty paragraph of a list style, numbered in order (a paragraph that is not
+  // an item restarts the count). The marker column is as wide as the widest marker of the node, so
+  // every item's text lines up.
+  const markerOf: string[] = [];
+  let ordinal = 0;
+  let lastKind = "";
+  paragraphs.forEach((para, pi) => {
+    const kind = prOf(pi).style.listKind ?? "";
+    if (kind !== lastKind) ordinal = 0;
+    lastKind = kind;
+    markerOf.push(kind !== "" && para.trim() !== "" ? markerFor(prOf(pi).style, ++ordinal) : "");
+  });
+  let markerCol = 0;
+  paragraphs.forEach((_, pi) => {
+    const st = prOf(pi).style;
+    if (!st.listKind) return;
+    const mw = markerOf[pi] === "" ? 0 : styledMeasure(measureFor(st), st)(markerOf[pi]);
+    markerCol = Math.max(markerCol, Math.max(LIST_MIN_MARKER_EM * fontSizeOf(st), mw) + LIST_GAP_EM * fontSizeOf(st));
+  });
+
+  paragraphs.forEach((para, pi) => {
+    const own = prOf(pi);
+    const pieces = pieceSets[pi];
     const paraStart = offset;
-    offset = end + 1;
+    offset += para.length + 1;
+    // The paragraph's lead (indent plus the marker column) narrows its wrap like a left indent.
+    const lead = paragraphLead(own.style.listKind ? markerCol : 0, own.style);
+    const pr = lead > 0 ? { ...own, indentLeft: own.indentLeft + lead } : own;
 
     if (pi > 0) y += pr.spaceBefore;
     const built = wrapPieces(measureFor, pieces, pr, maxWidth);
@@ -718,7 +787,11 @@ export function layoutRich(
       const lineWidth = maxWidth > 0 ? maxWidth - pr.indentLeft - (li === 0 ? pr.indentFirst : 0) : 0;
       const left = pr.indentLeft + (li === 0 ? pr.indentFirst : 0) + alignOffsetX(pr.style.align, l.width, lineWidth);
       const last = l.frags[l.frags.length - 1];
-      lines.push({ frags: l.frags, width: l.width, top: y, height, ascent: m.ascent, left, end: last ? last.at + last.text.length : paraStart });
+      const markerLeft = own.indentLeft + own.indentFirst + (own.style.indent && own.style.indent > 0 ? own.style.indent : 0);
+      lines.push({
+        frags: l.frags, width: l.width, top: y, height, ascent: m.ascent, left, end: last ? last.at + last.text.length : paraStart,
+        ...(li === 0 && markerOf[pi] !== "" ? { marker: { text: markerOf[pi], left: markerLeft, style: markerStyle(own.style) } } : {}),
+      });
       y += height;
     }
     if (pi < paragraphs.length - 1) y += pr.spaceAfter;
@@ -738,7 +811,26 @@ function overlayStyle(base: TextStyleLite, over: TextStyleLite): TextStyleLite {
   if (over.underline) out.underline = true;
   if (over.strikethrough) out.strikethrough = true;
   if (over.letterSpacing) out.letterSpacing = over.letterSpacing;
+  // Character-level type settings; list, indent, vertical alignment and inset are paragraph / box
+  // settings and stay the paragraph's.
+  if (over.textCase) out.textCase = over.textCase;
+  if (over.textScript) out.textScript = over.textScript;
+  if (over.fontFeatures) out.fontFeatures = over.fontFeatures;
+  if (over.textScale) out.textScale = over.textScale;
   return out;
+}
+
+/** A list marker is drawn in its paragraph's font, never underlined, cased or raised. */
+function markerStyle(style: TextStyleLite): TextStyleLite {
+  const { underline: _u, strikethrough: _s, textCase: _c, textScript: _t, ...rest } = style;
+  return rest;
+}
+
+/** `text` as drawn in `style`, given the character just before it in the paragraph (title case needs it). */
+function caseAfter(prev: string, text: string, style: TextStyleLite): string {
+  if (!style.textCase || style.textCase === "smallCaps" || text === "") return text;
+  const shown = caseText(prev + text, style).slice(prev.length);
+  return shown.length === text.length ? shown : text;
 }
 
 interface Built { frags: Frag[]; width: number }
@@ -746,7 +838,7 @@ interface Built { frags: Frag[]; width: number }
 // Greedy wrap of one paragraph's pieces.
 function wrapPieces(measureFor: MeasureFor, pieces: Frag[], pr: NonNullable<TextLite["rich"]>["paragraphs"][number], maxWidth: number): Built[] {
   if (pieces.length === 0) return [];
-  const width = (f: Frag) => (f.text === "" ? 0 : measureFor(f.style)(f.text));
+  const width = (f: Frag) => (f.text === "" ? 0 : styledMeasure(measureFor(f.style), f.style)(f.text));
   // Words: runs of non-space characters, each with the style of its characters; the space before a
   // word is its separator and has its own style.
   interface Word { frags: Frag[]; sep: Frag | null }
@@ -790,7 +882,7 @@ function wrapPieces(measureFor: MeasureFor, pieces: Frag[], pr: NonNullable<Text
     for (const f of w.frags) {
       let at = f.at;
       for (const ch of Array.from(f.text)) {
-        const cw = measureFor(f.style)(ch);
+        const cw = width(frag(ch, f.style, at));
         if (tail().frags.length > 0 && tail().width + cw > limit(out.length === 1)) newLine();
         place([frag(ch, f.style, at)]);
         at += ch.length;
@@ -804,19 +896,43 @@ function wrapPieces(measureFor: MeasureFor, pieces: Frag[], pr: NonNullable<Text
 /** The lines of a rich layout placed in WORLD coordinates (the text box's top-left is n.x, n.y). */
 function placeRichLines(measureFor: MeasureFor, n: NodeLite, layout: RichLayout): PlacedLine[] {
   const out: PlacedLine[] = [];
+  // The box-level settings come from the text's own style: inset, and the vertical alignment in a box
+  // taller than the text (a taller text starts at the top).
+  const own = n.text?.style;
+  const inset = insetOf(own);
+  const spare = n.height - 2 * inset - layout.height;
+  const top = n.y + inset + (spare > 0 ? (own?.verticalAlign === "middle" ? spare / 2 : own?.verticalAlign === "bottom" ? spare : 0) : 0);
   for (const l of layout.lines) {
     if (l.frags.length === 0 || l.frags.every((f) => f.text === "")) continue;
-    let x = n.x + l.left;
+    const baseline = top + l.top + l.ascent;
+    let x = n.x + inset + l.left;
     const segments: PlacedSegment[] = [];
+    if (l.marker) {
+      const mx = n.x + inset + l.marker.left;
+      const w = styledMeasure(measureFor(l.marker.style), l.marker.style)(l.marker.text);
+      segments.push({ text: l.marker.text, x: mx, width: w, style: l.marker.style, marker: true });
+    }
     for (const f of l.frags) {
-      const w = measureFor(f.style)(f.text);
-      segments.push({ text: f.text, x, width: w, style: f.style });
-      x += w;
+      const m = measureFor(f.style);
+      const seg: PlacedSegment = { text: f.text, x, width: styledMeasure(m, f.style)(f.text), style: f.style };
+      if (needsRuns(f.style)) {
+        // Small caps and scripts: runs at another size, on a shifted baseline.
+        const h = hscaleOf(f.style);
+        const shift = scriptShiftOf(f.style);
+        let cx = x;
+        seg.pieces = runsOf(f.text, f.style).map((r) => {
+          const piece = { text: r.text, x: cx, y: baseline + shift, scale: r.scale };
+          cx += m(r.text) * r.scale * h;
+          return piece;
+        });
+      }
+      segments.push(seg);
+      x += seg.width;
     }
     out.push({
-      text: segments.map((s) => s.text).join(""),
-      x: n.x + l.left,
-      y: n.y + l.top + l.ascent,
+      text: segments.filter((s) => !s.marker).map((s) => s.text).join(""),
+      x: n.x + inset + l.left,
+      y: baseline,
       width: l.width,
       segments,
     });
