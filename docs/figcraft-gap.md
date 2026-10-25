@@ -18,13 +18,15 @@ and which it did not.
 - **Type and effects** (docs/typography.md, docs/effects.md): text case, super/subscript, lists, indent,
   OpenType features, vertical alignment and inset, horizontal text scale (also in rich-text runs and in
   paragraph / character styles), progressive blur, noise, texture and glass.
+- **Localization** (docs/localization.md): typed catalogs with plurals, live language switch, language from
+  the browser; first surfaces translated into seven languages (machine drafts).
 
 ## Not ported
 
 - Auto layout grid mode (fixed / hug / fr tracks, spans); groups as auto layout children.
 - Leptos code export; ordered `else if` chains in prototypes.
 - Shape builder, variable-width strokes, vector-network editing tools, noise/glass refraction.
-- Localization catalogs, accessibility tree, accounts and teams.
+- Accessibility tree, accounts and teams.
 - Variables from `.fig` files (only a warning counts the layers that use them), live connector ends, table structure beyond frames, real-file `.fig` fidelity, Display P3, `.fig` export.
 
 ## Unverified

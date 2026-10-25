@@ -1,0 +1,42 @@
+import type { Message } from "../core";
+import type { MessageKey } from "./en";
+
+// Japanese, concise (no です/ます), no plural forms. MACHINE DRAFT: waiting for a native speaker's review (docs/localization.md).
+export const ja: Record<MessageKey, Message> = {
+  "Document": "ドキュメント", "Mode": "モード", "Open left panel": "左パネルを開く", "Close left panel": "左パネルを閉じる",
+  "Open right panel": "右パネルを開く", "Close right panel": "右パネルを閉じる",
+  "Board": "ボード", "Design": "デザイン", "Flows": "フロー", "Develop": "開発",
+  "An infinite board: sticky notes, text and arrows": "無限のボード：付箋、テキスト、矢印",
+  "Draw the screens": "画面を描く",
+  "Connect the screens and try the prototype": "画面をつないでプロトタイプを試す",
+  "Readiness, generated code, export": "開発準備、生成コード、エクスポート",
+  "Your link does not allow editing": "このリンクでは編集できません", "View only": "閲覧のみ", "Comment only": "コメントのみ", "Zoom": "ズーム",
+  "Tools": "ツール", "More shapes": "その他の図形", "Animation": "アニメーション", "Undo": "元に戻す", "Redo": "やり直す", "Present": "プレゼン",
+  "Select": "選択", "Connect": "接続", "Sticky note": "付箋", "Link": "リンク", "Vote": "投票", "Frame": "フレーム",
+  "Rectangle": "長方形", "Ellipse": "楕円", "Polygon": "多角形", "Star": "星",
+  "Text": "テキスト", "Pen": "ペン", "Node": "ノード", "Hand": "手のひら", "Comment": "コメント",
+  "Document menu": "ドキュメントメニュー", "Home": "ホーム", "New document": "新規ドキュメント", "Rename document": "ドキュメント名を変更",
+  "Import SVG…": "SVGを読み込む…", "Import .fig file…": ".figファイルを読み込む…", "experimental": "実験的",
+  "Import PDF…": "PDFを読み込む…", "editable text and shapes": "編集可能なテキストと図形", "Import PDF as pictures…": "PDFを画像として読み込む…",
+  "Export all pages as PDF…": "すべてのページをPDFで書き出す…",
+  "Export PDF for print (with bleed)…": "印刷用PDFを書き出す（裁ち落とし付き）…", "Export all pages as EPUB": "すべてのページをEPUBで書き出す",
+  "Page setup…": "ページ設定…", "Diagram (Mermaid, UML)…": "ダイアグラム（Mermaid、UML）…",
+  "Whiteboard (sticky, table, kanban…)…": "ホワイトボード（付箋、表、かんばん…）…", "Variables…": "変数…", "Fonts…": "フォント…",
+  "Styles (paragraph, character)…": "スタイル（段落、文字）…", "Versions…": "バージョン…", "Share…": "共有…", "Plugins…": "プラグイン…",
+  "Pixel snap {n} px": "ピクセルスナップ {n} px", "Pixel snap off": "ピクセルスナップ オフ", "cycles 1 / 4 / 8 / off": "1 / 4 / 8 / オフを切り替え",
+  "Renderer {name}": "レンダラー {name}", "switch to {name}": "{name}に切り替え", "Document type": "ドキュメントの種類", "Theme": "テーマ",
+  "System": "システム", "Light": "ライト", "Dark": "ダーク", "Language": "言語", "machine draft": "機械翻訳の草稿",
+  "Kind of document": "ドキュメントの種類", "Start from a template": "テンプレートから始める", "Your documents": "あなたのドキュメント",
+  "Loading documents…": "ドキュメントを読み込み中…", "No documents yet": "ドキュメントはまだありません",
+  "Pick a template above: in one click you get screens that are already connected, ready to try.":
+    "上のテンプレートを選ぶと、つながった画面がワンクリックで手に入り、すぐに試せます。",
+  "Cancel": "キャンセル", "Join": "参加", "Paste a link to join": "リンクを貼り付けて参加", "Link to a shared document": "共有ドキュメントへのリンク",
+  "That is not a valid opendesigner link.": "有効なopendesignerのリンクではありません。",
+  "Could not read the documents ({error}).": "ドキュメントを読み込めませんでした（{error}）。", "Open {name}": "{name}を開く",
+  "Size limits": "サイズ制限", "Variables": "変数", "Transitions": "トランジション", "Stroke": "線", "Sizing": "サイズ", "Paths": "パス",
+  "Override": "オーバーライド", "Layout": "レイアウト", "Instance": "インスタンス", "Fill": "塗り", "Export": "書き出し", "Effect style": "エフェクトスタイル",
+  "Current flow": "現在のフロー", "Corners": "角", "Constraints": "制約", "Component": "コンポーネント", "Arc": "円弧", "Appearance": "外観",
+  "{n} documents": { other: "ドキュメント {n} 件" },
+  "{n} screens": { other: "画面 {n} 枚" },
+  "{n} flows": { other: "フロー {n} 件" },
+};
