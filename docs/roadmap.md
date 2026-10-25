@@ -87,7 +87,8 @@ Text
 - [x] Letter spacing (tracking) and underline / strikethrough
 - [x] Kerning on/off, horizontal scale, small caps, super/subscript
 - [x] Hyphenation and justification, drop caps
-- [ ] Widows/orphans, keep-with-next (not done: needs paragraph-style fields in the proto and the Go core)
+- [x] Widows/orphans, keep-with-next, keep lines together (between threaded frames); see docs/rich-text.md
+- [x] Paragraph rules above/below, shading and border, optical margin alignment, variable-font axes (SVG and editing field only)
 - [x] Bullets and numbered lists, tabs, indents
 - [x] Text wrap around objects (bounding box, gap); see docs/text-frames.md
 - [x] Anchored (inline) objects, tied to a place in the text; see docs/graphics-colour.md

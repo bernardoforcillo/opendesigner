@@ -8,6 +8,7 @@ import {
   DEFAULT_FONT_FAMILY,
   DEFAULT_FONT_WEIGHT,
   cssFeatureSettings,
+  cssVariationSettings,
   fontSizeOf,
   lineHeightOf,
 } from "../renderer/text";
@@ -344,6 +345,7 @@ export function TextEditorOverlay({ nodeId }: TextEditorOverlayProps) {
         // Tracking, so the field wraps where the canvas will.
         letterSpacing: style?.letterSpacing ? `${style.letterSpacing * camera.zoom}px` : undefined,
         fontFeatureSettings: style?.fontFeatures ? cssFeatureSettings(style.fontFeatures) : undefined,
+        fontVariationSettings: style?.fontVariations ? cssVariationSettings(style.fontVariations) : undefined,
         fontKerning: style?.noKerning ? "none" : undefined,
         color: cssColor(node),
         // The node's OPACITY is NOT carried over here: it would make

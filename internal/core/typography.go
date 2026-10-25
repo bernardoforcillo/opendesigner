@@ -124,9 +124,42 @@ func validFontFeatures(s string) bool {
 	return true
 }
 
+var variationRe = regexp.MustCompile(`^[A-Za-z0-9]{4} -?[0-9]{1,4}(\.[0-9]{1,3})?$`)
+
+// validFontVariations reports whether s is a comma-separated list of variable-font axis settings ("wght 650, wdth 90").
+func validFontVariations(s string) bool {
+	if s == "" {
+		return true
+	}
+	if len(s) > 128 {
+		return false
+	}
+	for _, item := range strings.Split(s, ",") {
+		if !variationRe.MatchString(strings.TrimSpace(item)) {
+			return false
+		}
+	}
+	return true
+}
+
+func validRule(r *opendesignerv1.ParagraphRule) bool {
+	return r == nil || (finiteIn(r.GetWeight(), 0, 100) && finiteIn(r.GetOffset(), -1000, 1000) &&
+		finiteIn(r.GetIndentLeft(), 0, 100000) && finiteIn(r.GetIndentRight(), 0, 100000) && validColor(r.GetColor()))
+}
+
+// hasParagraphLook reports whether d sets any keep, rule, shading, border or optical-margin field.
+func hasParagraphLook(d *opendesignerv1.TextStyleDef) bool {
+	return d.GetKeepWithNext() || d.GetKeepLinesTogether() || d.GetKeepFirstLines() != 0 || d.GetKeepLastLines() != 0 ||
+		d.GetRuleAbove() != nil || d.GetRuleBelow() != nil || d.GetShading() != nil || d.GetShadingOffset() != 0 ||
+		d.GetBorderColor() != nil || d.GetBorderWeight() != 0 || d.GetOpticalMargin()
+}
+
 func validateStyleGlyphs(st *opendesignerv1.TextStyle) error {
 	if !validFontFeatures(st.GetFontFeatures()) {
 		return fmt.Errorf("%w: font features %q", ErrTextStyleValue, st.GetFontFeatures())
+	}
+	if !validFontVariations(st.GetFontVariations()) {
+		return fmt.Errorf("%w: font variations %q", ErrTextStyleValue, st.GetFontVariations())
 	}
 	if hs := st.GetHorizontalScale(); hs != 0 && !(hs >= 0.1 && hs <= 10) {
 		return fmt.Errorf("%w: horizontal scale %v", ErrTextStyleValue, hs)
@@ -152,7 +185,7 @@ func validateParagraphFeatures(doc *opendesignerv1.Document, d *opendesignerv1.T
 	any := d.GetHyphenate() || d.GetListKind() != opendesignerv1.ListKind_LIST_KIND_NONE || d.GetListMarker() != "" || d.GetListNumberStyle() != "" ||
 		d.GetListIndent() != 0 || d.GetOutlineLevel() != 0 || len(d.GetTabStops()) > 0 || d.GetDropCapLines() != 0 || d.GetDropCapChars() != 0 || len(d.GetNestedStyles()) > 0
 	if d.GetKind() == opendesignerv1.TextStyleKind_TEXT_STYLE_KIND_CHARACTER {
-		if any {
+		if any || hasParagraphLook(d) {
 			return fmt.Errorf("%w: a character style has no paragraph features", ErrTextStyleValue)
 		}
 		return nil
@@ -163,6 +196,13 @@ func validateParagraphFeatures(doc *opendesignerv1.Document, d *opendesignerv1.T
 	}
 	if d.GetOutlineLevel() > 9 {
 		return fmt.Errorf("%w: outline level", ErrTextStyleValue)
+	}
+	if d.GetKeepFirstLines() > 6 || d.GetKeepLastLines() > 6 {
+		return fmt.Errorf("%w: keep lines", ErrTextStyleValue)
+	}
+	if !validRule(d.GetRuleAbove()) || !validRule(d.GetRuleBelow()) || !validColor(d.GetShading()) || !validColor(d.GetBorderColor()) ||
+		!finiteIn(d.GetShadingOffset(), 0, 1000) || !finiteIn(d.GetBorderWeight(), 0, 100) {
+		return fmt.Errorf("%w: rule, shading or border", ErrTextStyleValue)
 	}
 	if n := d.GetDropCapLines(); n != 0 && (n < 2 || n > 10) || d.GetDropCapChars() > 10 {
 		return fmt.Errorf("%w: drop cap", ErrTextStyleValue)

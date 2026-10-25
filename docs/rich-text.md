@@ -59,12 +59,23 @@ Small caps and super/subscript set on a text's own style also use the formatted 
 
 Rules (the same in Go `internal/core/typography.go` and TS `store/typography.ts`): horizontal scale 0 or 0.1–10; colour channels 0–1; list marker up to 16 characters without a line break; drop cap 0 or 2–10 lines, at most 10 letters; at most 32 tab stops, strictly ascending, leader at most one character; at most 8 nested styles, each naming an existing character style with a non-empty delimiter of at most 8 bytes and a count of 1–50. A character style cannot carry the paragraph features.
 
+## Breaks, rules, shading, optical margin, variable axes
+
+Paragraph-style fields (Styles… → *Breaks between frames* and *Rules, shading and border*), also in `set_text_style`:
+
+- **Keep with next**, **keep lines together**, **orphans** (`keepFirstLines`, 0–6) and **widows** (`keepLastLines`, 0–6). They act where a story flows from one threaded frame to the next (`store/keeps.ts`, used by `flowRich` in `store/threads.ts`): the break moves up so the rule holds, leaving white space at the bottom of the frame. A frame is never emptied: if a paragraph that starts at the top of a frame cannot satisfy its keeps, the original break stands. A single frame has nothing to break across, so keeps do nothing there.
+- **Rules above / below** (weight, colour, offset from the text, left and right indent, or across the frame), **shading** and **border**, both extending `shadingOffset` past the text. They are painted behind the text on the canvas, in CanvasKit, SVG and PDF. A paragraph split across frames gets a box in each part.
+- **Optical margin alignment**: opening quotes, brackets and dashes hang outside the left margin, periods, commas, quotes and dashes outside the right one (a share of the character's width, a fixed table, not the font's own optical bounds). Centred text is left alone; justified lines spread the slack over their spaces.
+- **Variable font axes** (`fontVariations`, e.g. `wght 650, wdth 90`) on a text or character style: drawn in the SVG export and the editing field, **not on the canvas** (a 2D canvas cannot set axes other than weight) and **not instanced in the PDF**; always kept in the document.
+
+Rules (Go `internal/core/typography.go`, TS `store/typography.ts`): keeps 0–6 lines; rule weight 0–100, offset −1000–1000, indents 0–100000; colours 0–1; shading offset 0–1000; border weight 0–100; axes are `tag value` items of at most 128 characters; a character style carries none of the paragraph fields. Fixture: `testdata/golden/paragraph_look.json`.
+
 ## MCP
 
 `set_text_style` takes `letterSpacing`, `alignToGrid`, `kind` (`paragraph` | `character`), `basedOn`, `nextStyleId`, `spaceBefore`, `spaceAfter`, `indentFirst`, `indentLeft`, `underline`, `strikethrough`, `smallCaps`, `script`, `horizontalScale`, `noKerning`, `color`, `hyphenate`, `listKind`, `listMarker`, `listNumberStyle`, `listIndent`, `tabStops`, `dropCapLines`, `dropCapChars`, `nestedStyles`, `outlineLevel`, `fontFeatures` and `align: justify`; `list_text_styles` returns them. `format_text { nodeId, paragraphStyles, runs }` sets a text node's formatting; `get_document` / `list_nodes` return `paragraphStyles` and `runs`. `set_text` keeps the formatting (adjusted to the new content).
 
 ## Not yet
 
-- Widows / orphans and keep-with-next (they need the flow across frames and pages), optical kerning and pair-kerning values, language-specific hyphenation dictionaries, tab characters inside plain (unformatted) text.
+- Keeps inside one frame with columns (a frame has no columns yet), optical kerning and pair-kerning values, language-specific hyphenation dictionaries, tab characters inside plain (unformatted) text.
 - Small caps use a fixed 80% scale and super/subscript fixed offsets rather than the font's own tables.
 - The editing field shows plain text (the canvas shows the result once you leave it), and generated code (`opendesigner export`) exports the text's own style.

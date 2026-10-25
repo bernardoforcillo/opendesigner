@@ -42,9 +42,24 @@ function tidy(d: TextStyleDefLite): TextStyleDefLite {
   if (d.dropCapLines) out.dropCapLines = d.dropCapLines;
   if (d.dropCapChars) out.dropCapChars = d.dropCapChars;
   if (d.outlineLevel) out.outlineLevel = d.outlineLevel;
+  if (d.keepWithNext) out.keepWithNext = true;
+  if (d.keepLinesTogether) out.keepLinesTogether = true;
+  if (d.keepFirstLines) out.keepFirstLines = d.keepFirstLines;
+  if (d.keepLastLines) out.keepLastLines = d.keepLastLines;
+  if (d.ruleAbove) out.ruleAbove = d.ruleAbove;
+  if (d.ruleBelow) out.ruleBelow = d.ruleBelow;
+  if (d.shading) out.shading = d.shading;
+  if (d.shadingOffset) out.shadingOffset = d.shadingOffset;
+  if (d.borderColor) out.borderColor = d.borderColor;
+  if (d.borderWeight) out.borderWeight = d.borderWeight;
+  if (d.opticalMargin) out.opticalMargin = true;
   if (d.nestedStyles && d.nestedStyles.length > 0) out.nestedStyles = d.nestedStyles;
   return out;
 }
+
+const hexOf = (c: { r: number; g: number; b: number }) => "#" + [c.r, c.g, c.b].map((v) => Math.round(Math.min(1, Math.max(0, v)) * 255).toString(16).padStart(2, "0")).join("");
+const colorOf = (h: string) => ({ r: parseInt(h.slice(1, 3), 16) / 255, g: parseInt(h.slice(3, 5), 16) / 255, b: parseInt(h.slice(5, 7), 16) / 255, a: 1 });
+const BLACK = { r: 0, g: 0, b: 0, a: 1 };
 
 // Tab stops as text: "40, 200 right ., 300 center" -- a position, then left/center/right, then a leader character.
 export function formatTabs(tabs: readonly TabStopLite[] | undefined): string {
@@ -180,6 +195,8 @@ export function StylesDialog({ isOpen, onOpenChange }: { isOpen: boolean; onOpen
                   </div>
                   <input aria-label="OpenType features" className={cls.input} placeholder="OpenType: liga off, onum, ss01" defaultValue={cur.style.fontFeatures ?? ""} key={cur.id + ":features"} maxLength={128}
                     onBlur={(e) => { const v = e.target.value.trim(); if (v !== (cur.style.fontFeatures ?? "")) patchStyle({ fontFeatures: v === "" ? undefined : v }); }} />
+                  <input aria-label="Variable font axes" className={cls.input} placeholder="Variable axes: wght 650, wdth 90" defaultValue={cur.style.fontVariations ?? ""} key={cur.id + ":variations"} maxLength={128}
+                    onBlur={(e) => { const v = e.target.value.trim(); if (v !== (cur.style.fontVariations ?? "")) patchStyle({ fontVariations: v === "" ? undefined : v }); }} />
                   <div className="grid grid-cols-2 items-end gap-2">
                     <NumberField label="Width" minValue={10} suffix="%" value={Math.round((cur.style.horizontalScale ?? 1) * 100)}
                       onCommit={(v) => patchStyle({ horizontalScale: v === 100 ? undefined : v / 100 })} />
@@ -236,6 +253,43 @@ export function StylesDialog({ isOpen, onOpenChange }: { isOpen: boolean; onOpen
                         )}
                         {cur.listKind && <NumberField label="Text indent" minValue={0} value={cur.listIndent ?? 0} placeholder="18" onCommit={(v) => patchDef({ listIndent: v })} />}
                       </div>
+                      <span className={cls.label}>Breaks between frames</span>
+                      <div className="grid grid-cols-2 gap-2">
+                        <label className="flex items-center gap-1.5"><input type="checkbox" aria-label="Keep with next" checked={cur.keepWithNext === true}
+                          onChange={(e) => patchDef({ keepWithNext: e.target.checked ? true : undefined })} /> Keep with next</label>
+                        <label className="flex items-center gap-1.5"><input type="checkbox" aria-label="Keep lines together" checked={cur.keepLinesTogether === true}
+                          onChange={(e) => patchDef({ keepLinesTogether: e.target.checked ? true : undefined })} /> Keep lines together</label>
+                        <NumberField label="Orphans (lines at the bottom)" minValue={0} value={cur.keepFirstLines ?? 0} onCommit={(v) => patchDef({ keepFirstLines: v === 0 ? undefined : Math.min(6, Math.round(v)) })} />
+                        <NumberField label="Widows (lines at the top)" minValue={0} value={cur.keepLastLines ?? 0} onCommit={(v) => patchDef({ keepLastLines: v === 0 ? undefined : Math.min(6, Math.round(v)) })} />
+                      </div>
+                      <span className={cls.label}>Rules, shading and border</span>
+                      {(["ruleAbove", "ruleBelow"] as const).map((key) => {
+                        const r = cur[key];
+                        const name = key === "ruleAbove" ? "Rule above" : "Rule below";
+                        return (
+                          <div key={key} className="grid grid-cols-[auto_1fr_1fr_auto] items-end gap-2">
+                            <label className="flex items-center gap-1.5"><input type="checkbox" aria-label={name} checked={!!r}
+                              onChange={(e) => patchDef({ [key]: e.target.checked ? { weight: 1, color: BLACK } : undefined })} /> {name}</label>
+                            {r && <NumberField label="Weight" minValue={0.25} value={r.weight} onCommit={(v) => patchDef({ [key]: { ...r, weight: v } })} />}
+                            {r && <NumberField label="Offset" value={r.offset ?? 0} onCommit={(v) => patchDef({ [key]: { ...r, offset: v || undefined } })} />}
+                            {r && <input type="color" aria-label={`${name} colour`} value={hexOf(r.color ?? BLACK)} onChange={(e) => patchDef({ [key]: { ...r, color: colorOf(e.target.value) } })} />}
+                          </div>
+                        );
+                      })}
+                      <div className="grid grid-cols-[auto_auto_1fr] items-end gap-2">
+                        <label className="flex items-center gap-1.5"><input type="checkbox" aria-label="Shading" checked={!!cur.shading}
+                          onChange={(e) => patchDef({ shading: e.target.checked ? { r: 0.9, g: 0.9, b: 0.9, a: 1 } : undefined })} /> Shading</label>
+                        {cur.shading ? <input type="color" aria-label="Shading colour" value={hexOf(cur.shading)} onChange={(e) => patchDef({ shading: colorOf(e.target.value) })} /> : <span />}
+                        <NumberField label="Extends past the text by" minValue={0} value={cur.shadingOffset ?? 0} onCommit={(v) => patchDef({ shadingOffset: v || undefined })} />
+                      </div>
+                      <div className="grid grid-cols-[auto_1fr_auto] items-end gap-2">
+                        <label className="flex items-center gap-1.5"><input type="checkbox" aria-label="Border" checked={!!cur.borderColor && !!cur.borderWeight}
+                          onChange={(e) => patchDef(e.target.checked ? { borderColor: BLACK, borderWeight: 1 } : { borderColor: undefined, borderWeight: undefined })} /> Border</label>
+                        {cur.borderColor ? <NumberField label="Weight" minValue={0.25} value={cur.borderWeight ?? 1} onCommit={(v) => patchDef({ borderWeight: v })} /> : <span />}
+                        {cur.borderColor ? <input type="color" aria-label="Border colour" value={hexOf(cur.borderColor)} onChange={(e) => patchDef({ borderColor: colorOf(e.target.value) })} /> : <span />}
+                      </div>
+                      <label className="flex items-center gap-1.5"><input type="checkbox" aria-label="Optical margin alignment" checked={cur.opticalMargin === true}
+                        onChange={(e) => patchDef({ opticalMargin: e.target.checked ? true : undefined })} /> Optical margin alignment (hanging punctuation)</label>
                       <span className={cls.label}>Tabs and drop cap</span>
                       <input aria-label="Tab stops" className={cls.input} defaultValue={formatTabs(cur.tabStops)} key={cur.id + ":tabs"}
                         placeholder="40, 300 right ."

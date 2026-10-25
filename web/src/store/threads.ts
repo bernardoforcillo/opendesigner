@@ -2,6 +2,7 @@ import { withMeta } from "../flow/meta";
 import { fontString, layoutRich, layoutText, lineHeightOf, fontSizeOf, trackedMeasure, trackedMeasureFor } from "../renderer/text";
 import { worldTransformOf } from "../canvas/transform";
 import { paragraphCount, resolveRich } from "./richText";
+import { keepBreak } from "./keeps";
 import type { Op } from "../gen/opendesigner/v1/opendesigner_pb";
 import { makeSetPropsOp, makeSetTextOp } from "../tools/ops";
 import { recordDelta } from "./sceneDelta";
@@ -169,8 +170,10 @@ function flowRich(scene: SceneState, chain: NodeLite[]): { texts: TextLite[]; ov
     let end = 0;
     if (rich && frame.width > 0) {
       const lay = layoutRich(mf, content, base, rich, frame.width);
-      const fits = lay.lines.filter((l) => l.top + l.height <= frame.height + 1e-6);
-      end = fits.length === lay.lines.length ? content.length : fits.length > 0 ? fits[fits.length - 1].end : 0;
+      const fit = lay.lines.filter((l) => l.top + l.height <= frame.height + 1e-6).length;
+      // Keep rules (widows, orphans, keep with next) may move the break up.
+      const k = fit === lay.lines.length ? fit : keepBreak(lay.lines, fit, rich.paragraphs);
+      end = k === lay.lines.length ? content.length : k > 0 ? lay.lines[k - 1].end : 0;
     }
     const slice = content.slice(0, end);
     const sliceParas = paras.slice(0, paragraphCount(slice));

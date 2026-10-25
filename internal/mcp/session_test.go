@@ -383,6 +383,40 @@ func TestTypesettingStyles(t *testing.T) {
 	}
 }
 
+// TestParagraphLookStyles covers keeps, rules, shading, border and variable axes of set_text_style.
+func TestParagraphLookStyles(t *testing.T) {
+	url := serveInMemory(t)
+	docID := newDoc(t, odmcp.NewClient(url))
+	sess := startSession(t, url, docID, "mcp")
+	ctx := context.Background()
+
+	made, err := sess.SetTextStyle(ctx, odmcp.SetTextStyleInput{TextStyleBody: odmcp.TextStyleBody{
+		Name: "Pull quote", FontSize: 18, FontVariations: "wght 650", OutlineLevel: 2, KeepWithNext: true, KeepFirstLines: 2, KeepLastLines: 2,
+		RuleAbove: &odmcp.RuleIO{Weight: 1, Offset: 4, ColumnWidth: true}, Shading: &odmcp.RGBA{R: 0.9, G: 0.9, B: 0.9, A: 1}, ShadingOffset: 6,
+		BorderColor: &odmcp.RGBA{A: 1}, BorderWeight: 1, OpticalMargin: true,
+	}})
+	if err != nil {
+		t.Fatalf("paragraph look: %v", err)
+	}
+	out, _ := sess.ListTextStyles(ctx, struct{}{})
+	var got odmcp.TextStyleView
+	for _, s := range out.TextStyles {
+		if s.Id == made.TextStyleId {
+			got = s
+		}
+	}
+	if !got.KeepWithNext || got.KeepFirstLines != 2 || got.KeepLastLines != 2 || got.RuleAbove == nil || !got.RuleAbove.ColumnWidth || got.Shading == nil ||
+		got.BorderWeight != 1 || !got.OpticalMargin || got.FontVariations != "wght 650" || got.OutlineLevel != 2 {
+		t.Fatalf("style = %+v", got)
+	}
+	if _, err := sess.SetTextStyle(ctx, odmcp.SetTextStyleInput{TextStyleBody: odmcp.TextStyleBody{Name: "Bad", FontSize: 12, KeepFirstLines: 9}}); err == nil {
+		t.Fatal("more than 6 kept lines should be refused")
+	}
+	if _, err := sess.SetTextStyle(ctx, odmcp.SetTextStyleInput{TextStyleBody: odmcp.TextStyleBody{Name: "Bad", Kind: "character", FontSize: 12, KeepWithNext: true}}); err == nil {
+		t.Fatal("a character style cannot keep with next")
+	}
+}
+
 // TestThreadTextFrames covers thread_text_frames / unlink_text_frame.
 func TestThreadTextFrames(t *testing.T) {
 	url := serveInMemory(t)

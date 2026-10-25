@@ -61,6 +61,52 @@ type TextStyleBody struct {
 	DropCapLines    uint32      `json:"dropCapLines,omitempty" jsonschema:"paragraph styles: a drop cap this many lines tall (2..10); 0 = none"`
 	DropCapChars    uint32      `json:"dropCapChars,omitempty" jsonschema:"how many characters make the drop cap (default 1)"`
 	NestedStyles    []NestedIO  `json:"nestedStyles,omitempty" jsonschema:"paragraph styles: character styles applied to the start of every paragraph"`
+	OutlineLevel    uint32      `json:"outlineLevel,omitempty" jsonschema:"paragraph styles: 1..9 = a heading (table of contents, running heads, PDF bookmarks); 0 = body"`
+	FontFeatures    string      `json:"fontFeatures,omitempty" jsonschema:"OpenType features, e.g. liga off, onum, ss01 2"`
+	FontVariations  string      `json:"fontVariations,omitempty" jsonschema:"variable-font axes, e.g. wght 650, wdth 90 (drawn in SVG and the editing field; kept everywhere)"`
+	// Paragraph look (see docs/rich-text.md).
+	KeepWithNext      bool    `json:"keepWithNext,omitempty" jsonschema:"paragraph styles: never the last paragraph of a threaded frame unless the next one starts there too"`
+	KeepLinesTogether bool    `json:"keepLinesTogether,omitempty" jsonschema:"paragraph styles: the paragraph is not split between threaded frames"`
+	KeepFirstLines    uint32  `json:"keepFirstLines,omitempty" jsonschema:"orphans: at least this many lines at the bottom of a frame (0..6)"`
+	KeepLastLines     uint32  `json:"keepLastLines,omitempty" jsonschema:"widows: at least this many lines at the top of the next frame (0..6)"`
+	RuleAbove         *RuleIO `json:"ruleAbove,omitempty" jsonschema:"a line above the paragraph"`
+	RuleBelow         *RuleIO `json:"ruleBelow,omitempty" jsonschema:"a line below the paragraph"`
+	Shading           *RGBA   `json:"shading,omitempty" jsonschema:"fill behind the paragraph"`
+	ShadingOffset     float64 `json:"shadingOffset,omitempty" jsonschema:"how far shading and border extend past the text, px"`
+	BorderColor       *RGBA   `json:"borderColor,omitempty"`
+	BorderWeight      float64 `json:"borderWeight,omitempty" jsonschema:"0 = no border"`
+	OpticalMargin     bool    `json:"opticalMargin,omitempty" jsonschema:"hanging punctuation at the line edges"`
+}
+
+// RuleIO is a paragraph rule.
+type RuleIO struct {
+	Weight      float64 `json:"weight" jsonschema:"px, 0 = none"`
+	Color       *RGBA   `json:"color,omitempty" jsonschema:"default black"`
+	Offset      float64 `json:"offset,omitempty" jsonschema:"distance from the text, px"`
+	IndentLeft  float64 `json:"indentLeft,omitempty"`
+	IndentRight float64 `json:"indentRight,omitempty"`
+	ColumnWidth bool    `json:"columnWidth,omitempty" jsonschema:"across the whole frame instead of the paragraph's text width"`
+}
+
+func colorPb(c *RGBA) *opendesignerv1.Color {
+	if c == nil {
+		return nil
+	}
+	return &opendesignerv1.Color{R: float32(c.R), G: float32(c.G), B: float32(c.B), A: float32(c.A)}
+}
+
+func rulePb(r *RuleIO) *opendesignerv1.ParagraphRule {
+	if r == nil {
+		return nil
+	}
+	return &opendesignerv1.ParagraphRule{Weight: r.Weight, Color: colorPb(r.Color), Offset: r.Offset, IndentLeft: r.IndentLeft, IndentRight: r.IndentRight, ColumnWidth: r.ColumnWidth}
+}
+
+func ruleView(r *opendesignerv1.ParagraphRule) *RuleIO {
+	if r == nil {
+		return nil
+	}
+	return &RuleIO{Weight: r.GetWeight(), Color: rgbaOf(r.GetColor()), Offset: r.GetOffset(), IndentLeft: r.GetIndentLeft(), IndentRight: r.GetIndentRight(), ColumnWidth: r.GetColumnWidth()}
 }
 
 // TabStopIO is a tab stop: the text after a tab starts at (left), is centred on (center) or ends at (right) position.
@@ -153,6 +199,10 @@ func textStyleViews(doc *opendesignerv1.Document) []TextStyleView {
 			Color: rgbaOf(st.GetColor()), Hyphenate: d.GetHyphenate(), ListKind: listKindName(d.GetListKind()), ListMarker: d.GetListMarker(),
 			ListNumberStyle: d.GetListNumberStyle(), ListIndent: d.GetListIndent(), TabStops: tabStopViews(d.GetTabStops()),
 			DropCapLines: d.GetDropCapLines(), DropCapChars: d.GetDropCapChars(), NestedStyles: nestedViews(d.GetNestedStyles()),
+			OutlineLevel: d.GetOutlineLevel(), FontFeatures: st.GetFontFeatures(), FontVariations: st.GetFontVariations(),
+			KeepWithNext: d.GetKeepWithNext(), KeepLinesTogether: d.GetKeepLinesTogether(), KeepFirstLines: d.GetKeepFirstLines(), KeepLastLines: d.GetKeepLastLines(),
+			RuleAbove: ruleView(d.GetRuleAbove()), RuleBelow: ruleView(d.GetRuleBelow()), Shading: rgbaOf(d.GetShading()), ShadingOffset: d.GetShadingOffset(),
+			BorderColor: rgbaOf(d.GetBorderColor()), BorderWeight: d.GetBorderWeight(), OpticalMargin: d.GetOpticalMargin(),
 		}})
 	}
 	sort.Slice(out, func(i, j int) bool {
@@ -186,10 +236,14 @@ func (b TextStyleBody) toProto(id string) (*opendesignerv1.TextStyleDef, error) 
 		FontFamily: b.FontFamily, FontSize: b.FontSize, FontWeight: b.FontWeight, LineHeight: b.LineHeight, Italic: b.Italic, Align: align,
 		Underline: b.Underline, Strikethrough: b.Strikethrough, LetterSpacing: b.LetterSpacing,
 		SmallCaps: b.SmallCaps, Script: script, HorizontalScale: b.HorizontalScale, NoKerning: b.NoKerning,
+		FontFeatures: b.FontFeatures, FontVariations: b.FontVariations,
 	}, AlignToGrid: b.AlignToGrid, Kind: kind, BasedOn: b.BasedOn, NextStyleId: b.NextStyleId, SpaceBefore: b.SpaceBefore, SpaceAfter: b.SpaceAfter,
 		IndentFirst: b.IndentFirst, IndentLeft: b.IndentLeft,
 		Hyphenate: b.Hyphenate, ListKind: listKind, ListMarker: b.ListMarker, ListNumberStyle: b.ListNumberStyle, ListIndent: b.ListIndent,
-		DropCapLines: b.DropCapLines, DropCapChars: b.DropCapChars}
+		DropCapLines: b.DropCapLines, DropCapChars: b.DropCapChars, OutlineLevel: b.OutlineLevel,
+		KeepWithNext: b.KeepWithNext, KeepLinesTogether: b.KeepLinesTogether, KeepFirstLines: b.KeepFirstLines, KeepLastLines: b.KeepLastLines,
+		RuleAbove: rulePb(b.RuleAbove), RuleBelow: rulePb(b.RuleBelow), Shading: colorPb(b.Shading), ShadingOffset: b.ShadingOffset,
+		BorderColor: colorPb(b.BorderColor), BorderWeight: b.BorderWeight, OpticalMargin: b.OpticalMargin}
 	if b.Color != nil {
 		d.Style.Color = &opendesignerv1.Color{R: float32(b.Color.R), G: float32(b.Color.G), B: float32(b.Color.B), A: float32(b.Color.A)}
 	}

@@ -1,7 +1,7 @@
 import type { EffectLite, FillLite, NodeLite } from "../store/types";
 import type { Bounds } from "../canvas/geometry";
 import { firstBlur, firstShadow, resolvedFill } from "../renderer/canvasRenderer";
-import { cssFeatureSettings, fontFamilyOf, fontSizeOf, fontWeightOf, placeTextLines } from "../renderer/text";
+import { cssFeatureSettings, cssVariationSettings, fontFamilyOf, fontSizeOf, fontWeightOf, paragraphDecorations, placeTextLines } from "../renderer/text";
 import type { MeasureText } from "../renderer/text";
 import { hasRealStroke, vectorStyleOf } from "../renderer/vectorStyle";
 import { subPathsToD } from "../svg/pathData";
@@ -324,6 +324,13 @@ function textElement(n: NodeLite, measure: MeasureText, defs: string[]): string 
   if (!style) return "";
   const lines = placeTextLines((s) => measure(s, style), n, (st) => (s) => measure(s, st));
   if (lines.length === 0) return "";
+  // Shading, borders and rules behind the paragraphs.
+  const boxes = paragraphDecorations((st) => (s) => measure(s, st), n).map((d) => {
+    const c = `rgb(${channel(d.color.r)},${channel(d.color.g)},${channel(d.color.b)})`;
+    return d.kind === "border"
+      ? `<rect${attrs([attr("x", d.x), attr("y", d.y), attr("width", d.width), attr("height", d.height), attr("fill", "none"), attr("stroke", c), d.color.a === 1 ? null : attr("stroke-opacity", d.color.a), attr("stroke-width", d.weight ?? 1)])}/>`
+      : `<rect${attrs([attr("x", d.x), attr("y", d.y), attr("width", d.width), attr("height", d.height), attr("fill", c), d.color.a === 1 ? null : attr("fill-opacity", d.color.a)])}/>`;
+  }).join("");
   // A rich line is one <tspan> per piece (each with its own x, font and decoration); the first
   // carries the line's y, and so does every other: an absolute y per piece keeps the baseline shared.
   const spans = lines
@@ -337,8 +344,8 @@ function textElement(n: NodeLite, measure: MeasureText, defs: string[]): string 
           ...(seg.style.color ? [attr("fill", `rgb(${Math.round(seg.style.color.r * 255)},${Math.round(seg.style.color.g * 255)},${Math.round(seg.style.color.b * 255)})`)] : []),
           ...(seg.style.color && seg.style.color.a < 1 ? [attr("fill-opacity", seg.style.color.a)] : []),
           ...(seg.style.horizontalScale && seg.style.horizontalScale !== 1 && seg.text !== "" ? [attr("textLength", seg.width), attr("lengthAdjust", "spacingAndGlyphs")] : []),
-          ...(seg.style.noKerning || seg.style.fontFeatures
-            ? [attr("style", [seg.style.noKerning ? "font-kerning:none" : "", seg.style.fontFeatures ? `font-feature-settings:${cssFeatureSettings(seg.style.fontFeatures)}` : ""].filter(Boolean).join(";"))]
+          ...(seg.style.noKerning || seg.style.fontFeatures || seg.style.fontVariations
+            ? [attr("style", [seg.style.noKerning ? "font-kerning:none" : "", seg.style.fontFeatures ? `font-feature-settings:${cssFeatureSettings(seg.style.fontFeatures)}` : "", seg.style.fontVariations ? `font-variation-settings:${cssVariationSettings(seg.style.fontVariations)}` : ""].filter(Boolean).join(";"))]
             : []),
           ...(own && fontFamilyOf(seg.style) !== fontFamilyOf(style) ? [attr("font-family", fontFamilyOf(seg.style))] : []),
           ...(own && fontSizeOf(seg.style) !== fontSizeOf(style) ? [attr("font-size", fontSizeOf(seg.style))] : []),
@@ -354,13 +361,15 @@ function textElement(n: NodeLite, measure: MeasureText, defs: string[]): string 
   // draws and which SVG would otherwise collapse. The price is that every whitespace
   // INSIDE <text> becomes drawn: that is why the tspans are attached
   // to one another, with no newlines or indentation.
-  return `<text${attrs([
+  return `${boxes}<text${attrs([
     attr("font-family", fontFamilyOf(style)),
     attr("font-size", fontSizeOf(style)),
     attr("font-weight", fontWeightOf(style)),
     ...(style.italic ? [attr("font-style", "italic")] : []),
     ...(style.letterSpacing ? [attr("letter-spacing", style.letterSpacing)] : []),
-    ...(style.fontFeatures ? [attr("style", `font-feature-settings:${cssFeatureSettings(style.fontFeatures)}`)] : []),
+    ...(style.fontFeatures || style.fontVariations
+      ? [attr("style", [style.fontFeatures ? `font-feature-settings:${cssFeatureSettings(style.fontFeatures)}` : "", style.fontVariations ? `font-variation-settings:${cssVariationSettings(style.fontVariations)}` : ""].filter(Boolean).join(";"))]
+      : []),
     ...paintAttrs(n, defs),
   ])} xml:space="preserve">${spans}</text>`;
 }

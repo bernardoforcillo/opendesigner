@@ -1,6 +1,6 @@
 import { worldTransformOf } from "../canvas/transform";
 import { formatPageNumber } from "./pageNumbers";
-import type { NestedStyleLite, NodeLite, ResolvedParagraph, ResolvedRun, RichText, SceneState, TabStopLite, TextLite, TextRunLite, TextStyleDefLite, TextStyleLite } from "./types";
+import type { NestedStyleLite, NodeLite, ParagraphRuleLite, ResolvedParagraph, ResolvedRun, RichText, SceneState, TabStopLite, TextLite, TextRunLite, TextStyleDefLite, TextStyleLite } from "./types";
 
 // RICH TEXT -- paragraph styles per paragraph and character styles over ranges. The TypeScript twin
 // of internal/core/richtext.go (Go is the authority) plus what only the editor needs: resolving the
@@ -81,6 +81,7 @@ export function overlay(base: TextStyleLite, over: TextStyleLite): TextStyleLite
   const color = over.color ?? base.color;
   if (color) out.color = color;
   if (over.fontFeatures || base.fontFeatures) out.fontFeatures = over.fontFeatures || base.fontFeatures;
+  if (over.fontVariations || base.fontVariations) out.fontVariations = over.fontVariations || base.fontVariations;
   return out;
 }
 
@@ -94,11 +95,19 @@ export interface FlatStyle {
   dropCapLines: number; dropCapChars: number;
   nestedStyles: NestedStyleLite[];
   outlineLevel: number;
+  keepWithNext: boolean; keepLinesTogether: boolean; keepFirstLines: number; keepLastLines: number;
+  ruleAbove?: ParagraphRuleLite; ruleBelow?: ParagraphRuleLite;
+  shading?: Rgba; shadingOffset: number; borderColor?: Rgba; borderWeight: number;
+  opticalMargin: boolean;
 }
+type Rgba = { r: number; g: number; b: number; a: number };
 
 const featuresOf = (d: TextStyleDefLite) => ({
   hyphenate: d.hyphenate === true, listKind: d.listKind, listMarker: d.listMarker ?? "", listNumberStyle: d.listNumberStyle ?? "", listIndent: d.listIndent ?? 0,
   tabStops: d.tabStops ?? [], dropCapLines: d.dropCapLines ?? 0, dropCapChars: d.dropCapChars ?? 0, nestedStyles: d.nestedStyles ?? [], outlineLevel: d.outlineLevel ?? 0,
+  keepWithNext: d.keepWithNext === true, keepLinesTogether: d.keepLinesTogether === true, keepFirstLines: d.keepFirstLines ?? 0, keepLastLines: d.keepLastLines ?? 0,
+  ruleAbove: d.ruleAbove, ruleBelow: d.ruleBelow, shading: d.shading, shadingOffset: d.shadingOffset ?? 0, borderColor: d.borderColor, borderWeight: d.borderWeight ?? 0,
+  opticalMargin: d.opticalMargin === true,
 });
 
 /** A style with its `basedOn` chain folded in (root first), or null when it does not exist. A loop stops at the loop. */
@@ -135,6 +144,17 @@ export function flattenStyle(textStyles: Readonly<Record<string, TextStyleDefLit
     out.dropCapChars = f.dropCapChars || out.dropCapChars;
     if (f.nestedStyles.length > 0) out.nestedStyles = f.nestedStyles;
     out.outlineLevel = f.outlineLevel || out.outlineLevel;
+    out.keepWithNext = f.keepWithNext || out.keepWithNext;
+    out.keepLinesTogether = f.keepLinesTogether || out.keepLinesTogether;
+    out.keepFirstLines = f.keepFirstLines || out.keepFirstLines;
+    out.keepLastLines = f.keepLastLines || out.keepLastLines;
+    out.ruleAbove = f.ruleAbove ?? out.ruleAbove;
+    out.ruleBelow = f.ruleBelow ?? out.ruleBelow;
+    out.shading = f.shading ?? out.shading;
+    out.shadingOffset = f.shadingOffset || out.shadingOffset;
+    out.borderColor = f.borderColor ?? out.borderColor;
+    out.borderWeight = f.borderWeight || out.borderWeight;
+    out.opticalMargin = f.opticalMargin || out.opticalMargin;
   }
   return out;
 }
@@ -213,6 +233,16 @@ export function resolveRich(state: SceneState, t: TextLite, base: TextStyleLite,
         ...(marker !== undefined ? { marker, listIndent: flat.listIndent || DEFAULT_LIST_INDENT } : {}),
         ...(flat.tabStops.length > 0 ? { tabs: flat.tabStops } : {}),
         ...(flat.dropCapLines >= 2 ? { dropLines: flat.dropCapLines, dropChars: flat.dropCapChars || 1 } : {}),
+        ...(flat.keepWithNext ? { keepWithNext: true } : {}),
+        ...(flat.keepLinesTogether ? { keepLinesTogether: true } : {}),
+        ...(flat.keepFirstLines ? { keepFirstLines: flat.keepFirstLines } : {}),
+        ...(flat.keepLastLines ? { keepLastLines: flat.keepLastLines } : {}),
+        ...(flat.ruleAbove && flat.ruleAbove.weight > 0 ? { ruleAbove: flat.ruleAbove } : {}),
+        ...(flat.ruleBelow && flat.ruleBelow.weight > 0 ? { ruleBelow: flat.ruleBelow } : {}),
+        ...(flat.shading && flat.shading.a > 0 ? { shading: flat.shading } : {}),
+        ...(flat.shadingOffset ? { shadingOffset: flat.shadingOffset } : {}),
+        ...(flat.borderColor && flat.borderWeight > 0 ? { borderColor: flat.borderColor, borderWeight: flat.borderWeight } : {}),
+        ...(flat.opticalMargin ? { opticalMargin: true } : {}),
       });
     } else {
       counting = "";

@@ -1,6 +1,6 @@
 import type { BlendModeLite, FillLite, GradientLite, NodeLite } from "../../store/types";
 import type { Bounds } from "../../canvas/geometry";
-import { decorationBars, fontSizeOf, placeTextLines, type MeasureText } from "../../renderer/text";
+import { decorationBars, fontSizeOf, paragraphDecorations, placeTextLines, type MeasureText } from "../../renderer/text";
 import { resolvedFill } from "../../renderer/canvasRenderer";
 import { hasRealStroke, vectorStyleOf } from "../../renderer/vectorStyle";
 import { meshBitmap } from "../../renderer/mesh";
@@ -276,6 +276,12 @@ function drawText(pg: Page, n: NodeLite): void {
   const lines = placeTextLines((s) => pg.d.measure(s, style), n, (st) => (s) => pg.d.measure(s, st));
   if (lines.length === 0) return;
   const base = resolvedFill(n);
+  // Shading, borders and rules go behind the text.
+  for (const d of paragraphDecorations((st) => (s) => pg.d.measure(s, st), n)) {
+    const rect = `${p(d.x, d.y)} ${p(d.width, d.height)} re\n`;
+    if (d.kind === "border") pg.out.push(`q\n${pg.gs(1, d.color.a)}${num(d.weight ?? 1)} w\n${pg.d.colors.rgbOps(d.color, true)}${rect}S\nQ\n`);
+    else pg.out.push(`q\n${pg.gs(d.color.a, 1)}${pg.d.colors.rgbOps(d.color, false)}${rect}f\nQ\n`);
+  }
   pg.out.push("BT\n");
   for (const l of lines) {
     for (const seg of l.segments ?? [{ text: l.text, x: l.x, width: l.width, style }]) {

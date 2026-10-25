@@ -67,6 +67,14 @@ export function cssFeatureSettings(features: string): string {
   }).join(", ");
 }
 
+/** Variable-font axes ("wght 650, wdth 90") as the CSS `font-variation-settings` value ('"wght" 650, "wdth" 90'). */
+export function cssVariationSettings(variations: string): string {
+  return variations.split(",").map((item) => item.trim()).filter((item) => /^[A-Za-z0-9]{4} -?[0-9]{1,4}(\.[0-9]{1,3})?$/.test(item)).map((item) => {
+    const [tag, value] = item.split(/\s+/);
+    return `"${tag}" ${value}`;
+  }).join(", ");
+}
+
 // Shorthand CSS accettato da ctx.font: "<weight> <size>px <family>".
 export function fontString(style: TextStyleLite): string {
   return `${style.italic ? "italic " : ""}${fontWeightOf(style)} ${fontSizeOf(style)}px ${fontFamilyOf(style)}`;
@@ -357,6 +365,17 @@ export function textPaintBounds(measure: MeasureText, n: NodeLite): Bounds {
 // caller (drawScene sets fillStyle and globalAlpha from the node): here only
 // what concerns the text is touched.
 export function drawText(ctx: CanvasRenderingContext2D, n: NodeLite): void {
+  if (n.text?.rich) {
+    const boxes = paragraphDecorations(ctxMeasureFor(ctx), n);
+    if (boxes.length > 0) {
+      const fill = ctx.fillStyle, stroke = ctx.strokeStyle, lw = ctx.lineWidth;
+      for (const d of boxes) {
+        if (d.kind === "border") { ctx.strokeStyle = rgba(d.color); ctx.lineWidth = d.weight ?? 1; ctx.strokeRect(d.x, d.y, d.width, d.height); }
+        else { ctx.fillStyle = rgba(d.color); ctx.fillRect(d.x, d.y, d.width, d.height); }
+      }
+      ctx.fillStyle = fill; ctx.strokeStyle = stroke; ctx.lineWidth = lw;
+    }
+  }
   paintText(ctx, n, (line, x, y) => ctx.fillText(line, x, y));
   drawDecorations(ctx, n);
 }
@@ -511,8 +530,24 @@ export interface RichLine {
   marker?: { text: string; style: TextStyleLite; x: number };
   /** The drop cap of the paragraph (on its first line), with its x from the box's left edge and its width. */
   drop?: { text: string; style: TextStyleLite; x: number; width: number };
+  /** The paragraph this line belongs to (index into the content's "\n"-separated paragraphs). */
+  para: number;
 }
-export interface RichLayout { lines: RichLine[]; height: number }
+/** A box or line drawn behind/around a paragraph (shading, border, rules), in the text box's coordinates. */
+export interface Decoration {
+  kind: "shade" | "border" | "rule";
+  x: number; y: number; width: number; height: number;
+  color: { r: number; g: number; b: number; a: number };
+  /** Border only: the stroke weight. */
+  weight?: number;
+}
+export interface RichLayout { lines: RichLine[]; height: number; decorations?: Decoration[] }
+
+// HANGING PUNCTUATION (optical margin alignment): the share of a character's advance that hangs outside the
+// margin when it is the first (left) or last (right) character of a line. An approximation of what a
+// typographer does by eye, not a font's own optical-bound data.
+const HANG_LEFT: Record<string, number> = { "\u201c": 0.8, "\u2018": 0.8, '"': 0.8, "'": 0.8, "(": 0.5, "[": 0.5, "\u00ab": 0.6, "-": 0.6, "\u2013": 0.6, "\u2014": 0.6 };
+const HANG_RIGHT: Record<string, number> = { ".": 1, ",": 1, ";": 0.8, ":": 0.8, "-": 0.8, "\u2013": 0.8, "\u2014": 0.8, "\u201d": 0.8, "\u2019": 0.8, '"': 0.8, "'": 0.8, ")": 0.4, "]": 0.4, "\u00bb": 0.6 };
 
 const frag = (text: string, style: TextStyleLite, at: number): Frag => ({ text, style, at });
 
@@ -618,6 +653,7 @@ export function layoutRich(
   const inlineMap = new Map((rich.inlines ?? []).map((o) => [norm ? norm(o.at) : o.at, o] as const));
   const runs = rich.runs.map((r) => ({ start: norm ? norm(r.start) : r.start, end: norm ? norm(r.end) : r.end, style: r.style }));
   const lines: RichLine[] = [];
+  let decorations: Decoration[] | undefined;
   let y = 0;
   let offset = 0;
   const paragraphs = text.split("\n");
@@ -706,6 +742,7 @@ export function layoutRich(
         if (spaces > 0 && room > 0) { l.justify = room / spaces; l.width = limitAt(li); }
       });
     }
+    const paraFirstLine = lines.length;
     for (const [li, l] of built.entries()) {
       const empty = l.frags.length === 0;
       const m = empty ? metricsOf(pr.style) : (l.frags.some((f) => f.inline) ? [...l.frags.map(metricsOfFrag), metricsOf(pr.style)] : l.frags.map(metricsOfFrag)).reduce((a, b) => ({ ascent: Math.max(a.ascent, b.ascent), descent: Math.max(a.descent, b.descent) }));
@@ -718,10 +755,24 @@ export function layoutRich(
         if (target > baseline) y += target - baseline;
       }
       const lineWidth = maxWidth > 0 ? limitAt(li) : 0;
-      const left = leftOf(li) + alignOffsetX(pr.style.align, l.width, lineWidth);
+      let left = leftOf(li) + alignOffsetX(pr.style.align, l.width, lineWidth);
       const last = [...l.frags].reverse().find((f) => !f.synthetic);
+      // Optical margin: punctuation at the edge hangs outside the margin; a justified line spreads its slack over its spaces.
+      if (pr.opticalMargin && l.frags.length > 0 && pr.style.align !== "center") {
+        const firstFrag = l.frags.find((f) => f.text !== "" && f.w === undefined && !f.inline);
+        const lastFrag = [...l.frags].reverse().find((f) => f.text !== "" && f.w === undefined && !f.inline && !f.synthetic);
+        const hangL = firstFrag && pr.style.align !== "right" && !(li === 0 && (listed || drop)) ? (HANG_LEFT[firstFrag.text[0]!] ?? 0) * measureFor(firstFrag.style)(firstFrag.text[0]!) : 0;
+        const trimmed = lastFrag?.text.replace(/\s+$/, "") ?? "";
+        const hangR = lastFrag && pr.style.align !== "left" && trimmed !== "" ? (HANG_RIGHT[trimmed[trimmed.length - 1]!] ?? 0) * measureFor(lastFrag.style)(trimmed[trimmed.length - 1]!) : 0;
+        if (pr.style.align === "right") left += hangR;
+        else if (pr.style.align === "justify" && l.justify) {
+          const spaces = l.frags.reduce((n, f) => (f.w === undefined ? n + (f.text.split(" ").length - 1) : n), 0);
+          if (spaces > 0) l.justify += (hangL + hangR) / spaces;
+          left -= hangL;
+        } else left -= hangL;
+      }
       lines.push({
-        frags: l.frags, width: l.width, top: y, height, ascent: m.ascent, left, end: last ? last.at + last.text.length : paraStart + dropLen,
+        frags: l.frags, width: l.width, top: y, height, ascent: m.ascent, left, end: last ? last.at + last.text.length : paraStart + dropLen, para: pi,
         ...(l.justify ? { justify: l.justify } : {}),
         ...(li === 0 && listed ? { marker: { text: pr.marker!, style: pr.style, x: pr.indentLeft } } : {}),
         ...(li === 0 && drop ? { drop } : {}),
@@ -730,9 +781,28 @@ export function layoutRich(
     }
     // A drop cap taller than the paragraph keeps its room.
     if (drop && y < paraTop + dropLines * lh0) y = paraTop + dropLines * lh0;
+    // Shading, border and rules sit around the paragraph's lines.
+    if (pr.shading || pr.borderColor || pr.ruleAbove || pr.ruleBelow) {
+      const mine = lines.slice(paraFirstLine);
+      const off = pr.shadingOffset ?? 0;
+      const x0 = pr.indentLeft;
+      const textRight = mine.reduce((r, l) => Math.max(r, l.left + l.width), x0);
+      const right = maxWidth > 0 ? maxWidth : textRight;
+      const box = { x: x0 - off, y: paraTop - off, width: right - x0 + 2 * off, height: y - paraTop + 2 * off };
+      (decorations ??= []);
+      if (pr.shading) decorations.push({ kind: "shade", ...box, color: pr.shading });
+      if (pr.borderColor && pr.borderWeight) decorations.push({ kind: "border", ...box, color: pr.borderColor, weight: pr.borderWeight });
+      for (const [r, above] of [[pr.ruleAbove, true], [pr.ruleBelow, false]] as const) {
+        if (!r) continue;
+        const rx = (r.columnWidth ? 0 : x0) + (r.indentLeft ?? 0);
+        const rw = (r.columnWidth && maxWidth > 0 ? maxWidth : right) - rx - (r.indentRight ?? 0);
+        const ry = above ? paraTop - off - (r.offset ?? 0) - r.weight : y + off + (r.offset ?? 0);
+        decorations.push({ kind: "rule", x: rx, y: ry, width: rw, height: r.weight, color: r.color ?? { r: 0, g: 0, b: 0, a: 1 } });
+      }
+    }
     if (pi < paragraphs.length - 1) y += pr.spaceAfter;
   });
-  return { lines, height: y };
+  return { lines, height: y, ...(decorations ? { decorations } : {}) };
 }
 
 // `over` is a character style (only its set fields count) on top of the paragraph's resolved style.
@@ -753,6 +823,7 @@ function overlayStyle(base: TextStyleLite, over: TextStyleLite): TextStyleLite {
   if (over.noKerning) out.noKerning = true;
   if (over.color) out.color = over.color;
   if (over.fontFeatures) out.fontFeatures = over.fontFeatures;
+  if (over.fontVariations) out.fontVariations = over.fontVariations;
   return out;
 }
 
@@ -902,6 +973,20 @@ function wrapPieces(measureFor: MeasureFor, pieces: Frag[], pr: ParagraphLite, l
   // Trailing spaces hang: they are not part of the painted width (they were never placed).
   return out;
 }
+
+/**
+ * Shading, borders and rules of the paragraphs, in WORLD coordinates (the text box's top-left is n.x, n.y); they
+ * are painted BEHIND the text. Empty for text with no such paragraph style.
+ */
+export function paragraphDecorations(measureFor: MeasureFor, n: NodeLite): Decoration[] {
+  const t = n.text;
+  if (n.kind !== "text" || !t?.rich || t.content === "" || t.onPath) return [];
+  if (!t.rich.paragraphs.some((p) => p.shading || p.borderColor || p.ruleAbove || p.ruleBelow)) return [];
+  const layout = layoutRich(trackedMeasureFor(measureFor), t.content, t.style, t.rich, n.width);
+  return (layout.decorations ?? []).map((d) => ({ ...d, x: d.x + n.x, y: d.y + n.y }));
+}
+
+const rgba = (c: { r: number; g: number; b: number; a: number }) => `rgba(${Math.round(c.r * 255)},${Math.round(c.g * 255)},${Math.round(c.b * 255)},${c.a})`;
 
 /** The lines of a rich layout placed in WORLD coordinates (the text box's top-left is n.x, n.y). */
 function placeRichLines(measureFor: MeasureFor, n: NodeLite, layout: RichLayout): PlacedLine[] {

@@ -1,9 +1,9 @@
 import { NodeMap } from "./nodeMap";
 import { create } from "@bufbuild/protobuf";
-import { BlendMode, ImageScaleMode, LayerSchema, ListKind, ObjectStyleDefSchema, TabAlign, TextScript, TextStyleKind, LayoutGridKind, CommentSchema, ClipSchema, Constraint, LayoutSizing, ComponentPropertySchema, ComponentPropertyType, ComponentSetSchema, FlowSchema, FontFaceSchema, TextStyleDefSchema, VariableCollectionSchema, VariableSchema, VariableType, TransitionSchema, LayoutAlign, LayoutDirection, NodeSchema, StrokeAlign, TextAlign } from "../gen/opendesigner/v1/opendesigner_pb";
+import { BlendMode, ImageScaleMode, LayerSchema, ListKind, ObjectStyleDefSchema, TabAlign, TextScript, TextStyleKind, LayoutGridKind, CommentSchema, ClipSchema, Constraint, LayoutSizing, ComponentPropertySchema, ComponentPropertyType, ComponentSetSchema, FlowSchema, FontFaceSchema, TextStyleDefSchema, ParagraphRuleSchema, VariableCollectionSchema, VariableSchema, VariableType, TransitionSchema, LayoutAlign, LayoutDirection, NodeSchema, StrokeAlign, TextAlign } from "../gen/opendesigner/v1/opendesigner_pb";
 import type {
   Document, Component as PbComponent, ComponentProperty as PbComponentProperty, ComponentSet as PbComponentSet, FontFace as PbFont, TextStyleDef as PbTextStyleDef, ObjectStyleDef as PbObjectStyleDef, Layer as PbLayer, VariableCollection as PbCollection, Variable as PbVariable, Clip as PbClip, Flow as PbFlow, Transition as PbTransition, Node as PbNode, Comment as PbComment, LayoutGrid as PbLayoutGrid, Paint as PbPaint, Stroke as PbStroke, Effect as PbEffect, AutoLayout as PbAutoLayout,
-  TextNode as PbTextNode, TextStyle as PbTextStyle,
+  ParagraphRule as PbParagraphRule, TextNode as PbTextNode, TextStyle as PbTextStyle,
   SubPath as PbSubPath, VectorNode as PbVectorNode,
   InstanceNode as PbInstanceNode, InstanceOverride as PbInstanceOverride,
 } from "../gen/opendesigner/v1/opendesigner_pb";
@@ -141,6 +141,8 @@ export interface TextStyleLite {
   color?: { r: number; g: number; b: number; a: number };
   /** OpenType features, "liga off, onum": shown in SVG / HTML output and the editing field (the canvas has no way to apply them). */
   fontFeatures?: string;
+  /** Variable-font axes ("wght 650, wdth 90"): drawn where the renderer can set them (SVG), always kept. */
+  fontVariations?: string;
   /** DERIVED by the layout, never stored: px a piece is raised above its line's baseline (negative = lowered). */
   baselineShift?: number;
 }
@@ -160,6 +162,11 @@ export interface ResolvedParagraph {
   listIndent?: number;
   tabs?: TabStopLite[];
   dropLines?: number; dropChars?: number;
+  keepWithNext?: boolean; keepLinesTogether?: boolean; keepFirstLines?: number; keepLastLines?: number;
+  ruleAbove?: ParagraphRuleLite; ruleBelow?: ParagraphRuleLite;
+  shading?: { r: number; g: number; b: number; a: number }; shadingOffset?: number;
+  borderColor?: { r: number; g: number; b: number; a: number }; borderWeight?: number;
+  opticalMargin?: boolean;
 }
 /** A character style resolved to the fields it overrides (unset fields are 0 / "" / absent). */
 export interface ResolvedRun { start: number; end: number; style: TextStyleLite }
@@ -448,6 +455,9 @@ export interface LayerLite { id: string; name: string; hidden?: boolean; locked?
 
 export interface FontLite { id: string; family: string; weight: string; style: "normal" | "italic"; assetHash: string }
 // Optional fields are absent at their default (paragraph kind, no base, no next style, zeros).
+export interface ParagraphRuleLite {
+  weight: number; color?: { r: number; g: number; b: number; a: number }; offset?: number; indentLeft?: number; indentRight?: number; columnWidth?: boolean;
+}
 export interface TextStyleDefLite {
   id: string; name: string; style: TextStyleLite;
   kind?: "character";
@@ -462,6 +472,16 @@ export interface TextStyleDefLite {
   nestedStyles?: NestedStyleLite[];
   /** 1..9: the paragraphs appear in the table of contents and give running headers; absent = body text. */
   outlineLevel?: number;
+  /** Keeps where a paragraph would break between threaded frames. */
+  keepWithNext?: boolean; keepLinesTogether?: boolean;
+  /** Orphans / widows: the fewest lines left at the bottom / carried to the top (1..6); absent = off. */
+  keepFirstLines?: number; keepLastLines?: number;
+  ruleAbove?: ParagraphRuleLite; ruleBelow?: ParagraphRuleLite;
+  /** Fill behind the paragraph, and a border; both extend `shadingOffset` past the text. */
+  shading?: { r: number; g: number; b: number; a: number }; shadingOffset?: number;
+  borderColor?: { r: number; g: number; b: number; a: number }; borderWeight?: number;
+  /** Hanging punctuation at the line edges. */
+  opticalMargin?: boolean;
 }
 
 // ANIMATION: the document's clips (animated properties of nodes referenced by
@@ -604,6 +624,7 @@ export function toTextStyleLite(s: PbTextStyle | undefined): TextStyleLite {
     ...(s?.noKerning ? { noKerning: true } : {}),
     ...(s?.color ? { color: { r: s.color.r, g: s.color.g, b: s.color.b, a: s.color.a } } : {}),
     ...(s?.fontFeatures ? { fontFeatures: s.fontFeatures } : {}),
+    ...(s?.fontVariations ? { fontVariations: s.fontVariations } : {}),
   };
 }
 
@@ -728,6 +749,7 @@ export function toPbTextStyle(s: TextStyleLite) {
     horizontalScale: s.horizontalScale ?? 0,
     noKerning: s.noKerning === true,
     fontFeatures: s.fontFeatures ?? "",
+    fontVariations: s.fontVariations ?? "",
     ...(s.color ? { color: { r: s.color.r, g: s.color.g, b: s.color.b, a: s.color.a } } : {}),
   };
 }
@@ -1208,6 +1230,20 @@ export function toFontLite(f: PbFont): FontLite {
 export function toPbFont(f: FontLite): PbFont {
   return create(FontFaceSchema, { id: f.id, family: f.family, weight: f.weight, style: f.style, assetHash: f.assetHash });
 }
+function toRuleLite(r: PbParagraphRule): ParagraphRuleLite {
+  return {
+    weight: r.weight,
+    ...(r.color ? { color: { r: r.color.r, g: r.color.g, b: r.color.b, a: r.color.a } } : {}),
+    ...(r.offset ? { offset: r.offset } : {}),
+    ...(r.indentLeft ? { indentLeft: r.indentLeft } : {}),
+    ...(r.indentRight ? { indentRight: r.indentRight } : {}),
+    ...(r.columnWidth ? { columnWidth: true } : {}),
+  };
+}
+const toPbRule = (r: ParagraphRuleLite) => create(ParagraphRuleSchema, {
+  weight: r.weight, offset: r.offset ?? 0, indentLeft: r.indentLeft ?? 0, indentRight: r.indentRight ?? 0, columnWidth: r.columnWidth === true,
+  ...(r.color ? { color: { r: r.color.r, g: r.color.g, b: r.color.b, a: r.color.a } } : {}),
+});
 export function toTextStyleDefLite(d: PbTextStyleDef): TextStyleDefLite {
   return {
     id: d.id, name: d.name, style: toTextStyleLite(d.style),
@@ -1233,6 +1269,17 @@ export function toTextStyleDefLite(d: PbTextStyleDef): TextStyleDefLite {
     ...(d.dropCapLines ? { dropCapLines: d.dropCapLines } : {}),
     ...(d.dropCapChars ? { dropCapChars: d.dropCapChars } : {}),
     ...(d.outlineLevel ? { outlineLevel: d.outlineLevel } : {}),
+    ...(d.keepWithNext ? { keepWithNext: true } : {}),
+    ...(d.keepLinesTogether ? { keepLinesTogether: true } : {}),
+    ...(d.keepFirstLines ? { keepFirstLines: d.keepFirstLines } : {}),
+    ...(d.keepLastLines ? { keepLastLines: d.keepLastLines } : {}),
+    ...(d.ruleAbove ? { ruleAbove: toRuleLite(d.ruleAbove) } : {}),
+    ...(d.ruleBelow ? { ruleBelow: toRuleLite(d.ruleBelow) } : {}),
+    ...(d.shading ? { shading: { r: d.shading.r, g: d.shading.g, b: d.shading.b, a: d.shading.a } } : {}),
+    ...(d.shadingOffset ? { shadingOffset: d.shadingOffset } : {}),
+    ...(d.borderColor ? { borderColor: { r: d.borderColor.r, g: d.borderColor.g, b: d.borderColor.b, a: d.borderColor.a } } : {}),
+    ...(d.borderWeight ? { borderWeight: d.borderWeight } : {}),
+    ...(d.opticalMargin ? { opticalMargin: true } : {}),
     ...(d.nestedStyles.length > 0 ? {
       nestedStyles: d.nestedStyles.map((n) => ({ styleId: n.styleId, delimiter: n.delimiter, count: n.count, ...(n.inclusive ? { inclusive: true } : {}) })),
     } : {}),
@@ -1253,6 +1300,13 @@ export function toPbTextStyleDef(d: TextStyleDefLite): PbTextStyleDef {
     })),
     dropCapLines: d.dropCapLines ?? 0, dropCapChars: d.dropCapChars ?? 0, outlineLevel: d.outlineLevel ?? 0,
     nestedStyles: (d.nestedStyles ?? []).map((n) => ({ styleId: n.styleId, delimiter: n.delimiter, count: n.count, inclusive: n.inclusive === true })),
+    keepWithNext: d.keepWithNext === true, keepLinesTogether: d.keepLinesTogether === true,
+    keepFirstLines: d.keepFirstLines ?? 0, keepLastLines: d.keepLastLines ?? 0,
+    shadingOffset: d.shadingOffset ?? 0, borderWeight: d.borderWeight ?? 0, opticalMargin: d.opticalMargin === true,
+    ...(d.ruleAbove ? { ruleAbove: toPbRule(d.ruleAbove) } : {}),
+    ...(d.ruleBelow ? { ruleBelow: toPbRule(d.ruleBelow) } : {}),
+    ...(d.shading ? { shading: { r: d.shading.r, g: d.shading.g, b: d.shading.b, a: d.shading.a } } : {}),
+    ...(d.borderColor ? { borderColor: { r: d.borderColor.r, g: d.borderColor.g, b: d.borderColor.b, a: d.borderColor.a } } : {}),
   });
 }
 

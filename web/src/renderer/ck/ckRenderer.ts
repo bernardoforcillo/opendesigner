@@ -13,7 +13,7 @@ import {
 import { effectsOutset, sceneIndexOf } from "../sceneIndex";
 import { MESH_BITMAP_SIZE, meshBitmap } from "../mesh";
 import { VECTOR_STROKE_PX, inkIsBox, nodeCenter } from "../shapes";
-import { decorationBars, fontSizeOf, placeTextLines, trackedOffsets, type MeasureFor } from "../text";
+import { decorationBars, fontSizeOf, paragraphDecorations, placeTextLines, trackedOffsets, type MeasureFor } from "../text";
 import { hasRealStroke, vectorStyleOf } from "../vectorStyle";
 import type { FontBook } from "./canvaskit";
 
@@ -569,6 +569,17 @@ export class CanvasKitRenderer {
   }
 
   private drawText(sk: Canvas, n: NodeLite): void {
+    const font = n.text ? this.fonts.fontFor(n.text.style.fontWeight, fontSizeOf(n.text.style), n.text.style.fontFamily, n.text.style.italic === true) : null;
+    if (font && n.text?.rich) {
+      for (const d of paragraphDecorations(this.styleMeasure, n)) {
+        const p = new this.CK.Paint();
+        p.setAntiAlias(true);
+        p.setColor(this.CK.Color4f(d.color.r, d.color.g, d.color.b, d.color.a));
+        if (d.kind === "border") { p.setStyle(this.CK.PaintStyle.Stroke); p.setStrokeWidth(d.weight ?? 1); }
+        sk.drawRect(this.CK.XYWHRect(d.x, d.y, d.width, d.height), p);
+        p.delete();
+      }
+    }
     this.paintText(sk, n, this.fillPaint(resolvedFill(n), n, n.opacity));
     this.drawStrokes(sk, n, null);
   }
