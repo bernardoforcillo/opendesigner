@@ -68,6 +68,10 @@ describe("golden parity", () => {
       // Component sets (variants); each component's set/variant/properties are
       // compared through `components` above, and the instance's values through `nodes`.
       expect(scene.componentSets).toEqual(expected.componentSets);
+      // Dev mode: annotations and the ready marks (the snapshot of a ready frame is the
+      // server's, so the client keeps only the mark -- fromDocument drops it the same way).
+      const dev = (s: typeof scene) => ({ annotations: s.dev?.annotations ?? {}, ready: s.dev?.ready ?? {} });
+      expect(dev(scene)).toEqual(dev(expected));
     });
   }
 });

@@ -1,12 +1,17 @@
 import type { FlowLite, SceneState, TransitionLite } from "../store/types";
 import { topLevelScreens } from "./screens";
+import { evalCondition, evalExpr, truthy } from "./expr";
+
+export { truthy };
 
 // THE LOGIC OF THE PLAYABLE PROTOTYPE. Pure: scene + state in, new
 // state out; no DOM. The full-screen overlay (ui/PrototypePlayer.tsx)
 // uses it to decide what is clickable and where it leads.
 //
 // The state is { screenId, vars, history }. The VARIABLES are strings: they are written by the
-// transitions' `effect` ("cart=full; user=guest") and read by the `guard`.
+// transitions' `effect` ("cart=full; count=count+1") and read by the `guard` ("user=guest",
+// "count >= 3 && !paid", "else"). Beyond the plain `k=v` forms, guards and effects take
+// expressions (flow/expr.ts); the plain forms keep their old meaning.
 
 export type Vars = Readonly<Record<string, string>>;
 
@@ -21,10 +26,45 @@ export interface ProtoState {
 
 // --- EFFETTO ---------------------------------------------------------------
 
-/** "cart=full; user=guest" -> [["cart","full"],["user","guest"]]. Separators `;` or `,`. */
-export function parseEffect(effect: string): [string, string][] {
-  const out: [string, string][] = [];
-  for (const part of effect.split(/[;,]/)) {
+/** A variable name: letters, digits, `_`, `.`, `-` and not starting with a digit. No spaces: "cart not empty" is free text. */
+const IDENT = /^[A-Za-z_][\w.-]*$/;
+
+/** Splits on any of `seps` outside quotes and parentheses. */
+function splitTop(src: string, seps: readonly string[]): string[] {
+  const out: string[] = [];
+  let depth = 0, quote = "", start = 0;
+  for (let i = 0; i < src.length; i++) {
+    const c = src[i];
+    if (quote) { if (c === quote) quote = ""; continue; }
+    if (c === '"' || c === "'") { quote = c; continue; }
+    if (c === "(") depth++;
+    else if (c === ")") depth = Math.max(0, depth - 1);
+    else if (depth === 0) {
+      const sep = seps.find((x) => src.startsWith(x, i));
+      if (sep) { out.push(src.slice(start, i)); i += sep.length - 1; start = i + 1; }
+    }
+  }
+  out.push(src.slice(start));
+  return out;
+}
+
+/** The right side of an assignment or comparison when it is plain text: a bare word, a number or a quoted string. */
+function isLiteral(rhs: string): boolean {
+  return /^[\w.-]*$/.test(rhs) || (rhs.length >= 2 && (rhs[0] === '"' || rhs[0] === "'") && rhs.indexOf(rhs[0], 1) === rhs.length - 1);
+}
+
+export interface Assignment {
+  key: string;
+  /** The right side as written. */
+  rhs: string;
+  /** Plain text (`full`, `3`, `'x y'`) rather than an expression (`count + 1`). */
+  literal: boolean;
+}
+
+/** "cart=full; count = count + 1" -> two assignments. Separators `;` or `,` (outside quotes and parentheses). */
+export function parseAssignments(effect: string): Assignment[] {
+  const out: Assignment[] = [];
+  for (const part of splitTop(effect, [";", ","])) {
     const p = part.trim();
     if (p === "") continue;
     const eq = p.indexOf("=");
@@ -32,37 +72,44 @@ export function parseEffect(effect: string): [string, string][] {
     if (eq <= 0) continue;
     const key = p.slice(0, eq).trim();
     if (!IDENT.test(key)) continue;
-    out.push([key, unquote(p.slice(eq + 1).trim())]);
+    const rhs = p.slice(eq + 1).trim();
+    out.push({ key, rhs, literal: isLiteral(rhs) });
   }
   return out;
 }
 
+/** "cart=full; user=guest" -> [["cart","full"],["user","guest"]]. An expression is returned as written (applyEffect computes it). */
+export function parseEffect(effect: string): [string, string][] {
+  return parseAssignments(effect).map((a) => [a.key, a.literal ? unquote(a.rhs) : a.rhs]);
+}
+
+/**
+ * Runs the assignments in order, so `a=1; b=a+1` sees the new `a`. A right side that cannot be
+ * computed (a word where a number is needed, a division by zero) leaves that variable alone.
+ */
 export function applyEffect(vars: Vars, effect: string): Vars {
-  const assigns = parseEffect(effect);
+  const assigns = parseAssignments(effect);
   if (assigns.length === 0) return vars;
-  const next: Record<string, string> = { ...vars };
-  for (const [k, v] of assigns) next[k] = v;
-  return next;
+  let next: Record<string, string> | null = null;
+  for (const a of assigns) {
+    let value: string;
+    if (a.literal) value = unquote(a.rhs);
+    else {
+      try { value = evalExpr(a.rhs, next ?? vars); } catch { continue; }
+    }
+    next = next ?? { ...vars };
+    next[a.key] = value;
+  }
+  return next ?? vars;
 }
 
 // --- GUARDIA ---------------------------------------------------------------
-
-// A variable name: letters, digits, `_`, `.`, `-` and not starting with a digit.
-// No spaces: "cart not empty" is NOT a variable, it is free text.
-const IDENT = /^[A-Za-z_][\w.-]*$/;
 
 function unquote(v: string): string {
   if (v.length >= 2 && ((v.startsWith('"') && v.endsWith('"')) || (v.startsWith("'") && v.endsWith("'")))) {
     return v.slice(1, -1);
   }
   return v;
-}
-
-/** "truthy": set and different from "", "false", "0". */
-export function truthy(v: string | undefined): boolean {
-  if (v === undefined) return false;
-  const t = v.trim().toLowerCase();
-  return t !== "" && t !== "false" && t !== "0";
 }
 
 export interface GuardResult {
@@ -72,51 +119,68 @@ export interface GuardResult {
   reason?: string;
   /** The guard was understood. false = free text: never evaluated, never "true". */
   parsed: boolean;
+  /** The guard is `else`: it holds when no other transition of the same hotspot does (see guardFor). */
+  otherwise?: boolean;
 }
 
+/** The guard that means "none of the other conditions on this trigger holds". */
+const ELSE = /^(else|otherwise)$/i;
+
 /**
- * Evaluates a guard: terms separated by `&&`, each `k=v`, `k!=v`, `k`
- * (truthy) or `!k`. An empty guard is always true. A term that is not
- * understood makes the WHOLE guard unevaluable -> disabled with the reason:
- * silently letting through a condition that nobody verified would be a
- * lie of the prototype.
+ * Evaluates a guard: alternatives separated by `||`, each a list of terms separated by `&&`.
+ * A term is `k=v`, `k!=v`, `k` (truthy), `!k`, or any expression that gives a condition
+ * (`count >= 3`, `count + 1 > limit`, `(a + b) * 2 == 10`). An empty guard is always true. A term
+ * that is not understood makes the WHOLE guard unevaluable -> disabled with the reason: silently
+ * letting through a condition that nobody verified would be a lie of the prototype.
+ * `else` is returned as `otherwise`: only the transition list can say whether it holds.
  */
 export function evalGuard(guard: string, vars: Vars): GuardResult {
   const g = guard.trim();
   if (g === "") return { ok: true, parsed: true };
-  const terms = g.split("&&").map((t) => t.trim());
-  const failed: string[] = [];
-  for (const term of terms) {
-    const r = evalTerm(term, vars);
-    if (r === null) {
-      return { ok: false, parsed: false, reason: `Condition cannot be evaluated: "${g}"` };
+  if (ELSE.test(g)) return { ok: false, parsed: true, otherwise: true, reason: "Only when no other condition holds" };
+  // Every term is read, even after an alternative already holds: a guard with a term nobody can
+  // evaluate is unevaluable as a whole, whatever the variables say today.
+  const failedAlts: string[] = [];
+  let holds = false;
+  for (const alt of splitTop(g, ["||"])) {
+    const failed: string[] = [];
+    for (const term of splitTop(alt, ["&&"]).map((t) => t.trim())) {
+      const r = evalTerm(term, vars);
+      if (r === null) return { ok: false, parsed: false, reason: `Condition cannot be evaluated: "${g}"` };
+      if (!r) failed.push(term);
     }
-    if (!r) failed.push(term);
+    if (failed.length === 0) holds = true;
+    else failedAlts.push(failed.join(" and "));
   }
-  if (failed.length > 0) return { ok: false, parsed: true, reason: `Requires ${failed.join(" and ")}` };
-  return { ok: true, parsed: true };
+  if (holds) return { ok: true, parsed: true };
+  return { ok: false, parsed: true, reason: `Requires ${failedAlts.join(" or ")}` };
+}
+
+/** Both numbers -> compared as numbers ("3" and "3.0" are the same count); otherwise as text. */
+function sameValue(a: string, b: string): boolean {
+  const x = /^-?\d+(?:\.\d+)?$/.test(a.trim()) ? Number(a) : NaN;
+  const y = /^-?\d+(?:\.\d+)?$/.test(b.trim()) ? Number(b) : NaN;
+  return Number.isNaN(x) || Number.isNaN(y) ? a === b : x === y;
 }
 
 // true/false, or null if the term is not in the grammar.
 function evalTerm(term: string, vars: Vars): boolean | null {
   if (term === "") return null;
+  // The plain forms first, with their old meaning: a variable on the left, text on the right.
   const ne = /^([^=!]+?)\s*!=\s*(.*)$/.exec(term);
-  if (ne) {
-    const k = ne[1].trim();
-    if (!IDENT.test(k)) return null;
-    return vars[k] !== unquote(ne[2].trim());
+  if (ne && IDENT.test(ne[1].trim()) && isLiteral(ne[2].trim())) {
+    const v = vars[ne[1].trim()];
+    return v === undefined || !sameValue(v, unquote(ne[2].trim()));
   }
-  const eq = /^([^=!]+?)\s*==?\s*(.*)$/.exec(term);
-  if (eq) {
-    const k = eq[1].trim();
-    if (!IDENT.test(k)) return null;
-    return vars[k] === unquote(eq[2].trim());
+  const eq = /^([^=!<>]+?)\s*==?\s*(.*)$/.exec(term);
+  if (eq && IDENT.test(eq[1].trim()) && isLiteral(eq[2].trim())) {
+    const v = vars[eq[1].trim()];
+    return v !== undefined && sameValue(v, unquote(eq[2].trim()));
   }
-  if (term.startsWith("!")) {
-    const k = term.slice(1).trim();
-    return IDENT.test(k) ? !truthy(vars[k]) : null;
-  }
-  return IDENT.test(term) ? truthy(vars[term]) : null;
+  if (term.startsWith("!") && !term.startsWith("!=") && IDENT.test(term.slice(1).trim())) return !truthy(vars[term.slice(1).trim()]);
+  if (IDENT.test(term)) return truthy(vars[term]);
+  // Anything else is an expression: comparisons, arithmetic, parentheses.
+  try { return evalCondition(term, vars); } catch { return null; }
 }
 
 // --- NAVIGAZIONE -----------------------------------------------------------
@@ -140,6 +204,28 @@ export interface Option {
   enabled: boolean;
   /** If it is not: why. */
   reason?: string;
+  /** Not enabled, but another transition on the same hotspot and trigger is: a branch that does not apply. */
+  superseded?: boolean;
+}
+
+/**
+ * The guard of `t` in the current state. Like evalGuard, except for `else`, which is the
+ * "otherwise" of an if / else on one trigger: it holds when none of the OTHER transitions that
+ * leave the same screen on the same trigger and the same element (the same hotspot) does. There
+ * is no order between transitions, so an "else if" is written as a condition that does not overlap
+ * the others (`n > 1 && n <= 2`); when several hold the options simply are all enabled.
+ */
+export function guardFor(scene: SceneState, state: ProtoState, t: TransitionLite): GuardResult {
+  const g = evalGuard(t.guard, state.vars);
+  if (!g.otherwise) return g;
+  for (const o of Object.values(scene.transitions)) {
+    if (o.id === t.id || o.flowId !== t.flowId || o.fromId !== t.fromId || o.trigger !== t.trigger || o.elementId !== t.elementId) continue;
+    if (ELSE.test(o.guard.trim()) || !scene.nodes.has(o.toId)) continue;
+    if (evalGuard(o.guard, state.vars).ok) {
+      return { ok: false, parsed: true, otherwise: true, reason: `Not when ${o.guard.trim() === "" ? "another action" : o.guard.trim()}` };
+    }
+  }
+  return { ok: true, parsed: true, otherwise: true };
 }
 
 /**
@@ -156,8 +242,16 @@ export function optionsFrom(scene: SceneState, flowId: string, state: ProtoState
       out.push({ transition: t, enabled: false, reason: "The destination screen no longer exists" });
       continue;
     }
-    const g = evalGuard(t.guard, state.vars);
+    const g = guardFor(scene, state, t);
     out.push({ transition: t, enabled: g.ok, reason: g.reason });
+  }
+  // On one hotspot, a branch that does not apply while another does is not "locked": it is simply
+  // the other side of an if / else. The player does not draw it.
+  for (const o of out) {
+    if (o.enabled || o.transition.elementId === "") continue;
+    if (out.some((x) => x !== o && x.enabled && x.transition.elementId === o.transition.elementId && x.transition.trigger === o.transition.trigger)) {
+      o.superseded = true;
+    }
   }
   out.sort((a, b) => {
     const la = a.transition.label || a.transition.trigger;
@@ -171,7 +265,7 @@ export function optionsFrom(scene: SceneState, flowId: string, state: ProtoState
 /** Follows a transition (if enabled): effect on the variables, history updated. */
 export function follow(scene: SceneState, state: ProtoState, t: TransitionLite): ProtoState {
   if (!scene.nodes.has(t.toId)) return state;
-  if (!evalGuard(t.guard, state.vars).ok) return state;
+  if (!guardFor(scene, state, t).ok) return state;
   return {
     screenId: t.toId,
     vars: applyEffect(state.vars, t.effect),

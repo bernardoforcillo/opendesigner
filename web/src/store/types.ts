@@ -1,7 +1,8 @@
 import { NodeMap } from "./nodeMap";
 import { create } from "@bufbuild/protobuf";
-import { BlendMode, ImageScaleMode, TextStyleKind, LayoutGridKind, CommentSchema, ClipSchema, Constraint, LayoutSizing, ComponentPropertySchema, ComponentPropertyType, ComponentSetSchema, FlowSchema, FontFaceSchema, TextStyleDefSchema, VariableCollectionSchema, VariableSchema, VariableType, TransitionSchema, LayoutAlign, LayoutDirection, NodeSchema, StrokeAlign, TextAlign, TextCase, TextScript, ListKind, TextVAlign, NoiseMode } from "../gen/opendesigner/v1/opendesigner_pb";
+import { AnnotationSchema, ReadyForDevSchema, BlendMode, ImageScaleMode, TextStyleKind, LayoutGridKind, CommentSchema, ClipSchema, Constraint, LayoutSizing, ComponentPropertySchema, ComponentPropertyType, ComponentSetSchema, FlowSchema, FontFaceSchema, TextStyleDefSchema, VariableCollectionSchema, VariableSchema, VariableType, TransitionSchema, LayoutAlign, LayoutDirection, NodeSchema, StrokeAlign, TextAlign, TextCase, TextScript, ListKind, TextVAlign, NoiseMode } from "../gen/opendesigner/v1/opendesigner_pb";
 import type {
+  Annotation as PbAnnotation, ReadyForDev as PbReady,
   Document, Component as PbComponent, ComponentProperty as PbComponentProperty, ComponentSet as PbComponentSet, FontFace as PbFont, TextStyleDef as PbTextStyleDef, VariableCollection as PbCollection, Variable as PbVariable, Clip as PbClip, Flow as PbFlow, Transition as PbTransition, Node as PbNode, Comment as PbComment, LayoutGrid as PbLayoutGrid, Paint as PbPaint, Stroke as PbStroke, Effect as PbEffect, AutoLayout as PbAutoLayout,
   TextNode as PbTextNode, TextStyle as PbTextStyle,
   SubPath as PbSubPath, VectorNode as PbVectorNode,
@@ -395,6 +396,11 @@ export interface CommentLite {
   id: string; parentId: string; nodeId: string; pageId: string; x: number; y: number;
   author: string; text: string; createdAt: number; resolved: boolean;
 }
+// DEV MODE (see Annotation / ReadyForDev in the proto and internal/core/devmode.go). The server keeps
+// the snapshot a ready frame is compared against; the editor only needs the mark.
+export interface AnnotationLite { id: string; nodeId: string; category: string; text: string; author: string; createdAt: number }
+export interface ReadyLite { nodeId: string; note: string; markedBy: string; markedAt: number }
+export interface DevLite { annotations: Record<string, AnnotationLite>; ready: Record<string, ReadyLite> }
 export interface ModeLite { id: string; name: string }
 export interface CollectionLite { id: string; name: string; modes: ModeLite[] }
 export type VariableTypeLite = "color" | "number" | "string";
@@ -442,6 +448,8 @@ export interface SceneState {
   textStyles: Record<string, TextStyleDefLite>;
   // Comments, like clips: an empty record when there are none.
   comments: Record<string, CommentLite>;
+  // Dev mode (annotations and ready frames); absent when the document has none.
+  dev?: DevLite;
   // Only in scenes derived from playback (animation/pose.ts): see AnimInfo.
   anim?: AnimInfo;
   // M4 — components indexed by id (componentId -> master). It is part of the
@@ -1098,6 +1106,20 @@ export function toPbComment(c: CommentLite): PbComment {
   });
 }
 
+export function toAnnotationLite(a: PbAnnotation): AnnotationLite {
+  return { id: a.id, nodeId: a.nodeId, category: a.category, text: a.text, author: a.author, createdAt: Number(a.createdAt) };
+}
+export function toPbAnnotation(a: AnnotationLite): PbAnnotation {
+  return create(AnnotationSchema, { id: a.id, nodeId: a.nodeId, category: a.category, text: a.text, author: a.author, createdAt: BigInt(Math.trunc(a.createdAt)) });
+}
+export function toReadyLite(r: PbReady): ReadyLite {
+  return { nodeId: r.nodeId, note: r.note, markedBy: r.markedBy, markedAt: Number(r.markedAt) };
+}
+/** The op payload: no snapshot, the server takes it. */
+export function toPbReady(r: ReadyLite): PbReady {
+  return create(ReadyForDevSchema, { nodeId: r.nodeId, note: r.note, markedBy: r.markedBy, markedAt: BigInt(Math.trunc(r.markedAt)) });
+}
+
 export function toCollectionLite(c: PbCollection): CollectionLite {
   return { id: c.id, name: c.name, modes: c.modes.map((m) => ({ id: m.id, name: m.name })) };
 }
@@ -1202,5 +1224,13 @@ export function fromDocument(doc: Document): SceneState {
     fonts: Object.fromEntries(Object.entries(doc.fonts).map(([id, f]) => [id, toFontLite(f)])),
     textStyles: Object.fromEntries(Object.entries(doc.textStyles).map(([id, d]) => [id, toTextStyleDefLite(d)])),
     comments: Object.fromEntries(Object.entries(doc.comments).map(([id, c]) => [id, toCommentLite(c)])),
+    ...(Object.keys(doc.annotations).length > 0 || Object.keys(doc.readyForDev).length > 0
+      ? {
+          dev: {
+            annotations: Object.fromEntries(Object.entries(doc.annotations).map(([id, a]) => [id, toAnnotationLite(a)])),
+            ready: Object.fromEntries(Object.entries(doc.readyForDev).map(([id, r]) => [id, toReadyLite(r)])),
+          },
+        }
+      : {}),
   };
 }

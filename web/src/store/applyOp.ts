@@ -3,7 +3,7 @@ import { NodeSchema } from "../gen/opendesigner/v1/opendesigner_pb";
 import type { Node as PbNode, Op } from "../gen/opendesigner/v1/opendesigner_pb";
 import { isValidEasing } from "../animation/engine";
 import { isValidClip } from "../animation/validate";
-import { type SceneState, type ClipLite, toComponentPropertyLite, toComponentSetLite, toCollectionLite, toVariableLite, toFontLite, toTextStyleDefLite, type NodeLite, type TransitionLite, TRANSITION_ANIMATIONS, toFlowLite, toClipLite, toTransitionLite, toCommentLite, toNodeLite, toTextStyleLite, toSubPathsLite, toInstanceOverrideLite } from "./types";
+import { type SceneState, type ClipLite, toComponentPropertyLite, toComponentSetLite, toCollectionLite, toVariableLite, toFontLite, toTextStyleDefLite, type NodeLite, type TransitionLite, TRANSITION_ANIMATIONS, toFlowLite, toClipLite, toTransitionLite, toAnnotationLite, toReadyLite, toCommentLite, toNodeLite, toTextStyleLite, toSubPathsLite, toInstanceOverrideLite } from "./types";
 import { type MaskPath, isMaskPath } from "./maskPaths";
 import { layoutTargets, relayout, resizeChildren } from "./layout";
 import { recordDelta } from "./sceneDelta";
@@ -13,6 +13,7 @@ import { areValidLayoutGrids } from "./layoutGrids";
 import { areValidEffects } from "./effects";
 import { arePaintsValid } from "./paints";
 import { isValidComment, withoutComment } from "./comments";
+import { annotationsOfScene, isValidAnnotation, isValidReady, readyOfScene } from "./devMode";
 import { areValidBindings, areValidModes, dropRemovedModes, isValidCollection, isValidVariable, unbindNodes, withAliases } from "./variables";
 import { childrenOf, isAncestorOf, parentExists, subtreeOf } from "./tree";
 import { clampRich, isValidRich, richFields } from "./richText";
@@ -596,6 +597,34 @@ function applyOpRaw(state: SceneState, op: Op): SceneState {
       const { id } = op.kind.value;
       if (!state.comments[id]) return state;                                // ErrCommentNotFound
       return { ...state, comments: withoutComment(state, id) };
+    }
+    // Dev mode (parity with core.applySetAnnotation ... applyClearReadyForDev, internal/core/devmode.go).
+    // The ready entry's snapshot is the server's business: here only the mark is kept.
+    case "setAnnotation": {
+      const a = op.kind.value.annotation;
+      if (!isValidAnnotation(state, a)) return state;
+      const dev = state.dev ?? { annotations: {}, ready: {} };
+      return { ...state, dev: { ...dev, annotations: { ...dev.annotations, [a.id]: toAnnotationLite(a) } } };
+    }
+    case "deleteAnnotation": {
+      const { id } = op.kind.value;
+      if (!annotationsOfScene(state)[id]) return state;                     // ErrAnnotationNotFound
+      const annotations = { ...annotationsOfScene(state) };
+      delete annotations[id];
+      return { ...state, dev: { annotations, ready: readyOfScene(state) } };
+    }
+    case "setReadyForDev": {
+      const r = op.kind.value.ready;
+      if (!isValidReady(state, r)) return state;
+      const dev = state.dev ?? { annotations: {}, ready: {} };
+      return { ...state, dev: { ...dev, ready: { ...dev.ready, [r.nodeId]: toReadyLite(r) } } };
+    }
+    case "clearReadyForDev": {
+      const { nodeId } = op.kind.value;
+      if (!readyOfScene(state)[nodeId]) return state;                       // ErrReadyNotFound
+      const ready = { ...readyOfScene(state) };
+      delete ready[nodeId];
+      return { ...state, dev: { annotations: annotationsOfScene(state), ready } };
     }
     case "setFont": {
       const f = op.kind.value.font;

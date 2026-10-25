@@ -76,7 +76,7 @@ describe("evalGuard", () => {
   });
 
   it("unevaluable free text: disabled WITH THE REASON, never silently true", () => {
-    for (const g of ["premium user", "cart not empty", "total >= 3", "user=guest && huh huh", "a=1 &&"]) {
+    for (const g of ["premium user", "cart not empty", "total >=", "a + 1 > ", "user=guest && huh huh", "a=1 &&", "a || ", "(a"]) {
       const r = evalGuard(g, { a: "1", user: "guest" });
       expect(r.ok, g).toBe(false);
       expect(r.parsed, g).toBe(false);

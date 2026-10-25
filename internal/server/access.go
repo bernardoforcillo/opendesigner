@@ -207,7 +207,7 @@ func requiredRole(name string, msg any) (docID string, need role, ok bool) {
 	docID = d.GetDocId()
 	switch name {
 	case "OpenDocument", "Subscribe", "WatchPresence", "UpdatePresence", "AnalyzeFlows", "ExportCode", "ListVersions",
-		"ReviewDesign", "GetBranchOrigin", "GetAccess":
+		"ReviewDesign", "GetBranchOrigin", "GetAccess", "CompareReady":
 		return docID, roleView, true
 	case "SubmitOp":
 		if r, ok := msg.(*opendesignerv1.SubmitOpRequest); ok {

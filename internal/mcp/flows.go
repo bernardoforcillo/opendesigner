@@ -278,7 +278,7 @@ type SetTransitionInput struct {
 	Label      *string `json:"label,omitempty" jsonschema:"text of the triggering element (e.g. the button); used by the generated tests as a fallback for test.id/test.text"`
 	Trigger    *string `json:"trigger,omitempty" jsonschema:"click (default), submit, auto, key, back or free text; with key the label is the key"`
 	ElementId  *string `json:"elementId,omitempty" jsonschema:"optional: the node INSIDE fromId that triggers (the hotspot); its meta test.id/test.text give the test locator"`
-	Guard      *string `json:"guard,omitempty" jsonschema:"condition under which the edge can be taken, free text"`
+	Guard      *string `json:"guard,omitempty" jsonschema:"condition under which the edge can be taken: free text, or one the prototype player evaluates (user=guest, count >= 3 && !paid, a || b; else = when no other edge on the same trigger+element holds)"`
 	Effect     *string `json:"effect,omitempty" jsonschema:"what the edge changes, free text"`
 	Animation  *string `json:"animation,omitempty" jsonschema:"how the player goes to toId: dissolve, slide-left|right|up|down, push-left|right|up|down, smart (matching names move into place); empty = cut"`
 	DurationMs *int32  `json:"durationMs,omitempty" jsonschema:"0..10000; 0 = the player's default (300)"`
@@ -576,7 +576,7 @@ func registerFlowTools(srv *mcp.Server, s *Session) {
 	addTool(srv, "delete_flow", "Delete a flow and all its transitions. The screens (nodes) are kept.", s.DeleteFlow)
 	addTool(srv, "set_transition", "Create (omit id) or update (pass id) a transition between two existing nodes of a flow. trigger: click (default), submit, auto, key (label = the key), back, or free text. "+
 		"label is the visible text of the trigger element; elementId optionally points at the node INSIDE fromId that triggers it (its meta test.id/test.text give the test locator). "+
-		"guard = condition under which the edge is taken, effect = what it changes (free text). Two edges out of one screen with the same trigger+element and no distinguishing guard are reported as ambiguous. On update, omitted fields are kept."+flowConventions, s.SetTransition)
+		"guard = condition under which the edge is taken, effect = what it changes (free text, or assignments the player runs: cart=full; count = count + 1). Two edges out of one screen with the same trigger+element and no distinguishing guard are reported as ambiguous. On update, omitted fields are kept."+flowConventions, s.SetTransition)
 	addTool(srv, "delete_transition", "Delete a transition by id.", s.DeleteTransition)
 	addTool(srv, "set_node_meta", "Merge keys into a node's meta (and optionally remove some with unset); other keys are preserved. Use it to link a screen to the code (code.route, code.component), to its test locators (test.id, test.text) and to mark progress (status)."+flowConventions, s.SetNodeMeta)
 	addTool(srv, "analyze_flows", "Analyse flows (all, or one with flowId): issues (empty, no_start, unreachable, dead_end, ambiguous) with messages naming the screens, plus every path from the start screen to an end or a loop (capped at 200 paths / depth 50, then pathsTruncated)."+flowConventions, s.AnalyzeFlows)

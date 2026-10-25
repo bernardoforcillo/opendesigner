@@ -54,6 +54,10 @@ type Element struct {
 	NodeName string
 	Meta     map[string]string
 
+	// Notes: the developer annotations attached to the node, and for a screen its
+	// ready-for-dev mark, as comment lines (devnotes.go). Empty for the majority.
+	Notes []string
+
 	// Triggers: transitions fired by THIS element (click). Empty for the
 	// majority.
 	Triggers []Trigger
