@@ -71,13 +71,15 @@ func encodeSchema(defs []td) []byte {
 			if d.kind == kindEnum {
 				e.varint(0)
 			} else {
-				t := -1
+				// A built-in is the complement of its index (bool is ^0 = -1, so a "not found" sentinel
+				// would swallow it: that once made every bool field decode as a NodeType).
+				t, builtin := 0, false
 				for i, b := range builtins {
 					if b == f.typ {
-						t = ^i
+						t, builtin = ^i, true
 					}
 				}
-				if t == -1 {
+				if !builtin {
 					t = idx[f.typ]
 				}
 				e.varint(int64(t))
@@ -172,7 +174,10 @@ func toF(v any) float64 {
 
 func testDefs() []td {
 	return []td{
-		{"NodeType", kindEnum, []tf{{"DOCUMENT", "", false, 1}, {"CANVAS", "", false, 2}, {"FRAME", "", false, 3}, {"RECTANGLE", "", false, 4}, {"TEXT", "", false, 5}, {"ELLIPSE", "", false, 6}, {"VECTOR", "", false, 7}, {"GROUP", "", false, 8}, {"INSTANCE", "", false, 9}, {"SLICE", "", false, 10}, {"STAR", "", false, 11}, {"REGULAR_POLYGON", "", false, 12}, {"CONNECTOR", "", false, 13}, {"TABLE", "", false, 14}, {"TABLE_CELL", "", false, 15}, {"STICKY", "", false, 16}, {"SLIDE", "", false, 17}}},
+		{"NodeType", kindEnum, []tf{{"DOCUMENT", "", false, 1}, {"CANVAS", "", false, 2}, {"FRAME", "", false, 3}, {"RECTANGLE", "", false, 4}, {"TEXT", "", false, 5}, {"ELLIPSE", "", false, 6}, {"VECTOR", "", false, 7}, {"GROUP", "", false, 8}, {"INSTANCE", "", false, 9}, {"SLICE", "", false, 10}, {"STAR", "", false, 11}, {"REGULAR_POLYGON", "", false, 12}, {"CONNECTOR", "", false, 13}, {"TABLE", "", false, 14}, {"TABLE_CELL", "", false, 15}, {"STICKY", "", false, 16}, {"SLIDE", "", false, 17}, {"VARIABLE", "", false, 18}, {"VARIABLE_SET", "", false, 19}}},
+		{"VariableField", kindEnum, []tf{{"MISSING", "", false, 0}, {"STROKE_WEIGHT", "", false, 1}, {"STACK_SPACING", "", false, 2}, {"STACK_PADDING_LEFT", "", false, 3}, {"STACK_PADDING_TOP", "", false, 4}, {"STACK_PADDING_RIGHT", "", false, 5}, {"STACK_PADDING_BOTTOM", "", false, 6}, {"VISIBLE", "", false, 7}, {"TEXT_DATA", "", false, 8}, {"OPACITY", "", false, 9}, {"FONT_SIZE", "", false, 10}, {"CORNER_RADIUS", "", false, 11}, {"WIDTH", "", false, 12}, {"STACK_COUNTER_SPACING", "", false, 13}}},
+		{"DataType", kindEnum, []tf{{"BOOLEAN", "", false, 0}, {"FLOAT", "", false, 1}, {"STRING", "", false, 2}, {"ALIAS", "", false, 3}, {"COLOR", "", false, 4}}},
+		{"ResolvedType", kindEnum, []tf{{"BOOLEAN", "", false, 0}, {"FLOAT", "", false, 1}, {"STRING", "", false, 2}, {"COLOR", "", false, 4}, {"TEXT_DATA", "", false, 8}}},
 		{"PaintType", kindEnum, []tf{{"SOLID", "", false, 1}, {"GRADIENT_LINEAR", "", false, 2}, {"IMAGE", "", false, 3}}},
 		{"GUID", kindStruct, []tf{{"sessionID", "uint", false, 1}, {"localID", "uint", false, 2}}},
 		{"Vector", kindStruct, []tf{{"x", "float", false, 1}, {"y", "float", false, 2}}},
@@ -181,7 +186,19 @@ func testDefs() []td {
 		{"ColorStop", kindStruct, []tf{{"color", "Color", false, 1}, {"position", "float", false, 2}}},
 		{"ParentIndex", kindMessage, []tf{{"guid", "GUID", false, 1}, {"position", "string", false, 2}}},
 		{"Image", kindMessage, []tf{{"hash", "byte", true, 1}}},
-		{"Paint", kindMessage, []tf{{"type", "PaintType", false, 1}, {"color", "Color", false, 2}, {"opacity", "float", false, 3}, {"visible", "bool", false, 4}, {"stops", "ColorStop", true, 5}, {"transform", "Matrix", false, 6}, {"image", "Image", false, 7}, {"imageScaleMode", "string", false, 8}}},
+		{"Paint", kindMessage, []tf{{"type", "PaintType", false, 1}, {"color", "Color", false, 2}, {"opacity", "float", false, 3}, {"visible", "bool", false, 4}, {"stops", "ColorStop", true, 5}, {"transform", "Matrix", false, 6}, {"image", "Image", false, 7}, {"imageScaleMode", "string", false, 8}, {"colorVar", "VariableData", false, 9}, {"stopsVar", "StopVar", true, 10}}},
+		{"StopVar", kindMessage, []tf{{"colorVar", "VariableData", false, 1}}},
+		{"AssetRef", kindMessage, []tf{{"key", "string", false, 1}, {"version", "string", false, 2}}},
+		{"VariableID", kindMessage, []tf{{"guid", "GUID", false, 1}, {"assetRef", "AssetRef", false, 2}}},
+		{"AnyValue", kindMessage, []tf{{"boolValue", "bool", false, 1}, {"floatValue", "float", false, 2}, {"alias", "VariableID", false, 3}, {"colorValue", "Color", false, 4}, {"textValue", "string", false, 5}}},
+		{"VariableData", kindMessage, []tf{{"value", "AnyValue", false, 1}, {"dataType", "DataType", false, 2}}},
+		{"MapEntry", kindMessage, []tf{{"variableData", "VariableData", false, 1}, {"variableField", "VariableField", false, 2}}},
+		{"VariableDataMap", kindMessage, []tf{{"entries", "MapEntry", true, 1}}},
+		{"SetMode", kindMessage, []tf{{"id", "GUID", false, 1}, {"name", "string", false, 2}, {"sortPosition", "string", false, 3}}},
+		{"ValuesEntry", kindMessage, []tf{{"modeID", "GUID", false, 1}, {"variableData", "VariableData", false, 2}}},
+		{"Values", kindMessage, []tf{{"entries", "ValuesEntry", true, 1}}},
+		{"ModeEntry", kindMessage, []tf{{"variableSetID", "VariableID", false, 1}, {"variableModeID", "GUID", false, 2}}},
+		{"ModeMap", kindMessage, []tf{{"entries", "ModeEntry", true, 1}}},
 		{"TextData", kindMessage, []tf{{"characters", "string", false, 1}}},
 		{"FontName", kindMessage, []tf{{"family", "string", false, 1}, {"style", "string", false, 2}}},
 		{"ArcData", kindMessage, []tf{{"startingAngle", "float", false, 1}, {"endingAngle", "float", false, 2}, {"innerRadius", "float", false, 3}}},
@@ -194,7 +211,9 @@ func testDefs() []td {
 			{"textData", "TextData", false, 13}, {"fontSize", "float", false, 14}, {"fontName", "FontName", false, 15}, {"stackMode", "string", false, 16},
 			{"stackSpacing", "float", false, 17}, {"stackPaddingLeft", "float", false, 18}, {"fillGeometry", "Geometry", true, 19}, {"mask", "bool", false, 20},
 			{"horizontalConstraint", "string", false, 21}, {"count", "uint", false, 22}, {"starInnerScale", "float", false, 23}, {"arcData", "ArcData", false, 24},
-			{"connectorLineStyle", "string", false, 25}, {"strokeGeometry", "Geometry", true, 26}, {"connectorStart", "ConnectorEnd", false, 27}, {"boundVariables", "ConnectorEnd", false, 28},
+			{"connectorLineStyle", "string", false, 25}, {"strokeGeometry", "Geometry", true, 26}, {"connectorStart", "ConnectorEnd", false, 27}, {"variableConsumptionMap", "VariableDataMap", false, 28},
+			{"variableSetModes", "SetMode", true, 29}, {"variableSetID", "VariableID", false, 30}, {"variableResolvedType", "ResolvedType", false, 31}, {"variableDataValues", "Values", false, 32},
+			{"variableModeBySetMap", "ModeMap", false, 33}, {"key", "string", false, 34}, {"version", "string", false, 35}, {"isSoftDeleted", "bool", false, 36}, {"sortPosition", "string", false, 37},
 		}},
 		{"Blob", kindMessage, []tf{{"bytes", "byte", true, 1}}},
 		{"Message", kindMessage, []tf{{"nodeChanges", "NodeChange", true, 1}, {"blobs", "Blob", true, 2}}},
@@ -531,7 +550,7 @@ func tailFixture() map[string]any {
 			}),
 			change(8, 1, "e", "STICKY", "Note", map[string]any{
 				"size": map[string]any{"x": 80, "y": 80}, "transform": mat(300, 200), "fillPaints": []any{solid(1, 0.9, 0.2)}, "textData": map[string]any{"characters": "Remember"},
-				"boundVariables": map[string]any{"magnet": "x"},
+				"variableConsumptionMap": consumption(bound("WIDTH", 1)),
 			}),
 		},
 		"blobs": []any{map[string]any{"bytes": cmd(1, 0.0, 0.0, 2, 40.0, 0.0, 2, 40.0, 5.0, 2, 0.0, 5.0, 0)}},
@@ -590,7 +609,7 @@ func TestImportsTheTail(t *testing.T) {
 		t.Fatalf("report = %v / %v", res.Imported, res.Skipped)
 	}
 	joined := strings.Join(res.Warnings, "\n")
-	for _, want := range []string{"elbowed and curved connectors", "not attached to the layers", "table cell layers were imported as frames", "sticky layers were imported as frames", "1 layers use variables"} {
+	for _, want := range []string{"elbowed and curved connectors", "not attached to the layers", "table cell layers were imported as frames", "sticky layers were imported as frames", "1 variable bindings were not imported (width x1)"} {
 		if !strings.Contains(joined, want) {
 			t.Errorf("missing warning %q in %v", want, res.Warnings)
 		}

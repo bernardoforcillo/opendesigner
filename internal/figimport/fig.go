@@ -9,8 +9,9 @@
 //
 // It maps pages, frames (with auto layout), groups, rectangles, ellipses, text, vector paths,
 // fills (solid, linear and radial gradient, image), strokes, shadows and blurs, masks and
-// constraints. Components, instances and variables are NOT carried over as such: an instance
-// becomes a plain frame.
+// constraints, and variable collections with their modes, variables (color, number, string, boolean,
+// aliases) and the bindings of layers to them. Components and instances are NOT carried over as such:
+// an instance becomes a plain frame.
 package figimport
 
 import (
@@ -60,6 +61,10 @@ type Result struct {
 	// left out. Together they are the import report's numbers.
 	Imported map[string]int
 	Skipped  map[string]int
+	// Collections and Variables are the file's variables with their modes; the nodes' Bindings and Modes
+	// name them. Variables come with the targets of aliases first, so the editor can create them in order.
+	Collections []*opendesignerv1.VariableCollection
+	Variables   []*opendesignerv1.Variable
 }
 
 // Import reads a .fig file (a zip, or the bare canvas.fig).
@@ -278,6 +283,7 @@ func convert(msg map[string]any, images map[string][]byte, opt Options) (*Result
 		}
 	}
 	c := &converter{opt: opt, images: images, blobs: blobs, counters: map[string]int{}, seenAssets: map[string]string{}, skipped: map[string]int{}, imported: map[string]int{}}
+	c.readVariables(all)
 
 	name := strings.TrimSpace(opt.Name)
 	if name == "" {
@@ -329,9 +335,8 @@ func convert(msg map[string]any, images map[string][]byte, opt Options) (*Result
 	// Drop empty page groups (nothing converted) so the tree has no hollow shells.
 	nodes = pruneEmpty(nodes)
 	res := &Result{Nodes: nodes, Width: root.Width, Height: root.Height, Warnings: c.warnings, Imported: c.imported, Skipped: c.skipped}
-	if c.bound > 0 {
-		res.Warnings = append(res.Warnings, fmt.Sprintf("%d layers use variables: variables are not imported, the layers keep the values they show", c.bound))
-	}
+	res.Collections, res.Variables = c.vt.output()
+	res.Warnings = append(res.Warnings, c.vt.warnings()...)
 	for t, n := range c.skipped {
 		res.Warnings = append(res.Warnings, fmt.Sprintf("%d %s layers were not imported (that kind is not supported)", n, strings.ToLower(strings.ReplaceAll(t, "_", " "))))
 	}
@@ -363,7 +368,7 @@ type converter struct {
 	warnings   []string
 	skipped    map[string]int
 	imported   map[string]int
-	bound      int // layers that bind a variable (their values are kept, the binding is not)
+	vt         varTable // the file's variable collections and variables (variables.go)
 	seenAssets map[string]string
 	instances  int
 }
@@ -499,9 +504,6 @@ func (c *converter) convertNode(f *fnode, parent string) {
 		return
 	}
 	c.imported[typ]++
-	if hasVariables(f.raw) {
-		c.bound++
-	}
 	n := c.newNode(parent, name, shape)
 	if n.Name == "" {
 		n.Name = strings.ToLower(typ)
@@ -523,12 +525,14 @@ func (c *converter) convertNode(f *fnode, parent string) {
 	n.ConstraintX = constraint(asStr(f.raw["horizontalConstraint"]))
 	n.ConstraintY = constraint(asStr(f.raw["verticalConstraint"]))
 	n.BlendMode = blend(asStr(f.raw["blendMode"]))
-	n.Fills = c.paints(f.raw["fillPaints"], typ == "LINE")
-	n.Strokes = c.strokes(f.raw)
+	var fillSrc, strokeSrc []int
+	n.Fills, fillSrc = c.paintsWithSrc(f.raw["fillPaints"], typ == "LINE")
+	n.Strokes, strokeSrc = c.strokesWithSrc(f.raw)
 	n.Effects = effects(f.raw["effects"])
 	if typ == "CONNECTOR" {
-		c.connectorPaint(n, f.raw)
+		fillSrc = c.connectorPaint(n, f.raw)
 	}
+	c.bindLayer(n, f.raw, fillSrc, strokeSrc)
 	if isLabelled(typ) {
 		c.label(n, f)
 	}
@@ -675,12 +679,21 @@ func color(m map[string]any, opacity float64) *opendesignerv1.Color {
 }
 
 func (c *converter) paints(v any, isLine bool) []*opendesignerv1.Paint {
+	out, _ := c.paintsWithSrc(v, isLine)
+	return out
+}
+
+// paintsWithSrc is paints plus, for each paint kept, the index it had in the file's list. Hidden and
+// unsupported paints drop out, so the two indexes differ and a variable binding has to translate.
+func (c *converter) paintsWithSrc(v any, isLine bool) ([]*opendesignerv1.Paint, []int) {
 	var out []*opendesignerv1.Paint
-	for _, p := range asList(v) {
+	var src []int
+	for i, p := range asList(v) {
 		pm := asMap(p)
 		if pm == nil || !boolOf(pm, "visible", true) {
 			continue
 		}
+		kept := len(out)
 		op := clamp01(num(pm, "opacity", 1))
 		switch t := asStr(pm["type"]); t {
 		case "SOLID":
@@ -704,8 +717,11 @@ func (c *converter) paints(v any, isLine bool) []*opendesignerv1.Paint {
 		default:
 			c.warn("a %s fill was left out (not supported)", strings.ToLower(t))
 		}
+		if len(out) > kept {
+			src = append(src, i)
+		}
 	}
-	return out
+	return out, src
 }
 
 func gradient(pm map[string]any, opacity float64, typ string) *opendesignerv1.GradientPaint {
@@ -776,9 +792,15 @@ func (c *converter) imagePaint(pm map[string]any) *opendesignerv1.Paint {
 }
 
 func (c *converter) strokes(m map[string]any) []*opendesignerv1.Stroke {
+	out, _ := c.strokesWithSrc(m)
+	return out
+}
+
+// strokesWithSrc is strokes plus the index each stroke's paint had in strokePaints.
+func (c *converter) strokesWithSrc(m map[string]any) ([]*opendesignerv1.Stroke, []int) {
 	weight := num(m, "strokeWeight", 0)
 	if weight <= 0 {
-		return nil
+		return nil, nil
 	}
 	al := opendesignerv1.StrokeAlign_STROKE_ALIGN_CENTER
 	switch asStr(m["strokeAlign"]) {
@@ -788,10 +810,11 @@ func (c *converter) strokes(m map[string]any) []*opendesignerv1.Stroke {
 		al = opendesignerv1.StrokeAlign_STROKE_ALIGN_OUTSIDE
 	}
 	var out []*opendesignerv1.Stroke
-	for _, p := range c.paints(m["strokePaints"], false) {
+	ps, src := c.paintsWithSrc(m["strokePaints"], false)
+	for _, p := range ps {
 		out = append(out, &opendesignerv1.Stroke{Paint: p, Weight: weight, Align: al})
 	}
-	return out
+	return out, src
 }
 
 func effects(v any) []*opendesignerv1.Effect {
@@ -949,16 +972,6 @@ func (c *converter) label(n *opendesignerv1.Node, f *fnode) {
 	t.Fills = []*opendesignerv1.Paint{solidPaint(0, 0, 0)}
 }
 
-// hasVariables: the layer records a variable bound to one of its fields.
-func hasVariables(raw map[string]any) bool {
-	for _, k := range []string{"variableConsumptionMap", "boundVariables", "variableData"} {
-		if raw[k] != nil {
-			return true
-		}
-	}
-	return false
-}
-
 // connector draws a connector between its ends. A saved path (strokeGeometry, an outline) is kept as the
 // vector it is. Without one the line is rebuilt from the style: the ends are taken to be the opposite
 // corners of the layer's box, (0,0) and (w,h), a straight line, an elbow (across, along, across, with the
@@ -986,9 +999,10 @@ func (c *converter) connector(raw map[string]any, w, h float64) any {
 
 // connectorPaint: a drawn connector is a stroke; a saved path is the stroke's outline, so it is filled
 // with the stroke's colour instead.
-func (c *converter) connectorPaint(n *opendesignerv1.Node, raw map[string]any) {
+// It returns the strokePaints index of each fill it ends up with (variable bindings translate by it).
+func (c *converter) connectorPaint(n *opendesignerv1.Node, raw map[string]any) (fillSrc []int) {
 	if len(c.geometry(raw["strokeGeometry"])) > 0 {
-		n.Fills = c.paints(raw["strokePaints"], false)
+		n.Fills, fillSrc = c.paintsWithSrc(raw["strokePaints"], false)
 		n.Strokes = nil
 	} else {
 		n.Fills = nil
@@ -1000,6 +1014,7 @@ func (c *converter) connectorPaint(n *opendesignerv1.Node, raw map[string]any) {
 	if raw["connectorStart"] != nil || raw["connectorEnd"] != nil {
 		c.warn("connectors are not attached to the layers they joined: they are plain lines")
 	}
+	return fillSrc
 }
 
 func solidPaint(r, g, b float64) *opendesignerv1.Paint {
