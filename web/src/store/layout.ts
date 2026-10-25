@@ -1,7 +1,8 @@
 import type { NodeEditor } from "./nodeMap";
 import type { Op } from "../gen/opendesigner/v1/opendesigner_pb";
-import { childrenOf } from "./tree";
+import { childrenOf, subtreeOf } from "./tree";
 import type { NodeLite, SceneState } from "./types";
+import { isLayoutKey, resolveNode } from "./variables";
 
 // AUTO LAYOUT -- the TypeScript half of internal/core/layout.go, which is
 // the AUTHORITY. This copy exists only because the client applies ops
@@ -24,6 +25,12 @@ const LAYOUT_KINDS: ReadonlySet<NodeLite["kind"]> = new Set(["rect", "ellipse", 
 
 export function participates(n: NodeLite): boolean {
   return n.visible && LAYOUT_KINDS.has(n.kind) && n.layoutPositioning !== "absolute";
+}
+
+// participates with the node's variable-bound visibility applied (a boolean variable bound to
+// "visible" hides it in the frame's active mode). Parity with participatesIn in Go.
+function participatesIn(view: SceneState, n: NodeLite): boolean {
+  return participates(n.bindings?.visible ? resolveNode(view, n) : n);
 }
 
 export function hasLayout(n: NodeLite | undefined): n is NodeLite & { autoLayout: NonNullable<NodeLite["autoLayout"]> } {
@@ -58,14 +65,14 @@ function layoutFrame(scene: SceneState, nodes: NodeEditor, id: string, touched?:
   const startW = orig.width, startH = orig.height;
   const limitedW = clampW(orig, orig.width), limitedH = clampH(orig, orig.height);
   const frame = limitedW !== orig.width || limitedH !== orig.height ? { ...orig, width: limitedW, height: limitedH } : orig;
-  const al = frame.autoLayout;
-  const vertical = al.direction === "vertical";
-
   // The state computed on is `scene` + the corrections already written in `nodes`:
   // childrenOf reads from the scene, so it is given a view with the nodes
   // updated so far.
   const view: SceneState = { ...scene, nodes: nodes.view() };
-  const kids = childrenOf(view, id).filter((c) => participates(c) && !isAbsolute(c));
+  // Spacing and padding bound to variables are read in the frame's active mode.
+  const al = (frame.bindings ? resolveNode(view, frame).autoLayout : undefined) ?? frame.autoLayout;
+  const vertical = al.direction === "vertical";
+  const kids = childrenOf(view, id).filter((c) => participatesIn(view, c) && !isAbsolute(c));
 
   const padL = al.paddingLeft, padT = al.paddingTop, padR = al.paddingRight, padB = al.paddingBottom;
   const [padMainStart, padMainEnd, padCrossStart, padCrossEnd] = vertical ? [padT, padB, padL, padR] : [padL, padR, padT, padB];
@@ -392,6 +399,30 @@ export function resizeChildren(scene: SceneState, nodes: NodeEditor, id: string,
   return changed;
 }
 
+const variablesOf = (scene: SceneState, collectionId: string): Set<string> =>
+  new Set(Object.values(scene.variables).filter((v) => v.collectionId === collectionId).map((v) => v.id));
+
+// The nodes (and their parents) whose layout-relevant bindings point at one of `vars` or at an
+// alias of them, transitively. Parity with layoutDependents in Go.
+function layoutDependents(scene: SceneState, vars: Set<string>): string[] {
+  for (let grew = true; grew;) {
+    grew = false;
+    for (const v of Object.values(scene.variables)) {
+      if (!vars.has(v.id) && v.aliasOf !== undefined && vars.has(v.aliasOf)) { vars.add(v.id); grew = true; }
+    }
+  }
+  const out: string[] = [];
+  for (const n of scene.nodes.values()) {
+    if (n.bindings && Object.entries(n.bindings).some(([key, v]) => isLayoutKey(key) && vars.has(v))) out.push(n.id, n.parentId);
+  }
+  return out;
+}
+
+// The nodes of `subtree` (and their parents) with layout-relevant bindings. Parity with layoutBoundIn in Go.
+function layoutBoundIn(subtree: readonly NodeLite[]): string[] {
+  return subtree.flatMap((n) => (n.bindings && Object.keys(n.bindings).some(isLayoutKey) ? [n.id, n.parentId] : []));
+}
+
 // The frames whose layout may change because of `op`, read from `scene` --
 // which is queried BEFORE and AFTER the op (a deleted or moved node leaves the
 // old parent only in the earlier state). Like layoutTargets in Go.
@@ -405,8 +436,19 @@ export function layoutTargets(scene: SceneState, op: Op): string[] {
     case "createNode": return k.value.node ? [k.value.node.parentId, k.value.node.id] : [];
     case "deleteNode": return parentOf(k.value.id);
     case "reparentNode": return [...parentOf(k.value.id), k.value.newParentId];
-    case "setProps": return [...parentOf(k.value.id), k.value.id];
+    case "setProps": {
+      const out = [...parentOf(k.value.id), k.value.id];
+      // A mode pinned on a node changes what the variables bound below it resolve to.
+      if (k.value.mask?.paths.includes("modes")) out.push(...layoutBoundIn(subtreeOf(scene, k.value.id)));
+      return out;
+    }
     case "setVectorPath": return parentOf(k.value.id);
+    // The layout reads spacing, padding and visibility through variables: a change to a
+    // variable (or to the modes of its collection) moves what is bound to it.
+    case "setVariable": return layoutDependents(scene, new Set([k.value.variable?.id ?? ""]));
+    case "deleteVariable": return layoutDependents(scene, new Set([k.value.id]));
+    case "setCollection": return layoutDependents(scene, variablesOf(scene, k.value.collection?.id ?? ""));
+    case "deleteCollection": return layoutDependents(scene, variablesOf(scene, k.value.id));
     default: return [];
   }
 }

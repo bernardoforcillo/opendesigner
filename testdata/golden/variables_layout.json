@@ -1,0 +1,409 @@
+{
+ "_comment": [
+  "Variables that the layout reads: a number variable (and an alias of it) bound to the spacing and padding of an auto layout frame, and a boolean variable bound to a child's visibility, in the modes of a collection pinned on the frame. Pinning the Tight mode and then changing the variable re-lay-out the frame (the hidden child leaves the flow, the gap and padding follow the variable). Rejected: a boolean bound to opacity, a number bound to visible, a number in a boolean variable."
+ ],
+ "docId": "doc1",
+ "expected": {
+  "collections": {
+   "density": {
+    "id": "density",
+    "modes": [
+     {
+      "id": "cozy",
+      "name": "Cozy"
+     },
+     {
+      "id": "tight",
+      "name": "Tight"
+     }
+    ],
+    "name": "Density"
+   }
+  },
+  "id": "doc1",
+  "name": "Untitled",
+  "nodes": {
+   "a": {
+    "height": 10.25,
+    "id": "a",
+    "name": "a",
+    "opacity": 1,
+    "orderKey": "a",
+    "parentId": "f",
+    "rect": {},
+    "visible": true,
+    "width": 20.5,
+    "x": 129.5,
+    "y": 9.1
+   },
+   "b": {
+    "bindings": {
+     "visible": "show"
+    },
+    "height": 10.25,
+    "id": "b",
+    "name": "b",
+    "opacity": 1,
+    "orderKey": "b",
+    "parentId": "f",
+    "rect": {},
+    "visible": true,
+    "width": 20.5,
+    "x": 147.9,
+    "y": 16.3
+   },
+   "c": {
+    "height": 10.25,
+    "id": "c",
+    "name": "c",
+    "opacity": 1,
+    "orderKey": "c",
+    "parentId": "f",
+    "rect": {},
+    "visible": true,
+    "width": 20.5,
+    "x": 159.1,
+    "y": 9.1
+   },
+   "f": {
+    "bindings": {
+     "padding_left": "pad",
+     "padding_top": "pad",
+     "spacing": "gap"
+    },
+    "frame": {
+     "autoLayout": {
+      "direction": "LAYOUT_DIRECTION_HORIZONTAL",
+      "mainAlign": "LAYOUT_ALIGN_CENTER",
+      "spacing": 1.5
+     },
+     "clipsContent": true
+    },
+    "height": 100.5,
+    "id": "f",
+    "modes": {
+     "density": "tight"
+    },
+    "name": "f",
+    "opacity": 1,
+    "orderKey": "f",
+    "parentId": "page1",
+    "visible": true,
+    "width": 300,
+    "x": 999,
+    "y": 999
+   }
+  },
+  "pages": [
+   {
+    "id": "page1",
+    "name": "Page 1"
+   }
+  ],
+  "schemaVersion": 1,
+  "variables": {
+   "gap": {
+    "collectionId": "density",
+    "id": "gap",
+    "name": "gap",
+    "type": "VARIABLE_TYPE_NUMBER",
+    "values": {
+     "cozy": {
+      "number": 16.3
+     },
+     "tight": {
+      "number": 9.1
+     }
+    }
+   },
+   "pad": {
+    "aliasOf": "gap",
+    "collectionId": "density",
+    "id": "pad",
+    "name": "pad",
+    "type": "VARIABLE_TYPE_NUMBER"
+   },
+   "show": {
+    "collectionId": "density",
+    "id": "show",
+    "name": "show",
+    "type": "VARIABLE_TYPE_BOOLEAN",
+    "values": {
+     "cozy": {
+      "boolean": true
+     },
+     "tight": {
+      "boolean": false
+     }
+    }
+   }
+  }
+ },
+ "ops": [
+  {
+   "createNode": {
+    "node": {
+     "frame": {
+      "autoLayout": {
+       "direction": "LAYOUT_DIRECTION_HORIZONTAL",
+       "mainAlign": "LAYOUT_ALIGN_CENTER",
+       "spacing": 1.5
+      },
+      "clipsContent": true
+     },
+     "height": 100.5,
+     "id": "f",
+     "name": "f",
+     "opacity": 1,
+     "orderKey": "f",
+     "parentId": "page1",
+     "visible": true,
+     "width": 300,
+     "x": 999,
+     "y": 999
+    }
+   },
+   "docId": "doc1",
+   "opId": "op1"
+  },
+  {
+   "createNode": {
+    "node": {
+     "height": 10.25,
+     "id": "a",
+     "name": "a",
+     "opacity": 1,
+     "orderKey": "a",
+     "parentId": "f",
+     "rect": {},
+     "visible": true,
+     "width": 20.5,
+     "x": 999,
+     "y": 999
+    }
+   },
+   "docId": "doc1",
+   "opId": "op2"
+  },
+  {
+   "createNode": {
+    "node": {
+     "height": 10.25,
+     "id": "b",
+     "name": "b",
+     "opacity": 1,
+     "orderKey": "b",
+     "parentId": "f",
+     "rect": {},
+     "visible": true,
+     "width": 20.5,
+     "x": 999,
+     "y": 999
+    }
+   },
+   "docId": "doc1",
+   "opId": "op3"
+  },
+  {
+   "createNode": {
+    "node": {
+     "height": 10.25,
+     "id": "c",
+     "name": "c",
+     "opacity": 1,
+     "orderKey": "c",
+     "parentId": "f",
+     "rect": {},
+     "visible": true,
+     "width": 20.5,
+     "x": 999,
+     "y": 999
+    }
+   },
+   "docId": "doc1",
+   "opId": "op4"
+  },
+  {
+   "docId": "doc1",
+   "opId": "op5",
+   "setCollection": {
+    "collection": {
+     "id": "density",
+     "modes": [
+      {
+       "id": "cozy",
+       "name": "Cozy"
+      },
+      {
+       "id": "tight",
+       "name": "Tight"
+      }
+     ],
+     "name": "Density"
+    }
+   }
+  },
+  {
+   "docId": "doc1",
+   "opId": "op6",
+   "setVariable": {
+    "variable": {
+     "collectionId": "density",
+     "id": "gap",
+     "name": "gap",
+     "type": "VARIABLE_TYPE_NUMBER",
+     "values": {
+      "cozy": {
+       "number": 16.3
+      },
+      "tight": {
+       "number": 4.7
+      }
+     }
+    }
+   }
+  },
+  {
+   "docId": "doc1",
+   "opId": "op7",
+   "setVariable": {
+    "variable": {
+     "aliasOf": "gap",
+     "collectionId": "density",
+     "id": "pad",
+     "name": "pad",
+     "type": "VARIABLE_TYPE_NUMBER"
+    }
+   }
+  },
+  {
+   "docId": "doc1",
+   "opId": "op8",
+   "setVariable": {
+    "variable": {
+     "collectionId": "density",
+     "id": "show",
+     "name": "show",
+     "type": "VARIABLE_TYPE_BOOLEAN",
+     "values": {
+      "cozy": {
+       "boolean": true
+      },
+      "tight": {
+       "boolean": false
+      }
+     }
+    }
+   }
+  },
+  {
+   "docId": "doc1",
+   "opId": "op9",
+   "setProps": {
+    "id": "f",
+    "mask": "bindings",
+    "patch": {
+     "bindings": {
+      "padding_left": "pad",
+      "padding_top": "pad",
+      "spacing": "gap"
+     }
+    }
+   }
+  },
+  {
+   "docId": "doc1",
+   "opId": "op10",
+   "setProps": {
+    "id": "b",
+    "mask": "bindings",
+    "patch": {
+     "bindings": {
+      "visible": "show"
+     }
+    }
+   }
+  },
+  {
+   "docId": "doc1",
+   "opId": "op11",
+   "setProps": {
+    "id": "f",
+    "mask": "modes",
+    "patch": {
+     "modes": {
+      "density": "tight"
+     }
+    }
+   }
+  },
+  {
+   "docId": "doc1",
+   "opId": "op12",
+   "setVariable": {
+    "variable": {
+     "collectionId": "density",
+     "id": "gap",
+     "name": "gap",
+     "type": "VARIABLE_TYPE_NUMBER",
+     "values": {
+      "cozy": {
+       "number": 16.3
+      },
+      "tight": {
+       "number": 9.1
+      }
+     }
+    }
+   }
+  },
+  {
+   "docId": "doc1",
+   "opId": "op13",
+   "setProps": {
+    "id": "a",
+    "mask": "bindings",
+    "patch": {
+     "bindings": {
+      "opacity": "show"
+     }
+    }
+   }
+  },
+  {
+   "docId": "doc1",
+   "opId": "op14",
+   "setProps": {
+    "id": "a",
+    "mask": "bindings",
+    "patch": {
+     "bindings": {
+      "visible": "gap"
+     }
+    }
+   }
+  },
+  {
+   "docId": "doc1",
+   "opId": "op15",
+   "setVariable": {
+    "variable": {
+     "collectionId": "density",
+     "id": "show",
+     "name": "show",
+     "type": "VARIABLE_TYPE_BOOLEAN",
+     "values": {
+      "cozy": {
+       "number": 1
+      }
+     }
+    }
+   }
+  }
+ ],
+ "rejected": [
+  12,
+  13,
+  14
+ ]
+}

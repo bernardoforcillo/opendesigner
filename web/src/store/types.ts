@@ -334,11 +334,11 @@ export interface CommentLite {
 }
 export interface ModeLite { id: string; name: string }
 export interface CollectionLite { id: string; name: string; modes: ModeLite[] }
-export type VariableTypeLite = "color" | "number" | "string";
+export type VariableTypeLite = "color" | "number" | "string" | "boolean";
 export interface VariableLite {
   id: string; collectionId: string; name: string; type: VariableTypeLite;
-  // modeId -> value. A color is {r,g,b,a}; a number is a plain number; a string is a string.
-  values: Record<string, FillLite | number | string>;
+  // modeId -> value. A color is {r,g,b,a}; a number is a plain number; a string is a string; a boolean is a boolean.
+  values: Record<string, FillLite | number | string | boolean>;
   // Present for an alias: the variable it reads (then `values` is empty).
   aliasOf?: string;
 }
@@ -948,7 +948,7 @@ export function toPbCollection(c: CollectionLite): PbCollection {
   return create(VariableCollectionSchema, { id: c.id, name: c.name, modes: c.modes.map((m) => ({ id: m.id, name: m.name })) });
 }
 export function toVariableLite(v: PbVariable): VariableLite {
-  const type: VariableTypeLite = v.type === VariableType.COLOR ? "color" : v.type === VariableType.STRING ? "string" : "number";
+  const type: VariableTypeLite = v.type === VariableType.COLOR ? "color" : v.type === VariableType.STRING ? "string" : v.type === VariableType.BOOLEAN ? "boolean" : "number";
   const values: VariableLite["values"] = {};
   for (const [mode, val] of Object.entries(v.values)) {
     if (val.kind.case === "color") {
@@ -956,21 +956,24 @@ export function toVariableLite(v: PbVariable): VariableLite {
       values[mode] = { r, g, b, a };
     } else if (val.kind.case === "number") values[mode] = val.kind.value;
     else if (val.kind.case === "text") values[mode] = val.kind.value;
+    else if (val.kind.case === "boolean") values[mode] = val.kind.value;
   }
   return { id: v.id, collectionId: v.collectionId, name: v.name, type, values, ...(v.aliasOf !== "" ? { aliasOf: v.aliasOf } : {}) };
 }
 export function toPbVariable(v: VariableLite): PbVariable {
-  const values: Record<string, { kind: { case: "color"; value: { r: number; g: number; b: number; a: number } } | { case: "number"; value: number } | { case: "text"; value: string } }> = {};
+  const values: Record<string, { kind: { case: "color"; value: { r: number; g: number; b: number; a: number } } | { case: "number"; value: number } | { case: "text"; value: string } | { case: "boolean"; value: boolean } }> = {};
   for (const [mode, val] of Object.entries(v.values)) {
     values[mode] = typeof val === "number"
       ? { kind: { case: "number", value: val } }
       : typeof val === "string"
         ? { kind: { case: "text", value: val } }
-        : { kind: { case: "color", value: { r: val.r, g: val.g, b: val.b, a: val.a } } };
+        : typeof val === "boolean"
+          ? { kind: { case: "boolean", value: val } }
+          : { kind: { case: "color", value: { r: val.r, g: val.g, b: val.b, a: val.a } } };
   }
   return create(VariableSchema, {
     id: v.id, collectionId: v.collectionId, name: v.name, aliasOf: v.aliasOf ?? "",
-    type: v.type === "color" ? VariableType.COLOR : v.type === "string" ? VariableType.STRING : VariableType.NUMBER, values,
+    type: v.type === "color" ? VariableType.COLOR : v.type === "string" ? VariableType.STRING : v.type === "boolean" ? VariableType.BOOLEAN : VariableType.NUMBER, values,
   });
 }
 

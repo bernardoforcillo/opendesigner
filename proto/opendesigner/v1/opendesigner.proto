@@ -492,6 +492,10 @@ message Node {
   //   "strokes.N.weight"        NUMBER
   //   "font_size"               NUMBER   text nodes only
   //   "text"                    STRING   text nodes only (the content)
+  //   "visible"                 BOOLEAN  show / hide the node (a hidden node leaves its auto layout)
+  //   "spacing" | "cross_spacing" | "padding_left" | "padding_top" | "padding_right" | "padding_bottom"
+  //                             NUMBER   frames with auto layout only (>= 0); the layout engine reads
+  //                                      them in the frame's active mode
   // The "bindings" mask REPLACES the whole map, like `meta`.
   map<string, string> bindings = 41;
   // Mode override: collectionId -> modeId. A node (typically a frame) can pin a
@@ -590,8 +594,9 @@ enum VariableType {
   VARIABLE_TYPE_COLOR = 1;
   VARIABLE_TYPE_NUMBER = 2;
   VARIABLE_TYPE_STRING = 3;
+  VARIABLE_TYPE_BOOLEAN = 4;   // binds to Node.visible
 }
-message VariableValue { oneof kind { Color color = 1; double number = 2; string text = 3; } }
+message VariableValue { oneof kind { Color color = 1; double number = 2; string text = 3; bool boolean = 4; } }
 message Variable {
   string id = 1;
   string collection_id = 2;

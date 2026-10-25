@@ -49,6 +49,15 @@ func participates(n *opendesignerv1.Node) bool {
 	return false
 }
 
+// participatesIn is participates with the node's variable-bound visibility applied (a
+// boolean variable bound to "visible" hides it in the frame's active mode).
+func participatesIn(doc *opendesignerv1.Document, n *opendesignerv1.Node) bool {
+	if n.GetBindings()["visible"] != "" {
+		n = ResolveNode(doc, n)
+	}
+	return participates(n)
+}
+
 func autoLayoutOf(n *opendesignerv1.Node) *opendesignerv1.AutoLayout {
 	if n == nil {
 		return nil
@@ -108,7 +117,8 @@ func layoutFrame(doc *opendesignerv1.Document, id string, cow *Shared) {
 		return
 	}
 	frame = cow.mut(doc, id)
-	al = autoLayoutOf(frame)
+	// Spacing and padding bound to variables are read in the frame's active mode.
+	al = autoLayoutOf(ResolveNode(doc, frame))
 	vertical := al.GetDirection() == opendesignerv1.LayoutDirection_LAYOUT_DIRECTION_VERTICAL
 
 	// The size the frame had when the layout started: the absolute children follow the
@@ -118,7 +128,7 @@ func layoutFrame(doc *opendesignerv1.Document, id string, cow *Shared) {
 
 	var kids []*opendesignerv1.Node
 	for _, c := range ChildrenOf(doc, id) {
-		if participates(c) && !isAbsolute(c) {
+		if participatesIn(doc, c) && !isAbsolute(c) {
 			kids = append(kids, cow.mut(doc, c.GetId()))
 		}
 	}
@@ -582,11 +592,85 @@ func layoutTargets(doc *opendesignerv1.Document, op *opendesignerv1.Op) []string
 	case *opendesignerv1.Op_ReparentNode:
 		return append(parentOf(k.ReparentNode.GetId()), k.ReparentNode.GetNewParentId())
 	case *opendesignerv1.Op_SetProps:
-		return append(parentOf(k.SetProps.GetId()), k.SetProps.GetId())
+		out := append(parentOf(k.SetProps.GetId()), k.SetProps.GetId())
+		// A mode pinned on a node changes what the variables bound below it resolve to.
+		for _, p := range k.SetProps.GetMask().GetPaths() {
+			if p == "modes" {
+				out = append(out, layoutBoundIn(doc, SubtreeOf(doc, k.SetProps.GetId()))...)
+			}
+		}
+		return out
 	case *opendesignerv1.Op_SetVectorPath:
 		return parentOf(k.SetVectorPath.GetId())
+	// The layout reads spacing, padding and visibility through variables: a change to a
+	// variable (or to the modes of its collection) moves what is bound to it.
+	case *opendesignerv1.Op_SetVariable:
+		return layoutDependents(doc, map[string]bool{k.SetVariable.GetVariable().GetId(): true})
+	case *opendesignerv1.Op_DeleteVariable:
+		return layoutDependents(doc, map[string]bool{k.DeleteVariable.GetId(): true})
+	case *opendesignerv1.Op_SetCollection:
+		return layoutDependents(doc, variablesOf(doc, k.SetCollection.GetCollection().GetId()))
+	case *opendesignerv1.Op_DeleteCollection:
+		return layoutDependents(doc, variablesOf(doc, k.DeleteCollection.GetId()))
 	}
 	return nil
+}
+
+// layoutKey: a binding key the layout engine reads.
+func layoutKey(key string) bool {
+	switch key {
+	case "visible", "spacing", "cross_spacing", "padding_left", "padding_top", "padding_right", "padding_bottom":
+		return true
+	}
+	return false
+}
+
+func variablesOf(doc *opendesignerv1.Document, collectionID string) map[string]bool {
+	out := map[string]bool{}
+	for id, v := range doc.GetVariables() {
+		if v.GetCollectionId() == collectionID {
+			out[id] = true
+		}
+	}
+	return out
+}
+
+// layoutDependents lists the nodes (and their parents) whose layout-relevant bindings point at
+// one of `vars` or at an alias of them, transitively. relayout ignores what is not an auto
+// layout frame.
+func layoutDependents(doc *opendesignerv1.Document, vars map[string]bool) []string {
+	for changed := true; changed; {
+		changed = false
+		for id, v := range doc.GetVariables() {
+			if !vars[id] && vars[v.GetAliasOf()] {
+				vars[id], changed = true, true
+			}
+		}
+	}
+	var out []string
+	for _, n := range doc.GetNodes() {
+		for key, v := range n.GetBindings() {
+			if layoutKey(key) && vars[v] {
+				out = append(out, n.GetId(), n.GetParentId())
+				break
+			}
+		}
+	}
+	return out
+}
+
+// layoutBoundIn lists the nodes of `subtree` (and their parents) with layout-relevant bindings.
+func layoutBoundIn(doc *opendesignerv1.Document, subtree []*opendesignerv1.Node) []string {
+	var out []string
+	for _, n := range subtree {
+		for key := range n.GetBindings() {
+			if layoutKey(key) {
+				out = append(out, n.GetId(), n.GetParentId())
+				break
+			}
+		}
+	}
+	return out
 }
 
 // relayout re-lays-out the touched frames and climbs up: a frame that changes size (hug)
