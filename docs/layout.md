@@ -131,8 +131,11 @@ Node.grid_cell { column, column_span, row, row_span }        // 1-based; 0 = aut
   `columnGap`, `rowGap`; `set_grid_cell` places nodes; node views report `gridCell`.
 - **Code**: `display:grid` with `grid-template-columns/rows` (`<n>px`, `max-content`, `<w>fr`), `gap`,
   `justify-items`/`align-items`, and `grid-column`/`grid-row` per child (`2 / span 2`). CSS auto-placement is the
-  browser's (it matches ours for ordinary grids; with mixed explicit and auto cells it can differ). SwiftUI and
-  Compose have no grid export: their children are not placed.
+  browser's (it matches ours for ordinary grids; with mixed explicit and auto cells it can differ). SwiftUI exports a
+  `Grid` of `GridRow`s with `gridCellColumns` spans (fixed tracks as frames on the cells, fr tracks as flexible frames: equal
+  shares, so different weights are approximated; row spans and overlapping cells fall back to the core's computed offsets).
+  Compose exports a generated `DesignGrid` layout honouring fixed / hug / fr tracks, gaps and spans. Both warn for what
+  they approximate; neither is compiled in CI (docs/codegen.md).
 - A bad track kind, a negative or non-finite size or gap, more than 100 tracks, an unknown mode or a cell number
   outside 0..1000 rejects the whole op.
 

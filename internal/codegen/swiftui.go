@@ -257,6 +257,17 @@ func frameMods(m *mods, n *nbox, parent *nbox, align string) {
 	if len(parts) > 0 {
 		m.add("frame(%s, alignment: %s)", strings.Join(parts, ", "), align)
 	}
+	if parent != nil && parent.grid != nil {
+		// A grid child that fills its cell (the Grid itself places and sizes the cell).
+		switch {
+		case n.fillX && n.stretch:
+			m.add("frame(maxWidth: .infinity, maxHeight: .infinity, alignment: %s)", align)
+		case n.fillX:
+			m.add("frame(maxWidth: .infinity, alignment: %s)", align)
+		case n.stretch:
+			m.add("frame(maxHeight: .infinity, alignment: %s)", align)
+		}
+	}
 	if parent != nil && parent.flex {
 		fillW := (n.grow && !parent.vertical) || (n.stretch && parent.vertical)
 		fillH := (n.grow && parent.vertical) || (n.stretch && !parent.vertical)
@@ -303,6 +314,8 @@ func (w *swWriter) box(e *Element, n *nbox, parent *nbox) []string {
 	var lines []string
 	var m mods
 	switch {
+	case n.grid != nil && !useChild && e.SwapProp == "" && len(kids) > 0 && len(kids) == len(e.Children):
+		lines = w.gridStack(e, n, kids)
 	case n.flex && len(kids) > 0:
 		spacing := ""
 		if n.gap > 0 {
