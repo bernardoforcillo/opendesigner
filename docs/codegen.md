@@ -6,8 +6,10 @@ e2e tests already written. A single implementation, in Go (`internal/codegen`),
 used by the CLI, the RPC and the MCP tool.
 
 ```
-Document ──> screens ──> IR (tree of elements + CSS properties) ──┬─> html   (CSS in a <style>)
-                                                                  └─> react  (Tailwind v4 classes)
+Document ──> screens ──> IR (tree of elements + CSS properties) ──┬─> html     (CSS in a <style>)
+                                                                  ├─> react    (Tailwind v4 classes)
+                                                                  ├─> swiftui  (native.go parses the CSS back)
+                                                                  └─> compose  (same)
 ```
 
 The IR is unique: CSS and Tailwind come out of the **same tree**, so they cannot
@@ -108,6 +110,53 @@ label="Buy" />` from its `variant_props` and `property_values`, leaving out what
 equals the default. Instances with overrides, or with animation or flow wiring inside,
 stay inline, and so does everything in the html target. The same properties still
 apply in the inline expansion (`core.EffectsOf`).
+
+## Native targets: SwiftUI and Jetpack Compose
+
+`-target swiftui` and `-target compose` write Swift / Kotlin sources from the **same IR**: `native.go` parses
+an element's CSS properties back into a small neutral model (size, position, flex axes, padding, fill,
+gradient, radius, shadows, stroke rings, opacity, rotation, text style) and `swiftui.go` / `compose.go` write
+it in their own syntax. First fill, first shadow, gradient geometry, stroke alignment and baked opacity are
+therefore decided once, in `build.go`, exactly as for html and react.
+
+| Design | SwiftUI | Compose |
+|---|---|---|
+| Screen (top-level frame) | `struct Name: View` in `Sources/Screens/` | `@Composable fun Name(onNavigate, onBack)` in `screens/` |
+| Auto layout | `VStack` / `HStack` (`spacing`, `.padding(EdgeInsets)`, `alignment`); `space-between` = `Spacer(minLength: 0)` between children; main-axis centre / end = the frame's alignment | `Column` / `Row` (`Arrangement.spacedBy`, `SpaceBetween`, `Modifier.padding`, `Alignment`) |
+| Everything else | `ZStack(alignment: .topLeading)`, children `.frame(...)` + `.offset(x:y:)` | `Box`, children `Modifier.size(...)` + `.offset(x, y)` |
+| hug | no fixed `.frame` on that axis | no fixed size on that axis |
+| fill the parent (`LayoutSizing` fill) | `.frame(maxWidth: .infinity)` / `maxHeight` | `Modifier.weight(1f)` / `fillMaxWidth()` / `fillMaxHeight()` |
+| Fill | `Shape().fill(Color / LinearGradient / RadialGradient)` | `Modifier.background(Color / Brush.linearGradient / radialGradient, shape)` |
+| Corner radius, ellipse | `RoundedRectangle(cornerRadius:)`, `Ellipse()` | `RoundedCornerShape`, `CircleShape` (a non-square ellipse is a pill) |
+| Stroke | `strokeBorder` (inside), `stroke` (centre), `stroke(...).padding(-w/2)` (outside) | `Modifier.border` (always drawn inside) |
+| Shadow | `.shadow(color:radius: blur/2, x:y:)` | `Modifier.dropShadow(shape, Shadow(...))` (Compose UI 1.9) |
+| Blur, opacity, rotation, clip | `.blur`, `.opacity`, `.rotationEffect`, `.clipShape` | `.blur`, `.alpha`, `.rotate`, `.clip` |
+| Text | `Text` with `.font(.custom(family, size:).weight(...))`, colour, alignment, line spacing, `.frame(width:)` | `Text(text, color, fontSize, fontWeight, lineHeight, textAlign)` with `Modifier.width` |
+| Image | `Image("img_<hash>")` from an image set in `Sources/Resources/Assets.xcassets` | `Image(painterResource(R.drawable.img_<hash>))` from `res/drawable-nodpi` |
+| Vector | `Path { p in ... }` with `.fill(style: FillStyle(eoFill:))` / `.stroke(style: StrokeStyle(...))` | `Canvas` + `PathParser().parsePathString(d)` with fill type and `Stroke` (cap, join, miter, dashes) |
+
+**Components** reuse the react registry (`react_components.go`): a component set, or a component with
+properties, is ONE `View` (`Sources/Components/Name.swift`) or `@Composable` (`components/Name.kt`) whose
+parameters are the set's axes (a string, first option by default) and the properties (boolean = show / hide,
+text = string, number = the target attribute, instance swap = `AnyView?` / `(@Composable () -> Unit)?`
+slot with the default content as fallback). The body `switch`es / `when`s on the axes. An instance is
+`Button2(size: "L", label: "Buy")`; what it leaves out is the default. Names that clash with the framework
+(`Button`, `Text`, `Card`...) get a suffix. Instances with overrides stay inline.
+
+**Flows**: the element that fires a transition becomes a `Button { router.go(.home) }` (SwiftUI, a
+`Router` object over a `NavigationStack`) or gets `Modifier.clickable { onNavigate("Home") }` (Compose, a
+`NavHost`); `back` transitions call `router.back()` / `onBack()`. Transitions without an element become an
+accessibility action on the screen's root. Key and auto triggers are left as comments (with the `// flow:`,
+guard and effect lines). Every element is preceded by a `// Name (data-node-id="...")` comment: the link
+between design and code, which is also how the editor finds a screen's file.
+
+**Not exported** (reported as warnings and in the generated README): animation clips, blend modes,
+background blur, inner shadows, wrapping auto layout, vector gradient fills and gradient text (first stop
+used), outside / centred strokes in Compose (drawn inside), text strokes. Custom fonts are named but not bundled.
+Screens have a fixed size.
+
+**Not verified by a compiler**: the sources are checked by golden tests and string assertions, not compiled
+(there is no Swift or Kotlin toolchain in the repo's CI). Treat the first build as the real test.
 
 ## Flow wiring
 
@@ -215,7 +264,7 @@ at the same time are spaced 0.0001% apart so they do not merge) and an
 
 ```sh
 opendesigner export [-workspace DIR] [-doc ID|NAME | -json FILE] [-assets DIR]
-                    [-target react|html] [-out DIR] [-flow ID] [-force]
+                    [-target react|html|swiftui|compose] [-out DIR] [-flow ID] [-force]
 ```
 
 - loads the document **offline** from the workspace (like `opendesigner flow`),

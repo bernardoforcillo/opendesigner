@@ -278,6 +278,10 @@ enum LayoutAlign {
   // Only for main_align: distributes the free space between the children. On
   // the cross axis it behaves as START.
   LAYOUT_ALIGN_SPACE_BETWEEN = 4;
+  // Only for cross_align of a HORIZONTAL layout: the children's first baselines coincide (a text's
+  // from its font size and line height, any other node's from its bottom edge). On the main axis
+  // and in a vertical layout it behaves as START.
+  LAYOUT_ALIGN_BASELINE = 5;
 }
 message AutoLayout {
   LayoutDirection direction = 1;
@@ -648,6 +652,10 @@ message Node {
   //   "strokes.N.weight"        NUMBER
   //   "font_size"               NUMBER   text nodes only
   //   "text"                    STRING   text nodes only (the content)
+  //   "visible"                 BOOLEAN  show / hide the node (a hidden node leaves its auto layout)
+  //   "spacing" | "cross_spacing" | "padding_left" | "padding_top" | "padding_right" | "padding_bottom"
+  //                             NUMBER   frames with auto layout only (>= 0); the layout engine reads
+  //                                      them in the frame's active mode
   // The "bindings" mask REPLACES the whole map, like `meta`.
   map<string, string> bindings = 41;
   // Mode override: collectionId -> modeId. A node (typically a frame) can pin a
@@ -683,6 +691,23 @@ message Node {
   string fill_style_id = 90;
   string stroke_style_id = 91;
   string effect_style_id = 92;
+  // Size limits, enforced by the layout engine when the node sits in an auto layout frame (or
+  // is an auto layout frame that hugs): the computed size is clamped to [min, max]. 0 = no
+  // limit; when min > max the min wins. Written by the "min_width", "max_width",
+  // "min_height" and "max_height" mask paths; each is finite and >= 0.
+  double min_width = 70;
+  double max_width = 71;
+  double min_height = 72;
+  double max_height = 73;
+  // ABSOLUTE: inside an auto layout frame the node leaves the flow (no room taken, not
+  // hugged, not aligned) and keeps its x/y, following the frame's size by its constraints.
+  // The "layout_positioning" mask path writes it.
+  LayoutPositioning layout_positioning = 74;
+}
+
+enum LayoutPositioning {
+  LAYOUT_POSITIONING_AUTO = 0;      // takes part in the flow (default)
+  LAYOUT_POSITIONING_ABSOLUTE = 1;  // out of the flow, positioned by x/y and constraints
 }
 
 enum LayoutGridKind {
@@ -801,8 +826,9 @@ enum VariableType {
   VARIABLE_TYPE_COLOR = 1;
   VARIABLE_TYPE_NUMBER = 2;
   VARIABLE_TYPE_STRING = 3;
+  VARIABLE_TYPE_BOOLEAN = 4;   // binds to Node.visible
 }
-message VariableValue { oneof kind { Color color = 1; double number = 2; string text = 3; } }
+message VariableValue { oneof kind { Color color = 1; double number = 2; string text = 3; bool boolean = 4; } }
 message Variable {
   string id = 1;
   string collection_id = 2;
@@ -916,6 +942,10 @@ message Document {
   // Shared paint and effect styles: styleId -> definition (fields 60-69 are the shapes-and-paints track's).
   map<string, PaintStyleDef> paint_styles = 60;
   map<string, EffectStyleDef> effect_styles = 61;
+  // Dev mode (fields 70-79 are reserved for it): annotations by id, and the frames marked
+  // ready for dev by the frame's node id (see Annotation, ReadyForDev).
+  map<string, Annotation> annotations = 70;
+  map<string, ReadyForDev> ready_for_dev = 71;
   DocSettings settings = 16;
 }
 
@@ -1102,6 +1132,12 @@ message Op {
     DeletePaintStyleDef  delete_paint_style_def  = 61;
     SetEffectStyleDef    set_effect_style_def    = 62;
     DeleteEffectStyleDef delete_effect_style_def = 63;
+    SetInstance         set_instance          = 70; // components — swap or reset an instance (absolute payload)
+    // Dev mode (80-89 are reserved for it).
+    SetAnnotation       set_annotation        = 80; // upsert of an annotation
+    DeleteAnnotation    delete_annotation     = 81;
+    SetReadyForDev      set_ready_for_dev     = 82; // marks a frame ready (or re-marks it: a new baseline)
+    ClearReadyForDev    clear_ready_for_dev   = 83;
     UpdatePage          update_page           = 41; // master pages — a page's name, master flag and applied master
     SetDocSettings      set_doc_settings      = 42; // vertical and baseline grid (absolute upsert)
     MovePage            move_page             = 43; // reorder pages
@@ -1130,6 +1166,62 @@ message Comment {
 }
 message SetComment    { Comment comment = 1; }
 message DeleteComment { string id = 1; }  // a root takes its replies with it
+
+// Replaces an instance's payload WHOLESALE: which component it points at, its overrides,
+// property values and variant choice. A swap is the same op with another `component_id`
+// (the client carries over the overrides that still fit); "reset all overrides" is the
+// same op with the lists emptied. Everything is validated against the component it
+// resolves to; the node's own transform is untouched (write width/height with SetProperties).
+message SetInstance {
+  string instance_id = 1;
+  InstanceNode instance = 2;
+}
+
+// ---------- dev mode ----------
+// An ANNOTATION is a note for the developer attached to a node: what the picture does not
+// say (an interaction, an accessibility label, a content rule...). `category` is one of
+// note | interaction | accessibility | content | animation | layout and gives the colour the
+// editor draws it with. Annotations are shown in Dev Mode and written as comments into the
+// exported code (internal/devmode, internal/codegen). Like comments, a node that disappears
+// leaves its annotations in the document (undoing the deletion brings them back).
+message Annotation {
+  string id = 1;
+  string node_id = 2;      // an existing node
+  string category = 3;
+  string text = 4;         // non-empty, up to 2000 characters
+  string author = 5;       // display name, up to 80 characters
+  int64 created_at = 6;    // unix seconds; 0 when unknown
+}
+// A FRAME marked ready for development. `snapshot` is the frame and its descendants as they were
+// when it was marked: the baseline "Compare changes" diffs the live frame against. The server
+// FILLS it when it applies the op (a client never sends one), so replaying the op log reproduces it.
+message ReadyForDev {
+  string node_id = 1;      // a frame
+  string note = 2;         // up to 500 characters
+  string marked_by = 3;    // display name, up to 80 characters
+  int64 marked_at = 4;     // unix seconds; 0 when unknown
+  repeated Node snapshot = 5;
+}
+message SetAnnotation    { Annotation annotation = 1; }
+message DeleteAnnotation { string id = 1; }
+message SetReadyForDev   { ReadyForDev ready = 1; }
+message ClearReadyForDev { string node_id = 1; }
+
+// Compare changes: the property-level differences between a ready frame and its snapshot.
+message ReadyChange {
+  string node_id = 1;
+  string node_name = 2;
+  string kind = 3;         // added | removed | changed
+  string property = 4;     // "width", "fills[0]", "text.content", "meta.status"... empty for added / removed
+  string before = 5;       // readable value ("" when the property was not set)
+  string after = 6;
+}
+message CompareReadyRequest  { string doc_id = 1; string node_id = 2; }
+message CompareReadyResponse {
+  string node_id = 1;
+  int64 marked_at = 2;
+  repeated ReadyChange changes = 3;
+}
 
 message SetCollection    { VariableCollection collection = 1; }
 message DeleteCollection { string id = 1; }
@@ -1276,8 +1368,9 @@ message ExportFile {
   bytes content = 2;
 }
 // target: "react" (default: Vite + React + TypeScript + Tailwind v4 + Playwright
-// flow tests) or "html" (one file per screen). empty flow_id = wires up and
-// tests all flows.
+// flow tests), "html" (one file per screen), "swiftui" (Swift views for an
+// iOS/macOS app) or "compose" (Kotlin composables for an Android app). empty
+// flow_id = wires up and tests all flows.
 message ExportCodeRequest {
   string doc_id = 1;
   string target = 2;
@@ -1431,6 +1524,8 @@ message UpdatePresenceResponse {}
 service DocumentService {
   rpc RenderBoard(RenderBoardRequest) returns (RenderBoardResponse);
   rpc ReviewDesign(ReviewDesignRequest) returns (ReviewDesignResponse);
+  // Compare changes: a frame marked ready for dev against its state when it was marked.
+  rpc CompareReady(CompareReadyRequest) returns (CompareReadyResponse);
   rpc CreateVersion(CreateVersionRequest) returns (VersionInfo);
   rpc ListVersions(ListVersionsRequest) returns (ListVersionsResponse);
   rpc DeleteVersion(DeleteVersionRequest) returns (DeleteVersionResponse);

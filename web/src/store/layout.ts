@@ -1,7 +1,8 @@
 import type { NodeEditor } from "./nodeMap";
 import type { Op } from "../gen/opendesigner/v1/opendesigner_pb";
-import { childrenOf } from "./tree";
+import { childrenOf, subtreeOf } from "./tree";
 import type { NodeLite, SceneState } from "./types";
+import { isLayoutKey, resolveNode } from "./variables";
 
 // AUTO LAYOUT -- the TypeScript half of internal/core/layout.go, which is
 // the AUTHORITY. This copy exists only because the client applies ops
@@ -23,7 +24,13 @@ import type { NodeLite, SceneState } from "./types";
 const LAYOUT_KINDS: ReadonlySet<NodeLite["kind"]> = new Set(["rect", "ellipse", "text", "image", "vector", "frame", "instance", "polygon", "star"]);
 
 export function participates(n: NodeLite): boolean {
-  return n.visible && LAYOUT_KINDS.has(n.kind);
+  return n.visible && LAYOUT_KINDS.has(n.kind) && n.layoutPositioning !== "absolute";
+}
+
+// participates with the node's variable-bound visibility applied (a boolean variable bound to
+// "visible" hides it in the frame's active mode). Parity with participatesIn in Go.
+function participatesIn(view: SceneState, n: NodeLite): boolean {
+  return participates(n.bindings?.visible ? resolveNode(view, n) : n);
 }
 
 export function hasLayout(n: NodeLite | undefined): n is NodeLite & { autoLayout: NonNullable<NodeLite["autoLayout"]> } {
@@ -32,22 +39,62 @@ export function hasLayout(n: NodeLite | undefined): n is NodeLite & { autoLayout
 
 const isFrame = (n: NodeLite | undefined): n is NodeLite => n !== undefined && n.kind === "frame";
 
+// The distance from the top of a node to its first baseline, for aligning children on a shared
+// baseline (cross_align "baseline" of a horizontal layout). A text's comes from its font size
+// and line height (half the leading plus an ascent of 0.8 em), any other node's is its bottom
+// edge. Parity with baselineOf in Go.
+function baselineOf(n: NodeLite): number {
+  if (!n.text) return n.height;
+  const fs = n.text.style.fontSize > 0 ? n.text.style.fontSize : 16;
+  const lh = n.text.style.lineHeight > 0 ? n.text.style.lineHeight : 1.2;
+  const half = (fs * (lh - 1)) / 2;
+  return half + fs * 0.8;
+}
+
+// A line's baseline (the largest baseline offset of the kids that follow it) and the cross extent
+// they take once aligned on it. `skip` excludes the kids that fill the cross axis.
+function baselineSpan(kids: readonly NodeLite[], skip: (k: NodeLite) => boolean, crossOf: (k: NodeLite) => number): { base: number; extent: number } {
+  let base = 0;
+  for (const k of kids) if (!skip(k)) base = Math.max(base, baselineOf(k));
+  let extent = 0;
+  for (const k of kids) if (!skip(k)) extent = Math.max(extent, base - baselineOf(k) + crossOf(k));
+  return { base, extent };
+}
+
+// A node in an auto layout frame that left its flow (see Node.layout_positioning).
+const isAbsolute = (n: NodeLite): boolean => n.layoutPositioning === "absolute";
+
+// Applies a node's size limits to a computed size: 0 / absent means no limit, and when
+// min > max the min wins. Parity with clampSize in Go.
+function clampSize(v: number, min: number, max: number): number {
+  if (max > 0 && v > max) v = max;
+  if (v < min) v = min;
+  return v;
+}
+const clampW = (n: NodeLite, v: number): number => clampSize(v, n.minWidth ?? 0, n.maxWidth ?? 0);
+const clampH = (n: NodeLite, v: number): number => clampSize(v, n.minHeight ?? 0, n.maxHeight ?? 0);
+
 // Rearranges the children of ONE frame and, if hug, resizes its axes. Mutates
 // `nodes` (a PRIVATE relayout map, already copied) and returns whether it changed
 // anything. Three modes, one set of rules (see layoutFrame in Go): a row/column, the
 // same with FILL children, and WRAP. A child frame whose size the layout changed is laid
 // out again (auto layout) or resizes its own children by their constraints.
 function layoutFrame(scene: SceneState, nodes: NodeEditor, id: string, touched?: string[]): boolean {
-  const frame = nodes.get(id);
-  if (!hasLayout(frame)) return false;
-  const al = frame.autoLayout;
-  const vertical = al.direction === "vertical";
-
+  const orig = nodes.get(id);
+  if (!hasLayout(orig)) return false;
+  // The size the frame had when the layout started: the absolute children follow the
+  // difference (see the end of this function). Its own size limits apply first.
+  const startW = orig.width, startH = orig.height;
+  const limitedW = clampW(orig, orig.width), limitedH = clampH(orig, orig.height);
+  const frame = limitedW !== orig.width || limitedH !== orig.height ? { ...orig, width: limitedW, height: limitedH } : orig;
   // The state computed on is `scene` + the corrections already written in `nodes`:
   // childrenOf reads from the scene, so it is given a view with the nodes
   // updated so far.
   const view: SceneState = { ...scene, nodes: nodes.view() };
-  const kids = childrenOf(view, id).filter(participates);
+  // Spacing and padding bound to variables are read in the frame's active mode.
+  const al = (frame.bindings ? resolveNode(view, frame).autoLayout : undefined) ?? frame.autoLayout;
+  const vertical = al.direction === "vertical";
+  const kids = childrenOf(view, id).filter((c) => participatesIn(view, c) && !isAbsolute(c));
 
   const padL = al.paddingLeft, padT = al.paddingTop, padR = al.paddingRight, padB = al.paddingBottom;
   const [padMainStart, padMainEnd, padCrossStart, padCrossEnd] = vertical ? [padT, padB, padL, padR] : [padL, padR, padT, padB];
@@ -60,6 +107,8 @@ function layoutFrame(scene: SceneState, nodes: NodeEditor, id: string, touched?:
     withCross: (n, v) => (vertical ? { ...n, width: v } : { ...n, height: v }),
     fillMain: (n) => (vertical ? n.layoutSizingY : n.layoutSizingX) === "fill",
     fillCross: (n) => (vertical ? n.layoutSizingX : n.layoutSizingY) === "fill",
+    clampMain: (n, v) => (vertical ? clampH(n, v) : clampW(n, v)),
+    clampCross: (n, v) => (vertical ? clampW(n, v) : clampH(n, v)),
   };
 
   const spacing = al.spacing;
@@ -76,8 +125,8 @@ function layoutFrame(scene: SceneState, nodes: NodeEditor, id: string, touched?:
   }
 
   let changed = false;
-  if (frameNow.width !== frame.width || frameNow.height !== frame.height) {
-    nodes.set(id, { ...frame, width: frameNow.width, height: frameNow.height });
+  if (frameNow.width !== orig.width || frameNow.height !== orig.height) {
+    nodes.set(id, { ...orig, width: frameNow.width, height: frameNow.height });
     touched?.push(id);
     changed = true;
   }
@@ -93,9 +142,12 @@ function layoutFrame(scene: SceneState, nodes: NodeEditor, id: string, touched?:
   }
   // Follow up the child frames whose size the layout changed.
   for (const r of resized) {
+    resizeChildren(scene, nodes, r.id, r.oldW, r.oldH, touched);
     if (hasLayout(nodes.get(r.id))) layoutFrame(scene, nodes, r.id, touched);
-    else resizeChildren(scene, nodes, r.id, r.oldW, r.oldH, touched);
   }
+  // The frame itself may have changed size (hug, size limits): its absolute children follow
+  // by their constraints.
+  if (resizeChildren(scene, nodes, id, startW, startH, touched)) changed = true;
   return changed;
 }
 
@@ -107,6 +159,50 @@ interface Axes {
   withCross(n: NodeLite, v: number): NodeLite;
   fillMain(n: NodeLite): boolean;
   fillCross(n: NodeLite): boolean;
+  clampMain(n: NodeLite, v: number): number;
+  clampCross(n: NodeLite, v: number): number;
+}
+
+// Splits `avail` equally among the fill children, honouring their size limits the way flexbox
+// does: a child whose share falls outside its limits is frozen at the limit and the others
+// share the rest, until nobody violates. Parity with shareFill in Go. `limited` is false when
+// no limit applied (the sizes are then exactly avail / n and nothing is left over).
+function shareFill(fills: readonly NodeLite[], avail: number, m: Axes): { sizes: number[]; limited: boolean } {
+  const frozen: boolean[] = fills.map(() => false);
+  const size: number[] = fills.map(() => 0);
+  let limited = false;
+  for (;;) {
+    let frozenSum = 0;
+    let open = 0;
+    fills.forEach((_, i) => {
+      if (frozen[i]) frozenSum += size[i];
+      else open++;
+    });
+    if (open === 0) break;
+    let rem = avail - frozenSum;
+    if (rem < 0) rem = 0;
+    const share = rem / open;
+    let viol = 0;
+    fills.forEach((k, i) => {
+      if (!frozen[i]) viol += m.clampMain(k, share) - share;
+    });
+    if (viol === 0) {
+      fills.forEach((_, i) => {
+        if (!frozen[i]) size[i] = share;
+      });
+      break;
+    }
+    limited = true;
+    fills.forEach((k, i) => {
+      if (frozen[i]) return;
+      const c = m.clampMain(k, share);
+      if ((viol > 0 && c > share) || (viol < 0 && c < share)) {
+        frozen[i] = true;
+        size[i] = c;
+      }
+    });
+  }
+  return { sizes: size, limited };
 }
 
 // A single row/column, with fill children. Parity with layoutLine in Go.
@@ -119,10 +215,18 @@ function layoutLine(
   const isFillMain = (k: NodeLite) => !hugMain && m.fillMain(k);
   const isFillCross = (k: NodeLite) => !hugCross && m.fillCross(k);
 
+  // Size limits first: what does not fill keeps its own size, clamped.
+  const limitedKids = kids.map((k) => {
+    let n = k;
+    if (!isFillMain(k)) n = m.withMain(n, m.clampMain(n, m.mainOf(n)));
+    if (!isFillCross(k)) n = m.withCross(n, m.clampCross(n, m.crossOf(n)));
+    return n;
+  });
+
   let sum = 0;
   let maxCross = 0;
   let nFill = 0;
-  for (const k of kids) {
+  for (const k of limitedKids) {
     if (isFillMain(k)) nFill++;
     else sum += m.mainOf(k);
     if (!isFillCross(k)) {
@@ -130,12 +234,22 @@ function layoutLine(
       if (c > maxCross) maxCross = c;
     }
   }
+  // Baseline alignment (horizontal layouts only): the cross extent is what the kids take once
+  // their baselines coincide.
+  const baseline = !m.vertical && al.crossAlign === "baseline";
+  let lineBase = 0;
+  if (baseline) {
+    const span = baselineSpan(limitedKids, isFillCross, m.crossOf);
+    lineBase = span.base;
+    maxCross = span.extent;
+  }
   const gaps = kids.length > 1 ? spacing * (kids.length - 1) : 0;
 
   let frameMain = m.mainOf(frame);
   let frameCross = m.crossOf(frame);
-  if (hugMain) frameMain = padMainStart + sum + gaps + padMainEnd;
-  if (hugCross) frameCross = padCrossStart + maxCross + padCrossEnd;
+  // The frame's own limits apply to what it hugs.
+  if (hugMain) frameMain = m.clampMain(frame, padMainStart + sum + gaps + padMainEnd);
+  if (hugCross) frameCross = m.clampCross(frame, padCrossStart + maxCross + padCrossEnd);
   const width = m.vertical ? frameCross : frameMain;
   const height = m.vertical ? frameMain : frameCross;
 
@@ -143,16 +257,25 @@ function layoutLine(
   const innerCross = frameCross - padCrossStart - padCrossEnd;
   let free = innerMain - sum - gaps;
 
-  // The fill children share what is left; afterwards nothing is free.
-  let share = 0;
+  // The fill children share what is left; afterwards nothing is free -- unless a size limit
+  // capped some of them, which leaves room for the alignment.
+  const fillSizes = new Map<string, number>();
   if (nFill > 0) {
-    if (free > 0) share = free / nFill;
-    free = 0;
+    const fills = limitedKids.filter(isFillMain);
+    const shared = shareFill(fills, free > 0 ? free : 0, m);
+    fills.forEach((k, i) => fillSizes.set(k.id, shared.sizes[i]));
+    if (shared.limited) {
+      let used = 0;
+      for (const sz of shared.sizes) used += sz;
+      free = free - used;
+    } else {
+      free = 0;
+    }
   }
-  const sized = kids.map((k) => {
+  const sized = limitedKids.map((k) => {
     let n = k;
-    if (isFillMain(k)) n = m.withMain(n, share);
-    if (isFillCross(k)) n = m.withCross(n, innerCross < 0 ? 0 : innerCross);
+    if (isFillMain(k)) n = m.withMain(n, fillSizes.get(k.id)!);
+    if (isFillCross(k)) n = m.withCross(n, m.clampCross(n, innerCross < 0 ? 0 : innerCross));
     return n;
   });
 
@@ -173,6 +296,7 @@ function layoutLine(
     let cross = padCrossStart;
     if (al.crossAlign === "center") cross = padCrossStart + (innerCross - m.crossOf(k)) / 2;
     else if (al.crossAlign === "end") cross = padCrossStart + (innerCross - m.crossOf(k));
+    else if (baseline && !isFillCross(k)) cross = padCrossStart + (lineBase - baselineOf(k));
     const x = m.vertical ? cross : pos;
     const y = m.vertical ? pos : cross;
     placed.set(k.id, { ...k, x, y });
@@ -189,19 +313,21 @@ function layoutWrapped(
 ): NodeLite {
   const spacing = al.spacing;
   const crossSpacing = al.crossSpacing ?? 0;
+  // Size limits first: the lines are cut from the clamped sizes.
+  kids = kids.map((k) => m.withCross(m.withMain(k, m.clampMain(k, m.mainOf(k))), m.clampCross(k, m.crossOf(k))));
 
   // Split into lines: a child that does not fit goes to the next one (a line always has at
   // least one child, even if it is longer than the frame).
-  interface Line { from: number; to: number; sum: number; maxCross: number }
+  interface Line { from: number; to: number; sum: number; maxCross: number; base: number }
   const lines: Line[] = [];
-  let cur: Line = { from: 0, to: 0, sum: 0, maxCross: 0 };
+  let cur: Line = { from: 0, to: 0, sum: 0, maxCross: 0, base: 0 };
   kids.forEach((k, i) => {
     let need = m.mainOf(k);
     if (i > cur.from) need = (cur.sum + spacing) + m.mainOf(k);
     if (i > cur.from && need > innerMain) {
       cur.to = i;
       lines.push(cur);
-      cur = { from: i, to: 0, sum: 0, maxCross: 0 };
+      cur = { from: i, to: 0, sum: 0, maxCross: 0, base: 0 };
       need = m.mainOf(k);
     }
     cur.sum = need;
@@ -212,13 +338,21 @@ function layoutWrapped(
     cur.to = kids.length;
     lines.push(cur);
   }
+  const baseline = !m.vertical && al.crossAlign === "baseline";
+  if (baseline) {
+    for (const l of lines) {
+      const span = baselineSpan(kids.slice(l.from, l.to), () => false, m.crossOf);
+      l.base = span.base;
+      l.maxCross = span.extent;
+    }
+  }
 
   let out = frame;
   if (hugCross) {
     let total = 0;
     for (const l of lines) total += l.maxCross;
     if (lines.length > 1) total += crossSpacing * (lines.length - 1);
-    const frameCross = padCrossStart + total + padCrossEnd;
+    const frameCross = m.clampCross(frame, padCrossStart + total + padCrossEnd);
     out = m.vertical ? { ...frame, width: frameCross } : { ...frame, height: frameCross };
   }
 
@@ -240,6 +374,7 @@ function layoutWrapped(
       let cross = crossPos;
       if (al.crossAlign === "center") cross = crossPos + (l.maxCross - m.crossOf(k)) / 2;
       else if (al.crossAlign === "end") cross = crossPos + (l.maxCross - m.crossOf(k));
+      else if (baseline) cross = crossPos + (l.base - baselineOf(k));
       const x = m.vertical ? cross : pos;
       const y = m.vertical ? pos : cross;
       placed.set(k.id, { ...k, x, y });
@@ -275,17 +410,20 @@ function constrainAxis(mode: NodeLite["constraintX"], pos: number, size: number,
 const hasFreeSize = (n: NodeLite) => n.kind !== "vector" && n.kind !== "group" && n.kind !== "instance";
 
 // Applies the CONSTRAINTS of the children of frame `id`, which has just gone from
-// oldW x oldH to the size it has in `nodes`. A frame with auto layout is skipped (its layout
-// decides) and so is a frame that did not change. A child frame that this resizes follows up
+// oldW x oldH to the size it has in `nodes`. A frame with auto layout only moves its absolute
+// children (its layout decides for the rest) and a frame that did not change is skipped. A child frame that this resizes follows up
 // on its own children, recursively. Parity with resizeChildren in Go.
 export function resizeChildren(scene: SceneState, nodes: NodeEditor, id: string, oldW: number, oldH: number, touched?: string[]): boolean {
   const frame = nodes.get(id);
-  if (!isFrame(frame) || hasLayout(frame)) return false;
+  if (!isFrame(frame)) return false;
+  // A frame with auto layout only moves its ABSOLUTE children; the flow is the layout's.
+  const auto = hasLayout(frame);
   const newW = frame.width, newH = frame.height;
   if (newW === oldW && newH === oldH) return false;
   const view: SceneState = { ...scene, nodes: nodes.view() };
   let changed = false;
   for (const c of childrenOf(view, id)) {
+    if (auto && !isAbsolute(c)) continue;
     const free = hasFreeSize(c);
     const [x, width] = constrainAxis(c.constraintX, c.x, c.width, oldW, newW, free);
     const [y, height] = constrainAxis(c.constraintY, c.y, c.height, oldH, newH, free);
@@ -295,11 +433,35 @@ export function resizeChildren(scene: SceneState, nodes: NodeEditor, id: string,
     touched?.push(c.id);
     changed = true;
     if ((width !== c.width || height !== c.height) && isFrame(c)) {
+      resizeChildren(scene, nodes, c.id, c.width, c.height, touched);
       if (hasLayout(next)) layoutFrame(scene, nodes, c.id, touched);
-      else resizeChildren(scene, nodes, c.id, c.width, c.height, touched);
     }
   }
   return changed;
+}
+
+const variablesOf = (scene: SceneState, collectionId: string): Set<string> =>
+  new Set(Object.values(scene.variables).filter((v) => v.collectionId === collectionId).map((v) => v.id));
+
+// The nodes (and their parents) whose layout-relevant bindings point at one of `vars` or at an
+// alias of them, transitively. Parity with layoutDependents in Go.
+function layoutDependents(scene: SceneState, vars: Set<string>): string[] {
+  for (let grew = true; grew;) {
+    grew = false;
+    for (const v of Object.values(scene.variables)) {
+      if (!vars.has(v.id) && v.aliasOf !== undefined && vars.has(v.aliasOf)) { vars.add(v.id); grew = true; }
+    }
+  }
+  const out: string[] = [];
+  for (const n of scene.nodes.values()) {
+    if (n.bindings && Object.entries(n.bindings).some(([key, v]) => isLayoutKey(key) && vars.has(v))) out.push(n.id, n.parentId);
+  }
+  return out;
+}
+
+// The nodes of `subtree` (and their parents) with layout-relevant bindings. Parity with layoutBoundIn in Go.
+function layoutBoundIn(subtree: readonly NodeLite[]): string[] {
+  return subtree.flatMap((n) => (n.bindings && Object.keys(n.bindings).some(isLayoutKey) ? [n.id, n.parentId] : []));
 }
 
 // The frames whose layout may change because of `op`, read from `scene` --
@@ -315,8 +477,19 @@ export function layoutTargets(scene: SceneState, op: Op): string[] {
     case "createNode": return k.value.node ? [k.value.node.parentId, k.value.node.id] : [];
     case "deleteNode": return parentOf(k.value.id);
     case "reparentNode": return [...parentOf(k.value.id), k.value.newParentId];
-    case "setProps": return [...parentOf(k.value.id), k.value.id];
+    case "setProps": {
+      const out = [...parentOf(k.value.id), k.value.id];
+      // A mode pinned on a node changes what the variables bound below it resolve to.
+      if (k.value.mask?.paths.includes("modes")) out.push(...layoutBoundIn(subtreeOf(scene, k.value.id)));
+      return out;
+    }
     case "setVectorPath": return parentOf(k.value.id);
+    // The layout reads spacing, padding and visibility through variables: a change to a
+    // variable (or to the modes of its collection) moves what is bound to it.
+    case "setVariable": return layoutDependents(scene, new Set([k.value.variable?.id ?? ""]));
+    case "deleteVariable": return layoutDependents(scene, new Set([k.value.id]));
+    case "setCollection": return layoutDependents(scene, variablesOf(scene, k.value.collection?.id ?? ""));
+    case "deleteCollection": return layoutDependents(scene, variablesOf(scene, k.value.id));
     default: return [];
   }
 }

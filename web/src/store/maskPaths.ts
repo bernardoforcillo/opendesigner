@@ -95,6 +95,13 @@ export const MASK_PATHS = [
   "constraint_y",
   "layout_sizing_x",
   "layout_sizing_y",
+  // Size limits (finite, >= 0; 0 clears) clamped by the auto layout engine, and the opt-out of
+  // the flow of an auto layout parent (closed enum).
+  "min_width",
+  "max_width",
+  "min_height",
+  "max_height",
+  "layout_positioning",
   // Blend mode against what is behind the node. Closed enum: out of range is rejected.
   "blend_mode",
   // Mask: the node is not drawn, its outline clips the siblings above it.

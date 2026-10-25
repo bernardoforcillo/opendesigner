@@ -1,7 +1,8 @@
 import { NodeMap } from "./nodeMap";
 import { create } from "@bufbuild/protobuf";
-import { BlendMode, ImageScaleMode, TextStyleKind, ArrowHead, PaintStyleDefSchema, EffectStyleDefSchema, LayoutGridKind, CommentSchema, ClipSchema, Constraint, LayoutSizing, ComponentPropertySchema, ComponentPropertyType, ComponentSetSchema, FlowSchema, FontFaceSchema, TextStyleDefSchema, VariableCollectionSchema, VariableSchema, VariableType, TransitionSchema, LayoutAlign, LayoutDirection, NodeSchema, StrokeAlign, TextAlign, TextCase, TextScript, ListKind, TextVAlign, NoiseMode } from "../gen/opendesigner/v1/opendesigner_pb";
+import { AnnotationSchema, ReadyForDevSchema, BlendMode, ImageScaleMode, TextStyleKind, ArrowHead, PaintStyleDefSchema, EffectStyleDefSchema, LayoutGridKind, CommentSchema, ClipSchema, Constraint, LayoutPositioning, LayoutSizing, ComponentPropertySchema, ComponentPropertyType, ComponentSetSchema, FlowSchema, FontFaceSchema, TextStyleDefSchema, VariableCollectionSchema, VariableSchema, VariableType, TransitionSchema, LayoutAlign, LayoutDirection, NodeSchema, StrokeAlign, TextAlign, TextCase, TextScript, ListKind, TextVAlign, NoiseMode } from "../gen/opendesigner/v1/opendesigner_pb";
 import type {
+  Annotation as PbAnnotation, ReadyForDev as PbReady,
   Document, Component as PbComponent, ComponentProperty as PbComponentProperty, ComponentSet as PbComponentSet, FontFace as PbFont, TextStyleDef as PbTextStyleDef, PaintStyleDef as PbPaintStyleDef, EffectStyleDef as PbEffectStyleDef, VariableCollection as PbCollection, Variable as PbVariable, Clip as PbClip, Flow as PbFlow, Transition as PbTransition, Node as PbNode, Comment as PbComment, LayoutGrid as PbLayoutGrid, Paint as PbPaint, Stroke as PbStroke, Effect as PbEffect, AutoLayout as PbAutoLayout,
   TextNode as PbTextNode, TextStyle as PbTextStyle,
   SubPath as PbSubPath, VectorNode as PbVectorNode,
@@ -75,7 +76,7 @@ export interface StrokeLite { color: FillLite; weight: number; align: StrokeAlig
 // for StrokeAlignLite, enums are strings: UNSPECIFIED collapses to
 // "horizontal" / "start", which is what the computation would do anyway.
 export type LayoutDirectionLite = "horizontal" | "vertical";
-export type LayoutAlignLite = "start" | "center" | "end" | "space-between";
+export type LayoutAlignLite = "start" | "center" | "end" | "space-between" | "baseline";
 export interface AutoLayoutLite {
   direction: LayoutDirectionLite;
   spacing: number;
@@ -365,6 +366,13 @@ export interface NodeLite {
   constraintY?: ConstraintLite;
   layoutSizingX?: "fill";
   layoutSizingY?: "fill";
+  // Size limits enforced by the auto layout engine (absent = no limit) and the opt-out of the
+  // flow of an auto layout parent; see Node.min_width and Node.layout_positioning in the proto.
+  minWidth?: number;
+  maxWidth?: number;
+  minHeight?: number;
+  maxHeight?: number;
+  layoutPositioning?: "absolute";
   // Blend mode against what is behind; absent = normal.
   blendMode?: BlendModeLite;
   // A mask is not drawn: its outline clips the siblings above it. Absent = not a mask.
@@ -416,13 +424,18 @@ export interface CommentLite {
   id: string; parentId: string; nodeId: string; pageId: string; x: number; y: number;
   author: string; text: string; createdAt: number; resolved: boolean;
 }
+// DEV MODE (see Annotation / ReadyForDev in the proto and internal/core/devmode.go). The server keeps
+// the snapshot a ready frame is compared against; the editor only needs the mark.
+export interface AnnotationLite { id: string; nodeId: string; category: string; text: string; author: string; createdAt: number }
+export interface ReadyLite { nodeId: string; note: string; markedBy: string; markedAt: number }
+export interface DevLite { annotations: Record<string, AnnotationLite>; ready: Record<string, ReadyLite> }
 export interface ModeLite { id: string; name: string }
 export interface CollectionLite { id: string; name: string; modes: ModeLite[] }
-export type VariableTypeLite = "color" | "number" | "string";
+export type VariableTypeLite = "color" | "number" | "string" | "boolean";
 export interface VariableLite {
   id: string; collectionId: string; name: string; type: VariableTypeLite;
-  // modeId -> value. A color is {r,g,b,a}; a number is a plain number; a string is a string.
-  values: Record<string, FillLite | number | string>;
+  // modeId -> value. A color is {r,g,b,a}; a number is a plain number; a string is a string; a boolean is a boolean.
+  values: Record<string, FillLite | number | string | boolean>;
   // Present for an alias: the variable it reads (then `values` is empty).
   aliasOf?: string;
 }
@@ -470,6 +483,8 @@ export interface SceneState {
   effectStyles: Record<string, EffectStyleDefLite>;
   // Comments, like clips: an empty record when there are none.
   comments: Record<string, CommentLite>;
+  // Dev mode (annotations and ready frames); absent when the document has none.
+  dev?: DevLite;
   // Only in scenes derived from playback (animation/pose.ts): see AnimInfo.
   anim?: AnimInfo;
   // M4 — components indexed by id (componentId -> master). It is part of the
@@ -763,11 +778,11 @@ export function toPbEffects(effects: readonly EffectLite[]) {
 
 const LAYOUT_ALIGN_TO_LITE: Partial<Record<LayoutAlign, LayoutAlignLite>> = {
   [LayoutAlign.START]: "start", [LayoutAlign.CENTER]: "center", [LayoutAlign.END]: "end",
-  [LayoutAlign.SPACE_BETWEEN]: "space-between",
+  [LayoutAlign.SPACE_BETWEEN]: "space-between", [LayoutAlign.BASELINE]: "baseline",
 };
 const LAYOUT_ALIGN_TO_PB: Record<LayoutAlignLite, LayoutAlign> = {
   start: LayoutAlign.START, center: LayoutAlign.CENTER, end: LayoutAlign.END,
-  "space-between": LayoutAlign.SPACE_BETWEEN,
+  "space-between": LayoutAlign.SPACE_BETWEEN, baseline: LayoutAlign.BASELINE,
 };
 
 export function toAutoLayoutLite(a: PbAutoLayout): AutoLayoutLite {
@@ -853,6 +868,16 @@ function toPbPaint(c: FillLite) {
 // round-trip with toInstanceOverrideLite is LOSSLESS: a fill-only override
 // does not gain an empty text passing through here, nor lose the distinction between
 // "absent fill" and "emptied fill".
+/** An InstanceLite as the wire InstanceNode init. */
+export function toPbInstance(i: InstanceLite) {
+  return {
+    componentId: i.componentId,
+    overrides: i.overrides.map(toPbInstanceOverride),
+    propertyValues: { ...(i.propertyValues ?? {}) },
+    variantProps: { ...(i.variantProps ?? {}) },
+  };
+}
+
 export function toPbInstanceOverride(o: InstanceOverrideLite) {
   return {
     masterNodeId: o.masterNodeId,
@@ -1016,6 +1041,11 @@ export function toNodeLite(n: PbNode): NodeLite {
     ...(n.constraintY !== Constraint.UNSPECIFIED ? { constraintY: CONSTRAINT_TO_LITE[n.constraintY] } : {}),
     ...(n.layoutSizingX === LayoutSizing.FILL ? { layoutSizingX: "fill" as const } : {}),
     ...(n.layoutSizingY === LayoutSizing.FILL ? { layoutSizingY: "fill" as const } : {}),
+    ...(n.minWidth ? { minWidth: n.minWidth } : {}),
+    ...(n.maxWidth ? { maxWidth: n.maxWidth } : {}),
+    ...(n.minHeight ? { minHeight: n.minHeight } : {}),
+    ...(n.maxHeight ? { maxHeight: n.maxHeight } : {}),
+    ...(n.layoutPositioning === LayoutPositioning.ABSOLUTE ? { layoutPositioning: "absolute" as const } : {}),
     ...(blendToLite(n.blendMode) ? { blendMode: blendToLite(n.blendMode) } : {}),
     ...(n.isMask ? { isMask: true as const } : {}),
     ...(n.layoutGrids.length > 0 ? { layoutGrids: n.layoutGrids.map(toLayoutGridLite) } : {}),
@@ -1046,6 +1076,8 @@ export function toPbNode(n: NodeLite): PbNode {
     constraintY: n.constraintY ? CONSTRAINT_TO_PB[n.constraintY] : Constraint.UNSPECIFIED,
     layoutSizingX: n.layoutSizingX === "fill" ? LayoutSizing.FILL : LayoutSizing.FIXED,
     layoutSizingY: n.layoutSizingY === "fill" ? LayoutSizing.FILL : LayoutSizing.FIXED,
+    minWidth: n.minWidth ?? 0, maxWidth: n.maxWidth ?? 0, minHeight: n.minHeight ?? 0, maxHeight: n.maxHeight ?? 0,
+    layoutPositioning: n.layoutPositioning === "absolute" ? LayoutPositioning.ABSOLUTE : LayoutPositioning.AUTO,
     blendMode: toPbBlend(n.blendMode),
     isMask: n.isMask === true,
     layoutGrids: n.layoutGrids ? toPbLayoutGrids(n.layoutGrids) : [],
@@ -1161,6 +1193,20 @@ export function toPbComment(c: CommentLite): PbComment {
   });
 }
 
+export function toAnnotationLite(a: PbAnnotation): AnnotationLite {
+  return { id: a.id, nodeId: a.nodeId, category: a.category, text: a.text, author: a.author, createdAt: Number(a.createdAt) };
+}
+export function toPbAnnotation(a: AnnotationLite): PbAnnotation {
+  return create(AnnotationSchema, { id: a.id, nodeId: a.nodeId, category: a.category, text: a.text, author: a.author, createdAt: BigInt(Math.trunc(a.createdAt)) });
+}
+export function toReadyLite(r: PbReady): ReadyLite {
+  return { nodeId: r.nodeId, note: r.note, markedBy: r.markedBy, markedAt: Number(r.markedAt) };
+}
+/** The op payload: no snapshot, the server takes it. */
+export function toPbReady(r: ReadyLite): PbReady {
+  return create(ReadyForDevSchema, { nodeId: r.nodeId, note: r.note, markedBy: r.markedBy, markedAt: BigInt(Math.trunc(r.markedAt)) });
+}
+
 export function toCollectionLite(c: PbCollection): CollectionLite {
   return { id: c.id, name: c.name, modes: c.modes.map((m) => ({ id: m.id, name: m.name })) };
 }
@@ -1168,7 +1214,7 @@ export function toPbCollection(c: CollectionLite): PbCollection {
   return create(VariableCollectionSchema, { id: c.id, name: c.name, modes: c.modes.map((m) => ({ id: m.id, name: m.name })) });
 }
 export function toVariableLite(v: PbVariable): VariableLite {
-  const type: VariableTypeLite = v.type === VariableType.COLOR ? "color" : v.type === VariableType.STRING ? "string" : "number";
+  const type: VariableTypeLite = v.type === VariableType.COLOR ? "color" : v.type === VariableType.STRING ? "string" : v.type === VariableType.BOOLEAN ? "boolean" : "number";
   const values: VariableLite["values"] = {};
   for (const [mode, val] of Object.entries(v.values)) {
     if (val.kind.case === "color") {
@@ -1176,21 +1222,24 @@ export function toVariableLite(v: PbVariable): VariableLite {
       values[mode] = { r, g, b, a };
     } else if (val.kind.case === "number") values[mode] = val.kind.value;
     else if (val.kind.case === "text") values[mode] = val.kind.value;
+    else if (val.kind.case === "boolean") values[mode] = val.kind.value;
   }
   return { id: v.id, collectionId: v.collectionId, name: v.name, type, values, ...(v.aliasOf !== "" ? { aliasOf: v.aliasOf } : {}) };
 }
 export function toPbVariable(v: VariableLite): PbVariable {
-  const values: Record<string, { kind: { case: "color"; value: { r: number; g: number; b: number; a: number } } | { case: "number"; value: number } | { case: "text"; value: string } }> = {};
+  const values: Record<string, { kind: { case: "color"; value: { r: number; g: number; b: number; a: number } } | { case: "number"; value: number } | { case: "text"; value: string } | { case: "boolean"; value: boolean } }> = {};
   for (const [mode, val] of Object.entries(v.values)) {
     values[mode] = typeof val === "number"
       ? { kind: { case: "number", value: val } }
       : typeof val === "string"
         ? { kind: { case: "text", value: val } }
-        : { kind: { case: "color", value: { r: val.r, g: val.g, b: val.b, a: val.a } } };
+        : typeof val === "boolean"
+          ? { kind: { case: "boolean", value: val } }
+          : { kind: { case: "color", value: { r: val.r, g: val.g, b: val.b, a: val.a } } };
   }
   return create(VariableSchema, {
     id: v.id, collectionId: v.collectionId, name: v.name, aliasOf: v.aliasOf ?? "",
-    type: v.type === "color" ? VariableType.COLOR : v.type === "string" ? VariableType.STRING : VariableType.NUMBER, values,
+    type: v.type === "color" ? VariableType.COLOR : v.type === "string" ? VariableType.STRING : v.type === "boolean" ? VariableType.BOOLEAN : VariableType.NUMBER, values,
   });
 }
 
@@ -1282,5 +1331,13 @@ export function fromDocument(doc: Document): SceneState {
     paintStyles: Object.fromEntries(Object.entries(doc.paintStyles).map(([id, d]) => [id, toPaintStyleDefLite(d)])),
     effectStyles: Object.fromEntries(Object.entries(doc.effectStyles).map(([id, d]) => [id, toEffectStyleDefLite(d)])),
     comments: Object.fromEntries(Object.entries(doc.comments).map(([id, c]) => [id, toCommentLite(c)])),
+    ...(Object.keys(doc.annotations).length > 0 || Object.keys(doc.readyForDev).length > 0
+      ? {
+          dev: {
+            annotations: Object.fromEntries(Object.entries(doc.annotations).map(([id, a]) => [id, toAnnotationLite(a)])),
+            ready: Object.fromEntries(Object.entries(doc.readyForDev).map(([id, r]) => [id, toReadyLite(r)])),
+          },
+        }
+      : {}),
   };
 }

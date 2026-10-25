@@ -1,13 +1,14 @@
 import { useState } from "react";
 import { useScene } from "../../store/store";
 import { measureNode, type Measurement } from "../../dev/measure";
-import { refreshCode, useCodegen } from "../../dev/codegen";
+import { refreshCode, useCodegen, type CodeTarget } from "../../dev/codegen";
 import { AGENT_PROMPT, AGENT_TOOLS, projectZip, shipCommands, shipScript, zipName } from "../../dev/ship";
 import { downloadBytes } from "../../dev/zip";
 import { SHIPPED_EVENT } from "../../home/docPrefs";
 import { Badge, Button, EmptyState, cls } from "../ds";
 import { DevIcon } from "../ds/dev-parts";
 import { CopyButton } from "./CopyButton";
+import { DevStatusSection } from "./DevStatusSection";
 import { useReadiness } from "./useReadiness";
 
 // "SHIP" (right column of Develop): the last mile. A button that downloads
@@ -52,13 +53,20 @@ function Measurements({ m }: { m: Measurement }) {
   );
 }
 
+/** The other formats the project can be downloaded as, under the main React zip. */
+const OTHER_FORMATS: readonly { target: CodeTarget; label: string }[] = [
+  { target: "html", label: "HTML only" },
+  { target: "swiftui", label: "SwiftUI" },
+  { target: "compose", label: "Jetpack Compose" },
+];
+
 export function ShipPanel() {
   const scene = useScene((s) => s.scene);
   const selected = useScene((s) => (s.selection.length === 1 ? s.selection[0] : null));
   const measured = scene && selected ? measureNode(scene, selected) : null;
   const r = useReadiness();
   const reactState = useCodegen((s) => s.byTarget.react);
-  const [busy, setBusy] = useState<"react" | "html" | null>(null);
+  const [busy, setBusy] = useState<CodeTarget | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   if (!scene) return <EmptyState icon="info" title="No document" />;
@@ -68,7 +76,7 @@ export function ShipPanel() {
 
   // The download ALWAYS regenerates: the zip must reflect the document as it is now,
   // not the last debounce (and the request costs a moment).
-  const download = async (target: "react" | "html") => {
+  const download = async (target: CodeTarget) => {
     setBusy(target);
     setError(null);
     try {
@@ -107,15 +115,20 @@ export function ShipPanel() {
             </p>
           )}
           {error && <p role="alert" className="rounded-md bg-danger-soft px-2 py-1.5 text-[12px] leading-snug text-danger">Export failed: {error}</p>}
-          <button
-            type="button"
-            disabled={busy !== null || (r?.screens.length ?? 0) === 0}
-            onClick={() => void download("html")}
-            className="self-start rounded text-[12px] text-accent outline-none hover:underline focus-visible:shadow-[var(--ring)] disabled:opacity-40"
-          >
-            {busy === "html" ? "Preparing the zip…" : `or ${zipName(docName, "html")} (HTML only)`}
-          </button>
+          {OTHER_FORMATS.map((f) => (
+            <button
+              key={f.target}
+              type="button"
+              disabled={busy !== null || (r?.screens.length ?? 0) === 0}
+              onClick={() => void download(f.target)}
+              className="self-start rounded text-[12px] text-accent outline-none hover:underline focus-visible:shadow-[var(--ring)] disabled:opacity-40"
+            >
+              {busy === f.target ? "Preparing the zip…" : `or ${zipName(docName, f.target)} (${f.label})`}
+            </button>
+          ))}
         </section>
+
+        <div className="border-t border-line"><DevStatusSection /></div>
 
         {measured && <Measurements m={measured} />}
 

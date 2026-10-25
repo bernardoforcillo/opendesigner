@@ -3,7 +3,7 @@ import { NodeSchema } from "../gen/opendesigner/v1/opendesigner_pb";
 import type { Node as PbNode, Op } from "../gen/opendesigner/v1/opendesigner_pb";
 import { isValidEasing } from "../animation/engine";
 import { isValidClip } from "../animation/validate";
-import { type SceneState, type ClipLite, toPaintStyleDefLite, toEffectStyleDefLite, toComponentPropertyLite, toComponentSetLite, toCollectionLite, toVariableLite, toFontLite, toTextStyleDefLite, type NodeLite, type TransitionLite, TRANSITION_ANIMATIONS, toFlowLite, toClipLite, toTransitionLite, toCommentLite, toNodeLite, toTextStyleLite, toSubPathsLite, toInstanceOverrideLite } from "./types";
+import { type SceneState, type ClipLite, toPaintStyleDefLite, toEffectStyleDefLite, toComponentPropertyLite, toComponentSetLite, toCollectionLite, toVariableLite, toFontLite, toTextStyleDefLite, type NodeLite, type TransitionLite, TRANSITION_ANIMATIONS, toFlowLite, toClipLite, toTransitionLite, toAnnotationLite, toReadyLite, toCommentLite, toNodeLite, toTextStyleLite, toSubPathsLite, toInstanceOverrideLite, toInstanceLite } from "./types";
 import { type MaskPath, isMaskPath } from "./maskPaths";
 import { layoutTargets, relayout, resizeChildren } from "./layout";
 import { recordDelta } from "./sceneDelta";
@@ -15,8 +15,10 @@ import { arePaintsValid } from "./paints";
 import { areStrokeExtrasValid, isValidShape, isValidShapePath, SHAPE_PATHS, writeShapePath } from "./shapes";
 import { isValidEffectStyleDef, isValidPaintStyleDef, isValidStyleId, STYLE_PATHS, unstyleNodesByPaint } from "./paintStyles";
 import { isValidComment, withoutComment } from "./comments";
+import { annotationsOfScene, isValidAnnotation, isValidReady, readyOfScene } from "./devMode";
 import { areValidBindings, areValidModes, dropRemovedModes, isValidCollection, isValidVariable, unbindNodes, withAliases } from "./variables";
 import { childrenOf, isAncestorOf, parentExists, subtreeOf } from "./tree";
+import { isValidInstanceBody } from "./instanceOps";
 import { clampRich, isValidRich, richFields } from "./richText";
 import { isValidDocSettings, isValidPageSetup, toDocSettings } from "./docSettings";
 import { deletePageAllowed, masterFieldsValid, pageOf, updatePageAllowed } from "./masters";
@@ -27,6 +29,9 @@ import { deletePageAllowed, masterFieldsValid, pageOf, updatePageAllowed } from 
 // node makes that behavior explicit instead of silently diverging
 // from the server. Shared across calls: applyOp is pure and does not mutate it.
 const NIL_PATCH: PbNode = create(NodeSchema, {});
+
+// The size-limit mask paths and the NodeLite / Node field each one writes.
+const camelLimit = { min_width: "minWidth", max_width: "maxWidth", min_height: "minHeight", max_height: "maxHeight" } as const;
 
 // applyOp is pure: it does NOT mutate state, it returns a new object. Parity with core.Apply (Go).
 //
@@ -156,6 +161,10 @@ function applyOpRaw(state: SceneState, op: Op): SceneState {
       if (paths.includes("effects") && !areValidEffects(p.effects)) return state;
       if (paths.includes("layout_sizing_x") && !(p.layoutSizingX >= 0 && p.layoutSizingX <= 1)) return state;
       if (paths.includes("layout_sizing_y") && !(p.layoutSizingY >= 0 && p.layoutSizingY <= 1)) return state;
+      for (const lim of ["min_width", "max_width", "min_height", "max_height"] as const) {
+        if (paths.includes(lim) && !(Number.isFinite(p[camelLimit[lim]]) && p[camelLimit[lim]] >= 0)) return state;
+      }
+      if (paths.includes("layout_positioning") && !(p.layoutPositioning >= 0 && p.layoutPositioning <= 1)) return state;
       const next: NodeLite = { ...cur };
       for (const path of paths as readonly MaskPath[]) {
         switch (path) {
@@ -244,6 +253,18 @@ function applyOpRaw(state: SceneState, op: Op): SceneState {
           case "layout_sizing_y": {
             const c = toNodeLite(p).layoutSizingY;
             if (c) next.layoutSizingY = c; else delete next.layoutSizingY;
+            break;
+          }
+          // The limits and the positioning go through toNodeLite too: 0 / AUTO remove the field.
+          case "min_width": case "max_width": case "min_height": case "max_height": {
+            const key = camelLimit[path];
+            const v = toNodeLite(p)[key];
+            if (v) next[key] = v; else delete next[key];
+            break;
+          }
+          case "layout_positioning": {
+            const c = toNodeLite(p).layoutPositioning;
+            if (c) next.layoutPositioning = c; else delete next.layoutPositioning;
             break;
           }
           // As for "fills", the value is extracted from the patch by going through
@@ -612,6 +633,34 @@ function applyOpRaw(state: SceneState, op: Op): SceneState {
       if (!state.comments[id]) return state;                                // ErrCommentNotFound
       return { ...state, comments: withoutComment(state, id) };
     }
+    // Dev mode (parity with core.applySetAnnotation ... applyClearReadyForDev, internal/core/devmode.go).
+    // The ready entry's snapshot is the server's business: here only the mark is kept.
+    case "setAnnotation": {
+      const a = op.kind.value.annotation;
+      if (!isValidAnnotation(state, a)) return state;
+      const dev = state.dev ?? { annotations: {}, ready: {} };
+      return { ...state, dev: { ...dev, annotations: { ...dev.annotations, [a.id]: toAnnotationLite(a) } } };
+    }
+    case "deleteAnnotation": {
+      const { id } = op.kind.value;
+      if (!annotationsOfScene(state)[id]) return state;                     // ErrAnnotationNotFound
+      const annotations = { ...annotationsOfScene(state) };
+      delete annotations[id];
+      return { ...state, dev: { annotations, ready: readyOfScene(state) } };
+    }
+    case "setReadyForDev": {
+      const r = op.kind.value.ready;
+      if (!isValidReady(state, r)) return state;
+      const dev = state.dev ?? { annotations: {}, ready: {} };
+      return { ...state, dev: { ...dev, ready: { ...dev.ready, [r.nodeId]: toReadyLite(r) } } };
+    }
+    case "clearReadyForDev": {
+      const { nodeId } = op.kind.value;
+      if (!readyOfScene(state)[nodeId]) return state;                       // ErrReadyNotFound
+      const ready = { ...readyOfScene(state) };
+      delete ready[nodeId];
+      return { ...state, dev: { annotations: annotationsOfScene(state), ready } };
+    }
     case "setFont": {
       const f = op.kind.value.font;
       if (!isValidFont(state, f)) return state;
@@ -660,6 +709,15 @@ function applyOpRaw(state: SceneState, op: Op): SceneState {
       const effectStyles = { ...state.effectStyles };
       delete effectStyles[id];
       return { ...state, effectStyles, nodes: unstyleNodesByPaint(state, id, "effect") };
+    }
+    // Replaces an instance's payload wholesale (swap, reset). Parity with core.applySetInstance.
+    case "setInstance": {
+      const { instanceId, instance } = op.kind.value;
+      const cur = state.nodes.at(instanceId);
+      if (!cur) return state;                                               // ErrNodeNotFound
+      if (cur.kind !== "instance" || !cur.instance) return state;           // ErrNotInstanceNode
+      if (!isValidInstanceBody(state, instanceId, instance)) return state;
+      return { ...state, nodes: state.nodes.set(instanceId, { ...cur, instance: toInstanceLite(instance) }) };
     }
     case "setInstanceOverride": {
       const { instanceId, override } = op.kind.value;

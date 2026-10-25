@@ -143,6 +143,9 @@ func (w *htmlWriter) element(e *Element, depth int, root bool) {
 	for _, t := range e.Triggers {
 		w.sb.WriteString(ind + "<!-- " + flowComment(t) + " -->\n")
 	}
+	for _, n := range e.Notes {
+		w.sb.WriteString(ind + "<!-- " + n + " -->\n")
+	}
 	if wrapHref != "" {
 		fmt.Fprintf(&w.sb, "%s<a href=\"%s\" style=\"display:contents\"%s>\n", ind, html.EscapeString(wrapHref), ariaLabel(trig))
 		ind += "  "

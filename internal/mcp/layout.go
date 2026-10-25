@@ -21,7 +21,7 @@ type AutoLayoutSpec struct {
 	PaddingRight  float64 `json:"paddingRight,omitempty"`
 	PaddingBottom float64 `json:"paddingBottom,omitempty"`
 	MainAlign     string  `json:"mainAlign,omitempty" jsonschema:"along the direction: start (default), center, end or space-between"`
-	CrossAlign    string  `json:"crossAlign,omitempty" jsonschema:"across the direction: start (default), center or end"`
+	CrossAlign    string  `json:"crossAlign,omitempty" jsonschema:"across the direction: start (default), center, end or baseline (horizontal layouts: the children's first baselines coincide)"`
 	HugWidth      bool    `json:"hugWidth,omitempty" jsonschema:"the frame's width fits its content"`
 	HugHeight     bool    `json:"hugHeight,omitempty" jsonschema:"the frame's height fits its content"`
 	Wrap          bool    `json:"wrap,omitempty" jsonschema:"children that do not fit the main axis continue on a new line (ignored when the main axis hugs)"`
@@ -39,6 +39,7 @@ var (
 		"center":        opendesignerv1.LayoutAlign_LAYOUT_ALIGN_CENTER,
 		"end":           opendesignerv1.LayoutAlign_LAYOUT_ALIGN_END,
 		"space-between": opendesignerv1.LayoutAlign_LAYOUT_ALIGN_SPACE_BETWEEN,
+		"baseline":      opendesignerv1.LayoutAlign_LAYOUT_ALIGN_BASELINE,
 	}
 	directionNames = map[opendesignerv1.LayoutDirection]string{
 		opendesignerv1.LayoutDirection_LAYOUT_DIRECTION_UNSPECIFIED: "horizontal",
@@ -51,6 +52,7 @@ var (
 		opendesignerv1.LayoutAlign_LAYOUT_ALIGN_CENTER:        "center",
 		opendesignerv1.LayoutAlign_LAYOUT_ALIGN_END:           "end",
 		opendesignerv1.LayoutAlign_LAYOUT_ALIGN_SPACE_BETWEEN: "space-between",
+		opendesignerv1.LayoutAlign_LAYOUT_ALIGN_BASELINE:      "baseline",
 	}
 )
 
@@ -58,11 +60,11 @@ func (a *AutoLayoutSpec) validate() error {
 	if _, ok := directions[a.Direction]; !ok {
 		return fmt.Errorf("autoLayout.direction must be \"horizontal\" or \"vertical\", got %q", a.Direction)
 	}
-	if _, ok := aligns[a.MainAlign]; !ok {
+	if v, ok := aligns[a.MainAlign]; !ok || v == opendesignerv1.LayoutAlign_LAYOUT_ALIGN_BASELINE {
 		return fmt.Errorf("autoLayout.mainAlign must be start, center, end or space-between, got %q", a.MainAlign)
 	}
 	if v, ok := aligns[a.CrossAlign]; !ok || v == opendesignerv1.LayoutAlign_LAYOUT_ALIGN_SPACE_BETWEEN {
-		return fmt.Errorf("autoLayout.crossAlign must be start, center or end, got %q", a.CrossAlign)
+		return fmt.Errorf("autoLayout.crossAlign must be start, center, end or baseline, got %q", a.CrossAlign)
 	}
 	for name, v := range map[string]float64{
 		"spacing": a.Spacing, "paddingLeft": a.PaddingLeft, "paddingTop": a.PaddingTop,

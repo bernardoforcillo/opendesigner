@@ -28,6 +28,8 @@ export const SEG_ICONS: Record<string, R[]> = {
   alignCenter: [[7.3, 2, 1.4, 12], [3, 4, 10, 3], [4.5, 9, 7, 3]],
   alignEnd: [[12.6, 2, 1.4, 12], [3.4, 4, 8, 3], [6.4, 9, 5, 3]],
   alignBetween: [[2, 2, 1.4, 12], [12.6, 2, 1.4, 12], [5.4, 5, 5.2, 6]],
+  // baseline: two blocks of different height standing on a shared line
+  alignBaseline: [[2, 11, 12, 1.4], [3.4, 3, 3.6, 8], [9, 6, 3.6, 5]],
 };
 
 export function SegIcon({ name, rotate }: { name: keyof typeof SEG_ICONS; rotate?: boolean }) {

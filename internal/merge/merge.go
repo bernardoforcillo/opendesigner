@@ -113,7 +113,7 @@ var nodePaths = map[string]bool{
 	"x": true, "y": true, "width": true, "height": true, "rotation": true, "opacity": true, "name": true, "visible": true,
 	"fills": true, "strokes": true, "effects": true, "meta": true, "is_mask": true, "constraint_x": true, "constraint_y": true,
 	"layout_grids": true, "blend_mode": true, "layout_sizing_x": true, "layout_sizing_y": true, "bindings": true,
-	"modes": true, "text_style_id": true, "fill_style_id": true, "stroke_style_id": true, "effect_style_id": true,
+	"modes": true, "text_style_id": true, "fill_style_id": true, "stroke_style_id": true, "effect_style_id": true, "min_width": true, "max_width": true, "min_height": true, "max_height": true, "layout_positioning": true,
 }
 
 // Compute compares the three documents.

@@ -14,7 +14,10 @@ import { useScene } from "../store/store";
 // gesture open (a drag changes nodes at every pixel) and (d) the in-flight request
 // is CANCELLED (AbortController) when a new one starts or on exit.
 
-export type CodeTarget = "react" | "html";
+export type CodeTarget = "react" | "html" | "swiftui" | "compose";
+
+/** Every target the server can generate, in the order the pickers show them. */
+export const CODE_TARGETS: readonly CodeTarget[] = ["react", "html", "swiftui", "compose"];
 
 export interface CodeFile {
   path: string;
@@ -54,11 +57,11 @@ export interface CodegenState {
   byTarget: Record<CodeTarget, TargetState>;
 }
 
-export const useCodegen = create<CodegenState>(() => ({ byTarget: { react: EMPTY, html: EMPTY } }));
+export const useCodegen = create<CodegenState>(() => ({ byTarget: { react: EMPTY, html: EMPTY, swiftui: EMPTY, compose: EMPTY } }));
 
 /** Empties the store (document change, tests). */
 export function resetCodegen(): void {
-  useCodegen.setState({ byTarget: { react: EMPTY, html: EMPTY } });
+  useCodegen.setState({ byTarget: { react: EMPTY, html: EMPTY, swiftui: EMPTY, compose: EMPTY } });
 }
 
 function patch(target: CodeTarget, p: Partial<TargetState>): void {
@@ -142,24 +145,26 @@ export function useCodeExport(enabled: boolean, targets: readonly CodeTarget[]):
 
 // --- FILES: groups, decoding, search -----------------------------------------
 
-export type FileGroupId = "screens" | "app" | "config" | "tests" | "assets";
+export type FileGroupId = "screens" | "components" | "app" | "config" | "tests" | "assets";
 
 export const FILE_GROUP_LABELS: Record<FileGroupId, string> = {
   screens: "Screens",
+  components: "Components",
   app: "App",
   config: "Configuration",
   tests: "Test",
   assets: "Assets",
 };
-const GROUP_ORDER: FileGroupId[] = ["screens", "app", "config", "tests", "assets"];
+const GROUP_ORDER: FileGroupId[] = ["screens", "components", "app", "config", "tests", "assets"];
 
 const CONFIG_FILES = new Set(["package.json", "vite.config.ts", "tsconfig.json", "playwright.config.ts", ".gitignore"]);
 
-/** Which group a generated file belongs to (react and html targets). */
+/** Which group a generated file belongs to (every target). */
 export function groupOf(path: string, target: CodeTarget): FileGroupId {
   if (path.startsWith("tests/")) return "tests";
-  if (path.startsWith("public/") || path.startsWith("assets/")) return "assets";
-  if (path.startsWith("src/screens/")) return "screens";
+  if (path.startsWith("public/") || path.startsWith("assets/") || path.includes(".xcassets/") || path.includes("/res/")) return "assets";
+  if (path.startsWith("src/screens/") || path.startsWith("Sources/Screens/") || path.includes("/generated/screens/")) return "screens";
+  if (path.startsWith("src/components/") || path.startsWith("Sources/Components/") || path.includes("/generated/components/")) return "components";
   if (target === "html" && path.endsWith(".html")) return "screens";
   if (CONFIG_FILES.has(path)) return "config";
   return "app";

@@ -1,6 +1,6 @@
 # Variables (design tokens)
 
-The document has **variables**: named colors, numbers and strings that nodes can bind
+The document has **variables**: named colors, numbers, strings and booleans that nodes can bind
 to, with one value per **mode** (Light / Dark, Compact / Comfortable, brand A /
 brand B…). Like flows and clips, they live in the document and go through the op
 log, so the editor, MCP agents and code read and write the same tokens, they
@@ -14,8 +14,8 @@ Document.variables   : map<id, Variable>
 
 VariableCollection { id, name, modes[] }            // modes[0] is the default
 Variable           { id, collection_id, name, type, values: map<mode_id, value>, alias_of }
-                     type  = color | number | string
-                     value = Color{r,g,b,a} (0..1) | double | string
+                     type  = color | number | string | boolean
+                     value = Color{r,g,b,a} (0..1) | double | string | bool
 
 Node.bindings : map<property, variable_id>          // what is bound to what
 Node.modes    : map<collection_id, mode_id>         // mode pinned on this subtree
@@ -44,10 +44,24 @@ Bindings and pins are written with `SetProperties`, mask paths `bindings` and
 | `strokes.N.weight` | number | clamped to ≥ 0 |
 | `font_size` | number | text nodes only; ignored when ≤ 0 |
 | `text` | string | text nodes only: the content |
+| `visible` | boolean | show / hide the node; a hidden node also leaves its auto layout parent's flow |
+| `spacing`, `cross_spacing`, `padding_left`, `padding_top`, `padding_right`, `padding_bottom` | number | auto layout frames only; clamped to ≥ 0 |
 
 The literal stored on the node stays as the fallback: detaching a binding gives
 it back, and a binding whose variable, value or target (say `fills.3` on a node
 with one fill) is missing is ignored.
+
+### Variables that move the layout
+
+The auto layout engine reads `spacing`, the paddings and `visible` **through** the variables,
+in the active mode of the frame (a mode can be a density: *Comfortable* / *Compact*). The
+stored `auto_layout` keeps its literal values as the fallback, but the positions the server
+writes into the children are the ones the bound values give, and they are recomputed
+whenever something they depend on changes: the binding itself, a mode pinned on the frame or
+an ancestor, the variable (or an alias of it) being edited or deleted, the collection's modes.
+`web/src/store/layout.ts` repeats the same dependency walk (`layoutTargets`), and
+`testdata/golden/variables_layout.json` runs both sides. Exported code and the canvas read the
+same resolved values (`ResolveNode`).
 
 ### Which mode applies
 
@@ -103,17 +117,19 @@ Enforced by `core.Apply` (Go, the authority) and mirrored in
   descended into through an instance resolves in the master's own modes.
 - **Editor**: document menu → *Variables…* creates collections, modes and
   variables; the properties panel's *Variables* section binds the selection's fill,
-  stroke, opacity, rotation, radius, stroke width and (text nodes) font size and
-  text, and pins collections to modes.
+  stroke, opacity, rotation, radius, stroke width, visibility, the gap and paddings of an
+  auto layout frame and (text nodes) font size and text, and pins collections to modes
+  (the *Boolean* button of the dialog adds a checkbox variable).
   A color bound to a variable shows, read-only, what the variable resolves to (what the
   canvas draws); detach it there to edit the node's own literal again.
 - **MCP**: `list_variables`, `create_collection`, `delete_collection`,
-  `set_variable` (`aliasOf`, string values), `delete_variable`, `bind_variable`, `set_node_mode`;
+  `set_variable` (`aliasOf`, string and boolean values), `delete_variable`, `bind_variable`, `set_node_mode`;
   `get_document` includes `variables` and each node's `bindings` / `modes`.
 
 ## Not yet
 
-- Variables for font family, spacing and auto layout, and booleans.
+- Variables for font family, and for widths / heights / size limits of auto layout children.
+- A boolean variable driving a component's boolean property.
 - Variable groups with their own settings.
 - Emitting CSS custom properties per mode in the exported code instead of resolved values.
 - The mode of an instance applying to its master's subtree.

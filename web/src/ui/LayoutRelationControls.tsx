@@ -1,6 +1,8 @@
 import { useScene } from "../store/store";
 import type { ConstraintLite, NodeLite } from "../store/types";
 import { cls, Section } from "./ds";
+import { NumberField } from "./fields/NumberField";
+import { limitOf, limitOps, positioningOf, positioningOps, type LimitField } from "./layoutLimitOps";
 import { constraintOf, constraintOps, parentKind, sizingOf, sizingOps } from "./layoutRelationOps";
 
 // CONSTRAINTS and SIZING of the selection, i.e. its relation to the parent frame:
@@ -27,6 +29,11 @@ const V: { value: ConstraintLite; label: string }[] = [
   { value: "center", label: "Center" }, { value: "scale", label: "Scale" },
 ];
 
+const LIMITS: { field: LimitField; label: string }[] = [
+  { field: "minWidth", label: "Min width" }, { field: "maxWidth", label: "Max width" },
+  { field: "minHeight", label: "Min height" }, { field: "maxHeight", label: "Max height" },
+];
+
 export function LayoutRelationControls() {
   const scene = useScene((s) => s.scene);
   const selection = useScene((s) => s.selection);
@@ -36,7 +43,7 @@ export function LayoutRelationControls() {
   const kinds = new Set(nodes.map((n) => parentKind(scene, n)));
   if (kinds.size !== 1) return null;
   const kind = [...kinds][0];
-  if (kind === "frame") {
+  const constraintRows = () => {
     const row = (axis: "x" | "y", label: string, options: typeof H) => {
       const v = constraintOf(nodes, axis);
       return (
@@ -50,8 +57,19 @@ export function LayoutRelationControls() {
         </label>
       );
     };
-    return <Section title="Constraints"><div className="flex flex-col gap-1.5">{row("x", "Horizontal", H)}{row("y", "Vertical", V)}</div></Section>;
+    return <div className="flex flex-col gap-1.5">{row("x", "Horizontal", H)}{row("y", "Vertical", V)}</div>;
+  };
+  // An auto layout frame outside an auto layout still takes size limits (they bound what it hugs).
+  const ownLimits = kind !== "autoLayout" && nodes.every((n) => n.kind === "frame" && n.autoLayout !== undefined);
+  if (kind === "frame") {
+    return (
+      <>
+        <Section title="Constraints">{constraintRows()}</Section>
+        {ownLimits && <Section title="Size limits"><LimitFields nodes={nodes} /></Section>}
+      </>
+    );
   }
+  if (ownLimits) return <Section title="Size limits"><LimitFields nodes={nodes} /></Section>;
   if (kind === "autoLayout") {
     const row = (axis: "x" | "y", label: string) => {
       const v = sizingOf(nodes, axis);
@@ -67,7 +85,41 @@ export function LayoutRelationControls() {
         </label>
       );
     };
-    return <Section title="Sizing"><div className="flex flex-col gap-1.5">{row("x", "Width")}{row("y", "Height")}</div></Section>;
+    const pos = positioningOf(nodes);
+    return (
+      <>
+        <Section title="Sizing">
+          <div className="flex flex-col gap-1.5">
+            <label className="grid grid-cols-[5.5rem_1fr] items-center gap-2">
+              <span className={cls.label}>Position</span>
+              <select aria-label="Layout position" className={cls.select} value={pos ?? "__mixed"}
+                onChange={(e) => run(positioningOps(scene, selection, e.target.value as "auto" | "absolute"))}>
+                {pos === undefined && <option value="__mixed" disabled>Mixed</option>}
+                <option value="auto">Auto (in the flow)</option>
+                <option value="absolute">Absolute</option>
+              </select>
+            </label>
+            {pos === "absolute" ? constraintRows() : <>{row("x", "Width")}{row("y", "Height")}</>}
+            <LimitFields nodes={nodes} />
+          </div>
+        </Section>
+      </>
+    );
   }
   return null;
+}
+
+/** Min/max width and height (0 = no limit), clamped by the auto layout engine. */
+function LimitFields({ nodes }: { nodes: NodeLite[] }) {
+  const scene = useScene((s) => s.scene);
+  const selection = useScene((s) => s.selection);
+  if (!scene) return null;
+  return (
+    <div className="grid grid-cols-2 gap-1.5">
+      {LIMITS.map(({ field, label }) => (
+        <NumberField key={field} label={label} value={limitOf(nodes, field) ?? NaN} minValue={0}
+          onCommit={(v) => run(limitOps(scene, selection, field, v))} />
+      ))}
+    </div>
+  );
 }

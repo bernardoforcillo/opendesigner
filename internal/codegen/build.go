@@ -103,7 +103,8 @@ func (c bctx) inInstance() bool { return c.idPrefix != "" }
 
 // participates: the children that the core lays out in a row (core/layout.go).
 func participates(n *opendesignerv1.Node) bool {
-	if !n.GetVisible() {
+	// An absolute child is out of the flow: position:absolute at its own x/y.
+	if !n.GetVisible() || n.GetLayoutPositioning() == opendesignerv1.LayoutPositioning_LAYOUT_POSITIONING_ABSOLUTE {
 		return false
 	}
 	switch n.GetShape().(type) {
@@ -161,7 +162,11 @@ func (b *builder) warn(format string, a ...any) {
 // buildScreen builds the IR tree of screen `n`.
 func (b *builder) buildScreen(n *opendesignerv1.Node) *Element {
 	b.planAnimations(n)
-	return b.element(n, bctx{root: true, visited: map[string]bool{}})
+	el := b.element(n, bctx{root: true, visited: map[string]bool{}})
+	if el != nil {
+		el.Notes = append(b.readyNote(n.GetId()), el.Notes...)
+	}
+	return el
 }
 
 // element translates a node (and its subtree). nil = nothing to emit.
@@ -212,6 +217,9 @@ func (b *builder) element(n *opendesignerv1.Node, c bctx) *Element {
 	el.NodeID = n.GetId()
 	el.NodeName = n.GetName()
 	el.Meta = n.GetMeta()
+	if !c.inInstance() {
+		el.Notes = b.notes(n.GetId())
+	}
 	id := c.idPrefix + n.GetId()
 	el.Attrs = append([]Attr{{"data-node-id", id}}, el.Attrs...)
 	if tid := n.GetMeta()["test.id"]; tid != "" && !c.inInstance() { // a test.id in the master would be duplicated in every instance
@@ -595,7 +603,11 @@ func flexProps(el *Element, al *opendesignerv1.AutoLayout) {
 		el.addStyle("flex-direction", "column")
 	}
 	el.addStyle("justify-content", alignCSS(al.GetMainAlign(), true))
-	el.addStyle("align-items", alignCSS(al.GetCrossAlign(), false))
+	cross := al.GetCrossAlign()
+	if cross == opendesignerv1.LayoutAlign_LAYOUT_ALIGN_BASELINE && al.GetDirection() == opendesignerv1.LayoutDirection_LAYOUT_DIRECTION_VERTICAL {
+		cross = opendesignerv1.LayoutAlign_LAYOUT_ALIGN_START // baselines only line up in a row
+	}
+	el.addStyle("align-items", alignCSS(cross, false))
 	// WRAP (the core ignores it when the main axis hugs): the lines are `cross_spacing` apart, and
 	// `gap` takes row-gap then column-gap, so the two spacings swap with the direction.
 	wrap := al.GetWrap() && !((al.GetDirection() == opendesignerv1.LayoutDirection_LAYOUT_DIRECTION_VERTICAL && al.GetHugHeight()) ||
@@ -624,6 +636,11 @@ func alignCSS(a opendesignerv1.LayoutAlign, main bool) string {
 		return "center"
 	case opendesignerv1.LayoutAlign_LAYOUT_ALIGN_END:
 		return "flex-end"
+	case opendesignerv1.LayoutAlign_LAYOUT_ALIGN_BASELINE:
+		// Cross axis of a row only; on the main axis (and in a column) it behaves as START.
+		if !main {
+			return "baseline"
+		}
 	case opendesignerv1.LayoutAlign_LAYOUT_ALIGN_SPACE_BETWEEN:
 		// On the cross axis SPACE_BETWEEN behaves as START (proto).
 		if main {

@@ -49,11 +49,88 @@ func participates(n *opendesignerv1.Node) bool {
 	return false
 }
 
+// participatesIn is participates with the node's variable-bound visibility applied (a
+// boolean variable bound to "visible" hides it in the frame's active mode).
+func participatesIn(doc *opendesignerv1.Document, n *opendesignerv1.Node) bool {
+	if n.GetBindings()["visible"] != "" {
+		n = ResolveNode(doc, n)
+	}
+	return participates(n)
+}
+
 func autoLayoutOf(n *opendesignerv1.Node) *opendesignerv1.AutoLayout {
 	if n == nil {
 		return nil
 	}
 	return n.GetFrame().GetAutoLayout()
+}
+
+// baselineOf is the distance from the top of a node to its first baseline, for aligning
+// children on a shared baseline (cross_align BASELINE of a horizontal layout). Without font
+// metrics a text's baseline is where a line box of height font_size * line_height puts it
+// when the glyphs take font_size with an ascent of 0.8: half the leading plus the ascent. Any
+// other node has its bottom edge as baseline, like a replaced element in CSS.
+func baselineOf(n *opendesignerv1.Node) float64 {
+	t := n.GetText()
+	if t == nil {
+		return n.GetHeight()
+	}
+	fs, lh := t.GetStyle().GetFontSize(), t.GetStyle().GetLineHeight()
+	if !(fs > 0) {
+		fs = 16
+	}
+	if !(lh > 0) {
+		lh = 1.2
+	}
+	half := float64(fs*(lh-1)) / 2
+	return half + float64(fs*0.8)
+}
+
+// baselineSpan: the line's baseline (the largest baseline offset of the kids that follow it) and
+// the cross extent the kids take when aligned on it. `skip` excludes the kids that fill the cross axis.
+func baselineSpan(kids []*opendesignerv1.Node, skip func(*opendesignerv1.Node) bool, heightOf func(*opendesignerv1.Node) float64) (base, extent float64) {
+	for _, k := range kids {
+		if skip(k) {
+			continue
+		}
+		if b := baselineOf(k); b > base {
+			base = b
+		}
+	}
+	for _, k := range kids {
+		if skip(k) {
+			continue
+		}
+		if e := base - baselineOf(k) + heightOf(k); e > extent {
+			extent = e
+		}
+	}
+	return base, extent
+}
+
+// isAbsolute: the node sits in an auto layout frame but out of its flow (see
+// Node.layout_positioning).
+func isAbsolute(n *opendesignerv1.Node) bool {
+	return n.GetLayoutPositioning() == opendesignerv1.LayoutPositioning_LAYOUT_POSITIONING_ABSOLUTE
+}
+
+// clampSize applies a node's size limits to a computed size: 0 means no limit, and when
+// min > max the min wins.
+func clampSize(v, min, max float64) float64 {
+	if max > 0 && v > max {
+		v = max
+	}
+	if v < min {
+		v = min
+	}
+	return v
+}
+
+func clampW(n *opendesignerv1.Node, v float64) float64 {
+	return clampSize(v, n.GetMinWidth(), n.GetMaxWidth())
+}
+func clampH(n *opendesignerv1.Node, v float64) float64 {
+	return clampSize(v, n.GetMinHeight(), n.GetMaxHeight())
 }
 
 // isFrame: a frame, with or without auto layout.
@@ -83,12 +160,18 @@ func layoutFrame(doc *opendesignerv1.Document, id string, cow *Shared) {
 		return
 	}
 	frame = cow.mut(doc, id)
-	al = autoLayoutOf(frame)
+	// Spacing and padding bound to variables are read in the frame's active mode.
+	al = autoLayoutOf(ResolveNode(doc, frame))
 	vertical := al.GetDirection() == opendesignerv1.LayoutDirection_LAYOUT_DIRECTION_VERTICAL
+
+	// The size the frame had when the layout started: the absolute children follow the
+	// difference (see the end of this function).
+	startW, startH := frame.GetWidth(), frame.GetHeight()
+	frame.Width, frame.Height = clampW(frame, frame.GetWidth()), clampH(frame, frame.GetHeight())
 
 	var kids []*opendesignerv1.Node
 	for _, c := range ChildrenOf(doc, id) {
-		if participates(c) {
+		if participatesIn(doc, c) && !isAbsolute(c) {
 			kids = append(kids, cow.mut(doc, c.GetId()))
 		}
 	}
@@ -144,6 +227,20 @@ func layoutFrame(doc *opendesignerv1.Document, id string, cow *Shared) {
 		return n.GetLayoutSizingY() == opendesignerv1.LayoutSizing_LAYOUT_SIZING_FILL
 	}
 
+	// The size limits along each axis (see Node.min_width and friends).
+	clampMain := func(n *opendesignerv1.Node, v float64) float64 {
+		if vertical {
+			return clampH(n, v)
+		}
+		return clampW(n, v)
+	}
+	clampCross := func(n *opendesignerv1.Node, v float64) float64 {
+		if vertical {
+			return clampW(n, v)
+		}
+		return clampH(n, v)
+	}
+
 	// What each child measured BEFORE the layout, to know which child frames to follow up.
 	type size struct{ w, h float64 }
 	before := make([]size, len(kids))
@@ -156,22 +253,24 @@ func layoutFrame(doc *opendesignerv1.Document, id string, cow *Shared) {
 	innerMain := mainOf(frame) - padMainStart - padMainEnd
 
 	if wrap {
-		layoutWrapped(kids, frame, al, vertical, innerMain, padMainStart, padCrossStart, padCrossEnd, hugCross, mainOf, crossOf, setMain, setCross)
+		layoutWrapped(kids, frame, al, vertical, innerMain, padMainStart, padCrossStart, padCrossEnd, hugCross, mainOf, crossOf, setMain, setCross, clampMain, clampCross)
 	} else {
 		layoutLine(kids, frame, al, vertical, hugMain, hugCross, padMainStart, padMainEnd, padCrossStart, padCrossEnd, spacing,
-			mainOf, crossOf, setMain, setCross, fillMain, fillCross)
+			mainOf, crossOf, setMain, setCross, fillMain, fillCross, clampMain, clampCross)
 	}
 
 	// Follow up the child frames whose size the layout changed.
 	for i, k := range kids {
 		if (k.GetWidth() != before[i].w || k.GetHeight() != before[i].h) && isFrame(k) {
+			resizeChildren(doc, k.GetId(), before[i].w, before[i].h, cow)
 			if autoLayoutOf(k) != nil {
 				layoutFrame(doc, k.GetId(), cow)
-			} else {
-				resizeChildren(doc, k.GetId(), before[i].w, before[i].h, cow)
 			}
 		}
 	}
+	// The frame itself may have changed size (hug, size limits): its absolute children follow
+	// by their constraints.
+	resizeChildren(doc, id, startW, startH, cow)
 }
 
 // layoutLine: a single row/column, with fill children.
@@ -180,6 +279,7 @@ func layoutLine(
 	padMainStart, padMainEnd, padCrossStart, padCrossEnd, spacing float64,
 	mainOf, crossOf func(*opendesignerv1.Node) float64, setMain, setCross func(*opendesignerv1.Node, float64),
 	fillMain, fillCross func(*opendesignerv1.Node) bool,
+	clampMain, clampCross func(*opendesignerv1.Node, float64) float64,
 ) {
 	// A hugging axis cannot also be filled: its length is the content's.
 	isFillMain := func(k *opendesignerv1.Node) bool { return !hugMain && fillMain(k) }
@@ -191,13 +291,22 @@ func layoutLine(
 		if isFillMain(k) {
 			nFill++
 		} else {
+			setMain(k, clampMain(k, mainOf(k)))
 			sum += mainOf(k)
 		}
 		if !isFillCross(k) {
+			setCross(k, clampCross(k, crossOf(k)))
 			if c := crossOf(k); c > maxCross {
 				maxCross = c
 			}
 		}
+	}
+	// Baseline alignment (horizontal layouts only): the cross extent is what the kids take once
+	// their baselines coincide.
+	baseline := !vertical && al.GetCrossAlign() == opendesignerv1.LayoutAlign_LAYOUT_ALIGN_BASELINE
+	var lineBase float64
+	if baseline {
+		lineBase, maxCross = baselineSpan(kids, isFillCross, crossOf)
 	}
 	gaps := float64(0)
 	if len(kids) > 1 {
@@ -205,11 +314,14 @@ func layoutLine(
 	}
 
 	frameMain, frameCross := mainOf(frame), crossOf(frame)
+	// The frame's own limits apply to what it hugs.
 	if hugMain {
 		frameMain = padMainStart + sum + gaps + padMainEnd
+		frameMain = clampMain(frame, frameMain)
 	}
 	if hugCross {
 		frameCross = padCrossStart + maxCross + padCrossEnd
+		frameCross = clampCross(frame, frameCross)
 	}
 	if vertical {
 		frame.Width, frame.Height = frameCross, frameMain
@@ -221,18 +333,28 @@ func layoutLine(
 	innerCross := frameCross - padCrossStart - padCrossEnd
 	free := innerMain - sum - gaps
 
-	// The fill children share what is left; afterwards nothing is free.
+	// The fill children share what is left; afterwards nothing is free -- unless a size limit
+	// capped some of them, which leaves room for the alignment.
 	if nFill > 0 {
-		share := float64(0)
-		if free > 0 {
-			share = free / float64(nFill)
-		}
+		var fills []*opendesignerv1.Node
 		for _, k := range kids {
 			if isFillMain(k) {
-				setMain(k, share)
+				fills = append(fills, k)
 			}
 		}
-		free = 0
+		avail := float64(0)
+		if free > 0 {
+			avail = free
+		}
+		if shareFill(fills, avail, setMain, clampMain) {
+			var used float64
+			for _, k := range fills {
+				used += mainOf(k)
+			}
+			free = free - used
+		} else {
+			free = 0
+		}
 	}
 	for _, k := range kids {
 		if isFillCross(k) {
@@ -240,7 +362,7 @@ func layoutLine(
 			if c < 0 {
 				c = 0
 			}
-			setCross(k, c)
+			setCross(k, clampCross(k, c))
 		}
 	}
 
@@ -266,6 +388,10 @@ func layoutLine(
 			cross = padCrossStart + (innerCross-crossOf(k))/2
 		case opendesignerv1.LayoutAlign_LAYOUT_ALIGN_END:
 			cross = padCrossStart + (innerCross - crossOf(k))
+		case opendesignerv1.LayoutAlign_LAYOUT_ALIGN_BASELINE:
+			if baseline && !isFillCross(k) {
+				cross = padCrossStart + (lineBase - baselineOf(k))
+			}
 		}
 		if vertical {
 			k.X, k.Y = cross, pos
@@ -276,19 +402,84 @@ func layoutLine(
 	}
 }
 
+// shareFill splits `avail` equally among the fill children, honouring their size limits the
+// way flexbox does: a child whose share falls outside its limits is frozen at the limit and
+// the others share the rest, until nobody violates. It writes the sizes and reports whether
+// any limit applied (when none did, the sizes are exactly avail/n and nothing is left over).
+func shareFill(fills []*opendesignerv1.Node, avail float64, setMain func(*opendesignerv1.Node, float64), clampMain func(*opendesignerv1.Node, float64) float64) bool {
+	frozen := make([]bool, len(fills))
+	size := make([]float64, len(fills))
+	limited := false
+	for {
+		var frozenSum float64
+		open := 0
+		for i := range fills {
+			if frozen[i] {
+				frozenSum += size[i]
+			} else {
+				open++
+			}
+		}
+		if open == 0 {
+			break
+		}
+		rem := avail - frozenSum
+		if rem < 0 {
+			rem = 0
+		}
+		share := rem / float64(open)
+		var viol float64
+		for i, k := range fills {
+			if !frozen[i] {
+				viol += clampMain(k, share) - share
+			}
+		}
+		if viol == 0 {
+			for i := range fills {
+				if !frozen[i] {
+					size[i] = share
+				}
+			}
+			break
+		}
+		limited = true
+		for i, k := range fills {
+			if frozen[i] {
+				continue
+			}
+			c := clampMain(k, share)
+			if (viol > 0 && c > share) || (viol < 0 && c < share) {
+				frozen[i], size[i] = true, c
+			}
+		}
+	}
+	for i, k := range fills {
+		setMain(k, size[i])
+	}
+	return limited
+}
+
 // layoutWrapped: the children flow onto lines. The main axis never hugs here.
 func layoutWrapped(
 	kids []*opendesignerv1.Node, frame *opendesignerv1.Node, al *opendesignerv1.AutoLayout, vertical bool,
 	innerMain, padMainStart, padCrossStart, padCrossEnd float64, hugCross bool,
-	mainOf, crossOf func(*opendesignerv1.Node) float64, _, _ func(*opendesignerv1.Node, float64),
+	mainOf, crossOf func(*opendesignerv1.Node) float64, setMain, setCross func(*opendesignerv1.Node, float64),
+	clampMain, clampCross func(*opendesignerv1.Node, float64) float64,
 ) {
 	spacing, crossSpacing := al.GetSpacing(), al.GetCrossSpacing()
+
+	// Size limits first: the lines are cut from the clamped sizes.
+	for _, k := range kids {
+		setMain(k, clampMain(k, mainOf(k)))
+		setCross(k, clampCross(k, crossOf(k)))
+	}
 
 	// Split into lines: a child that does not fit goes to the next one (a line always has
 	// at least one child, even if it is longer than the frame).
 	type line struct {
 		from, to      int // kids[from:to]
 		sum, maxCross float64
+		base          float64 // baseline alignment: the line's shared baseline
 	}
 	var lines []line
 	cur := line{}
@@ -312,6 +503,12 @@ func layoutWrapped(
 		cur.to = len(kids)
 		lines = append(lines, cur)
 	}
+	baseline := !vertical && al.GetCrossAlign() == opendesignerv1.LayoutAlign_LAYOUT_ALIGN_BASELINE
+	if baseline {
+		for i := range lines {
+			lines[i].base, lines[i].maxCross = baselineSpan(kids[lines[i].from:lines[i].to], func(*opendesignerv1.Node) bool { return false }, crossOf)
+		}
+	}
 
 	if hugCross {
 		var total float64
@@ -322,6 +519,7 @@ func layoutWrapped(
 			total += float64(crossSpacing * float64(len(lines)-1))
 		}
 		frameCross := padCrossStart + total + padCrossEnd
+		frameCross = clampCross(frame, frameCross)
 		if vertical {
 			frame.Width = frameCross
 		} else {
@@ -352,6 +550,10 @@ func layoutWrapped(
 				cross = crossPos + (l.maxCross-crossOf(k))/2
 			case opendesignerv1.LayoutAlign_LAYOUT_ALIGN_END:
 				cross = crossPos + (l.maxCross - crossOf(k))
+			case opendesignerv1.LayoutAlign_LAYOUT_ALIGN_BASELINE:
+				if baseline {
+					cross = crossPos + (l.base - baselineOf(k))
+				}
 			}
 			if vertical {
 				k.X, k.Y = cross, pos
@@ -402,29 +604,33 @@ func hasFreeSize(n *opendesignerv1.Node) bool {
 }
 
 // resizeChildren applies the CONSTRAINTS of the children of frame `id`, which has just
-// gone from oldW x oldH to its current size. A frame with auto layout is skipped (its
-// layout decides), and so is a frame that did not change. A child frame that this
+// gone from oldW x oldH to its current size. A frame with auto layout only moves its
+// absolute children (its layout decides for the rest), and a frame that did not change is skipped. A child frame that this
 // resizes follows up on its own children, recursively.
 func resizeChildren(doc *opendesignerv1.Document, id string, oldW, oldH float64, cow *Shared) {
 	frame := doc.GetNodes()[id]
-	if frame == nil || !isFrame(frame) || autoLayoutOf(frame) != nil {
+	if frame == nil || !isFrame(frame) {
 		return
 	}
+	// A frame with auto layout only moves its ABSOLUTE children; the flow is the layout's.
+	auto := autoLayoutOf(frame) != nil
 	newW, newH := frame.GetWidth(), frame.GetHeight()
 	if newW == oldW && newH == oldH {
 		return
 	}
 	for _, c := range ChildrenOf(doc, id) {
+		if auto && !isAbsolute(c) {
+			continue
+		}
 		k := cow.mut(doc, c.GetId())
 		oldKW, oldKH := k.GetWidth(), k.GetHeight()
 		free := hasFreeSize(k)
 		constrainAxis(k.GetConstraintX(), &k.X, &k.Width, oldW, newW, free)
 		constrainAxis(k.GetConstraintY(), &k.Y, &k.Height, oldH, newH, free)
 		if (k.GetWidth() != oldKW || k.GetHeight() != oldKH) && isFrame(k) {
+			resizeChildren(doc, k.GetId(), oldKW, oldKH, cow)
 			if autoLayoutOf(k) != nil {
 				layoutFrame(doc, k.GetId(), cow)
-			} else {
-				resizeChildren(doc, k.GetId(), oldKW, oldKH, cow)
 			}
 		}
 	}
@@ -451,11 +657,85 @@ func layoutTargets(doc *opendesignerv1.Document, op *opendesignerv1.Op) []string
 	case *opendesignerv1.Op_ReparentNode:
 		return append(parentOf(k.ReparentNode.GetId()), k.ReparentNode.GetNewParentId())
 	case *opendesignerv1.Op_SetProps:
-		return append(parentOf(k.SetProps.GetId()), k.SetProps.GetId())
+		out := append(parentOf(k.SetProps.GetId()), k.SetProps.GetId())
+		// A mode pinned on a node changes what the variables bound below it resolve to.
+		for _, p := range k.SetProps.GetMask().GetPaths() {
+			if p == "modes" {
+				out = append(out, layoutBoundIn(doc, SubtreeOf(doc, k.SetProps.GetId()))...)
+			}
+		}
+		return out
 	case *opendesignerv1.Op_SetVectorPath:
 		return parentOf(k.SetVectorPath.GetId())
+	// The layout reads spacing, padding and visibility through variables: a change to a
+	// variable (or to the modes of its collection) moves what is bound to it.
+	case *opendesignerv1.Op_SetVariable:
+		return layoutDependents(doc, map[string]bool{k.SetVariable.GetVariable().GetId(): true})
+	case *opendesignerv1.Op_DeleteVariable:
+		return layoutDependents(doc, map[string]bool{k.DeleteVariable.GetId(): true})
+	case *opendesignerv1.Op_SetCollection:
+		return layoutDependents(doc, variablesOf(doc, k.SetCollection.GetCollection().GetId()))
+	case *opendesignerv1.Op_DeleteCollection:
+		return layoutDependents(doc, variablesOf(doc, k.DeleteCollection.GetId()))
 	}
 	return nil
+}
+
+// layoutKey: a binding key the layout engine reads.
+func layoutKey(key string) bool {
+	switch key {
+	case "visible", "spacing", "cross_spacing", "padding_left", "padding_top", "padding_right", "padding_bottom":
+		return true
+	}
+	return false
+}
+
+func variablesOf(doc *opendesignerv1.Document, collectionID string) map[string]bool {
+	out := map[string]bool{}
+	for id, v := range doc.GetVariables() {
+		if v.GetCollectionId() == collectionID {
+			out[id] = true
+		}
+	}
+	return out
+}
+
+// layoutDependents lists the nodes (and their parents) whose layout-relevant bindings point at
+// one of `vars` or at an alias of them, transitively. relayout ignores what is not an auto
+// layout frame.
+func layoutDependents(doc *opendesignerv1.Document, vars map[string]bool) []string {
+	for changed := true; changed; {
+		changed = false
+		for id, v := range doc.GetVariables() {
+			if !vars[id] && vars[v.GetAliasOf()] {
+				vars[id], changed = true, true
+			}
+		}
+	}
+	var out []string
+	for _, n := range doc.GetNodes() {
+		for key, v := range n.GetBindings() {
+			if layoutKey(key) && vars[v] {
+				out = append(out, n.GetId(), n.GetParentId())
+				break
+			}
+		}
+	}
+	return out
+}
+
+// layoutBoundIn lists the nodes of `subtree` (and their parents) with layout-relevant bindings.
+func layoutBoundIn(doc *opendesignerv1.Document, subtree []*opendesignerv1.Node) []string {
+	var out []string
+	for _, n := range subtree {
+		for key := range n.GetBindings() {
+			if layoutKey(key) {
+				out = append(out, n.GetId(), n.GetParentId())
+				break
+			}
+		}
+	}
+	return out
 }
 
 // relayout re-lays-out the touched frames and climbs up: a frame that changes size (hug)

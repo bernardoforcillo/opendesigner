@@ -40,8 +40,8 @@ hotspot.
 | `label` | text of the triggering element (e.g. the "Sign in" button) |
 | `trigger` | `click` (default), `submit`, `auto`, `key`, `back` or free text. With `key` the `label` is the key to press |
 | `element_id` | optional: the node INSIDE `from` that triggers (the hotspot) |
-| `guard` | condition under which the edge can be taken, free text ("cart not empty") |
-| `effect` | what the edge changes, free text ("order created") |
+| `guard` | condition under which the edge can be taken: free text ("cart not empty"), or a condition the player evaluates (`user=guest`, `count >= 3`, `else`; see "Variables, expressions and if / else in the player") |
+| `effect` | what the edge changes: free text ("order created"), or assignments the player runs (`cart=full; count = count + 1`) |
 
 ## Node metadata conventions
 
@@ -210,3 +210,34 @@ A transition can animate how the player (**Present**) goes from its source scree
 **Smart animate** matches nodes of the two screens by name along the same path (`card` inside `A` with `card` inside `B`; several nodes with the same name match in order). Matched nodes move, resize, turn, fade and change fill color from the source's values to the destination's; nodes only in the destination fade in and nodes only in the source fade out in place.
 
 The values are validated by the core (an unknown animation, a duration or delay out of range or a bad easing rejects the op; golden fixture `testdata/golden/transition_anim.json`). They are edited in the Flows panel (transition editor) or with the MCP tool `set_transition` (`animation`, `durationMs`, `easing`, `delayMs`). Exported code does not animate screen changes.
+
+## Variables, expressions and if / else in the player
+
+The player (**Present**) keeps **variables** while you click through a flow. They are strings at rest; a transition's `effect` writes them and its `guard` reads them. Beyond the plain `k=v` forms (still meaning exactly what they did), both take **expressions** (`web/src/flow/expr.ts`, pure and tested; the model did not change: a guard and an effect are still text on the transition).
+
+| In | You can write | Means |
+|---|---|---|
+| `effect` | `cart=full` | text: `cart` becomes `full` (a bare word, a number or a quoted string on the right is text, never a variable) |
+| `effect` | `count = count + 1; total = total * 1.5` | arithmetic `+ - * / %`, parentheses, `"Hi " + name` (`+` joins text when an operand is not a number). Assignments run in order, so `a=1; b=a+1` sees the new `a`. A variable never set is `0` in arithmetic. A right side that cannot be computed (`name * 2`, `1 / 0`) leaves the variable alone |
+| `guard` | `user=guest`, `user!=admin`, `paid`, `!paid` | as before |
+| `guard` | `count >= 3`, `total <= 50 && total > 10`, `count + 1 > limit` | comparisons `== != = < <= > >=` (numbers compare as numbers: `3` equals `3.0`; two words compare as text), arithmetic, parentheses, `true` / `false` |
+| `guard` | `user=admin \|\| count > 5` | `\|\|` between alternatives, `&&` inside each one |
+| `guard` | `else` (or `otherwise`) | holds when **no other transition on the same screen, trigger and element** (hotspot) holds |
+
+A guard with a term nobody can evaluate (`cart not empty`, `count >`, an unclosed parenthesis) makes the whole guard unevaluable: the option is disabled with the reason, never silently true. Variable names inside expressions are letters, digits, `_` and `.` (a name with `-` still works in the plain forms, not in arithmetic, where `a-1` is `a` minus 1).
+
+**If / else if / else** is several transitions on the same hotspot with different guards, and an `else` transition for the rest:
+
+```
+Pay button  --[ total > 100 ]-------------------> Premium checkout
+Pay button  --[ total > 50 && total <= 100 ]----> Standard checkout    (the "else if": a condition that does not overlap)
+Pay button  --[ else ]--------------------------> Basic checkout
+```
+
+On a hotspot the branch that holds is the one that can be clicked; the branches that do not apply are not drawn as locked (they are simply the other side of the if), while a hotspot with nothing enabled still shows its lock and why. **What the model does not have** is an order between transitions: ids are random, so an "else if" cannot mean "if the earlier ones failed". Write the conditions so they do not overlap (or let the player enable more than one). A real ordered chain would need a `priority` / `order` integer on `Transition` (proto field, `SetTransition` validation, golden fixtures on both sides, the Flows panel to reorder, and the analysis to flag an `else` with nothing to be the else of); a nested "if inside an action" would need the transition to carry a list of actions instead of one `effect`. Neither was done: the generated code and tests still treat `guard` and `effect` as comments (`// guard: ...`), exactly as before.
+
+## Present: device frames and hotspot hints
+
+**Present** shows the screen inside a device frame, chosen in the bottom bar (the choice is remembered in this browser): **Generic** (the plain bezel it always had), **Phone** (rounded body, a dynamic-island pill and a home bar over the screen), **Tablet** (a thicker bezel with a camera), **Desktop** (a browser window: title bar with the three buttons and an address bar showing the screen's name) or **No frame**. The frame is presentation only: the prototype plays at the frame's own size and the geometry is computed by `web/src/flow/devices.ts`.
+
+**Hotspot hints.** The clickable areas flash when a screen appears. Clicking anywhere else on the screen flashes them again ("where can I click?"), and **Show hotspots** in the bottom bar keeps them lit until turned off.
