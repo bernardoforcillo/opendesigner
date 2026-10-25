@@ -1,6 +1,5 @@
-/gen/
-/web/node_modules/
-/web/dist/*
+node_modules/
+*/dist/*
 !/web/dist/.gitkeep
 *.tsbuildinfo
 /opendesigner.exe
@@ -8,10 +7,10 @@
 *.opendesigner/
 .opendesigner/
 /.superpowers/
-docs/superpowers/plans/
-docs/superpowers/specs/
+docs/superpowers/
 /.playwright-mcp/
 /.opendesigner-e2e/
 /web/parity-out/
 /web/export-parity-out/
 /web/svg-import-out/
+tmp/
