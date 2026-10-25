@@ -45,6 +45,7 @@ const TARGETS: readonly { id: CodeTarget; label: string }[] = [
   { id: "html", label: "HTML" },
   { id: "swiftui", label: "SwiftUI" },
   { id: "compose", label: "Compose" },
+  { id: "leptos", label: "Leptos (Rust)" },
 ];
 
 // --- file tree ---------------------------------------------------------------
@@ -203,7 +204,7 @@ export function CodeWorkbench() {
   const scene = useScene((s) => s.scene);
   const selection = useScene((s) => s.selection);
   const readiness = useReadiness();
-  const [target, setTargetState] = useState<CodeTarget>(() => readStored(TARGET_KEY, ["react", "html", "swiftui", "compose"] as const, "react"));
+  const [target, setTargetState] = useState<CodeTarget>(() => readStored(TARGET_KEY, ["react", "html", "swiftui", "compose", "leptos"] as const, "react"));
   const [preview, setPreviewState] = useState(() => readStored(PREVIEW_KEY, ["on", "off"] as const, "off") === "on");
   const setTarget = (t: CodeTarget) => { setTargetState(t); store(TARGET_KEY, t); };
   const setPreview = (v: boolean) => { setPreviewState(v); store(PREVIEW_KEY, v ? "on" : "off"); };

@@ -81,6 +81,19 @@ func TestExportCode(t *testing.T) {
 		t.Error("html: index.html missing (the flow's start screen)")
 	}
 
+	// leptos: the Rust project of the same document.
+	resp, err = c.ExportCode(ctx, connect.NewRequest(&opendesignerv1.ExportCodeRequest{DocId: docID, Target: "leptos"}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var hasApp bool
+	for _, f := range resp.Msg.GetFiles() {
+		hasApp = hasApp || f.GetPath() == "src/app.rs"
+	}
+	if !hasApp {
+		t.Error("leptos: src/app.rs missing")
+	}
+
 	// Errors: unknown target and unknown flow are input errors; a
 	// document that does not exist is NotFound.
 	for _, req := range []*opendesignerv1.ExportCodeRequest{

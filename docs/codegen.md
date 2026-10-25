@@ -8,6 +8,7 @@ used by the CLI, the RPC and the MCP tool.
 ```
 Document ──> screens ──> IR (tree of elements + CSS properties) ──┬─> html     (CSS in a <style>)
                                                                   ├─> react    (Tailwind v4 classes)
+                                                                  ├─> leptos   (Rust view! macros, the same CSS inline)
                                                                   ├─> swiftui  (native.go parses the CSS back)
                                                                   └─> compose  (same)
 ```
@@ -165,6 +166,44 @@ Screens have a fixed size.
 **Not verified by a compiler**: the sources are checked by golden tests and string assertions, not compiled
 (there is no Swift or Kotlin toolchain in the repo's CI). Treat the first build as the real test.
 
+## `leptos` target (Rust)
+
+`-target leptos` writes a client-side [Leptos](https://leptos.dev) 0.8 project built with [Trunk](https://trunkrs.dev).
+Unlike the native targets it does not parse anything back: like html it writes the IR's CSS properties as they are,
+in an inline `style="..."` attribute on every element of a `view!` macro, so fills (gradients included, the diamond
+as its exact four layers), strokes, shadows, filters, text and inline SVG vectors come out as in the html target.
+
+| File | Content |
+|---|---|
+| `src/screens/<name>.rs` | one screen = one `#[component]` whose `view!` holds the markup (`snake_case` file, PascalCase function) |
+| `src/components/<name>.rs` | one component set (or a component with properties) = one `#[component]` with props |
+| `src/app.rs` | `leptos_router` routes (`<Routes>` / `<Route path=path!("/cart") view=Cart />`); the start screen is also on `/` |
+| `src/main.rs`, `Cargo.toml`, `index.html` | `mount_to_body(App)`, dependencies (`leptos` with `csr`, `leptos_router`, `web-sys`), the Trunk page with the base CSS and fonts |
+| `public/assets/<hash>.<ext>` | the document's images (`<link data-trunk rel="copy-dir">`) |
+| `tests/flows.spec.ts`, `playwright.config.ts`, `package.json` | the **same** Playwright tests as the react target; the config starts `trunk serve --port 5173` |
+
+Components: the set's axes are `String` props (the first option by default), a BOOLEAN property is a `bool`
+(`{icon.then(|| view! { ... })}`), a TEXT property a `String` (`{label.clone()}`), a NUMBER property an `f64` written into
+the target's inline style (`format!("... opacity: {}", fade)`), an INSTANCE_SWAP property an `Option<ViewFn>`
+slot (`match &icon { Some(f) => f.run().into_any(), None => <default content> }`). The component `match`es on the
+axes (`format!("{}|{}", size, kind)`), and a combination without a variant renders `()`. An instance becomes
+`<Button size="L" label="Buy" icon=true />`. Prop names are snake_case (`buttonSize` -> `button_size`).
+
+Flow wiring is the react target's: the trigger element gets `role="button"`, `tabindex`, `aria-label`, `on:click` and
+`on:keydown` (Enter) calling `use_navigate()`, a pointer cursor and its `data-testid`; a transition without an element is a
+visually hidden `<button>` in a transparent `<nav>` (1px, top-left); `key` triggers are one `window_event_listener` removed
+with `on_cleanup`; `back` goes back in the browser history; `auto` is a comment. `// flow:`, `// guard:`, `// effect:` and
+`// chain:` (the if / else if position, see [flows.md](flows.md)) lines are Rust comments next to the element. A route the
+router's `path!` cannot take (`/p/[slug]`) is mounted as `/p/:slug` and reported as a warning.
+
+**Not exported**: animation clips (a warning and a README note). Screens have a fixed size.
+
+**Verified with a compiler** (unlike Swift and Kotlin): `go test ./internal/codegen` checks goldens and strings, and
+`OD_CARGO_CHECK=1 go test ./internal/codegen -run LeptosCompiles` runs `cargo check` (`RUSTFLAGS=-D warnings`) on the shop,
+button-set and card-with-swap projects; the same dump (`LEPTOS_OUT=dir`) was also checked for images, vectors with
+angular / diamond patterns, key / back / auto triggers and animated documents. **Not run**: `trunk build` / `trunk serve`
+(no wasm target or browser here), so the wasm bundle and the generated Playwright tests have not been executed.
+
 ## Flow wiring
 
 For every transition of the chosen flows:
@@ -271,7 +310,7 @@ at the same time are spaced 0.0001% apart so they do not merge) and an
 
 ```sh
 opendesigner export [-workspace DIR] [-doc ID|NAME | -json FILE] [-assets DIR]
-                    [-target react|html|swiftui|compose] [-out DIR] [-flow ID] [-force]
+                    [-target react|html|swiftui|compose|leptos] [-out DIR] [-flow ID] [-force]
 ```
 
 - loads the document **offline** from the workspace (like `opendesigner flow`),

@@ -14,10 +14,10 @@ import { useScene } from "../store/store";
 // gesture open (a drag changes nodes at every pixel) and (d) the in-flight request
 // is CANCELLED (AbortController) when a new one starts or on exit.
 
-export type CodeTarget = "react" | "html" | "swiftui" | "compose";
+export type CodeTarget = "react" | "html" | "swiftui" | "compose" | "leptos";
 
 /** Every target the server can generate, in the order the pickers show them. */
-export const CODE_TARGETS: readonly CodeTarget[] = ["react", "html", "swiftui", "compose"];
+export const CODE_TARGETS: readonly CodeTarget[] = ["react", "html", "swiftui", "compose", "leptos"];
 
 export interface CodeFile {
   path: string;
@@ -57,11 +57,11 @@ export interface CodegenState {
   byTarget: Record<CodeTarget, TargetState>;
 }
 
-export const useCodegen = create<CodegenState>(() => ({ byTarget: { react: EMPTY, html: EMPTY, swiftui: EMPTY, compose: EMPTY } }));
+export const useCodegen = create<CodegenState>(() => ({ byTarget: { react: EMPTY, html: EMPTY, swiftui: EMPTY, compose: EMPTY, leptos: EMPTY } }));
 
 /** Empties the store (document change, tests). */
 export function resetCodegen(): void {
-  useCodegen.setState({ byTarget: { react: EMPTY, html: EMPTY, swiftui: EMPTY, compose: EMPTY } });
+  useCodegen.setState({ byTarget: { react: EMPTY, html: EMPTY, swiftui: EMPTY, compose: EMPTY, leptos: EMPTY } });
 }
 
 function patch(target: CodeTarget, p: Partial<TargetState>): void {
@@ -157,7 +157,7 @@ export const FILE_GROUP_LABELS: Record<FileGroupId, string> = {
 };
 const GROUP_ORDER: FileGroupId[] = ["screens", "components", "app", "config", "tests", "assets"];
 
-const CONFIG_FILES = new Set(["package.json", "vite.config.ts", "tsconfig.json", "playwright.config.ts", ".gitignore"]);
+const CONFIG_FILES = new Set(["package.json", "vite.config.ts", "tsconfig.json", "playwright.config.ts", ".gitignore", "Cargo.toml"]);
 
 /** Which group a generated file belongs to (every target). */
 export function groupOf(path: string, target: CodeTarget): FileGroupId {

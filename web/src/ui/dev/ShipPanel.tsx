@@ -58,6 +58,7 @@ const OTHER_FORMATS: readonly { target: CodeTarget; label: string }[] = [
   { target: "html", label: "HTML only" },
   { target: "swiftui", label: "SwiftUI" },
   { target: "compose", label: "Jetpack Compose" },
+  { target: "leptos", label: "Leptos (Rust)" },
 ];
 
 export function ShipPanel() {

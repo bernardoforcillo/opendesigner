@@ -5343,7 +5343,8 @@ export const ExportFileSchema: GenMessage<ExportFile> = /*@__PURE__*/
 /**
  * target: "react" (default: Vite + React + TypeScript + Tailwind v4 + Playwright
  * flow tests), "html" (one file per screen), "swiftui" (Swift views for an
- * iOS/macOS app) or "compose" (Kotlin composables for an Android app). empty
+ * iOS/macOS app), "compose" (Kotlin composables for an Android app) or "leptos"
+ * (a Leptos / Rust client-side app built with Trunk). empty
  * flow_id = wires up and tests all flows.
  *
  * @generated from message opendesigner.v1.ExportCodeRequest

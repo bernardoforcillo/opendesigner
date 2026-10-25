@@ -51,7 +51,7 @@ export function shipScript(steps: readonly CommandStep[]): string {
 /** The MCP tools for an agent, with what they are for. */
 export const AGENT_TOOLS: readonly { name: string; hint: string }[] = [
   { name: "get_flow_spec", hint: "the flows' Markdown spec, to use as a requirement" },
-  { name: "export_code", hint: "generates the project (react, html, swiftui or compose) in a folder" },
+  { name: "export_code", hint: "generates the project (react, html, swiftui, compose or leptos) in a folder" },
   { name: "analyze_flows", hint: "flow issues and paths" },
 ];
 

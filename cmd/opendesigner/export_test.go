@@ -62,6 +62,15 @@ func TestExportCLIJSON(t *testing.T) {
 		t.Error("html: index.html not written")
 	}
 
+	// leptos: a Rust project.
+	rs := filepath.Join(dir, "leptos")
+	if code, _, stderr = runExportCLI(t, "-json", docFile, "-target", "leptos", "-out", rs); code != 0 {
+		t.Fatalf("leptos: code=%d stderr=%q", code, stderr)
+	}
+	if _, err := os.Stat(filepath.Join(rs, "src/app.rs")); err != nil {
+		t.Error("leptos: src/app.rs not written")
+	}
+
 	// Input errors.
 	for name, args := range map[string][]string{
 		"target": {"-json", docFile, "-target", "vue", "-out", filepath.Join(dir, "x1")},

@@ -137,7 +137,8 @@ Output
 ## 3. Handoff and ecosystem
 - [x] Dev mode: CSS/Tailwind/React and measurements (size, position, gaps to parent and siblings of the selection, in the Ship panel)
 - [x] SwiftUI and Jetpack Compose code (screens, auto layout, fills, gradients, strokes, shadows, text, vectors, images, components with properties as parameters, flows as navigation); format picker in Develop and Ship, `export_code` target; docs/codegen.md
-- [ ] Leptos (Rust) code target
+- [x] Leptos (Rust) code target (view! macros with the IR's inline CSS, components with props, `leptos_router` routes, flows as `use_navigate`, the react target's Playwright tests; format picker in Develop and Ship, `export_code` target, CLI; type-checked with `cargo check`); docs/codegen.md
+- [x] Diamond gradient exact in CSS (four quadrant layers) and angular / diamond as SVG patterns in vector code (was a circle / the first stop); docs/shapes.md
 - [x] Ready for dev: frames marked ready (with a server-side snapshot), a ready list with focus view, colour-coded annotations on layers shown in Develop and written into the exported code, Compare changes (property-level diff against the snapshot); RPC `CompareReady`, MCP tools; see docs/handoff.md
 - [x] Plugin API (sandboxed scripts with a read/write bridge; docs/handoff.md)
 - [x] Tokens in and out: W3C Design Tokens (DTCG) JSON and CSS custom properties, with modes; import of a DTCG file as collections (variables dialog); see docs/handoff.md

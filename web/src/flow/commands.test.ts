@@ -195,7 +195,7 @@ describe("if / else if / else chains", () => {
   it("joining puts the transition at the end of the chain, one op each", () => {
     expect(orders(joinChainOps(sc(), sc().transitions.t1))).toEqual(["t1:1"]);
     const s = sc();
-    const half = { ...s, transitions: { ...s.transitions, t1: { ...s.transitions.t1, order: 1 } } };
+    const half: typeof s = { ...s, transitions: { ...s.transitions, t1: { ...s.transitions.t1, order: 1 } } };
     expect(orders(joinChainOps(half, half.transitions.t2))).toEqual(["t2:2"]);
     expect(joinChainOps(half, half.transitions.t1)).toEqual([]); // already in a chain
   });

@@ -76,11 +76,22 @@ func (u *compUnit) identOf(name string) string {
 }
 
 // regNaming: the type and identifier names a native target must not use.
-type regNaming struct{ types, idents map[string]bool }
+//
+// fix (optional) rewrites a prop identifier first, for a language with another convention (leptos: snake_case).
+type regNaming struct {
+	types, idents map[string]bool
+	fix           func(string) string
+}
 
 // ident renames a reserved identifier; a nil receiver (react) keeps it.
 func (n *regNaming) ident(s string) string {
-	if n != nil && n.idents[s] {
+	if n == nil {
+		return s
+	}
+	if n.fix != nil {
+		s = n.fix(s)
+	}
+	if n.idents[s] {
 		return s + "Prop"
 	}
 	return s

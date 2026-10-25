@@ -12,12 +12,12 @@ export interface Token {
   k: TokenKind;
   s: string;
 }
-export type Lang = "tsx" | "swift" | "kotlin" | "html" | "css" | "json" | "md" | "text";
+export type Lang = "tsx" | "swift" | "kotlin" | "rust" | "html" | "css" | "json" | "md" | "text";
 
 const EXT: Record<string, Lang> = {
   ts: "tsx", tsx: "tsx", js: "tsx", jsx: "tsx", mjs: "tsx", cjs: "tsx",
   html: "html", htm: "html", css: "css", json: "json", md: "md",
-  swift: "swift", kt: "kotlin", kts: "kotlin",
+  swift: "swift", kt: "kotlin", kts: "kotlin", rs: "rust",
 };
 
 export function langOf(path: string): Lang {
@@ -39,6 +39,11 @@ const SWIFT_KEYWORDS = new Set((
 const KOTLIN_KEYWORDS = new Set((
   "package import fun val var class object interface return if else for in when is as true false null this " +
   "override private public data sealed companion by"
+).split(" "));
+
+const RUST_KEYWORDS = new Set((
+  "use mod pub fn let mut const static struct enum impl trait for in while loop if else match return move ref as " +
+  "true false self Self super crate where dyn async await type unsafe"
 ).split(" "));
 
 const isIdStart = (c: string) => /[A-Za-z_$]/.test(c);
@@ -315,6 +320,7 @@ export function highlight(code: string, lang: Lang): Token[][] {
     case "tsx": scanTsx(code, out); break;
     case "swift": scanTsx(code, out, SWIFT_KEYWORDS, false); break;
     case "kotlin": scanTsx(code, out, KOTLIN_KEYWORDS, false); break;
+    case "rust": scanTsx(code, out, RUST_KEYWORDS, false); break;
     case "html": scanHtml(code, out); break;
     case "css": scanCss(code, out); break;
     case "json": scanJson(code, out); break;

@@ -14,6 +14,10 @@ and which it did not.
 - **Dev Mode and code** (docs/codegen.md, docs/handoff.md, docs/flows.md): SwiftUI and Jetpack Compose
   export, ready-for-dev and annotations, compare changes, device frames and hotspot hints in Present,
   prototype expressions and `else` guards.
+- **Leptos export, ordered else-if, exact gradients** (docs/codegen.md, docs/flows.md, docs/shapes.md): a Leptos
+  (Rust) code target, `Transition.order` for if / else if / else chains, and the diamond (CSS layers) and
+  angular / diamond (SVG patterns) gradients in code. The Leptos output passes `cargo check`; `trunk build`
+  and the generated Playwright tests were not run (no wasm target or browser here).
 - **Type and effects** (docs/typography.md, docs/effects.md): text case, super/subscript, lists, indent,
   OpenType features, vertical alignment and inset, progressive blur, noise, texture and glass.
 
@@ -21,7 +25,6 @@ and which it did not.
 
 - Auto layout grid mode (fixed / hug / fr tracks, spans); groups as auto layout children.
 - Horizontal text scale; rich-text runs do not use the new case, list, script and inset features.
-- Leptos code export; ordered `else if` chains in prototypes.
 - Shape builder, variable-width strokes, vector-network editing tools, noise/glass refraction.
 - Plugins in WebAssembly, localization catalogs, accessibility tree, accounts and teams.
 - Real-file `.fig` fidelity, Display P3, `.fig` export.
