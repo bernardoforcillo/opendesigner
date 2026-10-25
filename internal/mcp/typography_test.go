@@ -76,7 +76,7 @@ func TestTypographyToolsEndToEnd(t *testing.T) {
 			return err
 		},
 		"bad align": func() error {
-			_, err := s.SetTextStyle(ctx, odmcp.SetTextStyleInput{TextStyleBody: odmcp.TextStyleBody{Name: "x", FontSize: 10, Align: "justify"}})
+			_, err := s.SetTextStyle(ctx, odmcp.SetTextStyleInput{TextStyleBody: odmcp.TextStyleBody{Name: "x", FontSize: 10, Align: "diagonal"}})
 			return err
 		},
 		"unknown style": func() error {

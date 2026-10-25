@@ -3,17 +3,21 @@ import { NodeSchema } from "../gen/opendesigner/v1/opendesigner_pb";
 import type { Node as PbNode, Op } from "../gen/opendesigner/v1/opendesigner_pb";
 import { isValidEasing } from "../animation/engine";
 import { isValidClip } from "../animation/validate";
-import { type SceneState, type ClipLite, toComponentPropertyLite, toComponentSetLite, toCollectionLite, toVariableLite, toFontLite, toTextStyleDefLite, type NodeLite, type TransitionLite, TRANSITION_ANIMATIONS, toFlowLite, toClipLite, toTransitionLite, toCommentLite, toNodeLite, toTextStyleLite, toSubPathsLite, toInstanceOverrideLite } from "./types";
+import { type SceneState, type ClipLite, toComponentPropertyLite, toComponentSetLite, toCollectionLite, toVariableLite, toFontLite, toTextStyleDefLite, toObjectStyleLite, toLayerLite, type NodeLite, type TransitionLite, TRANSITION_ANIMATIONS, toFlowLite, toClipLite, toTransitionLite, toCommentLite, toNodeLite, toTextStyleLite, toSubPathsLite, toInstanceOverrideLite } from "./types";
 import { type MaskPath, isMaskPath } from "./maskPaths";
 import { layoutTargets, relayout, resizeChildren } from "./layout";
 import { recordDelta } from "./sceneDelta";
 import { carryRenames, cascadeComponentTargets, detachInvalidMembers, isValidComponentDef, isValidComponentSet, isValidInstanceProps, makeRenamer } from "./components";
 import { isValidFont, isValidTextStyleDef, isValidTextStyleId, unstyleNodes } from "./typography";
+import { detachNodes, isValidLayer, isValidLayerId, isValidObjectStyle, isValidObjectStyleId } from "./graphics";
 import { areValidLayoutGrids } from "./layoutGrids";
 import { arePaintsValid } from "./paints";
 import { isValidComment, withoutComment } from "./comments";
 import { areValidBindings, areValidModes, dropRemovedModes, isValidCollection, isValidVariable, unbindNodes, withAliases } from "./variables";
 import { childrenOf, isAncestorOf, parentExists, subtreeOf } from "./tree";
+import { clampRich, isValidRich, richFields } from "./richText";
+import { isValidDocSettings, isValidPageSetup, toDocSettings } from "./docSettings";
+import { deletePageAllowed, masterFieldsValid, pageOf, updatePageAllowed } from "./masters";
 
 // A SetProperties WITHOUT a patch is NOT a no-op. Go reads the patch with protobuf's
 // nil-safe getters (`p.GetX()` on a nil *Node returns the field's zero),
@@ -55,6 +59,7 @@ function singleTouchedNode(op: Op, state: SceneState): string | null {
     }
     case "setText": return k.value.id;
     case "setVectorPath": return k.value.id;
+    case "setImage": return k.value.id;
     default: return null;
   }
 }
@@ -134,6 +139,8 @@ function applyOpRaw(state: SceneState, op: Op): SceneState {
       if (paths.includes("bindings") && !areValidBindings(state, p.bindings)) return state;
       if (paths.includes("modes") && !areValidModes(state, p.modes)) return state;
       if (paths.includes("text_style_id") && !isValidTextStyleId(state, cur, p.textStyleId)) return state;
+      if (paths.includes("object_style_id") && !isValidObjectStyleId(state, cur, p.objectStyleId)) return state;
+      if (paths.includes("layer_id") && !isValidLayerId(state, p.layerId)) return state;
       // The enums are closed: an out-of-range number is rejected whole (core.applySetProps).
       if (paths.includes("constraint_x") && !(p.constraintX >= 0 && p.constraintX <= 5)) return state;
       if (paths.includes("constraint_y") && !(p.constraintY >= 0 && p.constraintY <= 5)) return state;
@@ -198,6 +205,14 @@ function applyOpRaw(state: SceneState, op: Op): SceneState {
           }
           case "text_style_id": {
             if (p.textStyleId !== "") next.textStyleId = p.textStyleId; else delete next.textStyleId;
+            break;
+          }
+          case "object_style_id": {
+            if (p.objectStyleId !== "") next.objectStyleId = p.objectStyleId; else delete next.objectStyleId;
+            break;
+          }
+          case "layer_id": {
+            if (p.layerId !== "") next.layerId = p.layerId; else delete next.layerId;
             break;
           }
           // Through toNodeLite, like the other enums: UNSPECIFIED / FIXED remove the field.
@@ -281,14 +296,30 @@ function applyOpRaw(state: SceneState, op: Op): SceneState {
       // keystroke would bring the font to 0). The flag takes precedence
       // over the presence of the sub-message: a `style` with stylePresent=false
       // must be ignored, exactly as Go does, reading only GetStylePresent().
-      const text = {
+      const { paragraphStyles, runs, richPresent } = op.kind.value;
+      // Rich text (parity with core.applySetText): with richPresent the lists replace the node's and are
+      // validated first -- a rejection changes nothing; without it they follow the new content.
+      if (richPresent && !isValidRich(state, content, paragraphStyles, runs)) return state;
+      const base = {
         content,
         style: stylePresent ? toTextStyleLite(style) : cur.text.style,
       };
+      const text = richPresent
+        ? { ...base, ...richFields(paragraphStyles, runs) }
+        : clampRich({ ...base, ...(cur.text.paragraphStyles ? { paragraphStyles: cur.text.paragraphStyles } : {}), ...(cur.text.runs ? { runs: cur.text.runs } : {}) });
       return { ...state, nodes: state.nodes.set(id, { ...cur, text }) };
     }
     // Dedicated op and not a mask path, for the same reason as setText: the
     // geometry lives INSIDE the `shape` oneof. Parity with core.applySetVectorPath (Go).
+    // Relink: the source of an image node. Parity with core.applySetImage.
+    case "setImage": {
+      const { id, image } = op.kind.value;
+      const cur = state.nodes.at(id);
+      if (!cur || cur.kind !== "image" || !image) return state;                // ErrNodeNotFound / ErrNotImageNode
+      // eslint-disable-next-line no-control-regex
+      if (image.originalName.length > 255 || /[\u0000-\u001f\u007f]/.test(image.originalName) || image.pixelWidth > 1048576 || image.pixelHeight > 1048576) return state;
+      return { ...state, nodes: state.nodes.set(id, { ...cur, image: toNodeLite(create(NodeSchema, { shape: { case: "image", value: image } })).image }) };
+    }
     case "setVectorPath": {
       const { id, subpaths } = op.kind.value;
       const cur = state.nodes.at(id);
@@ -358,7 +389,35 @@ function applyOpRaw(state: SceneState, op: Op): SceneState {
       if (!page || page.id === "" || parentExists(state, page.id)) return state;
       // At the END, like Go: the position in the list is the order of the page
       // selector, not a property of the document.
-      return { ...state, pages: [...state.pages, { id: page.id, name: page.name }] };
+      const created = pageOf(page);
+      if (!masterFieldsValid(state.pages, created)) return state; // ErrBadMaster
+      if (!isValidPageSetup(created)) return state;               // ErrBadPageSetup
+      return { ...state, pages: [...state.pages, created] };
+    }
+    // Moves a page to `index` of the page order. Parity with core.applyMovePage.
+    case "movePage": {
+      const { id, index } = op.kind.value;
+      const i = state.pages.findIndex((p) => p.id === id);
+      if (i < 0 || index >= state.pages.length) return state;
+      const rest = state.pages.filter((p) => p.id !== id);
+      return { ...state, pages: [...rest.slice(0, index), state.pages[i], ...rest.slice(index)] };
+    }
+    // Absolute upsert of the document settings (vertical, baseline grid). Parity with core.applySetDocSettings.
+    case "setDocSettings": {
+      const s = op.kind.value.settings;
+      if (!s || !isValidDocSettings(s)) return state;
+      const settings = toDocSettings(s);
+      const { settings: _drop, ...rest } = state;
+      void _drop;
+      return Object.keys(settings).length > 0 ? { ...rest, settings } : rest;
+    }
+    // Absolute upsert of a page's name / master flag / applied master / sheet setup. Parity with core.applyUpdatePage.
+    case "updatePage": {
+      const page = op.kind.value.page;
+      if (!page || page.id === "") return state;
+      const next = pageOf(page);
+      if (!updatePageAllowed(state.pages, next)) return state;
+      return { ...state, pages: state.pages.map((p) => (p.id === next.id ? next : p)) };
     }
     // Deletes the page AND ALL the nodes hanging under it. Same cascade as
     // deleteNode brought to the root: what is not reachable from any
@@ -368,9 +427,9 @@ function applyOpRaw(state: SceneState, op: Op): SceneState {
       const { id } = op.kind.value;
       const i = state.pages.findIndex((p) => p.id === id);
       if (i < 0) return state;                    // ErrPageNotFound
-      // The LAST page is not deleted: without pages no valid parent
-      // exists, so no node could be created anymore. ErrLastPage.
-      if (state.pages.length === 1) return state;
+      // The LAST regular page is not deleted (without pages no valid parent exists), and a master
+      // that pages still apply is not deleted either: ErrLastPage / ErrMasterInUse.
+      if (!deletePageAllowed(state.pages, id)) return state;
       const nodes = state.nodes.edit();
       const gone = new Set<string>();
       for (const root of childrenOf(state, id)) {
@@ -494,6 +553,10 @@ function applyOpRaw(state: SceneState, op: Op): SceneState {
       const gone = withAliases(state, new Set([id]));                       // its aliases go with it
       const variables = { ...state.variables };
       for (const g of gone) delete variables[g];
+      // A tint of a swatch that went stays a swatch of the color it shows, no longer a tint.
+      for (const v of Object.values(variables)) {
+        if (v.tintOf !== undefined && gone.has(v.tintOf)) { const { tintOf: _t, tint: _n, ...rest } = v; void _t; void _n; variables[v.id] = rest; }
+      }
       return { ...state, variables, nodes: unbindNodes(state, gone) };
     }
     // --- component variants and properties ---------------------------------
@@ -571,8 +634,45 @@ function applyOpRaw(state: SceneState, op: Op): SceneState {
     }
     case "setTextStyleDef": {
       const d = op.kind.value.textStyle;
-      if (!isValidTextStyleDef(d)) return state;
+      if (!isValidTextStyleDef(state, d)) return state;
       return { ...state, textStyles: { ...state.textStyles, [d.id]: toTextStyleDefLite(d) } };
+    }
+    // Parity with core.applySetObjectStyleDef / applyDeleteObjectStyleDef / applySetLayer / applyDeleteLayer.
+    case "setObjectStyleDef": {
+      const d = op.kind.value.objectStyle;
+      if (!isValidObjectStyle(state, d)) return state;
+      return { ...state, objectStyles: { ...state.objectStyles, [d.id]: toObjectStyleLite(d) } };
+    }
+    case "deleteObjectStyleDef": {
+      const { id } = op.kind.value;
+      if (!state.objectStyles[id]) return state;                            // ErrObjectStyleMissing
+      const objectStyles: SceneState["objectStyles"] = {};
+      for (const [k, d] of Object.entries(state.objectStyles)) {
+        if (k === id) continue;
+        if (d.basedOn === id) { const { basedOn: _b, ...rest } = d; void _b; objectStyles[k] = rest; } else objectStyles[k] = d;
+      }
+      return { ...state, objectStyles, nodes: detachNodes(state, "objectStyleId", id) };
+    }
+    case "setLayer": {
+      const l = op.kind.value.layer;
+      if (!isValidLayer(state, l)) return state;
+      const next = toLayerLite(l);
+      const at = state.layers.findIndex((x) => x.id === l.id);
+      const layers = at >= 0 ? state.layers.map((x, i) => (i === at ? next : x)) : [...state.layers, next];
+      const pos = op.kind.value.position;
+      if (pos > 0) {
+        // Moved to that (1-based) place; beyond the end means last.
+        const from = layers.findIndex((x) => x.id === l.id);
+        const rest = layers.filter((_, i) => i !== from);
+        const to = Math.min(pos - 1, rest.length);
+        return { ...state, layers: [...rest.slice(0, to), next, ...rest.slice(to)] };
+      }
+      return { ...state, layers };
+    }
+    case "deleteLayer": {
+      const { id } = op.kind.value;
+      if (!state.layers.some((l) => l.id === id)) return state;             // ErrLayerMissing
+      return { ...state, layers: state.layers.filter((l) => l.id !== id), nodes: detachNodes(state, "layerId", id) };
     }
     case "deleteTextStyleDef": {
       const { id } = op.kind.value;

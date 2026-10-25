@@ -1,0 +1,204 @@
+{
+  "_comment": [
+    "Long documents (SetDocSettings with conditions and table_styles; docs/long-documents.md). Both sides run it.",
+    "Valid: two conditions (one visible, one hidden by default) and two table styles. Rejected: a repeated condition, a name with leading space or brackets or empty, a table style id with a space, an empty name, a repeated id, a bad style reference."
+  ],
+  "docId": "doc1",
+  "ops": [
+    {
+      "docId": "doc1",
+      "opId": "o0",
+      "setDocSettings": {
+        "settings": {
+          "conditions": [
+            {
+              "name": "Print",
+              "visible": true
+            },
+            {
+              "name": "Web only"
+            }
+          ],
+          "tableStyles": [
+            {
+              "id": "ts1",
+              "name": "Report",
+              "headerObjectStyleId": "os-head",
+              "bodyObjectStyleId": "os-body",
+              "altObjectStyleId": "os-alt",
+              "headerTextStyleId": "tx-head",
+              "bodyTextStyleId": "tx-body"
+            },
+            {
+              "id": "ts2",
+              "name": "Plain"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "docId": "doc1",
+      "opId": "o1",
+      "setDocSettings": {
+        "settings": {
+          "conditions": [
+            {
+              "name": "Print"
+            },
+            {
+              "name": "Print"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "docId": "doc1",
+      "opId": "o2",
+      "setDocSettings": {
+        "settings": {
+          "conditions": [
+            {
+              "name": " lead"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "docId": "doc1",
+      "opId": "o3",
+      "setDocSettings": {
+        "settings": {
+          "conditions": [
+            {
+              "name": "bad[name]"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "docId": "doc1",
+      "opId": "o4",
+      "setDocSettings": {
+        "settings": {
+          "conditions": [
+            {
+              "name": ""
+            }
+          ]
+        }
+      }
+    },
+    {
+      "docId": "doc1",
+      "opId": "o5",
+      "setDocSettings": {
+        "settings": {
+          "tableStyles": [
+            {
+              "id": "a b",
+              "name": "x"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "docId": "doc1",
+      "opId": "o6",
+      "setDocSettings": {
+        "settings": {
+          "tableStyles": [
+            {
+              "id": "x",
+              "name": ""
+            }
+          ]
+        }
+      }
+    },
+    {
+      "docId": "doc1",
+      "opId": "o7",
+      "setDocSettings": {
+        "settings": {
+          "tableStyles": [
+            {
+              "id": "x",
+              "name": "a"
+            },
+            {
+              "id": "x",
+              "name": "b"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "docId": "doc1",
+      "opId": "o8",
+      "setDocSettings": {
+        "settings": {
+          "tableStyles": [
+            {
+              "id": "x",
+              "name": "a",
+              "headerObjectStyleId": "has space"
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "rejected": [
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8
+  ],
+  "expected": {
+    "id": "doc1",
+    "name": "Untitled",
+    "pages": [
+      {
+        "id": "page1",
+        "name": "Page 1"
+      }
+    ],
+    "schemaVersion": 1,
+    "settings": {
+      "conditions": [
+        {
+          "name": "Print",
+          "visible": true
+        },
+        {
+          "name": "Web only"
+        }
+      ],
+      "tableStyles": [
+        {
+          "id": "ts1",
+          "name": "Report",
+          "headerObjectStyleId": "os-head",
+          "bodyObjectStyleId": "os-body",
+          "altObjectStyleId": "os-alt",
+          "headerTextStyleId": "tx-head",
+          "bodyTextStyleId": "tx-body"
+        },
+        {
+          "id": "ts2",
+          "name": "Plain"
+        }
+      ]
+    }
+  }
+}

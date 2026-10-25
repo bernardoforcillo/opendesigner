@@ -156,6 +156,9 @@ func validateVariable(doc *opendesignerv1.Document, v *opendesignerv1.Variable) 
 		(prev.GetType() != t || prev.GetCollectionId() != v.GetCollectionId()) {
 		return ErrVariableImmutable
 	}
+	if err := validateSwatch(doc, v); err != nil {
+		return err
+	}
 	if v.GetAliasOf() != "" {
 		return validateAlias(doc, v)
 	}
@@ -331,6 +334,12 @@ func applyDeleteVariable(doc *opendesignerv1.Document, d *opendesignerv1.DeleteV
 	for id := range gone {
 		delete(doc.Variables, id)
 	}
+	// A tint of a swatch that went stays a swatch of the color it shows, no longer a tint.
+	for _, v := range doc.Variables {
+		if gone[v.GetTintOf()] {
+			v.TintOf, v.Tint = "", 0
+		}
+	}
 	for _, id := range sortedNodeIDs(doc) {
 		if bindsAny(doc.Nodes[id], gone) {
 			unbind(cow.mut(doc, id), gone)
@@ -422,7 +431,7 @@ func VariableValueIn(doc *opendesignerv1.Document, v *opendesignerv1.Variable, m
 // as is; otherwise it is a clone, the document is never touched. A binding whose
 // variable, value or target paint is missing is ignored: the literal stays.
 func ResolveNode(doc *opendesignerv1.Document, n *opendesignerv1.Node) *opendesignerv1.Node {
-	n = resolveTextStyle(doc, n)
+	n = resolveObjectStyle(doc, resolveTextStyle(doc, n))
 	if len(n.GetBindings()) == 0 {
 		return n
 	}

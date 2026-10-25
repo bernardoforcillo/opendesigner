@@ -1,0 +1,295 @@
+{
+ "_comment": [
+  "Object styles (ops 44-45 SetObjectStyleDef, DeleteObjectStyleDef; mask path `object_style_id`). Run from BOTH",
+  "sides. Valid: a style, a style based on it, two nodes applying them, deleting the base (which detaches the node",
+  "and clears the `based_on` of the style built on it). Rejected: an unknown property in `sets`, a duplicate one,",
+  "opacity out of range, a style based on itself or in a loop, a node naming a missing style, a style on a group,",
+  "deleting a missing style. The scene MUST stay unchanged, in both Go and TS."
+ ],
+ "docId": "doc1",
+ "expected": {
+  "id": "doc1",
+  "name": "Untitled",
+  "nodes": {
+   "g": {
+    "group": {},
+    "id": "g",
+    "name": "g",
+    "opacity": 1,
+    "orderKey": "a3",
+    "parentId": "page1",
+    "visible": true
+   },
+   "r1": {
+    "height": 40,
+    "id": "r1",
+    "name": "r1",
+    "opacity": 1,
+    "orderKey": "a1",
+    "parentId": "page1",
+    "rect": {},
+    "visible": true,
+    "width": 100
+   },
+   "r2": {
+    "height": 40,
+    "id": "r2",
+    "name": "r2",
+    "objectStyleId": "soft",
+    "opacity": 1,
+    "orderKey": "a2",
+    "parentId": "page1",
+    "rect": {},
+    "visible": true,
+    "width": 100
+   }
+  },
+  "objectStyles": {
+   "soft": {
+    "id": "soft",
+    "name": "Soft",
+    "opacity": 0.2,
+    "sets": [
+     "opacity"
+    ]
+   }
+  },
+  "pages": [
+   {
+    "id": "page1",
+    "name": "Page 1"
+   }
+  ],
+  "schemaVersion": 1
+ },
+ "ops": [
+  {
+   "createNode": {
+    "node": {
+     "height": 40,
+     "id": "r1",
+     "name": "r1",
+     "opacity": 1,
+     "orderKey": "a1",
+     "parentId": "page1",
+     "rect": {},
+     "visible": true,
+     "width": 100,
+     "x": 0,
+     "y": 0
+    }
+   },
+   "docId": "doc1",
+   "opId": "o1"
+  },
+  {
+   "createNode": {
+    "node": {
+     "height": 40,
+     "id": "r2",
+     "name": "r2",
+     "opacity": 1,
+     "orderKey": "a2",
+     "parentId": "page1",
+     "rect": {},
+     "visible": true,
+     "width": 100,
+     "x": 0,
+     "y": 0
+    }
+   },
+   "docId": "doc1",
+   "opId": "o2"
+  },
+  {
+   "docId": "doc1",
+   "opId": "o3",
+   "setObjectStyleDef": {
+    "objectStyle": {
+     "cornerRadius": 8,
+     "fills": [
+      {
+       "solid": {
+        "color": {
+         "a": 1,
+         "b": 0,
+         "g": 0,
+         "r": 1
+        }
+       }
+      }
+     ],
+     "id": "card",
+     "name": "Card",
+     "opacity": 0.5,
+     "sets": [
+      "fills",
+      "opacity",
+      "corner_radius"
+     ]
+    }
+   }
+  },
+  {
+   "docId": "doc1",
+   "opId": "o4",
+   "setObjectStyleDef": {
+    "objectStyle": {
+     "basedOn": "card",
+     "id": "soft",
+     "name": "Soft",
+     "opacity": 0.2,
+     "sets": [
+      "opacity"
+     ]
+    }
+   }
+  },
+  {
+   "docId": "doc1",
+   "opId": "o5",
+   "setProps": {
+    "id": "r1",
+    "mask": "objectStyleId",
+    "patch": {
+     "objectStyleId": "card"
+    }
+   }
+  },
+  {
+   "docId": "doc1",
+   "opId": "o6",
+   "setProps": {
+    "id": "r2",
+    "mask": "objectStyleId",
+    "patch": {
+     "objectStyleId": "soft"
+    }
+   }
+  },
+  {
+   "docId": "doc1",
+   "opId": "o7",
+   "setObjectStyleDef": {
+    "objectStyle": {
+     "id": "x",
+     "name": "x",
+     "sets": [
+      "width"
+     ]
+    }
+   }
+  },
+  {
+   "docId": "doc1",
+   "opId": "o8",
+   "setObjectStyleDef": {
+    "objectStyle": {
+     "id": "x",
+     "name": "x",
+     "sets": [
+      "fills",
+      "fills"
+     ]
+    }
+   }
+  },
+  {
+   "docId": "doc1",
+   "opId": "o9",
+   "setObjectStyleDef": {
+    "objectStyle": {
+     "id": "x",
+     "name": "x",
+     "opacity": 2,
+     "sets": [
+      "opacity"
+     ]
+    }
+   }
+  },
+  {
+   "docId": "doc1",
+   "opId": "o10",
+   "setObjectStyleDef": {
+    "objectStyle": {
+     "basedOn": "card",
+     "id": "card",
+     "name": "Card"
+    }
+   }
+  },
+  {
+   "docId": "doc1",
+   "opId": "o11",
+   "setObjectStyleDef": {
+    "objectStyle": {
+     "basedOn": "soft",
+     "id": "card",
+     "name": "Card"
+    }
+   }
+  },
+  {
+   "docId": "doc1",
+   "opId": "o12",
+   "setProps": {
+    "id": "r1",
+    "mask": "objectStyleId",
+    "patch": {
+     "objectStyleId": "nope"
+    }
+   }
+  },
+  {
+   "deleteObjectStyleDef": {
+    "id": "nope"
+   },
+   "docId": "doc1",
+   "opId": "o13"
+  },
+  {
+   "createNode": {
+    "node": {
+     "group": {},
+     "id": "g",
+     "name": "g",
+     "opacity": 1,
+     "orderKey": "a3",
+     "parentId": "page1",
+     "visible": true
+    }
+   },
+   "docId": "doc1",
+   "opId": "o14"
+  },
+  {
+   "docId": "doc1",
+   "opId": "o15",
+   "setProps": {
+    "id": "g",
+    "mask": "objectStyleId",
+    "patch": {
+     "objectStyleId": "card"
+    }
+   }
+  },
+  {
+   "deleteObjectStyleDef": {
+    "id": "card"
+   },
+   "docId": "doc1",
+   "opId": "o16"
+  }
+ ],
+ "rejected": [
+  6,
+  7,
+  8,
+  9,
+  10,
+  11,
+  12,
+  14
+ ]
+}

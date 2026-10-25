@@ -2,8 +2,10 @@ import { create, type MessageInitShape } from "@bufbuild/protobuf";
 import { NodeSchema, OpSchema } from "../gen/opendesigner/v1/opendesigner_pb";
 import type { Node, Op } from "../gen/opendesigner/v1/opendesigner_pb";
 import { useScene } from "../store/store";
-import { toPbComment, toPbClip, toPbComponentProperty, toPbComponentSet, toPbCollection, toPbVariable, toPbFont, toPbTextStyleDef, toPbFlow, toPbInstanceOverride, toPbSubPaths, toPbTextStyle, toPbTransition } from "../store/types";
-import type { CommentLite, ClipLite, CollectionLite, ComponentPropertyLite, ComponentSetLite, FontLite, TextStyleDefLite, VariableLite, FlowLite, InstanceOverrideLite, SubPathLite, TextStyleLite, TransitionLite } from "../store/types";
+import { settingsToMsg, toPbComment, toPbClip, toPbComponentProperty, toPbComponentSet, toPbCollection, toPbVariable, toPbFont, toPbTextStyleDef, toPbObjectStyleDef, toPbLayer, toPbFlow, toPbInstanceOverride, toPbSubPaths, toPbTextStyle, toPbTransition } from "../store/types";
+import { pageToPb } from "../store/masters";
+import type { DocSettingsLite, PageLite } from "../store/types";
+import type { CommentLite, ClipLite, CollectionLite, ComponentPropertyLite, ComponentSetLite, FontLite, LayerLite, ObjectStyleLite, TextStyleDefLite, VariableLite, FlowLite, InstanceOverrideLite, SubPathLite, TextStyleLite, TransitionLite } from "../store/types";
 import type { MaskPath } from "../store/maskPaths";
 
 // Centralized construction of Ops: every tool goes through here, so opId and docId
@@ -55,15 +57,38 @@ export function makeSetPropsOp(
 // says "touch the style too". Passing it without a style would zero the font;
 // passing a style without the flag would make both
 // implementations ignore it. Here the two cases are not even expressible.
-export function makeSetTextOp(id: string, content: string, style?: TextStyleLite): Op {
+//
+// With `rich` the node's paragraph styles and character-style runs are replaced too (richPresent);
+// without it they stay, adjusted to the new content by the core.
+export function trimEmpty(list: readonly string[]): string[] {
+  let n = list.length;
+  while (n > 0 && list[n - 1] === "") n--;
+  return list.slice(0, n);
+}
+
+export function makeSetTextOp(
+  id: string,
+  content: string,
+  style?: TextStyleLite,
+  rich?: { paragraphStyles: readonly string[]; runs: readonly { start: number; end: number; styleId: string }[] },
+): Op {
   return create(OpSchema, {
     opId: uuid(),
     docId: docId(),
     kind: {
       case: "setText",
-      value: style
-        ? { id, content, style: toPbTextStyle(style), stylePresent: true }
-        : { id, content },
+      value: {
+        id, content,
+        ...(style ? { style: toPbTextStyle(style), stylePresent: true } : {}),
+        ...(rich
+          ? {
+              richPresent: true,
+              // Trailing "" entries mean nothing: they are left out.
+              paragraphStyles: trimEmpty(rich.paragraphStyles),
+              runs: rich.runs.map((r) => ({ start: r.start, end: r.end, styleId: r.styleId })),
+            }
+          : {}),
+      },
     },
   });
 }
@@ -118,6 +143,40 @@ export function makeDeleteOp(id: string): Op {
 // it (setCurrentPage), without waiting for the echo.
 export function makeCreatePageOp(id: string, name: string): Op {
   return create(OpSchema, { opId: uuid(), docId: docId(), kind: { case: "createPage", value: { page: { id, name } } } });
+}
+
+/** A page with its master and sheet setup (see store/masters.ts, store/docSettings.ts). */
+export function makeCreatePageWithMasterOp(id: string, name: string, opts: Omit<PageLite, "id" | "name">): Op {
+  return create(OpSchema, { opId: uuid(), docId: docId(), kind: { case: "createPage", value: { page: pageToPb({ id, name, ...opts }) } } });
+}
+
+/**
+ * Absolute upsert of a page: name, master flag, applied master AND sheet setup. It replaces the whole
+ * page, so callers pass the page as it is with their change applied -- `{ ...page, masterId }`.
+ */
+export function makeUpdatePageOp(p: PageLite): Op {
+  return create(OpSchema, { opId: uuid(), docId: docId(), kind: { case: "updatePage", value: { page: pageToPb(p) } } });
+}
+
+/** Moves a page to `index` of the page order. */
+export function makeMovePageOp(id: string, index: number): Op {
+  return create(OpSchema, { opId: uuid(), docId: docId(), kind: { case: "movePage", value: { id, index } } });
+}
+
+/** Replaces what an image node shows (relink): the asset and what is known about the file it came from. */
+export function makeSetImageOp(id: string, image: { assetHash: string; originalName?: string; pixelWidth?: number; pixelHeight?: number }): Op {
+  return create(OpSchema, {
+    opId: uuid(), docId: docId(),
+    kind: { case: "setImage", value: { id, image: { assetHash: image.assetHash, originalName: image.originalName ?? "", pixelWidth: image.pixelWidth ?? 0, pixelHeight: image.pixelHeight ?? 0 } } },
+  });
+}
+
+/** Absolute upsert of the document settings (vertical, baseline grid). */
+export function makeSetDocSettingsOp(s: DocSettingsLite): Op {
+  return create(OpSchema, {
+    opId: uuid(), docId: docId(),
+    kind: { case: "setDocSettings", value: { settings: settingsToMsg(s) } },
+  });
 }
 
 export function makeDeletePageOp(id: string): Op {
@@ -271,6 +330,18 @@ export function makeDeleteFontOp(id: string): Op {
 }
 export function makeSetTextStyleDefOp(d: TextStyleDefLite): Op {
   return create(OpSchema, { opId: uuid(), docId: docId(), kind: { case: "setTextStyleDef", value: { textStyle: toPbTextStyleDef(d) } } });
+}
+export function makeSetObjectStyleDefOp(d: ObjectStyleLite): Op {
+  return create(OpSchema, { opId: uuid(), docId: docId(), kind: { case: "setObjectStyleDef", value: { objectStyle: toPbObjectStyleDef(d) } } });
+}
+export function makeDeleteObjectStyleDefOp(id: string): Op {
+  return create(OpSchema, { opId: uuid(), docId: docId(), kind: { case: "deleteObjectStyleDef", value: { id } } });
+}
+export function makeSetLayerOp(l: LayerLite, position = 0): Op {
+  return create(OpSchema, { opId: uuid(), docId: docId(), kind: { case: "setLayer", value: { layer: toPbLayer(l), position } } });
+}
+export function makeDeleteLayerOp(id: string): Op {
+  return create(OpSchema, { opId: uuid(), docId: docId(), kind: { case: "deleteLayer", value: { id } } });
 }
 export function makeDeleteTextStyleDefOp(id: string): Op {
   return create(OpSchema, { opId: uuid(), docId: docId(), kind: { case: "deleteTextStyleDef", value: { id } } });

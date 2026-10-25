@@ -1,14 +1,50 @@
 import { NodeMap } from "./nodeMap";
 import { create } from "@bufbuild/protobuf";
-import { BlendMode, ImageScaleMode, LayoutGridKind, CommentSchema, ClipSchema, Constraint, LayoutSizing, ComponentPropertySchema, ComponentPropertyType, ComponentSetSchema, FlowSchema, FontFaceSchema, TextStyleDefSchema, VariableCollectionSchema, VariableSchema, VariableType, TransitionSchema, LayoutAlign, LayoutDirection, NodeSchema, StrokeAlign, TextAlign } from "../gen/opendesigner/v1/opendesigner_pb";
+import { BlendMode, ImageScaleMode, LayerSchema, ListKind, ObjectStyleDefSchema, TabAlign, TextScript, TextStyleKind, LayoutGridKind, CommentSchema, ClipSchema, Constraint, LayoutSizing, ComponentPropertySchema, ComponentPropertyType, ComponentSetSchema, FlowSchema, FontFaceSchema, TextStyleDefSchema, ParagraphRuleSchema, VariableCollectionSchema, VariableSchema, VariableType, TransitionSchema, LayoutAlign, LayoutDirection, NodeSchema, StrokeAlign, TextAlign } from "../gen/opendesigner/v1/opendesigner_pb";
 import type {
-  Document, Component as PbComponent, ComponentProperty as PbComponentProperty, ComponentSet as PbComponentSet, FontFace as PbFont, TextStyleDef as PbTextStyleDef, VariableCollection as PbCollection, Variable as PbVariable, Clip as PbClip, Flow as PbFlow, Transition as PbTransition, Node as PbNode, Comment as PbComment, LayoutGrid as PbLayoutGrid, Paint as PbPaint, Stroke as PbStroke, Effect as PbEffect, AutoLayout as PbAutoLayout,
-  TextNode as PbTextNode, TextStyle as PbTextStyle,
+  Document, Component as PbComponent, ComponentProperty as PbComponentProperty, ComponentSet as PbComponentSet, FontFace as PbFont, TextStyleDef as PbTextStyleDef, ObjectStyleDef as PbObjectStyleDef, Layer as PbLayer, VariableCollection as PbCollection, Variable as PbVariable, Clip as PbClip, Flow as PbFlow, Transition as PbTransition, Node as PbNode, Comment as PbComment, LayoutGrid as PbLayoutGrid, Paint as PbPaint, Stroke as PbStroke, Effect as PbEffect, AutoLayout as PbAutoLayout,
+  ParagraphRule as PbParagraphRule, TextNode as PbTextNode, TextStyle as PbTextStyle,
   SubPath as PbSubPath, VectorNode as PbVectorNode,
   InstanceNode as PbInstanceNode, InstanceOverride as PbInstanceOverride,
 } from "../gen/opendesigner/v1/opendesigner_pb";
 
-export interface PageLite { id: string; name: string; }
+// `isMaster` / `masterId` are absent (not false / "") on a plain page: see store/masters.ts.
+export interface PageLite {
+  id: string; name: string; isMaster?: boolean; masterId?: string;
+  // PAGE SETUP (store/docSettings.ts), absent at 0: a page with a size is a sheet at the origin.
+  width?: number; height?: number;
+  marginTop?: number; marginRight?: number; marginBottom?: number; marginLeft?: number;
+  columns?: number; gutter?: number; bleed?: number;
+  // PAGE STRUCTURE (store/pageNumbers.ts, store/masters.ts), absent at the default.
+  sectionStart?: boolean; numberStart?: number; numberStyle?: NumberStyle;
+  leftMasterId?: string; hiddenMasterItems?: string[]; slug?: number; guides?: GuideLite[];
+}
+export type NumberStyle = "i" | "I" | "a" | "A";
+/** A ruler guide of a page: a vertical one at x = position, else a horizontal one at y = position. */
+export interface GuideLite { vertical: boolean; position: number }
+
+/** The kind of work a document is for: it shapes the editor, never limits the document. Absent = "product". */
+export type Vertical = "publishing" | "design" | "product";
+/** Document-wide settings, each absent at its default. */
+export interface ContributorLite { role: string; personName: string; biography?: string }
+export interface SubjectLite { scheme: string; code: string; heading?: string }
+export interface PriceLite { priceType: string; amount: string; currency: string }
+/** Bibliographic record of the document as a book (docs/onix.md); every field absent at its default. */
+export interface BookLite {
+  isbn13?: string; title?: string; subtitle?: string; seriesName?: string; seriesNumber?: string; editionNumber?: string;
+  contributors?: ContributorLite[]; language?: string; publisherName?: string; imprint?: string; publicationDate?: string;
+  description?: string; subjects?: SubjectLite[]; pageCount?: number; prices?: PriceLite[];
+  senderName?: string; senderEmail?: string; productForm?: string;
+}
+/** A condition of conditional text ([?name]...[/?]); a name no condition defines is visible. */
+export interface TextConditionLite { name: string; visible: boolean }
+/** A named recipe for a table: the object and text styles of its header rows, body rows and every second body row. */
+export interface TableStyleLite {
+  id: string; name: string;
+  headerObjectStyleId?: string; bodyObjectStyleId?: string; altObjectStyleId?: string;
+  headerTextStyleId?: string; bodyTextStyleId?: string;
+}
+export interface DocSettingsLite { vertical?: Exclude<Vertical, "product">; baselineIncrement?: number; baselineStart?: number; facingPages?: boolean; colorMode?: "cmyk"; iccProfile?: string; book?: BookLite; conditions?: TextConditionLite[]; tableStyles?: TableStyleLite[] }
 export interface GradientStopLite { color: { r: number; g: number; b: number; a: number }; position: number; }
 // A gradient in NORMALIZED box coordinates (see GradientPaint in the proto).
 // Linear: axis (x1,y1)->(x2,y2). Radial: center (x1,y1), radius = |p2-p1| in
@@ -96,7 +132,7 @@ export type EffectLite =
 // string is readable (and writable in a test) without importing the generated code.
 // TEXT_ALIGN_UNSPECIFIED collapses to "left" -- it is the default the renderer
 // should apply anyway, so the distinction is not observable.
-export type TextAlignLite = "left" | "center" | "right";
+export type TextAlignLite = "left" | "center" | "right" | "justify";
 
 // No default is resolved here: `lineHeight: 0` stays 0 and does not become 1.2.
 // The default belongs to the RENDERER (see the comment in the proto), and applying it in
@@ -107,8 +143,74 @@ export interface TextStyleLite {
   lineHeight: number; align: TextAlignLite;
   // Absent when upright (not `false`): a style that never had it stays identical, field by field.
   italic?: boolean;
+  underline?: boolean;
+  strikethrough?: boolean;
+  /** px added after every character (tracking); absent at 0, may be negative. */
+  letterSpacing?: number;
+  /** Lowercase letters drawn as smaller capitals. */
+  smallCaps?: boolean;
+  /** Smaller and raised / lowered. */
+  script?: "super" | "sub";
+  /** Glyph width multiplier (1 = normal); absent at 1. */
+  horizontalScale?: number;
+  /** The font's pair kerning is off. */
+  noKerning?: boolean;
+  /** Text colour of the style; absent => the node's fill. */
+  color?: { r: number; g: number; b: number; a: number };
+  /** OpenType features, "liga off, onum": shown in SVG / HTML output and the editing field (the canvas has no way to apply them). */
+  fontFeatures?: string;
+  /** Variable-font axes ("wght 650, wdth 90"): drawn where the renderer can set them (SVG), always kept. */
+  fontVariations?: string;
+  /** DERIVED by the layout, never stored: px a piece is raised above its line's baseline (negative = lowered). */
+  baselineShift?: number;
 }
-export interface TextLite { content: string; style: TextStyleLite; }
+
+// RICH TEXT (store/richText.ts). `paragraphStyles` / `runs` are the document's; `rich` is DERIVED by
+// resolveScene (never written, never in an op) and carries them resolved, so the layout needs no scene.
+export interface TextRunLite { start: number; end: number; styleId: string }
+export interface ResolvedParagraph {
+  style: TextStyleLite;
+  spaceBefore: number; spaceAfter: number; indentFirst: number; indentLeft: number;
+  /** The lines sit on the baseline grid (see RichText.grid). */
+  alignToGrid?: boolean;
+  hyphenate?: boolean;
+  /** The list marker in front of the paragraph ("•", "3."), numbers already counted; absent for no list. */
+  marker?: string;
+  /** Distance from the marker to the text (a list paragraph's text sits at indentLeft + listIndent). */
+  listIndent?: number;
+  tabs?: TabStopLite[];
+  dropLines?: number; dropChars?: number;
+  keepWithNext?: boolean; keepLinesTogether?: boolean; keepFirstLines?: number; keepLastLines?: number;
+  ruleAbove?: ParagraphRuleLite; ruleBelow?: ParagraphRuleLite;
+  shading?: { r: number; g: number; b: number; a: number }; shadingOffset?: number;
+  borderColor?: { r: number; g: number; b: number; a: number }; borderWeight?: number;
+  opticalMargin?: boolean;
+}
+/** A character style resolved to the fields it overrides (unset fields are 0 / "" / absent). */
+export interface ResolvedRun { start: number; end: number; style: TextStyleLite }
+export interface RichText {
+  paragraphs: ResolvedParagraph[]; runs: ResolvedRun[];
+  /** The baseline grid, with the world y of the text box: present when a paragraph aligns to it. */
+  grid?: { increment: number; start: number; boxY: number };
+  /** Boxes (relative to the text box's top-left) the lines avoid: objects that wrap the text (store/wrap.ts). */
+  exclusions?: { x: number; y: number; width: number; height: number }[];
+  /** Objects anchored in the text with their size: each takes a box in its line (see store/anchored.ts). */
+  inlines?: { at: number; id: string; width: number; height: number }[];
+}
+
+export interface TabStopLite { position: number; align?: "center" | "right"; leader?: string }
+export interface NestedStyleLite { styleId: string; delimiter: string; count: number; inclusive?: boolean }
+
+export interface TextLite {
+  /** DERIVED (store/textPath.ts): the polyline the text runs along, in the text's parent space. */
+  onPath?: { x: number; y: number }[];
+  /** DERIVED (store/textTokens.ts): where objects anchored in the text sit in its content (a U+FFFC each), by node id. */
+  inlineObjects?: { at: number; id: string }[];
+  content: string; style: TextStyleLite;
+  paragraphStyles?: string[];
+  runs?: TextRunLite[];
+  rich?: RichText;
+}
 
 // An image is a REFERENCE, never bytes: `assetHash` is the sha256
 // (lowercase hex) of the bytes, which live in <doc>.opendesigner/assets/ and are
@@ -117,7 +219,11 @@ export interface TextLite { content: string; style: TextStyleLite; }
 // The model contains no pixels, and this is the property not to lose: a
 // NodeLite ends up inside ops, inside the snapshot and inside the clipboard
 // payload, and none of those three places must ever carry an image.
-export interface ImageLite { assetHash: string; }
+export interface ImageLite {
+  assetHash: string;
+  /** The name of the file the image was placed from, and its size in pixels (what relinking and the effective resolution need). */
+  originalName?: string; pixelWidth?: number; pixelHeight?: number;
+}
 
 // Vector geometry. Mirrors opendesigner.v1.Anchor/SubPath/VectorNode one to
 // one: no default resolved here and no "convenient" shape (no precomputed
@@ -207,6 +313,10 @@ export interface VariantAxisLite { name: string; options: string[] }
 export interface ComponentSetLite { id: string; name: string; axes: VariantAxisLite[] }
 
 export interface NodeLite {
+  // DERIVED only (store/masters.ts), never in a document: a copy of a master page's node drawn on a page that applies it.
+  fromMaster?: boolean;
+  // DERIVED only (store/threads.ts): the last frame of a text thread that has text left over.
+  overset?: boolean;
   id: string; parentId: string; orderKey: string; name: string;
   visible: boolean; opacity: number;
   x: number; y: number; width: number; height: number; rotation: number;
@@ -269,6 +379,11 @@ export interface NodeLite {
   modes?: Record<string, string>;
   // Shared text style id (text nodes only); absent when none. See TextStyleDefLite.
   textStyleId?: string;
+  /** Shared object style (store/graphics.ts) and layer; absent when none. */
+  objectStyleId?: string;
+  layerId?: string;
+  /** DERIVED (store/graphics.ts): the node is on a locked layer -- drawn, but not picked. */
+  locked?: boolean;
   // Constraints and layout sizing (see ConstraintLite); absent = the default (unspecified / fixed).
   constraintX?: ConstraintLite;
   constraintY?: ConstraintLite;
@@ -334,12 +449,58 @@ export interface VariableLite {
   values: Record<string, FillLite | number | string>;
   // Present for an alias: the variable it reads (then `values` is empty).
   aliasOf?: string;
+  // SWATCH data (store/graphics.ts): a color variable listed in the Swatches panel, with its print definition.
+  swatch?: boolean;
+  cmyk?: { c: number; m: number; y: number; k: number };
+  spotName?: string;
+  tintOf?: string; tint?: number;
 }
 
 // TYPOGRAPHY: uploaded font faces and shared text styles. See proto FontFace /
 // TextStyleDef and internal/core/typography.go.
+// OBJECT STYLES and LAYERS (store/graphics.ts, internal/core/graphics.go).
+export const OBJECT_STYLE_PROPS = ["fills", "strokes", "effects", "opacity", "corner_radius", "blend_mode"] as const;
+export type ObjectStyleProp = (typeof OBJECT_STYLE_PROPS)[number];
+export interface ObjectStyleLite {
+  id: string; name: string;
+  /** Which of the properties below the style sets; the others are left to the node. */
+  sets: ObjectStyleProp[];
+  fills?: FillLite[]; strokes?: StrokeLite[]; effects?: EffectLite[];
+  opacity?: number; cornerRadius?: number; blendMode?: BlendModeLite;
+  basedOn?: string;
+}
+export interface LayerLite { id: string; name: string; hidden?: boolean; locked?: boolean; noPrint?: boolean }
+
 export interface FontLite { id: string; family: string; weight: string; style: "normal" | "italic"; assetHash: string }
-export interface TextStyleDefLite { id: string; name: string; style: TextStyleLite }
+// Optional fields are absent at their default (paragraph kind, no base, no next style, zeros).
+export interface ParagraphRuleLite {
+  weight: number; color?: { r: number; g: number; b: number; a: number }; offset?: number; indentLeft?: number; indentRight?: number; columnWidth?: boolean;
+}
+export interface TextStyleDefLite {
+  id: string; name: string; style: TextStyleLite;
+  kind?: "character";
+  basedOn?: string; nextStyleId?: string;
+  spaceBefore?: number; spaceAfter?: number; indentFirst?: number; indentLeft?: number;
+  alignToGrid?: boolean;
+  // Paragraph styles only (docs/rich-text.md): hyphenation, lists, tabs, drop caps, nested styles.
+  hyphenate?: boolean;
+  listKind?: "bullet" | "number"; listMarker?: string; listNumberStyle?: NumberStyle; listIndent?: number;
+  tabStops?: TabStopLite[];
+  dropCapLines?: number; dropCapChars?: number;
+  nestedStyles?: NestedStyleLite[];
+  /** 1..9: the paragraphs appear in the table of contents and give running headers; absent = body text. */
+  outlineLevel?: number;
+  /** Keeps where a paragraph would break between threaded frames. */
+  keepWithNext?: boolean; keepLinesTogether?: boolean;
+  /** Orphans / widows: the fewest lines left at the bottom / carried to the top (1..6); absent = off. */
+  keepFirstLines?: number; keepLastLines?: number;
+  ruleAbove?: ParagraphRuleLite; ruleBelow?: ParagraphRuleLite;
+  /** Fill behind the paragraph, and a border; both extend `shadingOffset` past the text. */
+  shading?: { r: number; g: number; b: number; a: number }; shadingOffset?: number;
+  borderColor?: { r: number; g: number; b: number; a: number }; borderWeight?: number;
+  /** Hanging punctuation at the line edges. */
+  opticalMargin?: boolean;
+}
 
 // ANIMATION: the document's clips (animated properties of nodes referenced by
 // id). See proto Clip/Track/Keyframe and internal/core/animation.go.
@@ -352,6 +513,7 @@ export interface ClipLite {
 
 export interface SceneState {
   id: string; name: string; schemaVersion: number;
+  settings?: DocSettingsLite;
   pages: PageLite[]; nodes: NodeMap;
   flows: Record<string, FlowLite>;
   transitions: Record<string, TransitionLite>;
@@ -362,6 +524,8 @@ export interface SceneState {
   // Typography, like variables: an empty record when there are none.
   fonts: Record<string, FontLite>;
   textStyles: Record<string, TextStyleDefLite>;
+  objectStyles: Record<string, ObjectStyleLite>;
+  layers: LayerLite[];
   // Comments, like clips: an empty record when there are none.
   comments: Record<string, CommentLite>;
   // Only in scenes derived from playback (animation/pose.ts): see AnimInfo.
@@ -374,8 +538,115 @@ export interface SceneState {
   componentSets: Record<string, ComponentSetLite>;
 }
 
+/** A page from its message: setup and master fields only when they are not at their default. */
+export function toPageLite(p: {
+  id: string; name: string; isMaster: boolean; masterId: string; width: number; height: number; marginTop: number; marginRight: number;
+  marginBottom: number; marginLeft: number; columns: number; gutter: number; bleed: number;
+  sectionStart?: boolean; numberStart?: number; numberStyle?: string; leftMasterId?: string;
+  hiddenMasterItems?: readonly string[]; slug?: number; guides?: readonly { vertical: boolean; position: number }[];
+}): PageLite {
+  return {
+    id: p.id, name: p.name,
+    ...(p.isMaster ? { isMaster: true } : {}), ...(p.masterId ? { masterId: p.masterId } : {}),
+    ...(p.width ? { width: p.width } : {}), ...(p.height ? { height: p.height } : {}),
+    ...(p.marginTop ? { marginTop: p.marginTop } : {}), ...(p.marginRight ? { marginRight: p.marginRight } : {}),
+    ...(p.marginBottom ? { marginBottom: p.marginBottom } : {}), ...(p.marginLeft ? { marginLeft: p.marginLeft } : {}),
+    ...(p.columns ? { columns: p.columns } : {}), ...(p.gutter ? { gutter: p.gutter } : {}), ...(p.bleed ? { bleed: p.bleed } : {}),
+    ...(p.sectionStart ? { sectionStart: true } : {}), ...(p.numberStart ? { numberStart: p.numberStart } : {}),
+    // Passed through as is: an unknown style is invalid (isValidPageStructure), not silently dropped.
+    ...(p.numberStyle ? { numberStyle: p.numberStyle as NumberStyle } : {}),
+    ...(p.leftMasterId ? { leftMasterId: p.leftMasterId } : {}),
+    ...(p.hiddenMasterItems?.length ? { hiddenMasterItems: [...p.hiddenMasterItems] } : {}),
+    ...(p.slug ? { slug: p.slug } : {}),
+    ...(p.guides?.length ? { guides: p.guides.map((g) => ({ vertical: g.vertical, position: g.position })) } : {}),
+  };
+}
+
+/** The message form of document settings: every field written, "" / 0 / false when absent. */
+export interface BookMsg {
+  isbn13: string; title: string; subtitle: string; seriesName: string; seriesNumber: string; editionNumber: string;
+  contributors: { role: string; personName: string; biography: string }[]; language: string; publisherName: string; imprint: string;
+  publicationDate: string; description: string; subjects: { scheme: string; code: string; heading: string }[]; pageCount: number;
+  prices: { priceType: string; amount: string; currency: string }[]; senderName: string; senderEmail: string; productForm: string;
+}
+export interface TableStyleMsg { id: string; name: string; headerObjectStyleId: string; bodyObjectStyleId: string; altObjectStyleId: string; headerTextStyleId: string; bodyTextStyleId: string }
+export interface DocSettingsMsg { vertical: string; baselineIncrement: number; baselineStart: number; facingPages?: boolean; colorMode?: string; iccProfile?: string; book?: BookMsg; conditions?: { name: string; visible: boolean }[]; tableStyles?: TableStyleMsg[] }
+
+/** The message form of a book record (every field written). */
+export function bookToMsg(b: BookLite): BookMsg {
+  return {
+    isbn13: b.isbn13 ?? "", title: b.title ?? "", subtitle: b.subtitle ?? "", seriesName: b.seriesName ?? "", seriesNumber: b.seriesNumber ?? "", editionNumber: b.editionNumber ?? "",
+    contributors: (b.contributors ?? []).map((c) => ({ role: c.role, personName: c.personName, biography: c.biography ?? "" })),
+    language: b.language ?? "", publisherName: b.publisherName ?? "", imprint: b.imprint ?? "", publicationDate: b.publicationDate ?? "", description: b.description ?? "",
+    subjects: (b.subjects ?? []).map((x) => ({ scheme: x.scheme, code: x.code, heading: x.heading ?? "" })), pageCount: b.pageCount ?? 0,
+    prices: (b.prices ?? []).map((x) => ({ priceType: x.priceType, amount: x.amount, currency: x.currency })),
+    senderName: b.senderName ?? "", senderEmail: b.senderEmail ?? "", productForm: b.productForm ?? "",
+  };
+}
+
+/** A book record with only its non-default fields; undefined when it says nothing. */
+export function bookOf(m: BookMsg | undefined): BookLite | undefined {
+  if (!m) return undefined;
+  const out: BookLite = {
+    ...(m.isbn13 ? { isbn13: m.isbn13 } : {}), ...(m.title ? { title: m.title } : {}), ...(m.subtitle ? { subtitle: m.subtitle } : {}),
+    ...(m.seriesName ? { seriesName: m.seriesName } : {}), ...(m.seriesNumber ? { seriesNumber: m.seriesNumber } : {}), ...(m.editionNumber ? { editionNumber: m.editionNumber } : {}),
+    ...(m.contributors.length ? { contributors: m.contributors.map((c) => ({ role: c.role, personName: c.personName, ...(c.biography ? { biography: c.biography } : {}) })) } : {}),
+    ...(m.language ? { language: m.language } : {}), ...(m.publisherName ? { publisherName: m.publisherName } : {}), ...(m.imprint ? { imprint: m.imprint } : {}),
+    ...(m.publicationDate ? { publicationDate: m.publicationDate } : {}), ...(m.description ? { description: m.description } : {}),
+    ...(m.subjects.length ? { subjects: m.subjects.map((x) => ({ scheme: x.scheme, code: x.code, ...(x.heading ? { heading: x.heading } : {}) })) } : {}),
+    ...(m.pageCount ? { pageCount: m.pageCount } : {}),
+    ...(m.prices.length ? { prices: m.prices.map((x) => ({ priceType: x.priceType, amount: x.amount, currency: x.currency })) } : {}),
+    ...(m.senderName ? { senderName: m.senderName } : {}), ...(m.senderEmail ? { senderEmail: m.senderEmail } : {}), ...(m.productForm ? { productForm: m.productForm } : {}),
+  };
+  return Object.keys(out).length > 0 ? out : undefined;
+}
+
+/** Document settings as the init shape of a DocSettings message. */
+export function settingsToMsg(s: DocSettingsLite): DocSettingsMsg {
+  return {
+    vertical: s.vertical ?? "", baselineIncrement: s.baselineIncrement ?? 0, baselineStart: s.baselineStart ?? 0,
+    facingPages: s.facingPages === true, colorMode: s.colorMode ?? "", iccProfile: s.iccProfile ?? "",
+    ...(s.book ? { book: bookToMsg(s.book) } : {}),
+    ...(s.conditions?.length ? { conditions: s.conditions.map((c) => ({ name: c.name, visible: c.visible })) } : {}),
+    ...(s.tableStyles?.length ? {
+      tableStyles: s.tableStyles.map((t) => ({
+        id: t.id, name: t.name, headerObjectStyleId: t.headerObjectStyleId ?? "", bodyObjectStyleId: t.bodyObjectStyleId ?? "", altObjectStyleId: t.altObjectStyleId ?? "",
+        headerTextStyleId: t.headerTextStyleId ?? "", bodyTextStyleId: t.bodyTextStyleId ?? "",
+      })),
+    } : {}),
+  };
+}
+
+/** The settings of a message with only the non-default fields, or `{}`-free: undefined when all are default. */
+export function settingsOf(s: DocSettingsMsg): DocSettingsLite {
+  return {
+    ...(s.vertical === "publishing" || s.vertical === "design" ? { vertical: s.vertical } : {}),
+    ...(s.baselineIncrement ? { baselineIncrement: s.baselineIncrement } : {}),
+    ...(s.baselineStart ? { baselineStart: s.baselineStart } : {}),
+    ...(s.facingPages ? { facingPages: true } : {}),
+    ...(s.colorMode === "cmyk" ? { colorMode: "cmyk" as const } : {}),
+    ...(s.iccProfile ? { iccProfile: s.iccProfile } : {}),
+    ...(bookOf(s.book) ? { book: bookOf(s.book)! } : {}),
+    ...(s.conditions?.length ? { conditions: s.conditions.map((c) => ({ name: c.name, visible: c.visible })) } : {}),
+    ...(s.tableStyles?.length ? {
+      tableStyles: s.tableStyles.map((t) => ({
+        id: t.id, name: t.name,
+        ...(t.headerObjectStyleId ? { headerObjectStyleId: t.headerObjectStyleId } : {}), ...(t.bodyObjectStyleId ? { bodyObjectStyleId: t.bodyObjectStyleId } : {}),
+        ...(t.altObjectStyleId ? { altObjectStyleId: t.altObjectStyleId } : {}), ...(t.headerTextStyleId ? { headerTextStyleId: t.headerTextStyleId } : {}),
+        ...(t.bodyTextStyleId ? { bodyTextStyleId: t.bodyTextStyleId } : {}),
+      })),
+    } : {}),
+  };
+}
+
+/** `{ settings }` for a scene when the message has any non-default setting, else `{}`. */
+export function settingsField(s: DocSettingsMsg): { settings?: DocSettingsLite } {
+  const out = settingsOf(s);
+  return Object.keys(out).length > 0 ? { settings: out } : {};
+}
+
 export function emptyScene(id: string, name: string): SceneState {
-  return { id, name, schemaVersion: 1, pages: [{ id: "page1", name: "Page 1" }], nodes: NodeMap.empty, flows: {}, transitions: {}, clips: {}, collections: {}, variables: {}, fonts: {}, textStyles: {}, comments: {}, components: {}, componentSets: {} };
+  return { id, name, schemaVersion: 1, pages: [{ id: "page1", name: "Page 1" }], nodes: NodeMap.empty, flows: {}, transitions: {}, clips: {}, collections: {}, variables: {}, fonts: {}, textStyles: {}, objectStyles: {}, layers: [], comments: {}, components: {}, componentSets: {} };
 }
 
 const ALIGN_TO_LITE: Record<TextAlign, TextAlignLite> = {
@@ -383,11 +654,13 @@ const ALIGN_TO_LITE: Record<TextAlign, TextAlignLite> = {
   [TextAlign.LEFT]: "left",
   [TextAlign.CENTER]: "center",
   [TextAlign.RIGHT]: "right",
+  [TextAlign.JUSTIFY]: "justify",
 };
 const ALIGN_TO_PB: Record<TextAlignLite, TextAlign> = {
   left: TextAlign.LEFT,
   center: TextAlign.CENTER,
   right: TextAlign.RIGHT,
+  justify: TextAlign.JUSTIFY,
 };
 
 const STROKE_ALIGN_TO_LITE: Record<StrokeAlign, StrokeAlignLite> = {
@@ -414,11 +687,26 @@ export function toTextStyleLite(s: PbTextStyle | undefined): TextStyleLite {
     lineHeight: s?.lineHeight ?? 0,
     align: ALIGN_TO_LITE[s?.align ?? TextAlign.UNSPECIFIED] ?? "left",
     ...(s?.italic ? { italic: true } : {}),
+    ...(s?.underline ? { underline: true } : {}),
+    ...(s?.strikethrough ? { strikethrough: true } : {}),
+    ...(s?.letterSpacing ? { letterSpacing: s.letterSpacing } : {}),
+    ...(s?.smallCaps ? { smallCaps: true } : {}),
+    ...(s?.script === TextScript.SUPERSCRIPT ? { script: "super" as const } : s?.script === TextScript.SUBSCRIPT ? { script: "sub" as const } : {}),
+    ...(s?.horizontalScale && s.horizontalScale !== 1 ? { horizontalScale: s.horizontalScale } : {}),
+    ...(s?.noKerning ? { noKerning: true } : {}),
+    ...(s?.color ? { color: { r: s.color.r, g: s.color.g, b: s.color.b, a: s.color.a } } : {}),
+    ...(s?.fontFeatures ? { fontFeatures: s.fontFeatures } : {}),
+    ...(s?.fontVariations ? { fontVariations: s.fontVariations } : {}),
   };
 }
 
 export function toTextLite(t: PbTextNode): TextLite {
-  return { content: t.content, style: toTextStyleLite(t.style) };
+  const paras = t.paragraphStyles.some((p) => p !== "") ? [...t.paragraphStyles] : undefined;
+  return {
+    content: t.content, style: toTextStyleLite(t.style),
+    ...(paras ? { paragraphStyles: paras } : {}),
+    ...(t.runs.length > 0 ? { runs: t.runs.map((r) => ({ start: r.start, end: r.end, styleId: r.styleId })) } : {}),
+  };
 }
 
 // The wire's subpaths in the model's shape. Field by field and not a spread:
@@ -525,6 +813,16 @@ export function toPbTextStyle(s: TextStyleLite) {
     fontFamily: s.fontFamily, fontSize: s.fontSize, fontWeight: s.fontWeight,
     lineHeight: s.lineHeight, align: ALIGN_TO_PB[s.align] ?? TextAlign.LEFT,
     italic: s.italic === true,
+    underline: s.underline === true,
+    strikethrough: s.strikethrough === true,
+    letterSpacing: s.letterSpacing ?? 0,
+    smallCaps: s.smallCaps === true,
+    script: s.script === "super" ? TextScript.SUPERSCRIPT : s.script === "sub" ? TextScript.SUBSCRIPT : TextScript.NORMAL,
+    horizontalScale: s.horizontalScale ?? 0,
+    noKerning: s.noKerning === true,
+    fontFeatures: s.fontFeatures ?? "",
+    fontVariations: s.fontVariations ?? "",
+    ...(s.color ? { color: { r: s.color.r, g: s.color.g, b: s.color.b, a: s.color.a } } : {}),
   };
 }
 
@@ -772,7 +1070,14 @@ export function toNodeLite(n: PbNode): NodeLite {
     clipsContent: n.shape.case === "frame" ? n.shape.value.clipsContent : false,
     ...(n.shape.case === "frame" && n.shape.value.autoLayout ? { autoLayout: toAutoLayoutLite(n.shape.value.autoLayout) } : {}),
     ...(n.shape.case === "text" ? { text: toTextLite(n.shape.value) } : {}),
-    ...(n.shape.case === "image" ? { image: { assetHash: n.shape.value.assetHash } } : {}),
+    ...(n.shape.case === "image" ? {
+      image: {
+        assetHash: n.shape.value.assetHash,
+        ...(n.shape.value.originalName ? { originalName: n.shape.value.originalName } : {}),
+        ...(n.shape.value.pixelWidth ? { pixelWidth: n.shape.value.pixelWidth } : {}),
+        ...(n.shape.value.pixelHeight ? { pixelHeight: n.shape.value.pixelHeight } : {}),
+      },
+    } : {}),
     ...(n.shape.case === "vector" ? { vector: toVectorLite(n.shape.value) } : {}),
     ...(n.shape.case === "instance" ? { instance: toInstanceLite(n.shape.value) } : {}),
     // The unknown branch travels whole and intact: see NodeLite.unknownShape.
@@ -781,6 +1086,8 @@ export function toNodeLite(n: PbNode): NodeLite {
     ...(Object.keys(n.bindings).length > 0 ? { bindings: { ...n.bindings } } : {}),
     ...(Object.keys(n.modes).length > 0 ? { modes: { ...n.modes } } : {}),
     ...(n.textStyleId !== "" ? { textStyleId: n.textStyleId } : {}),
+    ...(n.objectStyleId !== "" ? { objectStyleId: n.objectStyleId } : {}),
+    ...(n.layerId !== "" ? { layerId: n.layerId } : {}),
     ...(n.constraintX !== Constraint.UNSPECIFIED ? { constraintX: CONSTRAINT_TO_LITE[n.constraintX] } : {}),
     ...(n.constraintY !== Constraint.UNSPECIFIED ? { constraintY: CONSTRAINT_TO_LITE[n.constraintY] } : {}),
     ...(n.layoutSizingX === LayoutSizing.FILL ? { layoutSizingX: "fill" as const } : {}),
@@ -808,6 +1115,8 @@ export function toPbNode(n: NodeLite): PbNode {
     bindings: n.bindings ? { ...n.bindings } : {},
     modes: n.modes ? { ...n.modes } : {},
     textStyleId: n.textStyleId ?? "",
+    objectStyleId: n.objectStyleId ?? "",
+    layerId: n.layerId ?? "",
     constraintX: n.constraintX ? CONSTRAINT_TO_PB[n.constraintX] : Constraint.UNSPECIFIED,
     constraintY: n.constraintY ? CONSTRAINT_TO_PB[n.constraintY] : Constraint.UNSPECIFIED,
     layoutSizingX: n.layoutSizingX === "fill" ? LayoutSizing.FILL : LayoutSizing.FIXED,
@@ -831,7 +1140,7 @@ export function toPbNode(n: NodeLite): PbNode {
         // an empty hash -- that is, to an image whose asset is not found, which the
         // renderer draws as a placeholder -- and never to a rectangle: a silent
         // shape change inside an undo would be much worse.
-        ? { case: "image" as const, value: { assetHash: n.image?.assetHash ?? "" } }
+        ? { case: "image" as const, value: { assetHash: n.image?.assetHash ?? "", originalName: n.image?.originalName ?? "", pixelWidth: n.image?.pixelWidth ?? 0, pixelHeight: n.image?.pixelHeight ?? 0 } }
       : n.kind === "vector"
         // As for text: a missing `vector` on a vector node is a
         // state toNodeLite never produces (the two move together), and the
@@ -873,6 +1182,8 @@ export function toPbNode(n: NodeLite): PbNode {
         ? { case: "text" as const, value: {
             content: n.text?.content ?? "",
             style: toPbTextStyle(n.text?.style ?? toTextStyleLite(undefined)),
+            paragraphStyles: n.text?.paragraphStyles ?? [],
+            runs: (n.text?.runs ?? []).map((r) => ({ start: r.start, end: r.end, styleId: r.styleId })),
           } }
         : { case: "rect" as const, value: { cornerRadius: n.cornerRadius } },
   });
@@ -933,7 +1244,13 @@ export function toVariableLite(v: PbVariable): VariableLite {
     } else if (val.kind.case === "number") values[mode] = val.kind.value;
     else if (val.kind.case === "text") values[mode] = val.kind.value;
   }
-  return { id: v.id, collectionId: v.collectionId, name: v.name, type, values, ...(v.aliasOf !== "" ? { aliasOf: v.aliasOf } : {}) };
+  return {
+    id: v.id, collectionId: v.collectionId, name: v.name, type, values, ...(v.aliasOf !== "" ? { aliasOf: v.aliasOf } : {}),
+    ...(v.swatch ? { swatch: true as const } : {}),
+    ...(v.cmyk ? { cmyk: { c: v.cmyk.c, m: v.cmyk.m, y: v.cmyk.y, k: v.cmyk.k } } : {}),
+    ...(v.spotName !== "" ? { spotName: v.spotName } : {}),
+    ...(v.tintOf !== "" ? { tintOf: v.tintOf, tint: v.tint } : {}),
+  };
 }
 export function toPbVariable(v: VariableLite): PbVariable {
   const values: Record<string, { kind: { case: "color"; value: { r: number; g: number; b: number; a: number } } | { case: "number"; value: number } | { case: "text"; value: string } }> = {};
@@ -946,8 +1263,37 @@ export function toPbVariable(v: VariableLite): PbVariable {
   }
   return create(VariableSchema, {
     id: v.id, collectionId: v.collectionId, name: v.name, aliasOf: v.aliasOf ?? "",
+    swatch: v.swatch === true, spotName: v.spotName ?? "", tintOf: v.tintOf ?? "", tint: v.tint ?? 0,
+    ...(v.cmyk ? { cmyk: v.cmyk } : {}),
     type: v.type === "color" ? VariableType.COLOR : v.type === "string" ? VariableType.STRING : VariableType.NUMBER, values,
   });
+}
+
+export function toObjectStyleLite(d: PbObjectStyleDef): ObjectStyleLite {
+  const sets = d.sets.filter((p): p is ObjectStyleProp => (OBJECT_STYLE_PROPS as readonly string[]).includes(p));
+  return {
+    id: d.id, name: d.name, sets,
+    ...(d.fills.length > 0 ? { fills: d.fills.map(toFillLite) } : {}),
+    ...(d.strokes.length > 0 ? { strokes: d.strokes.map(toStrokeLite) } : {}),
+    ...(d.effects.length > 0 ? { effects: d.effects.map(toEffectLite) } : {}),
+    ...(d.opacity ? { opacity: d.opacity } : {}),
+    ...(d.cornerRadius ? { cornerRadius: d.cornerRadius } : {}),
+    ...(blendToLite(d.blendMode) ? { blendMode: blendToLite(d.blendMode) } : {}),
+    ...(d.basedOn ? { basedOn: d.basedOn } : {}),
+  };
+}
+export function toPbObjectStyleDef(d: ObjectStyleLite): PbObjectStyleDef {
+  return create(ObjectStyleDefSchema, {
+    id: d.id, name: d.name, sets: [...d.sets],
+    fills: toPbFills(d.fills ?? []), strokes: toPbStrokes(d.strokes ?? []), effects: toPbEffects(d.effects ?? []),
+    opacity: d.opacity ?? 0, cornerRadius: d.cornerRadius ?? 0, blendMode: toPbBlend(d.blendMode), basedOn: d.basedOn ?? "",
+  });
+}
+export function toLayerLite(l: PbLayer): LayerLite {
+  return { id: l.id, name: l.name, ...(l.hidden ? { hidden: true } : {}), ...(l.locked ? { locked: true } : {}), ...(l.noPrint ? { noPrint: true } : {}) };
+}
+export function toPbLayer(l: LayerLite): PbLayer {
+  return create(LayerSchema, { id: l.id, name: l.name, hidden: l.hidden === true, locked: l.locked === true, noPrint: l.noPrint === true });
 }
 
 export function toFontLite(f: PbFont): FontLite {
@@ -956,11 +1302,84 @@ export function toFontLite(f: PbFont): FontLite {
 export function toPbFont(f: FontLite): PbFont {
   return create(FontFaceSchema, { id: f.id, family: f.family, weight: f.weight, style: f.style, assetHash: f.assetHash });
 }
+function toRuleLite(r: PbParagraphRule): ParagraphRuleLite {
+  return {
+    weight: r.weight,
+    ...(r.color ? { color: { r: r.color.r, g: r.color.g, b: r.color.b, a: r.color.a } } : {}),
+    ...(r.offset ? { offset: r.offset } : {}),
+    ...(r.indentLeft ? { indentLeft: r.indentLeft } : {}),
+    ...(r.indentRight ? { indentRight: r.indentRight } : {}),
+    ...(r.columnWidth ? { columnWidth: true } : {}),
+  };
+}
+const toPbRule = (r: ParagraphRuleLite) => create(ParagraphRuleSchema, {
+  weight: r.weight, offset: r.offset ?? 0, indentLeft: r.indentLeft ?? 0, indentRight: r.indentRight ?? 0, columnWidth: r.columnWidth === true,
+  ...(r.color ? { color: { r: r.color.r, g: r.color.g, b: r.color.b, a: r.color.a } } : {}),
+});
 export function toTextStyleDefLite(d: PbTextStyleDef): TextStyleDefLite {
-  return { id: d.id, name: d.name, style: toTextStyleLite(d.style) };
+  return {
+    id: d.id, name: d.name, style: toTextStyleLite(d.style),
+    ...(d.kind === TextStyleKind.CHARACTER ? { kind: "character" as const } : {}),
+    ...(d.basedOn ? { basedOn: d.basedOn } : {}),
+    ...(d.nextStyleId ? { nextStyleId: d.nextStyleId } : {}),
+    ...(d.spaceBefore ? { spaceBefore: d.spaceBefore } : {}),
+    ...(d.spaceAfter ? { spaceAfter: d.spaceAfter } : {}),
+    ...(d.indentFirst ? { indentFirst: d.indentFirst } : {}),
+    ...(d.indentLeft ? { indentLeft: d.indentLeft } : {}),
+    ...(d.alignToGrid ? { alignToGrid: true } : {}),
+    ...(d.hyphenate ? { hyphenate: true } : {}),
+    ...(d.listKind === ListKind.BULLET ? { listKind: "bullet" as const } : d.listKind === ListKind.NUMBER ? { listKind: "number" as const } : {}),
+    ...(d.listMarker ? { listMarker: d.listMarker } : {}),
+    ...(d.listNumberStyle === "i" || d.listNumberStyle === "I" || d.listNumberStyle === "a" || d.listNumberStyle === "A" ? { listNumberStyle: d.listNumberStyle } : {}),
+    ...(d.listIndent ? { listIndent: d.listIndent } : {}),
+    ...(d.tabStops.length > 0 ? {
+      tabStops: d.tabStops.map((t) => ({
+        position: t.position, ...(t.align === TabAlign.CENTER ? { align: "center" as const } : t.align === TabAlign.RIGHT ? { align: "right" as const } : {}),
+        ...(t.leader ? { leader: t.leader } : {}),
+      })),
+    } : {}),
+    ...(d.dropCapLines ? { dropCapLines: d.dropCapLines } : {}),
+    ...(d.dropCapChars ? { dropCapChars: d.dropCapChars } : {}),
+    ...(d.outlineLevel ? { outlineLevel: d.outlineLevel } : {}),
+    ...(d.keepWithNext ? { keepWithNext: true } : {}),
+    ...(d.keepLinesTogether ? { keepLinesTogether: true } : {}),
+    ...(d.keepFirstLines ? { keepFirstLines: d.keepFirstLines } : {}),
+    ...(d.keepLastLines ? { keepLastLines: d.keepLastLines } : {}),
+    ...(d.ruleAbove ? { ruleAbove: toRuleLite(d.ruleAbove) } : {}),
+    ...(d.ruleBelow ? { ruleBelow: toRuleLite(d.ruleBelow) } : {}),
+    ...(d.shading ? { shading: { r: d.shading.r, g: d.shading.g, b: d.shading.b, a: d.shading.a } } : {}),
+    ...(d.shadingOffset ? { shadingOffset: d.shadingOffset } : {}),
+    ...(d.borderColor ? { borderColor: { r: d.borderColor.r, g: d.borderColor.g, b: d.borderColor.b, a: d.borderColor.a } } : {}),
+    ...(d.borderWeight ? { borderWeight: d.borderWeight } : {}),
+    ...(d.opticalMargin ? { opticalMargin: true } : {}),
+    ...(d.nestedStyles.length > 0 ? {
+      nestedStyles: d.nestedStyles.map((n) => ({ styleId: n.styleId, delimiter: n.delimiter, count: n.count, ...(n.inclusive ? { inclusive: true } : {}) })),
+    } : {}),
+  };
 }
 export function toPbTextStyleDef(d: TextStyleDefLite): PbTextStyleDef {
-  return create(TextStyleDefSchema, { id: d.id, name: d.name, style: toPbTextStyle(d.style) });
+  return create(TextStyleDefSchema, {
+    id: d.id, name: d.name, style: toPbTextStyle(d.style),
+    kind: d.kind === "character" ? TextStyleKind.CHARACTER : TextStyleKind.PARAGRAPH,
+    basedOn: d.basedOn ?? "", nextStyleId: d.nextStyleId ?? "",
+    spaceBefore: d.spaceBefore ?? 0, spaceAfter: d.spaceAfter ?? 0, indentFirst: d.indentFirst ?? 0, indentLeft: d.indentLeft ?? 0,
+    alignToGrid: d.alignToGrid === true,
+    hyphenate: d.hyphenate === true,
+    listKind: d.listKind === "bullet" ? ListKind.BULLET : d.listKind === "number" ? ListKind.NUMBER : ListKind.NONE,
+    listMarker: d.listMarker ?? "", listNumberStyle: d.listNumberStyle ?? "", listIndent: d.listIndent ?? 0,
+    tabStops: (d.tabStops ?? []).map((t) => ({
+      position: t.position, align: t.align === "center" ? TabAlign.CENTER : t.align === "right" ? TabAlign.RIGHT : TabAlign.LEFT, leader: t.leader ?? "",
+    })),
+    dropCapLines: d.dropCapLines ?? 0, dropCapChars: d.dropCapChars ?? 0, outlineLevel: d.outlineLevel ?? 0,
+    nestedStyles: (d.nestedStyles ?? []).map((n) => ({ styleId: n.styleId, delimiter: n.delimiter, count: n.count, inclusive: n.inclusive === true })),
+    keepWithNext: d.keepWithNext === true, keepLinesTogether: d.keepLinesTogether === true,
+    keepFirstLines: d.keepFirstLines ?? 0, keepLastLines: d.keepLastLines ?? 0,
+    shadingOffset: d.shadingOffset ?? 0, borderWeight: d.borderWeight ?? 0, opticalMargin: d.opticalMargin === true,
+    ...(d.ruleAbove ? { ruleAbove: toPbRule(d.ruleAbove) } : {}),
+    ...(d.ruleBelow ? { ruleBelow: toPbRule(d.ruleBelow) } : {}),
+    ...(d.shading ? { shading: { r: d.shading.r, g: d.shading.g, b: d.shading.b, a: d.shading.a } } : {}),
+    ...(d.borderColor ? { borderColor: { r: d.borderColor.r, g: d.borderColor.g, b: d.borderColor.b, a: d.borderColor.a } } : {}),
+  });
 }
 
 export function toClipLite(c: PbClip): ClipLite {
@@ -994,7 +1413,8 @@ export function fromDocument(doc: Document): SceneState {
   for (const [id, c] of Object.entries(doc.components)) components[id] = toComponentLite(c);
   return {
     id: doc.id, name: doc.name, schemaVersion: doc.schemaVersion,
-    pages: doc.pages.map((p) => ({ id: p.id, name: p.name })), nodes, components,
+    pages: doc.pages.map(toPageLite), nodes, components,
+    ...(doc.settings ? settingsField(doc.settings) : {}),
     componentSets: Object.fromEntries(Object.entries(doc.componentSets).map(([id, c]) => [id, toComponentSetLite(c)])),
     flows: Object.fromEntries(Object.entries(doc.flows).map(([id, f]) => [id, toFlowLite(f)])),
     transitions: Object.fromEntries(Object.entries(doc.transitions).map(([id, t]) => [id, toTransitionLite(t)])),
@@ -1003,6 +1423,8 @@ export function fromDocument(doc: Document): SceneState {
     variables: Object.fromEntries(Object.entries(doc.variables).map(([id, v]) => [id, toVariableLite(v)])),
     fonts: Object.fromEntries(Object.entries(doc.fonts).map(([id, f]) => [id, toFontLite(f)])),
     textStyles: Object.fromEntries(Object.entries(doc.textStyles).map(([id, d]) => [id, toTextStyleDefLite(d)])),
+    objectStyles: Object.fromEntries(Object.entries(doc.objectStyles).map(([id, d]) => [id, toObjectStyleLite(d)])),
+    layers: doc.layers.map(toLayerLite),
     comments: Object.fromEntries(Object.entries(doc.comments).map(([id, c]) => [id, toCommentLite(c)])),
   };
 }

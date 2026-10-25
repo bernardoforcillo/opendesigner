@@ -66,6 +66,8 @@ func runServe(args []string) {
 	// The prefix is NOT /assets/ because underneath it the file server next to this
 	// serves Vite's bundles.
 	mux.Handle(server.AssetPrefix, mgr.GuardAssets(server.NewAssetHandler(*workspace)))
+	// Files made by editor jobs (PDF, EPUB...): GET /export-api/{docId}/{resultId}.
+	mux.Handle(server.ExportPrefix, mgr.GuardExports(server.NewExportHandler(mgr)))
 	// The editor lives INSIDE the binary (web.Dist): `opendesigner serve` alone
 	// already serves the app, with no frontend build or flag. -web remains the
 	// development route and takes precedence -- see internal/server/webui.go.

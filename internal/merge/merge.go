@@ -113,7 +113,7 @@ var nodePaths = map[string]bool{
 	"x": true, "y": true, "width": true, "height": true, "rotation": true, "opacity": true, "name": true, "visible": true,
 	"fills": true, "strokes": true, "effects": true, "meta": true, "is_mask": true, "constraint_x": true, "constraint_y": true,
 	"layout_grids": true, "blend_mode": true, "layout_sizing_x": true, "layout_sizing_y": true, "bindings": true,
-	"modes": true, "text_style_id": true,
+	"modes": true, "text_style_id": true, "object_style_id": true, "layer_id": true,
 }
 
 // Compute compares the three documents.
@@ -187,7 +187,8 @@ func (p *Plan) pages(base, branch, source *opendesignerv1.Document) {
 				p.add(Change{Entity: "page", ID: id, Name: pb.GetName(), Kind: Removed, Conflict: true, ConflictPaths: []string{"name"}, forced: steps(rankDelete, del)})
 			}
 		case pb != nil && pbr != nil && ps != nil: // renamed?
-			rename := &opendesignerv1.Op{Kind: &opendesignerv1.Op_RenamePage{RenamePage: &opendesignerv1.RenamePage{Id: id, Name: pbr.GetName()}}}
+			// UpdatePage carries the name and the master fields together.
+			rename := &opendesignerv1.Op{Kind: &opendesignerv1.Op_UpdatePage{UpdatePage: &opendesignerv1.UpdatePage{Page: proto.Clone(pbr).(*opendesignerv1.Page)}}}
 			switch decide(pb, pbr, ps) {
 			case takeBranch:
 				p.add(Change{Entity: "page", ID: id, Name: pbr.GetName(), Kind: Changed, Paths: []string{"name"}, clean: steps(rankPage, rename)})

@@ -17,6 +17,7 @@ export interface LinkPreview { from: { x: number; y: number; width: number; heig
 import type { Camera } from "../canvas/camera";
 import type { Bounds } from "../canvas/geometry";
 import type { SnapGuide } from "../selection/snap";
+import { headOf, isThreaded } from "./threads";
 
 // The minimum the store asks of the transport: "send this op" (and apply it
 // optimistically). SyncClient satisfies it structurally; tests can pass
@@ -1644,7 +1645,9 @@ export const useScene = createStore<SceneStore>((set, get) => ({
   // Same id already in editing = no-op: do NOT call endTextEditing again (which
   // would delete a still-empty node only to reopen it on an id that has
   // vanished from the scene).
-  beginTextEditing: (id) => {
+  beginTextEditing: (requested) => {
+    // Editing any frame of a threaded chain edits the story, which lives in the first frame.
+    const id = headOf(get().scene, requested);
     const current = get().editingNodeId;
     if (current === id) return;
     if (current !== null) get().endTextEditing();
@@ -1666,6 +1669,8 @@ export const useScene = createStore<SceneStore>((set, get) => ({
     const scene = get().scene;
     const node = scene?.nodes.at(id);
     if (!node || node.kind !== "text" || (node.text?.content ?? "") !== "") return;
+    // An empty story in a chain is not a phantom: its frames are still there to be filled.
+    if (scene && isThreaded(scene, id)) return;
     const op: Op = create(OpSchema, {
       opId: crypto.randomUUID(),
       docId: scene?.id ?? "",

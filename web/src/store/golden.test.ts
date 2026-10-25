@@ -68,6 +68,10 @@ describe("golden parity", () => {
       // Component sets (variants); each component's set/variant/properties are
       // compared through `components` above, and the instance's values through `nodes`.
       expect(scene.componentSets).toEqual(expected.componentSets);
+      // Object styles, layers and the document settings (colour mode, profile ...).
+      expect(scene.objectStyles).toEqual(expected.objectStyles);
+      expect(scene.layers).toEqual(expected.layers);
+      expect(scene.settings).toEqual(expected.settings);
     });
   }
 });

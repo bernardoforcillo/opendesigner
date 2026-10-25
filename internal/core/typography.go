@@ -7,6 +7,7 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"unicode/utf8"
 
 	opendesignerv1 "github.com/bernardoforcillo/opendesigner/gen/opendesigner/v1"
 	"google.golang.org/protobuf/proto"
@@ -83,7 +84,7 @@ func validateFont(doc *opendesignerv1.Document, f *opendesignerv1.FontFace) erro
 
 func finiteNonNeg(v float64) bool { return !math.IsNaN(v) && !math.IsInf(v, 0) && v >= 0 }
 
-func validateTextStyleDef(d *opendesignerv1.TextStyleDef) error {
+func validateTextStyleDef(doc *opendesignerv1.Document, d *opendesignerv1.TextStyleDef) error {
 	if d == nil || d.GetId() == "" {
 		return ErrNilTextStyle
 	}
@@ -94,6 +95,177 @@ func validateTextStyleDef(d *opendesignerv1.TextStyleDef) error {
 	}
 	if w := st.GetFontWeight(); w != "" && !fontWeightRe.MatchString(w) && w != "normal" && w != "bold" {
 		return ErrTextStyleValue
+	}
+	if ls := st.GetLetterSpacing(); math.IsNaN(ls) || math.IsInf(ls, 0) || ls < -1000 || ls > 1000 {
+		return ErrTextStyleValue
+	}
+	if err := validateStyleGlyphs(st); err != nil {
+		return err
+	}
+	return validateStyleRelations(doc, d)
+}
+
+// validateStyleGlyphs checks the character-level fields added for typesetting: horizontal scale, script and colour.
+var featureRe = regexp.MustCompile(`^[A-Za-z0-9]{4}( (on|off|[0-9]{1,3}))?$`)
+
+// validFontFeatures reports whether s is a comma-separated list of OpenType feature settings.
+func validFontFeatures(s string) bool {
+	if s == "" {
+		return true
+	}
+	if len(s) > 128 {
+		return false
+	}
+	for _, item := range strings.Split(s, ",") {
+		if !featureRe.MatchString(strings.TrimSpace(item)) {
+			return false
+		}
+	}
+	return true
+}
+
+var variationRe = regexp.MustCompile(`^[A-Za-z0-9]{4} -?[0-9]{1,4}(\.[0-9]{1,3})?$`)
+
+// validFontVariations reports whether s is a comma-separated list of variable-font axis settings ("wght 650, wdth 90").
+func validFontVariations(s string) bool {
+	if s == "" {
+		return true
+	}
+	if len(s) > 128 {
+		return false
+	}
+	for _, item := range strings.Split(s, ",") {
+		if !variationRe.MatchString(strings.TrimSpace(item)) {
+			return false
+		}
+	}
+	return true
+}
+
+func validRule(r *opendesignerv1.ParagraphRule) bool {
+	return r == nil || (finiteIn(r.GetWeight(), 0, 100) && finiteIn(r.GetOffset(), -1000, 1000) &&
+		finiteIn(r.GetIndentLeft(), 0, 100000) && finiteIn(r.GetIndentRight(), 0, 100000) && validColor(r.GetColor()))
+}
+
+// hasParagraphLook reports whether d sets any keep, rule, shading, border or optical-margin field.
+func hasParagraphLook(d *opendesignerv1.TextStyleDef) bool {
+	return d.GetKeepWithNext() || d.GetKeepLinesTogether() || d.GetKeepFirstLines() != 0 || d.GetKeepLastLines() != 0 ||
+		d.GetRuleAbove() != nil || d.GetRuleBelow() != nil || d.GetShading() != nil || d.GetShadingOffset() != 0 ||
+		d.GetBorderColor() != nil || d.GetBorderWeight() != 0 || d.GetOpticalMargin()
+}
+
+func validateStyleGlyphs(st *opendesignerv1.TextStyle) error {
+	if !validFontFeatures(st.GetFontFeatures()) {
+		return fmt.Errorf("%w: font features %q", ErrTextStyleValue, st.GetFontFeatures())
+	}
+	if !validFontVariations(st.GetFontVariations()) {
+		return fmt.Errorf("%w: font variations %q", ErrTextStyleValue, st.GetFontVariations())
+	}
+	if hs := st.GetHorizontalScale(); hs != 0 && !(hs >= 0.1 && hs <= 10) {
+		return fmt.Errorf("%w: horizontal scale %v", ErrTextStyleValue, hs)
+	}
+	if sc := st.GetScript(); sc < 0 || sc > opendesignerv1.TextScript_TEXT_SCRIPT_SUBSCRIPT {
+		return fmt.Errorf("%w: script", ErrTextStyleValue)
+	}
+	if c := st.GetColor(); c != nil {
+		for _, v := range []float32{c.GetR(), c.GetG(), c.GetB(), c.GetA()} {
+			if math.IsNaN(float64(v)) || v < 0 || v > 1 {
+				return fmt.Errorf("%w: colour", ErrTextStyleValue)
+			}
+		}
+	}
+	return nil
+}
+
+var numberStyles = map[string]bool{"": true, "i": true, "I": true, "a": true, "A": true}
+
+// validateParagraphFeatures checks the paragraph-only settings: lists, tab stops, drop caps, nested styles.
+// A character style has none of them.
+func validateParagraphFeatures(doc *opendesignerv1.Document, d *opendesignerv1.TextStyleDef) error {
+	any := d.GetHyphenate() || d.GetListKind() != opendesignerv1.ListKind_LIST_KIND_NONE || d.GetListMarker() != "" || d.GetListNumberStyle() != "" ||
+		d.GetListIndent() != 0 || d.GetOutlineLevel() != 0 || len(d.GetTabStops()) > 0 || d.GetDropCapLines() != 0 || d.GetDropCapChars() != 0 || len(d.GetNestedStyles()) > 0
+	if d.GetKind() == opendesignerv1.TextStyleKind_TEXT_STYLE_KIND_CHARACTER {
+		if any || hasParagraphLook(d) {
+			return fmt.Errorf("%w: a character style has no paragraph features", ErrTextStyleValue)
+		}
+		return nil
+	}
+	if d.GetListKind() < 0 || d.GetListKind() > opendesignerv1.ListKind_LIST_KIND_NUMBER || !numberStyles[d.GetListNumberStyle()] ||
+		len(d.GetListMarker()) > 16 || strings.ContainsAny(d.GetListMarker(), "\n\r") || !(d.GetListIndent() == 0 || finiteIn(d.GetListIndent(), 0, 1000)) {
+		return fmt.Errorf("%w: list", ErrTextStyleValue)
+	}
+	if d.GetOutlineLevel() > 9 {
+		return fmt.Errorf("%w: outline level", ErrTextStyleValue)
+	}
+	if d.GetKeepFirstLines() > 6 || d.GetKeepLastLines() > 6 {
+		return fmt.Errorf("%w: keep lines", ErrTextStyleValue)
+	}
+	if !validRule(d.GetRuleAbove()) || !validRule(d.GetRuleBelow()) || !validColor(d.GetShading()) || !validColor(d.GetBorderColor()) ||
+		!finiteIn(d.GetShadingOffset(), 0, 1000) || !finiteIn(d.GetBorderWeight(), 0, 100) {
+		return fmt.Errorf("%w: rule, shading or border", ErrTextStyleValue)
+	}
+	if n := d.GetDropCapLines(); n != 0 && (n < 2 || n > 10) || d.GetDropCapChars() > 10 {
+		return fmt.Errorf("%w: drop cap", ErrTextStyleValue)
+	}
+	if len(d.GetTabStops()) > 32 {
+		return fmt.Errorf("%w: too many tab stops", ErrTextStyleValue)
+	}
+	prev := -1.0
+	for _, t := range d.GetTabStops() {
+		if t == nil || !finiteIn(t.GetPosition(), 0, 100000) || t.GetPosition() <= prev || t.GetAlign() < 0 || t.GetAlign() > opendesignerv1.TabAlign_TAB_ALIGN_RIGHT ||
+			utf8.RuneCountInString(t.GetLeader()) > 1 || strings.ContainsAny(t.GetLeader(), "\n\r\t") {
+			return fmt.Errorf("%w: tab stops must ascend", ErrTextStyleValue)
+		}
+		prev = t.GetPosition()
+	}
+	if len(d.GetNestedStyles()) > 8 {
+		return fmt.Errorf("%w: too many nested styles", ErrTextStyleValue)
+	}
+	for _, n := range d.GetNestedStyles() {
+		c, ok := doc.GetTextStyles()[n.GetStyleId()]
+		if n == nil || !ok || c.GetKind() != opendesignerv1.TextStyleKind_TEXT_STYLE_KIND_CHARACTER || n.GetDelimiter() == "" || len(n.GetDelimiter()) > 8 ||
+			n.GetCount() < 1 || n.GetCount() > 50 {
+			return fmt.Errorf("%w: nested style", ErrTextStyleValue)
+		}
+	}
+	return nil
+}
+
+// validateStyleRelations checks what a style says about OTHER styles and about paragraphs: spacing and
+// indents are finite and non-negative; based_on names an existing style of the same kind and never
+// loops back; next_style_id names an existing paragraph style (itself included); a character style has
+// no paragraph settings and no next style.
+func validateStyleRelations(doc *opendesignerv1.Document, d *opendesignerv1.TextStyleDef) error {
+	if d.GetKind() != opendesignerv1.TextStyleKind_TEXT_STYLE_KIND_PARAGRAPH && d.GetKind() != opendesignerv1.TextStyleKind_TEXT_STYLE_KIND_CHARACTER {
+		return ErrTextStyleValue
+	}
+	for _, v := range []float64{d.GetSpaceBefore(), d.GetSpaceAfter(), d.GetIndentFirst(), d.GetIndentLeft()} {
+		if !finiteNonNeg(v) {
+			return ErrTextStyleValue
+		}
+	}
+	if err := validateParagraphFeatures(doc, d); err != nil {
+		return err
+	}
+	character := d.GetKind() == opendesignerv1.TextStyleKind_TEXT_STYLE_KIND_CHARACTER
+	if character && d.GetAlignToGrid() {
+		return fmt.Errorf("%w: a character style cannot align to the grid", ErrTextStyleValue)
+	}
+	if character && (d.GetNextStyleId() != "" || d.GetSpaceBefore() != 0 || d.GetSpaceAfter() != 0 || d.GetIndentFirst() != 0 || d.GetIndentLeft() != 0) {
+		return fmt.Errorf("%w: a character style has no paragraph settings", ErrTextStyleValue)
+	}
+	if next := d.GetNextStyleId(); next != "" && next != d.GetId() {
+		n, ok := doc.GetTextStyles()[next]
+		if !ok || n.GetKind() != opendesignerv1.TextStyleKind_TEXT_STYLE_KIND_PARAGRAPH {
+			return fmt.Errorf("%w: next style %q", ErrTextStyleMissing, next)
+		}
+	}
+	for cur, hops := d.GetBasedOn(), 0; cur != ""; hops++ {
+		b, ok := doc.GetTextStyles()[cur]
+		if cur == d.GetId() || !ok || b.GetKind() != d.GetKind() || hops > len(doc.GetTextStyles())+1 {
+			return fmt.Errorf("%w: based on %q", ErrTextStyleValue, cur)
+		}
+		cur = b.GetBasedOn()
 	}
 	return nil
 }
@@ -120,7 +292,7 @@ func applyDeleteFont(doc *opendesignerv1.Document, d *opendesignerv1.DeleteFont)
 
 func applySetTextStyleDef(doc *opendesignerv1.Document, s *opendesignerv1.SetTextStyleDef) error {
 	d := s.GetTextStyle()
-	if err := validateTextStyleDef(d); err != nil {
+	if err := validateTextStyleDef(doc, d); err != nil {
 		return err
 	}
 	if doc.TextStyles == nil {
@@ -167,7 +339,9 @@ func ValidateFont(doc *opendesignerv1.Document, f *opendesignerv1.FontFace) erro
 	return validateFont(doc, f)
 }
 
-func ValidateTextStyleDef(d *opendesignerv1.TextStyleDef) error { return validateTextStyleDef(d) }
+func ValidateTextStyleDef(doc *opendesignerv1.Document, d *opendesignerv1.TextStyleDef) error {
+	return validateTextStyleDef(doc, d)
+}
 
 // resolveTextStyle returns n with its shared text style applied: the style's
 // values replace the node's own (which stay in the document as the fallback).

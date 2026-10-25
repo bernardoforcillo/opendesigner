@@ -183,4 +183,67 @@ describe("Home", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent("server down");
     expect(screen.getByRole("button", { name: `Create from template: ${tpl("blank").name}` })).toBeInTheDocument();
   });
+
+  describe("verticals", () => {
+    it("starts on the product vertical and offers its templates", async () => {
+      render(<Home client={makeClient()} navigate={() => {}} now={() => NOW} />);
+      await screen.findByText("No documents yet");
+      expect(screen.getByRole("radio", { name: /Design × Development/ })).toHaveAttribute("aria-checked", "true");
+      expect(screen.getByRole("button", { name: "Create from template: Onboarding" })).toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "Create from template: Book" })).toBeNull();
+    });
+
+    it("switching to Publishing shows its templates and journey, and remembers the choice", async () => {
+      const first = render(<Home client={makeClient()} navigate={() => {}} now={() => NOW} />);
+      await screen.findByText("No documents yet");
+      await userEvent.click(screen.getByRole("radio", { name: "Publishing" }));
+      expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("What do you want to publish?");
+      for (const n of ["Blank publication", "Book", "Magazine", "Report"]) {
+        expect(screen.getByRole("button", { name: `Create from template: ${n}` })).toBeInTheDocument();
+      }
+      expect(screen.queryByRole("button", { name: "Create from template: Onboarding" })).toBeNull();
+      expect(within(screen.getByRole("list", { name: "The journey" })).getByText("Export")).toBeInTheDocument();
+      first.unmount();
+      render(<Home client={makeClient()} navigate={() => {}} now={() => NOW} />);
+      expect(await screen.findByRole("radio", { name: "Publishing" })).toHaveAttribute("aria-checked", "true");
+    });
+
+    it("a template of a vertical creates the document with that vertical; 'New document' is that vertical's blank", async () => {
+      const client = makeClient();
+      const navigate = vi.fn();
+      render(<Home client={client} navigate={navigate} now={() => NOW} />);
+      await screen.findByText("No documents yet");
+      await userEvent.click(screen.getByRole("radio", { name: "Publishing" }));
+      await userEvent.click(screen.getByRole("button", { name: "Create from template: Book" }));
+      await waitFor(() => expect(navigate).toHaveBeenCalledWith("/doc/new-doc"));
+      expect(client.createDocument).toHaveBeenCalledWith({ name: "Untitled book", vertical: "publishing" });
+      // The book's setup (pages, styles, settings) went over as ops after the document was created.
+      const kinds = (client.submitOp as ReturnType<typeof vi.fn>).mock.calls.map((c) => (c[0] as { op: { kind: { case: string } } }).op.kind.case);
+      expect(kinds[0]).toBe("setDocSettings");
+      expect(kinds).toContain("updatePage");
+      expect(kinds).toContain("createPage");
+      expect(kinds).toContain("setTextStyleDef");
+
+      // (After navigating the Home goes away; a new one starts the blank document of the remembered vertical.)
+      cleanup();
+      const again = makeClient();
+      const navigate2 = vi.fn();
+      render(<Home client={again} navigate={navigate2} now={() => NOW} />);
+      await userEvent.click(await screen.findByRole("button", { name: "New document" }));
+      await waitFor(() => expect(navigate2).toHaveBeenCalled());
+      expect(again.createDocument).toHaveBeenCalledWith({ name: "Untitled publication", vertical: "publishing" });
+    });
+
+    it("document cards say what kind of document they are", async () => {
+      const docs = [
+        { id: ID_A, name: "A book", updatedAt: sec(60), screens: 0, flows: 0, vertical: "publishing" },
+        { id: ID_B, name: "An app", updatedAt: sec(120), screens: 3, flows: 1 },
+      ];
+      render(<Home client={makeClient(docs as never)} navigate={() => {}} now={() => NOW} />);
+      const cards = await screen.findAllByRole("article");
+      expect(within(cards[0]).getByText("publishing")).toBeInTheDocument();
+      expect(within(cards[0]).getByText("Publication")).toBeInTheDocument();
+      expect(within(cards[1]).getByText("3 screens · 1 flow")).toBeInTheDocument();
+    });
+  });
 });

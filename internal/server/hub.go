@@ -138,6 +138,9 @@ type Hub struct {
 	// independent of the op-log (see presence.go).
 	presence *presenceRoom
 
+	// jobs hands outputs only an editor can make (PDF, EPUB...) to an editor that has the document open (see jobs.go).
+	jobs *jobRoom
+
 	// historyBase is the seq of the newest record NOT in history: everything
 	// at or below it has been snapshotted and dropped. Subscribe uses it to
 	// tell "you are up to date" from "what you are asking for is gone".
@@ -193,6 +196,7 @@ func newHub(b documentBundle) (*Hub, error) {
 		historyBase:   base,
 		subs:          map[*subscriber]struct{}{},
 		presence:      newPresenceRoom(),
+		jobs:          newJobRoom(),
 		snapshotEvery: snapshotEveryOps,
 	}, nil
 }
@@ -551,6 +555,20 @@ func cowClone(d *opendesignerv1.Document) *opendesignerv1.Document {
 	for k, n := range d.GetNodes() {
 		next.Nodes[k] = n
 	}
+	// Document settings, layers and object styles: tiny, deep-cloned. Forgetting one here would lose it at
+	// the next op (the live document is rebuilt from this clone on every Submit).
+	if d.GetSettings() != nil {
+		next.Settings = proto.Clone(d.GetSettings()).(*opendesignerv1.DocSettings)
+	}
+	for _, l := range d.GetLayers() {
+		next.Layers = append(next.Layers, proto.Clone(l).(*opendesignerv1.Layer))
+	}
+	if len(d.GetObjectStyles()) > 0 {
+		next.ObjectStyles = make(map[string]*opendesignerv1.ObjectStyleDef, len(d.GetObjectStyles()))
+		for k, o := range d.GetObjectStyles() {
+			next.ObjectStyles[k] = proto.Clone(o).(*opendesignerv1.ObjectStyleDef)
+		}
+	}
 	// Flows and transitions: few, deep-cloned (core does not mutate them in place).
 	if len(d.GetFlows()) > 0 {
 		next.Flows = make(map[string]*opendesignerv1.Flow, len(d.GetFlows()))
@@ -659,6 +677,13 @@ func (h *Hub) Counts() (screens, flows int) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	return countDoc(h.doc)
+}
+
+// Vertical: the kind of work the document is for ("" = product); it serves the Home.
+func (h *Hub) Vertical() string {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return h.doc.GetSettings().GetVertical()
 }
 
 // countDoc: screen = frame that is a direct child of a page (like

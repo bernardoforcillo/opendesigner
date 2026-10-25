@@ -1,0 +1,357 @@
+{
+ "_comment": [
+  "Swatches: the print fields of a color variable (`swatch`, `cmyk`, `spot_name`, `tint_of` + `tint`). Run from BOTH",
+  "sides. Valid: a CMYK process swatch, a spot swatch, a 50% tint of the first. Rejected: a CMYK channel above 1, a tint",
+  "without a base or a base without a tint, a tint of itself or of a missing swatch, a tint above 100, a swatch that is",
+  "not a color. The scene MUST stay unchanged, in both Go and TS."
+ ],
+ "docId": "doc1",
+ "expected": {
+  "collections": {
+   "c": {
+    "id": "c",
+    "modes": [
+     {
+      "id": "m",
+      "name": "Default"
+     }
+    ],
+    "name": "Swatches"
+   }
+  },
+  "id": "doc1",
+  "name": "Untitled",
+  "pages": [
+   {
+    "id": "page1",
+    "name": "Page 1"
+   }
+  ],
+  "schemaVersion": 1,
+  "variables": {
+   "red": {
+    "cmyk": {
+     "m": 1,
+     "y": 1
+    },
+    "collectionId": "c",
+    "id": "red",
+    "name": "red",
+    "swatch": true,
+    "type": "VARIABLE_TYPE_COLOR",
+    "values": {
+     "m": {
+      "color": {
+       "a": 1,
+       "b": 0.1,
+       "g": 0.1,
+       "r": 0.9
+      }
+     }
+    }
+   },
+   "red50": {
+    "collectionId": "c",
+    "id": "red50",
+    "name": "red50",
+    "swatch": true,
+    "tint": 50,
+    "tintOf": "red",
+    "type": "VARIABLE_TYPE_COLOR",
+    "values": {
+     "m": {
+      "color": {
+       "a": 1,
+       "b": 0.1,
+       "g": 0.1,
+       "r": 0.9
+      }
+     }
+    }
+   },
+   "spot": {
+    "collectionId": "c",
+    "id": "spot",
+    "name": "spot",
+    "spotName": "PANTONE 485 C",
+    "swatch": true,
+    "type": "VARIABLE_TYPE_COLOR",
+    "values": {
+     "m": {
+      "color": {
+       "a": 1,
+       "b": 0.1,
+       "g": 0.1,
+       "r": 0.9
+      }
+     }
+    }
+   }
+  }
+ },
+ "ops": [
+  {
+   "docId": "doc1",
+   "opId": "o1",
+   "setCollection": {
+    "collection": {
+     "id": "c",
+     "modes": [
+      {
+       "id": "m",
+       "name": "Default"
+      }
+     ],
+     "name": "Swatches"
+    }
+   }
+  },
+  {
+   "docId": "doc1",
+   "opId": "o2",
+   "setVariable": {
+    "variable": {
+     "cmyk": {
+      "m": 1,
+      "y": 1
+     },
+     "collectionId": "c",
+     "id": "red",
+     "name": "red",
+     "swatch": true,
+     "type": "VARIABLE_TYPE_COLOR",
+     "values": {
+      "m": {
+       "color": {
+        "a": 1,
+        "b": 0.1,
+        "g": 0.1,
+        "r": 0.9
+       }
+      }
+     }
+    }
+   }
+  },
+  {
+   "docId": "doc1",
+   "opId": "o3",
+   "setVariable": {
+    "variable": {
+     "collectionId": "c",
+     "id": "spot",
+     "name": "spot",
+     "spotName": "PANTONE 485 C",
+     "swatch": true,
+     "type": "VARIABLE_TYPE_COLOR",
+     "values": {
+      "m": {
+       "color": {
+        "a": 1,
+        "b": 0.1,
+        "g": 0.1,
+        "r": 0.9
+       }
+      }
+     }
+    }
+   }
+  },
+  {
+   "docId": "doc1",
+   "opId": "o4",
+   "setVariable": {
+    "variable": {
+     "collectionId": "c",
+     "id": "red50",
+     "name": "red50",
+     "swatch": true,
+     "tint": 50,
+     "tintOf": "red",
+     "type": "VARIABLE_TYPE_COLOR",
+     "values": {
+      "m": {
+       "color": {
+        "a": 1,
+        "b": 0.1,
+        "g": 0.1,
+        "r": 0.9
+       }
+      }
+     }
+    }
+   }
+  },
+  {
+   "docId": "doc1",
+   "opId": "o5",
+   "setVariable": {
+    "variable": {
+     "cmyk": {
+      "c": 2
+     },
+     "collectionId": "c",
+     "id": "bad1",
+     "name": "bad1",
+     "swatch": true,
+     "type": "VARIABLE_TYPE_COLOR",
+     "values": {
+      "m": {
+       "color": {
+        "a": 1,
+        "b": 0.1,
+        "g": 0.1,
+        "r": 0.9
+       }
+      }
+     }
+    }
+   }
+  },
+  {
+   "docId": "doc1",
+   "opId": "o6",
+   "setVariable": {
+    "variable": {
+     "collectionId": "c",
+     "id": "bad2",
+     "name": "bad2",
+     "swatch": true,
+     "tint": 50,
+     "type": "VARIABLE_TYPE_COLOR",
+     "values": {
+      "m": {
+       "color": {
+        "a": 1,
+        "b": 0.1,
+        "g": 0.1,
+        "r": 0.9
+       }
+      }
+     }
+    }
+   }
+  },
+  {
+   "docId": "doc1",
+   "opId": "o7",
+   "setVariable": {
+    "variable": {
+     "collectionId": "c",
+     "id": "bad3",
+     "name": "bad3",
+     "swatch": true,
+     "tintOf": "red",
+     "type": "VARIABLE_TYPE_COLOR",
+     "values": {
+      "m": {
+       "color": {
+        "a": 1,
+        "b": 0.1,
+        "g": 0.1,
+        "r": 0.9
+       }
+      }
+     }
+    }
+   }
+  },
+  {
+   "docId": "doc1",
+   "opId": "o8",
+   "setVariable": {
+    "variable": {
+     "collectionId": "c",
+     "id": "bad4",
+     "name": "bad4",
+     "swatch": true,
+     "tint": 10,
+     "tintOf": "bad4",
+     "type": "VARIABLE_TYPE_COLOR",
+     "values": {
+      "m": {
+       "color": {
+        "a": 1,
+        "b": 0.1,
+        "g": 0.1,
+        "r": 0.9
+       }
+      }
+     }
+    }
+   }
+  },
+  {
+   "docId": "doc1",
+   "opId": "o9",
+   "setVariable": {
+    "variable": {
+     "collectionId": "c",
+     "id": "bad5",
+     "name": "bad5",
+     "swatch": true,
+     "tint": 10,
+     "tintOf": "nope",
+     "type": "VARIABLE_TYPE_COLOR",
+     "values": {
+      "m": {
+       "color": {
+        "a": 1,
+        "b": 0.1,
+        "g": 0.1,
+        "r": 0.9
+       }
+      }
+     }
+    }
+   }
+  },
+  {
+   "docId": "doc1",
+   "opId": "o10",
+   "setVariable": {
+    "variable": {
+     "collectionId": "c",
+     "id": "bad6",
+     "name": "bad6",
+     "swatch": true,
+     "tint": 120,
+     "tintOf": "red",
+     "type": "VARIABLE_TYPE_COLOR",
+     "values": {
+      "m": {
+       "color": {
+        "a": 1,
+        "b": 0.1,
+        "g": 0.1,
+        "r": 0.9
+       }
+      }
+     }
+    }
+   }
+  },
+  {
+   "docId": "doc1",
+   "opId": "o11",
+   "setVariable": {
+    "variable": {
+     "collectionId": "c",
+     "id": "num",
+     "name": "num",
+     "swatch": true,
+     "type": "VARIABLE_TYPE_NUMBER"
+    }
+   }
+  }
+ ],
+ "rejected": [
+  4,
+  5,
+  6,
+  7,
+  8,
+  9,
+  10
+ ]
+}

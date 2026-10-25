@@ -198,7 +198,7 @@ function toStrokes(v: unknown): StrokeLite[] {
   });
 }
 
-const ALIGNS: Record<TextAlignLite, true> = { left: true, center: true, right: true };
+const ALIGNS: Record<TextAlignLite, true> = { left: true, center: true, right: true, justify: true };
 
 function toAlign(v: unknown): TextAlignLite {
   return typeof v === "string" && Object.prototype.hasOwnProperty.call(ALIGNS, v)

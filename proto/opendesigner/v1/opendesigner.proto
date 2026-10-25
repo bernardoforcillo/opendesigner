@@ -243,6 +243,13 @@ enum TextAlign {
   TEXT_ALIGN_LEFT = 1;
   TEXT_ALIGN_CENTER = 2;
   TEXT_ALIGN_RIGHT = 3;
+  TEXT_ALIGN_JUSTIFY = 4; // every line but the last of a paragraph fills the width (formatted text)
+}
+
+enum TextScript {
+  TEXT_SCRIPT_NORMAL = 0;
+  TEXT_SCRIPT_SUPERSCRIPT = 1;
+  TEXT_SCRIPT_SUBSCRIPT = 2;
 }
 
 message TextStyle {
@@ -252,11 +259,34 @@ message TextStyle {
   double line_height = 4;    // multiplier, 0 => 1.2
   TextAlign align = 5;       // LEFT | CENTER | RIGHT
   bool italic = 6;           // false => upright; draws the family's italic face when it has one
+  bool underline = 7;
+  bool strikethrough = 8;
+  double letter_spacing = 9; // px added after every character (tracking); 0 = none, may be negative
+  bool small_caps = 10;      // lowercase letters drawn as smaller capitals
+  TextScript script = 11;    // superscript / subscript: smaller and raised / lowered
+  double horizontal_scale = 12; // glyph width multiplier; 0 = 1 (normal)
+  bool no_kerning = 13;      // true switches the font's pair kerning off
+  Color color = 14;          // text colour of the style; absent => the node's fill
+  string font_features = 15; // OpenType features, e.g. "liga off, onum, ss01 2": tags of 4 characters, each optionally followed by on | off | a number
+  string font_variations = 16; // variable-font axes, e.g. "wght 650, wdth 90": tags of 4 characters, each followed by a number
 }
 
 // The text box is x/y/width/height of the Node (as for rect/ellipse): width is
 // the wrap width, height the one measured by the layout.
-message TextNode { string content = 1; TextStyle style = 2; }
+//
+// RICH TEXT. `style` is the text's own style. `paragraph_styles[i]` names a paragraph style
+// (a TextStyleDef of kind PARAGRAPH) for paragraph i, a paragraph being a "\n"-separated piece of
+// content; missing or "" => the text's own style. `runs` apply character styles (kind CHARACTER)
+// over ranges of `content`: sorted, non-overlapping, 0 <= start < end <= length of content, in UTF-16
+// code units (the unit of JavaScript strings, which is what the editor indexes). A style id that no
+// longer exists is ignored when drawing.
+message TextNode {
+  string content = 1;
+  TextStyle style = 2;
+  repeated string paragraph_styles = 3;
+  repeated TextRun runs = 4;
+}
+message TextRun { int32 start = 1; int32 end = 2; string style_id = 3; }
 
 // The image is a REFERENCE, never bytes. `asset_hash` is the sha256 of the
 // bytes in lowercase hex; the bytes live ONCE in
@@ -267,7 +297,14 @@ message TextNode { string content = 1; TextStyle style = 2; }
 // compacts -- the same photo dragged ten times would weigh ten times as much,
 // and every Subscribe catch-up would send it over the wire again. With the hash
 // the op stays a few dozen bytes and the pixels never enter the op flow.
-message ImageNode { string asset_hash = 1; }
+message ImageNode {
+  string asset_hash = 1;
+  // About the file the image was made from, recorded when it is placed: the name it had (what "relink"
+  // shows) and its size in pixels (what the effective resolution is computed from). 0 = unknown.
+  string original_name = 2;
+  uint32 pixel_width = 3;
+  uint32 pixel_height = 4;
+}
 
 // An anchor point of a vector path.
 //
@@ -520,6 +557,10 @@ message Node {
   // Layout grids of a FRAME (see LayoutGrid): editor guides and snap targets, never exported.
   // The "layout_grids" mask path REPLACES the whole list; only frames take one.
   repeated LayoutGrid layout_grids = 50;
+  // Shared object style (see ObjectStyleDef) and layer (see Layer). The "object_style_id" and "layer_id" mask
+  // paths write them; empty detaches. A style applies to any node but groups and instances.
+  string object_style_id = 51;
+  string layer_id = 52;
 }
 
 enum LayoutGridKind {
@@ -540,7 +581,43 @@ message LayoutGrid {
   Color color = 6;    // tint of the overlay (alpha included)
 }
 
-message Page { string id = 1; string name = 2; }
+// A page. A MASTER page (is_master) is a template: its nodes are drawn behind the nodes of every
+// page that applies it (master_id), they cannot be selected from those pages, and a text with the
+// token "<#>" shows the page's number there. A master cannot apply another master, and a document
+// always keeps at least one page that is not a master.
+message Page {
+  string id = 1;
+  string name = 2;
+  bool is_master = 3;
+  string master_id = 4; // a master page's id, or empty
+  // PAGE SETUP. A page with a size is a sheet: width x height world units at the origin (0, 0); 0 means
+  // an unbounded canvas page (the default). Margins, columns and bleed are guides drawn on the sheet;
+  // exports of a sized page are the sheet (plus bleed when asked), not the bounding box of its content.
+  double width = 5;
+  double height = 6;
+  double margin_top = 7;
+  double margin_right = 8;
+  double margin_bottom = 9;
+  double margin_left = 10;
+  uint32 columns = 11;   // 0 or 1 = a single column
+  double gutter = 12;    // space between columns
+  double bleed = 13;     // extra area around the sheet that is printed and trimmed
+  // PAGE NUMBERS. A page with section_start begins a numbering section: its number is number_start
+  // (0 = 1) in number_style ("" = 1 2 3, "i", "I", "a", "A"); the pages after it continue the count
+  // until the next section. Masters are not numbered. The first page is a section start by default.
+  bool section_start = 14;
+  uint32 number_start = 15;
+  string number_style = 16;
+  // With facing pages a page can use another master on the left-hand side.
+  string left_master_id = 17;
+  // Ids of master nodes this page has OVERRIDDEN: it does not show them (its own copy, if any, is an
+  // ordinary node of the page).
+  repeated string hidden_master_items = 18;
+  double slug = 19;      // area beyond the bleed for printer's marks and notes
+  repeated Guide guides = 20;
+}
+// A ruler guide: a vertical line at x = position, or a horizontal one at y = position.
+message Guide { bool vertical = 1; double position = 2; }
 
 // ---------- typography ----------
 // A FONT FACE is an uploaded font file: one weight/style of one family. The bytes
@@ -555,7 +632,86 @@ message FontFace {
   string asset_hash = 5;   // sha256 hex of the TTF/OTF/WOFF/WOFF2 bytes
 }
 // A named, reusable text style. Text nodes point to it with Node.text_style_id.
-message TextStyleDef { string id = 1; string name = 2; TextStyle style = 3; }
+//
+// A PARAGRAPH style sets the look of whole paragraphs; a CHARACTER style (kind CHARACTER) overrides
+// only some fields (family, size, weight, italic, underline, strikethrough: those that are set) over a
+// range of characters. `based_on` inherits the fields that are unset from another style of the same
+// kind; `next_style_id` is the paragraph style a new paragraph gets after one in this style. Spacing
+// and indents (px) are for paragraph styles only.
+enum TextStyleKind {
+  TEXT_STYLE_KIND_PARAGRAPH = 0;
+  TEXT_STYLE_KIND_CHARACTER = 1;
+}
+message TextStyleDef {
+  string id = 1;
+  string name = 2;
+  TextStyle style = 3;
+  TextStyleKind kind = 4;
+  string based_on = 5;
+  string next_style_id = 6;
+  double space_before = 7;
+  double space_after = 8;
+  double indent_first = 9; // extra indent of the first line
+  double indent_left = 10;
+  // Paragraph styles only: the lines of the paragraph sit on the document's baseline grid
+  // (DocSettings.baseline_*), moving down to the next grid line when they would fall between two.
+  bool align_to_grid = 11;
+  // Paragraph styles only (formatted text):
+  bool hyphenate = 12;       // long words may break at a syllable with a hyphen
+  ListKind list_kind = 13;   // bullets or numbers in front of every paragraph
+  string list_marker = 14;   // bullet: the character ("" => "•"); number: a template with "#" for the number ("" => "#.")
+  string list_number_style = 15; // "" (1,2,3) | "i" | "I" | "a" | "A"
+  double list_indent = 16;   // how far the text sits from the marker; 0 => 18
+  repeated TabStop tab_stops = 17; // from the paragraph's left edge, ascending; the default stops follow the last one
+  uint32 drop_cap_lines = 18; // 0 = none, 2..10 lines tall
+  uint32 drop_cap_chars = 19; // how many characters are the drop cap; 0 => 1
+  repeated NestedStyle nested_styles = 20;
+  // The heading level of the paragraphs in this style: 0 = body text, 1..9 = they appear in the table of
+  // contents and give the running headers (<h1>..<h3>).
+  uint32 outline_level = 21;
+  // Keeps (paragraph styles only), applied where a paragraph would break between threaded frames:
+  bool keep_with_next = 22;       // never the last paragraph of a frame unless the next one starts there too
+  bool keep_lines_together = 23;  // a paragraph is not split between frames
+  uint32 keep_first_lines = 24;   // orphans: at least this many lines at the bottom of a frame (0 = off, max 6)
+  uint32 keep_last_lines = 25;    // widows: at least this many lines at the top of the next frame (0 = off, max 6)
+  // Rules, shading and border (paragraph styles only); a weight of 0 means "none".
+  ParagraphRule rule_above = 26;
+  ParagraphRule rule_below = 27;
+  Color shading = 28;             // fill behind the paragraph; alpha 0 or absent = none
+  double shading_offset = 29;     // how far the shading and the border extend past the text, on every side
+  Color border_color = 30;
+  double border_weight = 31;      // 0 = no border
+  // Hanging punctuation: quotes, hyphens and periods at a line's edge hang slightly outside the margin.
+  bool optical_margin = 32;
+}
+
+// A line above or below a paragraph. `offset` is the distance from the text; `indent_*` shorten it;
+// `column_width` draws it across the whole frame instead of the width of the paragraph's text.
+message ParagraphRule {
+  double weight = 1;
+  Color color = 2;
+  double offset = 3;
+  double indent_left = 4;
+  double indent_right = 5;
+  bool column_width = 6;
+}
+
+enum ListKind {
+  LIST_KIND_NONE = 0;
+  LIST_KIND_BULLET = 1;
+  LIST_KIND_NUMBER = 2;
+}
+enum TabAlign {
+  TAB_ALIGN_LEFT = 0;
+  TAB_ALIGN_CENTER = 1;
+  TAB_ALIGN_RIGHT = 2;
+}
+// A tab stop: the text after a tab begins (left), is centred on (center) or ends (right) at `position`.
+// `leader` (at most one character) fills the gap before it, e.g. "." in a table of contents.
+message TabStop { double position = 1; TabAlign align = 2; string leader = 3; }
+// A character style applied to the start of every paragraph: up to the `count`-th occurrence of
+// `delimiter` (" " counts words, ":" a label), the delimiter itself included when `inclusive`.
+message NestedStyle { string style_id = 1; string delimiter = 2; uint32 count = 3; bool inclusive = 4; }
 
 // ---------- variables (design tokens) ----------
 // A COLLECTION groups variables that share the same MODES (e.g. "Light" and
@@ -588,7 +744,19 @@ message Variable {
   // collection active on the node, when the target's collection has a mode with
   // that id, else in the target's first mode.
   string alias_of = 6;
+  // SWATCHES. A color variable can also be a swatch: a named color of the document's palette, defined for print.
+  //   swatch     the variable is listed in the Swatches panel
+  //   cmyk       a process color defined in CMYK (`values` keep its RGB conversion for the screen)
+  //   spot_name  a spot color: the name of the ink (e.g. "PANTONE 485 C"), printed on its own plate
+  //   tint_of    the swatch this is a tint of, with `tint` percent (1..100) of its ink; editing the base
+  //              swatch in the editor re-derives its tints
+  bool swatch = 7;
+  Cmyk cmyk = 8;
+  string spot_name = 9;
+  string tint_of = 10;
+  double tint = 11;
 }
+message Cmyk { float c = 1; float m = 2; float y = 3; float k = 4; } // 0..1
 
 // ---------- flows ----------
 // A FLOW is a user path through the screens: a set of TRANSITIONS (edges)
@@ -685,7 +853,111 @@ message Document {
   map<string, ComponentSet> component_sets = 14;
   // Comments: commentId -> comment (see Comment).
   map<string, Comment> comments = 15;
+  DocSettings settings = 16;
+  // Object styles: objectStyleId -> shared look of shapes (see ObjectStyleDef).
+  map<string, ObjectStyleDef> object_styles = 17;
+  // Layers shared by all pages, in panel order (see Layer).
+  repeated Layer layers = 18;
 }
+
+// An OBJECT STYLE is a shared look for shapes: the properties named in `sets` (fills, strokes, effects,
+// opacity, corner_radius, blend_mode) are taken from the style by every node that applies it
+// (Node.object_style_id); the node's own values stay as the fallback, so detaching gives them back.
+// `based_on` names another object style whose settings this one starts from.
+message ObjectStyleDef {
+  string id = 1;
+  string name = 2;
+  repeated string sets = 3;
+  repeated Paint fills = 4;
+  repeated Stroke strokes = 5;
+  repeated Effect effects = 6;
+  double opacity = 7;
+  double corner_radius = 8;
+  BlendMode blend_mode = 9;
+  string based_on = 10;
+}
+
+// A LAYER spans all pages: a node names its layer (Node.layer_id) and hiding or locking the layer hides or
+// locks everything on it, on every page. Nodes without a layer belong to none. `no_print` keeps the layer
+// out of PDF export.
+message Layer {
+  string id = 1;
+  string name = 2;
+  bool hidden = 3;
+  bool locked = 4;
+  bool no_print = 5;
+}
+
+// Settings of the document as a whole.
+//  - vertical: the kind of work the document is for. It shapes the editor (which modes, tools and menu
+//    entries are offered) and the templates; it never limits what the document can hold. "" is "product".
+//      "publishing" -- books, magazines, reports: pages, masters, text frames, styles, PDF / EPUB
+//      "design"     -- illustration, UI design, boards: vector, components, variables
+//      "product"    -- design and development together: flows, prototype, handoff, code
+//  - baseline_increment: distance between the lines of the baseline grid (0 = no grid); baseline_start
+//    is where the first line sits, from the top of the page.
+message DocSettings {
+  string vertical = 1;
+  double baseline_increment = 2;
+  double baseline_start = 3;
+  // Facing pages: pages are read in spreads (the first alone, on the right; then pairs). For the margins
+  // of a page, margin_left is the INSIDE (towards the fold) and margin_right the OUTSIDE.
+  bool facing_pages = 4;
+  // Colour mode for output: "" (RGB, screens) or "cmyk" (print): swatches and the colour fields work in CMYK,
+  // exports convert to CMYK. `icc_profile` names the output condition the colours are meant for
+  // ("FOGRA39", "SWOP v2", "sRGB" ...), recorded as the PDF output intent; "" = none. The conversions are
+  // simple (not profile based).
+  string color_mode = 5;
+  string icc_profile = 6;
+  // Bibliographic metadata of the document as a book, for the ONIX export and the EPUB / PDF metadata.
+  BookMetadata book = 7;
+  // Conditional text: spans of text marked [?name]...[/?] are shown or hidden by condition (docs/long-documents.md).
+  repeated TextCondition conditions = 8;
+  // Table styles: a named recipe a table can be given (header / body / alternate rows, object and text styles).
+  repeated TableStyle table_styles = 9;
+}
+
+// A condition of conditional text. A name no condition defines counts as visible. Hidden text is left out of the
+// canvas, the exports and the contents alike -- the text stays in the document.
+message TextCondition { string name = 1; bool visible = 2; }
+
+// A table style: which object style (fill, stroke...) and text style the header rows, the body rows and every
+// second body row of a table take. Empty ids leave that part alone.
+message TableStyle {
+  string id = 1;
+  string name = 2;
+  string header_object_style_id = 3;
+  string body_object_style_id = 4;
+  string alt_object_style_id = 5;     // every second body row
+  string header_text_style_id = 6;
+  string body_text_style_id = 7;
+}
+
+// Book metadata, named after the ONIX for Books 3.0 composites it feeds (docs/onix.md). Every field is optional;
+// codes are those of the ONIX code lists (roles list 17, subject schemes list 27, price types list 58).
+message BookMetadata {
+  string isbn13 = 1;          // 13 digits, valid check digit (hyphens are not stored)
+  string title = 2;
+  string subtitle = 3;
+  string series_name = 4;
+  string series_number = 5;   // "3" or "III": a short string
+  string edition_number = 6;  // digits
+  repeated Contributor contributors = 7;
+  string language = 8;        // ISO 639-2/B code, lower case: eng, ita, fre
+  string publisher_name = 9;
+  string imprint = 10;
+  string publication_date = 11; // YYYYMMDD
+  string description = 12;    // plain text, paragraphs separated by a blank line
+  repeated Subject subjects = 13;
+  uint32 page_count = 14;
+  repeated Price prices = 15;
+  string sender_name = 16;    // the ONIX message header
+  string sender_email = 17;
+  string product_form = 18;   // ONIX list 150, e.g. "ED" (digital download), "BC" (paperback), "BB" (hardback); "" => ED
+}
+message Contributor { string role = 1; string person_name = 2; string biography = 3; } // role: list 17, e.g. A01 author, B01 editor, A12 illustrator, B06 translator
+message Subject { string scheme = 1; string code = 2; string heading = 3; }             // scheme: list 27, e.g. "10" BISAC, "93" Thema, "12" BIC
+message Price { string price_type = 1; string amount = 2; string currency = 3; }         // type: list 58, "02" RRP including tax, "01" RRP excluding tax
 
 // ---------- ops ----------
 message CreateNode { Node node = 1; }
@@ -710,6 +982,12 @@ message SetText {
   string content = 2;
   TextStyle style = 3;
   bool style_present = 4;
+  // Rich text. With rich_present the two lists below REPLACE the node's paragraph styles and
+  // runs (validated, see TextNode); without it they stay, adjusted to the new content: runs are
+  // clamped to its length (dropped when empty) and paragraph_styles cut to the paragraph count.
+  repeated string paragraph_styles = 5;
+  repeated TextRun runs = 6;
+  bool rich_present = 7;
 }
 // Replaces the subpaths of a VectorNode WHOLESALE. Dedicated op instead of a
 // SetProperties mask path for the same reason as SetText: the geometry lives
@@ -768,6 +1046,12 @@ message CreatePage { Page page = 1; }
 // has nowhere to create a node.
 message DeletePage { string id = 1; }
 message RenamePage { string id = 1; string name = 2; }
+// ABSOLUTE upsert of an existing page's name / is_master / master_id (the inverse is the previous page).
+message UpdatePage { Page page = 1; }
+// Moves a page to a position in the page list (0-based; the others shift). The inverse moves it back.
+message MovePage { string id = 1; uint32 index = 2; }
+// ABSOLUTE upsert of the document settings (the inverse is the previous settings).
+message SetDocSettings { DocSettings settings = 1; }
 
 // op 16 (M4): registers an EXISTING subtree (root root_node_id) as the master
 // of a component. It copies nothing: the master stays where it is in `nodes`,
@@ -836,6 +1120,14 @@ message Op {
     SetInstanceProps    set_instance_props    = 38; // an instance's property values and variant choice
     SetComment          set_comment           = 39; // comments — upsert of a comment
     DeleteComment       delete_comment        = 40;
+    UpdatePage          update_page           = 41; // master pages — a page's name, master flag and applied master
+    SetDocSettings      set_doc_settings      = 42; // vertical and baseline grid (absolute upsert)
+    MovePage            move_page             = 43; // reorder pages
+    SetObjectStyleDef    set_object_style_def    = 44; // object styles — upsert
+    DeleteObjectStyleDef delete_object_style_def = 45;
+    SetLayer             set_layer               = 46; // layers — upsert (appends when new)
+    DeleteLayer          delete_layer            = 47;
+    SetImage             set_image               = 48; // relink: replaces the source of an image node
   }
 }
 // A comment pinned on the canvas. A THREAD is a root comment (parent_id empty) plus its
@@ -870,6 +1162,15 @@ message SetFont            { FontFace font = 1; }
 message DeleteFont         { string id = 1; }
 message SetTextStyleDef    { TextStyleDef text_style = 1; }
 message DeleteTextStyleDef { string id = 1; }
+message SetObjectStyleDef    { ObjectStyleDef object_style = 1; }
+message DeleteObjectStyleDef { string id = 1; }
+// Upserts a layer (a new id is appended to the layer list). Deleting a layer detaches its nodes.
+// `position` (1-based, 0 = keep) puts the layer at that place in the list; beyond the end means last.
+message SetLayer    { Layer layer = 1; uint32 position = 2; }
+message DeleteLayer { string id = 1; }
+// Replaces what an image node shows: the asset, the name of the file it came from and its size in pixels. The node's
+// box is left alone. Only image nodes take it.
+message SetImage { string id = 1; ImageNode image = 2; }
 // Replaces a component set. The renames say that an axis / option of the OLD set is the
 // same thing under a new name, so members and instances keep their choices instead of
 // being detached or reset. `OptionRename.axis` is the axis's NEW name.
@@ -904,10 +1205,10 @@ message OpRecord {
 // ---------- service ----------
 message OpenRequest  { string doc_id = 1; }
 message OpenResponse { Document snapshot = 1; uint64 seq = 2; }
-message CreateDocumentRequest { string name = 1; }
+message CreateDocumentRequest { string name = 1; string vertical = 2; }
 // updated_at (unix seconds, 0 = unknown), screens (top-level frames) and
 // flows are for the Home page: a document's card shows them without opening it.
-message DocInfo { string id = 1; string name = 2; int64 updated_at = 3; uint32 screens = 4; uint32 flows = 5; }
+message DocInfo { string id = 1; string name = 2; int64 updated_at = 3; uint32 screens = 4; uint32 flows = 5; string vertical = 6; }
 message RenameDocumentRequest { string doc_id = 1; string name = 2; }
 message DeleteDocumentRequest { string doc_id = 1; }
 message DeleteDocumentResponse {}
@@ -1155,6 +1456,50 @@ message WatchPresenceRequest { string doc_id = 1; string client_id = 2; string n
 message UpdatePresenceRequest { string doc_id = 1; PresenceState state = 2; }
 message UpdatePresenceResponse {}
 
+// ---------- editor jobs ----------
+// Some outputs (PDF, EPUB, PNG, SVG, the print package, the full preflight) are produced by the editor itself, in the browser,
+// because they need the text layout and the fonts the editor has. An agent asks for one with RunJob; the server hands the
+// job to an editor that has the document open (WatchJobs), waits for it to answer (CompleteJob) and returns the result.
+// With no editor open the job fails with a message saying so -- nothing is queued.
+message EditorJob {
+  string job_id = 1;
+  string kind = 2;
+  string options_json = 3;
+  bytes payload = 4;        // an input file (an image to place, a PDF to import...), up to 32 MiB
+  string payload_name = 5;  // its file name
+}
+message WatchJobsRequest { string doc_id = 1; string client_id = 2; }
+message RunJobRequest {
+  string doc_id = 1;
+  string kind = 2;          // export_pdf | export_package | export_epub | export_epub_reflow | export_html | export_pptx | export_idml | export_png | export_svg | preflight | command
+  string options_json = 3;  // the kind's options, a JSON object
+  uint32 timeout_seconds = 4; // 0 => 120
+  bytes payload = 5;        // an input file for kinds that take one (command: place_image, import_pdf...)
+  string payload_name = 6;
+}
+message RunJobResponse {
+  bool ok = 1;
+  string message = 2;       // the reason when not ok, or a note from the editor (e.g. images that could not be read)
+  string result_id = 3;     // the produced file, served at /export-api/{doc_id}/{result_id}; empty for text-only results
+  string filename = 4;
+  string content_type = 5;
+  uint64 size = 6;
+  string text = 7;          // a text result (preflight as JSON), up to 256 KiB
+  bytes data = 8;           // the file itself, so the caller need not fetch it (also served at /export-api/...)
+}
+message CompleteJobRequest {
+  string doc_id = 1;
+  string job_id = 2;
+  string client_id = 3;
+  bool ok = 4;
+  string message = 5;
+  string filename = 6;
+  string content_type = 7;
+  bytes data = 8;           // the file, up to 64 MiB
+  string text = 9;
+}
+message CompleteJobResponse {}
+
 service DocumentService {
   rpc RenderBoard(RenderBoardRequest) returns (RenderBoardResponse);
   rpc ReviewDesign(ReviewDesignRequest) returns (ReviewDesignResponse);
@@ -1193,6 +1538,10 @@ service DocumentService {
   rpc WatchPresence(WatchPresenceRequest) returns (stream PresenceEvent);
   // Updates the client's cursor/selection (which must have an open stream).
   rpc UpdatePresence(UpdatePresenceRequest) returns (UpdatePresenceResponse);
+  // Editor jobs (see EditorJob): the editor watches, an agent runs, the editor completes.
+  rpc WatchJobs(WatchJobsRequest) returns (stream EditorJob);
+  rpc RunJob(RunJobRequest) returns (RunJobResponse);
+  rpc CompleteJob(CompleteJobRequest) returns (CompleteJobResponse);
   // Flow analysis (screen graph): unreachable screens, dead ends, paths.
   // Computed by the server (internal/flow), so UI, CLI and MCP agents see the
   // same result.

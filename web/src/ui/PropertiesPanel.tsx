@@ -20,6 +20,9 @@ import { ExportSection } from "./ExportSection";
 import { VariablesSection } from "./VariablesSection";
 import { boundColor } from "./variableOps";
 import { TypographyControls } from "./TypographyControls";
+import { AnchorControls, TableControls, TextOnPathControls, WrapControls } from "./TextLayoutControls";
+import { ImageLinkControls, LayerControls, ObjectStyleControls } from "./GraphicsControls";
+import { ThreadControls } from "./ThreadControls";
 import { InstanceControls } from "./InstanceControls";
 import { LayoutRelationControls } from "./LayoutRelationControls";
 import { effectiveStyle, styleOps } from "./typographyOps";
@@ -284,6 +287,7 @@ const ALIGNMENTS: readonly SegOption<TextAlignLite>[] = [
   { value: "left", label: "Left", icon: "textLeft" },
   { value: "center", label: "Center", icon: "textCenter" },
   { value: "right", label: "Right", icon: "textRight" },
+  { value: "justify", label: "Justify", icon: "textJustify" },
 ];
 
 // The stroke's POSITION relative to the perimeter. The group is called
@@ -799,6 +803,13 @@ export function PropertiesPanel() {
       <BooleanControls />
       <ConnectorControls />
       <PathControls />
+      <TextOnPathControls />
+      <AnchorControls />
+      <TableControls />
+      <WrapControls />
+      <ImageLinkControls />
+      <ObjectStyleControls />
+      <LayerControls />
 
       {/* LAYOUT: position, size, rotation and (rectangles) radius, in a
           two-column grid of fields with the prefix INSIDE (X, Y, W, H, °, R). */}
@@ -935,6 +946,7 @@ export function PropertiesPanel() {
               onChange={(v) => runGesture((ids) => textStyleOps(ids, { align: v as TextAlignLite }))}
             />
             <TypographyControls />
+            <ThreadControls />
           </div>
         </Section>
       )}

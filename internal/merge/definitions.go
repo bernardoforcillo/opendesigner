@@ -66,6 +66,30 @@ var definitionKinds = []definition{
 			return &opendesignerv1.Op{Kind: &opendesignerv1.Op_DeleteTextStyleDef{DeleteTextStyleDef: &opendesignerv1.DeleteTextStyleDef{Id: id}}}
 		},
 		func(m proto.Message) string { return m.(*opendesignerv1.TextStyleDef).GetName() }},
+	{"object_style",
+		func(d *opendesignerv1.Document) map[string]proto.Message { return msgs(d.GetObjectStyles()) },
+		func(m proto.Message) *opendesignerv1.Op {
+			return &opendesignerv1.Op{Kind: &opendesignerv1.Op_SetObjectStyleDef{SetObjectStyleDef: &opendesignerv1.SetObjectStyleDef{ObjectStyle: m.(*opendesignerv1.ObjectStyleDef)}}}
+		},
+		func(id string) *opendesignerv1.Op {
+			return &opendesignerv1.Op{Kind: &opendesignerv1.Op_DeleteObjectStyleDef{DeleteObjectStyleDef: &opendesignerv1.DeleteObjectStyleDef{Id: id}}}
+		},
+		func(m proto.Message) string { return m.(*opendesignerv1.ObjectStyleDef).GetName() }},
+	{"layer",
+		func(d *opendesignerv1.Document) map[string]proto.Message {
+			out := make(map[string]proto.Message, len(d.GetLayers()))
+			for _, l := range d.GetLayers() {
+				out[l.GetId()] = l
+			}
+			return out
+		},
+		func(m proto.Message) *opendesignerv1.Op {
+			return &opendesignerv1.Op{Kind: &opendesignerv1.Op_SetLayer{SetLayer: &opendesignerv1.SetLayer{Layer: m.(*opendesignerv1.Layer)}}}
+		},
+		func(id string) *opendesignerv1.Op {
+			return &opendesignerv1.Op{Kind: &opendesignerv1.Op_DeleteLayer{DeleteLayer: &opendesignerv1.DeleteLayer{Id: id}}}
+		},
+		func(m proto.Message) string { return m.(*opendesignerv1.Layer).GetName() }},
 	{"component_set",
 		func(d *opendesignerv1.Document) map[string]proto.Message { return msgs(d.GetComponentSets()) },
 		func(m proto.Message) *opendesignerv1.Op {

@@ -453,3 +453,47 @@ describe("mesh paints", () => {
     expect(out).toContain('fill="url(#p0)"');
   });
 });
+
+describe("letter spacing in the SVG", () => {
+  it("writes letter-spacing on the text and on a piece that differs", () => {
+    const style = { fontFamily: "", fontSize: 10, fontWeight: "", lineHeight: 1, align: "left" as const, letterSpacing: 2 };
+    const n = {
+      id: "t", parentId: "page1", orderKey: "a0", name: "t", visible: true, opacity: 1, x: 0, y: 0, width: 200, height: 20, rotation: 0,
+      fills: [{ r: 0, g: 0, b: 0, a: 1 }], strokes: [], kind: "text" as const, cornerRadius: 0, clipsContent: false,
+      text: {
+        content: "aa bb", style,
+        rich: { paragraphs: [{ style, spaceBefore: 0, spaceAfter: 0, indentFirst: 0, indentLeft: 0 }], runs: [{ start: 3, end: 5, style: { ...style, fontSize: 0, letterSpacing: 6 } }] },
+      },
+    };
+    const svg = nodesToSvg([n], { x: 0, y: 0, width: 200, height: 20 }, (s) => s.length * 5);
+    expect(svg).toContain('letter-spacing="2"');
+    expect(svg).toContain('letter-spacing="6"');
+    const plain = nodesToSvg([{ ...n, text: { content: "aa", style } }], { x: 0, y: 0, width: 200, height: 20 }, (s) => s.length * 5);
+    expect(plain).toContain('letter-spacing="2"');
+  });
+});
+
+describe("typesetting in the SVG", () => {
+  it("writes colour, scale, kerning, baseline shift and justified words as pieces", () => {
+    const style = { fontFamily: "", fontSize: 10, fontWeight: "", lineHeight: 1, align: "justify" as const };
+    const sup = { ...style, fontSize: 0, script: "super" as const, color: { r: 1, g: 0, b: 0, a: 0.5 }, horizontalScale: 2, noKerning: true };
+    const n = {
+      id: "t", parentId: "page1", orderKey: "a0", name: "t", visible: true, opacity: 1, x: 0, y: 0, width: 60, height: 40, rotation: 0,
+      fills: [{ r: 0, g: 0, b: 0, a: 1 }], strokes: [], kind: "text" as const, cornerRadius: 0, clipsContent: false,
+      text: {
+        content: "aa bb cc dd", style,
+        rich: { paragraphs: [{ style, spaceBefore: 0, spaceAfter: 0, indentFirst: 0, indentLeft: 0 }], runs: [{ start: 0, end: 2, style: sup }] },
+      },
+    };
+    const svg = nodesToSvg([n], { x: 0, y: 0, width: 200, height: 40 }, (s) => s.length * 5);
+    expect(svg).toContain('fill="rgb(255,0,0)"');
+    expect(svg).toContain('fill-opacity="0.5"');
+    expect(svg).toContain('lengthAdjust="spacingAndGlyphs"');
+    expect(svg).toContain("font-kerning:none");
+    // Raised: the piece's y is above the line's baseline (8 for a 10px line of 1.0).
+    const ys = [...svg.matchAll(/<tspan[^>]* y="([\d.-]+)"/g)].map((m) => Number(m[1]));
+    expect(Math.min(...ys)).toBeLessThan(Math.max(...ys));
+    // Justified: words and spaces are separate tspans.
+    expect((svg.match(/<tspan/g) ?? []).length).toBeGreaterThan(3);
+  });
+});

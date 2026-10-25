@@ -1,0 +1,291 @@
+{
+  "_comment": [
+    "Book metadata (SetDocSettings with DocSettings.book; see docs/onix.md). Run from BOTH sides: internal/core/golden_test.go and web/src/store/golden.test.ts.",
+    "Valid: a full record. Rejected: a wrong ISBN check digit, a short ISBN, an upper-case language, an impossible date, a role that is not a code, an empty contributor name, a one-digit scheme, a negative price, a lower-case currency, a bad email, a title with a line break, a non-numeric edition, a long product form."
+  ],
+  "docId": "doc1",
+  "ops": [
+    {
+      "docId": "doc1",
+      "opId": "o0",
+      "setDocSettings": {
+        "settings": {
+          "book": {
+            "isbn13": "9788804668237",
+            "title": "Il nome della rosa",
+            "subtitle": "Romanzo",
+            "language": "ita",
+            "publisherName": "Bompiani",
+            "publicationDate": "20240229",
+            "description": "Un'abbazia.\n\nUn delitto.",
+            "pageCount": 520,
+            "productForm": "ED",
+            "contributors": [
+              {
+                "role": "A01",
+                "personName": "Umberto Eco"
+              },
+              {
+                "role": "B06",
+                "personName": "W. Weaver",
+                "biography": "Translator"
+              }
+            ],
+            "subjects": [
+              {
+                "scheme": "10",
+                "code": "FIC014000",
+                "heading": "Historical"
+              }
+            ],
+            "prices": [
+              {
+                "priceType": "02",
+                "amount": "9.99",
+                "currency": "EUR"
+              }
+            ],
+            "senderName": "Casa Editrice",
+            "senderEmail": "onix@example.org"
+          }
+        }
+      }
+    },
+    {
+      "docId": "doc1",
+      "opId": "o1",
+      "setDocSettings": {
+        "settings": {
+          "book": {
+            "isbn13": "9788804668238"
+          }
+        }
+      }
+    },
+    {
+      "docId": "doc1",
+      "opId": "o2",
+      "setDocSettings": {
+        "settings": {
+          "book": {
+            "isbn13": "978880466823"
+          }
+        }
+      }
+    },
+    {
+      "docId": "doc1",
+      "opId": "o3",
+      "setDocSettings": {
+        "settings": {
+          "book": {
+            "language": "IT"
+          }
+        }
+      }
+    },
+    {
+      "docId": "doc1",
+      "opId": "o4",
+      "setDocSettings": {
+        "settings": {
+          "book": {
+            "publicationDate": "20230230"
+          }
+        }
+      }
+    },
+    {
+      "docId": "doc1",
+      "opId": "o5",
+      "setDocSettings": {
+        "settings": {
+          "book": {
+            "contributors": [
+              {
+                "role": "author",
+                "personName": "X"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "docId": "doc1",
+      "opId": "o6",
+      "setDocSettings": {
+        "settings": {
+          "book": {
+            "contributors": [
+              {
+                "role": "A01",
+                "personName": ""
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "docId": "doc1",
+      "opId": "o7",
+      "setDocSettings": {
+        "settings": {
+          "book": {
+            "subjects": [
+              {
+                "scheme": "1",
+                "code": "X"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "docId": "doc1",
+      "opId": "o8",
+      "setDocSettings": {
+        "settings": {
+          "book": {
+            "prices": [
+              {
+                "priceType": "02",
+                "amount": "-1",
+                "currency": "EUR"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "docId": "doc1",
+      "opId": "o9",
+      "setDocSettings": {
+        "settings": {
+          "book": {
+            "prices": [
+              {
+                "priceType": "02",
+                "amount": "1",
+                "currency": "eur"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "docId": "doc1",
+      "opId": "o10",
+      "setDocSettings": {
+        "settings": {
+          "book": {
+            "senderEmail": "nope"
+          }
+        }
+      }
+    },
+    {
+      "docId": "doc1",
+      "opId": "o11",
+      "setDocSettings": {
+        "settings": {
+          "book": {
+            "title": "two\nlines"
+          }
+        }
+      }
+    },
+    {
+      "docId": "doc1",
+      "opId": "o12",
+      "setDocSettings": {
+        "settings": {
+          "book": {
+            "editionNumber": "x"
+          }
+        }
+      }
+    },
+    {
+      "docId": "doc1",
+      "opId": "o13",
+      "setDocSettings": {
+        "settings": {
+          "book": {
+            "productForm": "ebook"
+          }
+        }
+      }
+    }
+  ],
+  "rejected": [
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10,
+    11,
+    12,
+    13
+  ],
+  "expected": {
+    "id": "doc1",
+    "name": "Untitled",
+    "pages": [
+      {
+        "id": "page1",
+        "name": "Page 1"
+      }
+    ],
+    "schemaVersion": 1,
+    "settings": {
+      "book": {
+        "isbn13": "9788804668237",
+        "title": "Il nome della rosa",
+        "subtitle": "Romanzo",
+        "language": "ita",
+        "publisherName": "Bompiani",
+        "publicationDate": "20240229",
+        "description": "Un'abbazia.\n\nUn delitto.",
+        "pageCount": 520,
+        "productForm": "ED",
+        "contributors": [
+          {
+            "role": "A01",
+            "personName": "Umberto Eco"
+          },
+          {
+            "role": "B06",
+            "personName": "W. Weaver",
+            "biography": "Translator"
+          }
+        ],
+        "subjects": [
+          {
+            "scheme": "10",
+            "code": "FIC014000",
+            "heading": "Historical"
+          }
+        ],
+        "prices": [
+          {
+            "priceType": "02",
+            "amount": "9.99",
+            "currency": "EUR"
+          }
+        ],
+        "senderName": "Casa Editrice",
+        "senderEmail": "onix@example.org"
+      }
+    }
+  }
+}

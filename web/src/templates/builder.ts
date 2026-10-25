@@ -1,8 +1,8 @@
 import type { Op } from "../gen/opendesigner/v1/opendesigner_pb";
 import { orderKeyBetween } from "../store/orderKey";
 import { toPbNode } from "../store/types";
-import type { FillLite, FlowLite, NodeLite, StrokeLite, TextStyleLite, TransitionLite } from "../store/types";
-import { makeCreateNodeOp, makeSetFlowOp, makeSetTransitionOp } from "../tools/ops";
+import type { DocSettingsLite, FillLite, FlowLite, NodeLite, PageLite, StrokeLite, TextStyleDefLite, TextStyleLite, TransitionLite } from "../store/types";
+import { makeCreateNodeOp, makeCreatePageWithMasterOp, makeSetDocSettingsOp, makeSetFlowOp, makeSetTextStyleDefOp, makeSetTransitionOp, makeUpdatePageOp } from "../tools/ops";
 import { META_KEYS } from "../flow/meta";
 import type { FlowKind } from "../flow/meta";
 
@@ -44,11 +44,19 @@ export function hexFill(hex: string): FillLite {
   return { r: ((n >> 16) & 255) / 255, g: ((n >> 8) & 255) / 255, b: (n & 255) / 255, a: 1 };
 }
 
-/** What a template produces: data, no effects. */
+/**
+ * What a template produces: data, no effects. A publishing or design template may also set up the
+ * document: its `pages` (the FIRST one is the page the document is born with and keeps its id; the rest
+ * are created, masters before the pages that apply them), the shared `textStyles` and the document
+ * `settings` (vertical, baseline grid).
+ */
 export interface BuiltTemplate {
   nodes: NodeLite[];
   flows: FlowLite[];
   transitions: TransitionLite[];
+  pages?: PageLite[];
+  textStyles?: TextStyleDefLite[];
+  settings?: DocSettingsLite;
 }
 
 export type IdGen = () => string;
@@ -257,7 +265,13 @@ export class Screen {
  * is not there.
  */
 export function builtToOps(built: BuiltTemplate, docId: string): Op[] {
+  // The document's setup comes first: pages (nodes hang from them) and styles (text names them).
+  const [first, ...others] = built.pages ?? [];
   const ops: Op[] = [
+    ...(built.settings ? [makeSetDocSettingsOp(built.settings)] : []),
+    ...(built.textStyles ?? []).map((d) => makeSetTextStyleDefOp(d)),
+    ...(first ? [makeUpdatePageOp(first)] : []),
+    ...others.map(({ id, name, ...rest }) => makeCreatePageWithMasterOp(id, name, rest)),
     ...built.nodes.map((n) => makeCreateNodeOp(toPbNode(n))),
     ...built.flows.map((f) => makeSetFlowOp(f)),
     ...built.transitions.map((t) => makeSetTransitionOp(t)),

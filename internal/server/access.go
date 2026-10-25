@@ -206,7 +206,7 @@ func requiredRole(name string, msg any) (docID string, need role, ok bool) {
 	}
 	docID = d.GetDocId()
 	switch name {
-	case "OpenDocument", "Subscribe", "WatchPresence", "UpdatePresence", "AnalyzeFlows", "ExportCode", "ListVersions",
+	case "OpenDocument", "Subscribe", "WatchPresence", "UpdatePresence", "WatchJobs", "RunJob", "CompleteJob", "AnalyzeFlows", "ExportCode", "ListVersions",
 		"ReviewDesign", "GetBranchOrigin", "GetAccess":
 		return docID, roleView, true
 	case "SubmitOp":
