@@ -36,7 +36,7 @@ func (s *Session) runCommandWith(ctx context.Context, tool, name string, args ma
 }
 
 type GenerateContentsInput struct {
-	Kind     string `json:"kind" jsonschema:"toc (table of contents from the heading styles) | index (from the [#term] marks in the text)"`
+	Kind     string `json:"kind" jsonschema:"toc (table of contents from the heading styles) | index (from the [#term] and [#Parent:Child] marks in the text; sub-entries are indented) | endnotes (the notes written [*text])"`
 	PageId   string `json:"pageId,omitempty" jsonschema:"where to create the frame if the document has none (default: the first page); an existing frame is refreshed in place"`
 	MaxLevel int    `json:"maxLevel,omitempty" jsonschema:"toc only: deepest heading level listed, 1..9 (default 3)"`
 }
@@ -380,6 +380,75 @@ func (s *Session) ReorderNode(ctx context.Context, in ReorderInput) (MovedOutput
 	return out, s.runCommand(ctx, "reorder_node", "reorder_node", map[string]any{"nodeId": in.NodeId, "to": in.To}, &out)
 }
 
+// --- long documents -----------------------------------------------------------------------------------------
+
+type ApplyTableStyleInput struct {
+	TableId string `json:"tableId" jsonschema:"the table's group node, or any of its cells"`
+	StyleId string `json:"styleId" jsonschema:"a table style from set_document_settings tableStyles"`
+}
+
+type ApplyTableStyleOutput struct {
+	TableId string `json:"tableId"`
+	Changed int    `json:"changed" jsonschema:"how many operations it took (0 = the table already looked like that)"`
+}
+
+// ApplyTableStyle gives a table the object and text styles of a table style.
+func (s *Session) ApplyTableStyle(ctx context.Context, in ApplyTableStyleInput) (ApplyTableStyleOutput, error) {
+	var out ApplyTableStyleOutput
+	return out, s.runCommand(ctx, "apply_table_style", "apply_table_style", map[string]any{"tableId": in.TableId, "styleId": in.StyleId}, &out)
+}
+
+type CheckTextInput struct {
+	Checks []string `json:"checks,omitempty" jsonschema:"limit to: repeated-word | double-space | space-before-punctuation | straight-quote | three-dots | spaced-hyphen (default: all)"`
+	Limit  int      `json:"limit,omitempty" jsonschema:"1..2000 (default 200)"`
+}
+
+type TextIssueView struct {
+	Code    string `json:"code"`
+	NodeId  string `json:"nodeId"`
+	PageId  string `json:"pageId"`
+	Start   int    `json:"start" jsonschema:"UTF-16 offset in the node's content (with hidden conditional text removed)"`
+	End     int    `json:"end"`
+	Text    string `json:"text"`
+	Message string `json:"message"`
+}
+
+type CheckTextOutput struct {
+	Count  int             `json:"count"`
+	Issues []TextIssueView `json:"issues"`
+}
+
+// CheckText finds typographic slips in the document's text.
+func (s *Session) CheckText(ctx context.Context, in CheckTextInput) (CheckTextOutput, error) {
+	a := map[string]any{}
+	if len(in.Checks) > 0 {
+		a["checks"] = in.Checks
+	}
+	if in.Limit != 0 {
+		a["limit"] = in.Limit
+	}
+	var out CheckTextOutput
+	return out, s.runCommand(ctx, "check_text", "check_text", a, &out)
+}
+
+type EditorialNoteView struct {
+	NodeId  string `json:"nodeId"`
+	PageId  string `json:"pageId"`
+	At      int    `json:"at" jsonschema:"offset of the [!...] marker in the node's content"`
+	Text    string `json:"text"`
+	Context string `json:"context" jsonschema:"the words just before the marker"`
+}
+
+type ListEditorialNotesOutput struct {
+	Notes []EditorialNoteView `json:"notes"`
+}
+
+// ListEditorialNotes lists the [!comment] notes of the document.
+func (s *Session) ListEditorialNotes(ctx context.Context, _ struct{}) (ListEditorialNotesOutput, error) {
+	var out ListEditorialNotesOutput
+	return out, s.runCommand(ctx, "list_editorial_notes", "list_editorial_notes", nil, &out)
+}
+
 // --- vectors ------------------------------------------------------------------------------------------
 
 type AnchorIO struct {
@@ -462,6 +531,9 @@ func registerCommandTools(srv *mcp.Server, s *Session) {
 	addTool(srv, "import_pdf", "Import a PDF: every page becomes a page of the document; mode editable (default) turns text, shapes and images into nodes and extracts the embedded fonts, mode image makes one picture per page. Up to 200 pages."+jobNote, s.ImportPdf)
 	addTool(srv, "import_fig", "Import a Figma .fig file (experimental reader; says what it could not carry over)."+jobNote, s.ImportFig)
 	addTool(srv, "upload_font", "Upload a font file and register it as a document font (family, weight, style); text styles whose fontFamily is that family then draw with it, and the PDF export embeds it."+jobNote, s.UploadFont)
+	addTool(srv, "apply_table_style", "Give a table the object styles (cell rectangles) and text styles (cell texts) of a table style: header rows, body rows, every second body row. Define table styles with set_document_settings tableStyles."+jobNote, s.ApplyTableStyle)
+	addTool(srv, "check_text", "Typographic slips in the text of the whole document: repeated words, double spaces, a space before , . ; :, straight quotes, three dots instead of an ellipsis, a spaced hyphen instead of an en dash. NOT a dictionary spell check (no word list ships with the editor; the browser's spell check marks misspellings while you type)."+jobNote, s.CheckText)
+	addTool(srv, "list_editorial_notes", "The editorial notes written [!comment] in the text: never drawn, exported or printed. Write one with set_text; remove it by editing the text."+jobNote, s.ListEditorialNotes)
 	addTool(srv, "create_vector", "Draw a vector from paths of anchors with optional bezier handles (handles are offsets from their anchor). The editor computes the curve's true bounds for the node's box (one implementation of that geometry), so use this rather than writing a vector by hand."+jobNote, s.CreateVector)
 	addTool(srv, "set_vector_path", "Replace a vector node's geometry; its box follows the new curve in the same step."+jobNote, s.SetVectorPath)
 	addTool(srv, "group_nodes", "Wrap nodes in a group (they keep their stacking order inside it)."+jobNote, s.GroupNodes)

@@ -1,7 +1,9 @@
 import type { Op } from "../gen/opendesigner/v1/opendesigner_pb";
 import { orderKeyBetween } from "../store/orderKey";
 import { childrenOf } from "../store/tree";
-import { toPbNode, type NodeLite, type SceneState, type TextStyleLite } from "../store/types";
+import { toPbNode, type NodeLite, type SceneState, type TableStyleLite, type TextStyleLite } from "../store/types";
+import { applyObjectStyleOps } from "./objectStyles";
+import { applyStyleOps } from "../ui/typographyOps";
 import { makeCreateNodeOp, makeDeleteOp, makeSetPropsOp, uuid } from "./ops";
 
 // TABLES. A table is a GROUP of cells -- no new kind of node: each cell is a rectangle (the box, fill and
@@ -187,4 +189,34 @@ export function resizeTableOps(scene: SceneState, tableId: string, axis: "col" |
   if (index < 0 || index >= list.length || list[index] === size) return [];
   const next = splice(list, index, 1, size);
   return restructure(scene, t, (r) => r, (c) => c, axis === "row" ? next : t.rows, axis === "col" ? next : t.cols);
+}
+
+/** The table style a table was last given (`meta["table.style"]`), if it still exists. */
+export const META_TABLE_STYLE = "table.style";
+
+/**
+ * Gives the table `tableId` the table style `style`: its header rows, body rows and every second body row take the
+ * style's object styles (on the cell rectangles) and text styles (on the cell texts). A part the style leaves
+ * empty is not touched. The table remembers the style (`table.style`), so it can be re-applied after rows are added.
+ */
+export function applyTableStyleOps(scene: SceneState, tableId: string, style: TableStyleLite): Op[] {
+  const t = readTable(scene, tableId);
+  if (!t) return [];
+  const rects: Map<string, string[]> = new Map(), texts: Map<string, string[]> = new Map();
+  const push = (m: Map<string, string[]>, styleId: string | undefined, id: string) => { if (styleId) m.set(styleId, [...(m.get(styleId) ?? []), id]); };
+  for (let r = 0; r < t.rows.length; r++) {
+    const header = r < t.head, alt = !header && (r - t.head) % 2 === 1;
+    const objId = header ? style.headerObjectStyleId : alt ? style.altObjectStyleId || style.bodyObjectStyleId : style.bodyObjectStyleId;
+    const txtId = header ? style.headerTextStyleId : style.bodyTextStyleId;
+    for (let c = 0; c < t.cols.length; c++) {
+      const cell = t.cells.get(key(r, c));
+      if (cell?.rect) push(rects, objId, cell.rect.id);
+      if (cell?.text) push(texts, txtId, cell.text.id);
+    }
+  }
+  const ops: Op[] = [];
+  for (const [styleId, ids] of rects) ops.push(...applyObjectStyleOps(scene, ids, styleId));
+  for (const [styleId, ids] of texts) ops.push(...applyStyleOps(scene, ids, styleId));
+  if (t.group.meta?.[META_TABLE_STYLE] !== style.id) ops.push(makeSetPropsOp(t.group.id, { meta: { ...(t.group.meta ?? {}), [META_TABLE_STYLE]: style.id } }, ["meta"]));
+  return ops;
 }

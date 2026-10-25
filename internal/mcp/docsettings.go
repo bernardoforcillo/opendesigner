@@ -19,13 +19,32 @@ func verticalName(v string) string {
 }
 
 type SetDocumentSettingsInput struct {
-	Vertical          *string  `json:"vertical,omitempty" jsonschema:"publishing (books, magazines, reports: pages, masters, text frames, PDF/EPUB) | design (illustration, UI design, boards) | product (design and development together: flows, prototype, code). Shapes the editor, never limits what the document can hold"`
-	BaselineIncrement *float64 `json:"baselineIncrement,omitempty" jsonschema:"distance between baseline grid lines, 0..1000; 0 = no grid"`
-	BaselineStart     *float64 `json:"baselineStart,omitempty" jsonschema:"where the first baseline grid line sits, from the top of the page"`
-	ColorMode         *string  `json:"colorMode,omitempty" jsonschema:"rgb (screens) | cmyk (print): swatches and colour fields work in CMYK and exports convert to it"`
-	IccProfile        *string  `json:"iccProfile,omitempty" jsonschema:"the output condition the colours are meant for (FOGRA39, SWOP v2 ...), recorded as the PDF output intent; empty = none"`
-	FacingPages       *bool    `json:"facingPages,omitempty" jsonschema:"pages are laid out as spreads (odd page numbers on the right): margins left/right become inside/outside"`
-	Book              *BookIO  `json:"book,omitempty" jsonschema:"the document's bibliographic record (ONIX); replaces the whole record, an empty object clears it. Feeds the ONIX export in the editor and the EPUB / PDF metadata"`
+	Vertical          *string         `json:"vertical,omitempty" jsonschema:"publishing (books, magazines, reports: pages, masters, text frames, PDF/EPUB) | design (illustration, UI design, boards) | product (design and development together: flows, prototype, code). Shapes the editor, never limits what the document can hold"`
+	BaselineIncrement *float64        `json:"baselineIncrement,omitempty" jsonschema:"distance between baseline grid lines, 0..1000; 0 = no grid"`
+	BaselineStart     *float64        `json:"baselineStart,omitempty" jsonschema:"where the first baseline grid line sits, from the top of the page"`
+	ColorMode         *string         `json:"colorMode,omitempty" jsonschema:"rgb (screens) | cmyk (print): swatches and colour fields work in CMYK and exports convert to it"`
+	IccProfile        *string         `json:"iccProfile,omitempty" jsonschema:"the output condition the colours are meant for (FOGRA39, SWOP v2 ...), recorded as the PDF output intent; empty = none"`
+	FacingPages       *bool           `json:"facingPages,omitempty" jsonschema:"pages are laid out as spreads (odd page numbers on the right): margins left/right become inside/outside"`
+	Conditions        *[]ConditionIO  `json:"conditions,omitempty" jsonschema:"conditional text: the document's conditions, replacing the list. Text between [?name] and [/?] is hidden everywhere (canvas, exports, contents, index) while the condition name is not visible; a name not listed is visible"`
+	TableStyles       *[]TableStyleIO `json:"tableStyles,omitempty" jsonschema:"table styles, replacing the list; give one to a table with apply_table_style"`
+	Book              *BookIO         `json:"book,omitempty" jsonschema:"the document's bibliographic record (ONIX); replaces the whole record, an empty object clears it. Feeds the ONIX export in the editor and the EPUB / PDF metadata"`
+}
+
+// ConditionIO is a condition of conditional text.
+type ConditionIO struct {
+	Name    string `json:"name" jsonschema:"1..40 letters, digits, spaces, _ or -"`
+	Visible bool   `json:"visible"`
+}
+
+// TableStyleIO is a named recipe for a table (object styles on the cells, text styles on their texts).
+type TableStyleIO struct {
+	Id                  string `json:"id"`
+	Name                string `json:"name"`
+	HeaderObjectStyleId string `json:"headerObjectStyleId,omitempty"`
+	BodyObjectStyleId   string `json:"bodyObjectStyleId,omitempty"`
+	AltObjectStyleId    string `json:"altObjectStyleId,omitempty" jsonschema:"every second body row"`
+	HeaderTextStyleId   string `json:"headerTextStyleId,omitempty"`
+	BodyTextStyleId     string `json:"bodyTextStyleId,omitempty"`
 }
 
 // BookIO is the book record, named after the ONIX 3.0 composites it feeds (docs/onix.md).
@@ -126,6 +145,19 @@ func (s *Session) SetDocumentSettings(ctx context.Context, in SetDocumentSetting
 	}
 	if in.Book != nil {
 		next.Book = in.Book.toProto()
+	}
+	if in.Conditions != nil {
+		next.Conditions = nil
+		for _, c := range *in.Conditions {
+			next.Conditions = append(next.Conditions, &opendesignerv1.TextCondition{Name: c.Name, Visible: c.Visible})
+		}
+	}
+	if in.TableStyles != nil {
+		next.TableStyles = nil
+		for _, t := range *in.TableStyles {
+			next.TableStyles = append(next.TableStyles, &opendesignerv1.TableStyle{Id: t.Id, Name: t.Name, HeaderObjectStyleId: t.HeaderObjectStyleId,
+				BodyObjectStyleId: t.BodyObjectStyleId, AltObjectStyleId: t.AltObjectStyleId, HeaderTextStyleId: t.HeaderTextStyleId, BodyTextStyleId: t.BodyTextStyleId})
+		}
 	}
 	if err := core.ValidateDocSettings(next); err != nil {
 		return SeqOutput{}, fmt.Errorf("set_document_settings: %w", err)

@@ -49,7 +49,10 @@ func validateDocSettings(s *opendesignerv1.DocSettings) error {
 	if err := validateColorMode(s); err != nil {
 		return err
 	}
-	return validateBook(s.GetBook())
+	if err := validateBook(s.GetBook()); err != nil {
+		return err
+	}
+	return validateLongDocument(s)
 }
 
 func applySetDocSettings(doc *opendesignerv1.Document, s *opendesignerv1.SetDocSettings) error {

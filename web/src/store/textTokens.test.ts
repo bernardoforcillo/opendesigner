@@ -101,6 +101,6 @@ describe("index entries", () => {
     const s = scene([{ id: "p1", name: "1", numberStyle: "i" }, { id: "p2", name: "2" }], [
       text("a", "p1", "Zebra[#zebra] and apple[#apple]"), text("b", "p2", "More apple[#apple] and [#zebra]"), text("c", "p2", "[#] empty", { y: 50 }),
     ]);
-    expect(indexEntries(s)).toEqual([{ term: "apple", pages: ["i", "ii"] }, { term: "zebra", pages: ["i", "ii"] }]);
+    expect(indexEntries(s)).toEqual([{ term: "apple", level: 1, label: "apple", pages: ["i", "ii"] }, { term: "zebra", level: 1, label: "zebra", pages: ["i", "ii"] }]);
   });
 });

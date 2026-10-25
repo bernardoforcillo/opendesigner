@@ -36,7 +36,15 @@ export interface BookLite {
   description?: string; subjects?: SubjectLite[]; pageCount?: number; prices?: PriceLite[];
   senderName?: string; senderEmail?: string; productForm?: string;
 }
-export interface DocSettingsLite { vertical?: Exclude<Vertical, "product">; baselineIncrement?: number; baselineStart?: number; facingPages?: boolean; colorMode?: "cmyk"; iccProfile?: string; book?: BookLite }
+/** A condition of conditional text ([?name]...[/?]); a name no condition defines is visible. */
+export interface TextConditionLite { name: string; visible: boolean }
+/** A named recipe for a table: the object and text styles of its header rows, body rows and every second body row. */
+export interface TableStyleLite {
+  id: string; name: string;
+  headerObjectStyleId?: string; bodyObjectStyleId?: string; altObjectStyleId?: string;
+  headerTextStyleId?: string; bodyTextStyleId?: string;
+}
+export interface DocSettingsLite { vertical?: Exclude<Vertical, "product">; baselineIncrement?: number; baselineStart?: number; facingPages?: boolean; colorMode?: "cmyk"; iccProfile?: string; book?: BookLite; conditions?: TextConditionLite[]; tableStyles?: TableStyleLite[] }
 export interface GradientStopLite { color: { r: number; g: number; b: number; a: number }; position: number; }
 // A gradient in NORMALIZED box coordinates (see GradientPaint in the proto).
 // Linear: axis (x1,y1)->(x2,y2). Radial: center (x1,y1), radius = |p2-p1| in
@@ -561,7 +569,8 @@ export interface BookMsg {
   publicationDate: string; description: string; subjects: { scheme: string; code: string; heading: string }[]; pageCount: number;
   prices: { priceType: string; amount: string; currency: string }[]; senderName: string; senderEmail: string; productForm: string;
 }
-export interface DocSettingsMsg { vertical: string; baselineIncrement: number; baselineStart: number; facingPages?: boolean; colorMode?: string; iccProfile?: string; book?: BookMsg }
+export interface TableStyleMsg { id: string; name: string; headerObjectStyleId: string; bodyObjectStyleId: string; altObjectStyleId: string; headerTextStyleId: string; bodyTextStyleId: string }
+export interface DocSettingsMsg { vertical: string; baselineIncrement: number; baselineStart: number; facingPages?: boolean; colorMode?: string; iccProfile?: string; book?: BookMsg; conditions?: { name: string; visible: boolean }[]; tableStyles?: TableStyleMsg[] }
 
 /** The message form of a book record (every field written). */
 export function bookToMsg(b: BookLite): BookMsg {
@@ -598,6 +607,13 @@ export function settingsToMsg(s: DocSettingsLite): DocSettingsMsg {
     vertical: s.vertical ?? "", baselineIncrement: s.baselineIncrement ?? 0, baselineStart: s.baselineStart ?? 0,
     facingPages: s.facingPages === true, colorMode: s.colorMode ?? "", iccProfile: s.iccProfile ?? "",
     ...(s.book ? { book: bookToMsg(s.book) } : {}),
+    ...(s.conditions?.length ? { conditions: s.conditions.map((c) => ({ name: c.name, visible: c.visible })) } : {}),
+    ...(s.tableStyles?.length ? {
+      tableStyles: s.tableStyles.map((t) => ({
+        id: t.id, name: t.name, headerObjectStyleId: t.headerObjectStyleId ?? "", bodyObjectStyleId: t.bodyObjectStyleId ?? "", altObjectStyleId: t.altObjectStyleId ?? "",
+        headerTextStyleId: t.headerTextStyleId ?? "", bodyTextStyleId: t.bodyTextStyleId ?? "",
+      })),
+    } : {}),
   };
 }
 
@@ -611,6 +627,15 @@ export function settingsOf(s: DocSettingsMsg): DocSettingsLite {
     ...(s.colorMode === "cmyk" ? { colorMode: "cmyk" as const } : {}),
     ...(s.iccProfile ? { iccProfile: s.iccProfile } : {}),
     ...(bookOf(s.book) ? { book: bookOf(s.book)! } : {}),
+    ...(s.conditions?.length ? { conditions: s.conditions.map((c) => ({ name: c.name, visible: c.visible })) } : {}),
+    ...(s.tableStyles?.length ? {
+      tableStyles: s.tableStyles.map((t) => ({
+        id: t.id, name: t.name,
+        ...(t.headerObjectStyleId ? { headerObjectStyleId: t.headerObjectStyleId } : {}), ...(t.bodyObjectStyleId ? { bodyObjectStyleId: t.bodyObjectStyleId } : {}),
+        ...(t.altObjectStyleId ? { altObjectStyleId: t.altObjectStyleId } : {}), ...(t.headerTextStyleId ? { headerTextStyleId: t.headerTextStyleId } : {}),
+        ...(t.bodyTextStyleId ? { bodyTextStyleId: t.bodyTextStyleId } : {}),
+      })),
+    } : {}),
   };
 }
 

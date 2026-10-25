@@ -95,3 +95,22 @@ describe("buildReflowEpub", () => {
     expect(() => buildReflowEpub(emptyScene("d", "E"), { title: "E" }, new Map())).toThrow(/nothing to export/);
   });
 });
+
+describe("long-document tokens in the reflowable book", () => {
+  it("resolves cross-references, lists endnotes like notes and leaves hidden conditional text out", () => {
+    const s = emptyScene("d", "Book");
+    s.settings = { conditions: [{ name: "Web", visible: false }] };
+    s.pages = [{ id: "page1", name: "One" }];
+    s.nodes = s.nodes
+      .set("a", text("a", 0, "Intro [=top]Start here\nSee [>top:text] on page [>top]. Done[*the source][?Web] web only[/?][!todo]"))
+      .set("b", text("b", 50, "Second text"));
+    const files = unzip(buildReflowEpub(s, { title: "Book" }, new Map()));
+    const c = files.get("OEBPS/chapter-001.xhtml")!;
+    expect(c).toContain("Intro Start here");
+    expect(c).toContain("See Intro Start here on page 1. Done");
+    expect(c).not.toContain("web only");
+    expect(c).not.toContain("todo");
+    expect(c).toContain('epub:type="noteref"');
+    expect(c).toContain("the source");
+  });
+});

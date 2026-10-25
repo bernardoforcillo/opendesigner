@@ -23,6 +23,9 @@ import { nextOrderKey } from "../store/orderKey";
 import { normalizeVector } from "../store/vectorGeometry";
 import { toPbFills, toPbStrokes, toPbSubPaths, type FillLite, type SubPathLite } from "../store/types";
 import { makeCreateNodeOp, makeSetVectorPathOp, uuid } from "../tools/ops";
+import { applyTableStyleOps } from "../tools/tableOps";
+import { CHECK_CODES, checkText, type CheckCode } from "../tools/textChecks";
+import { editorialNotes } from "../store/textTokens";
 import { generateContentsOps } from "../tools/contents";
 import { overrideMasterItemOps } from "../tools/pageOps";
 import { MAX_TABLE_SIDE, addColumnOps, addRowOps, createTableOps, deleteColumnOps, deleteRowOps, resizeTableOps, tableIdOf } from "../tools/tableOps";
@@ -168,7 +171,7 @@ export async function runCommand(o: Record<string, unknown>, file: File | null =
   if (typeof o.name === "string" && FILE_COMMANDS.has(o.name)) return file ? runFileCommand(o, file) : fail(`${o.name} needs an input file`);
   switch (o.name) {
     case "generate_contents": {
-      if (o.kind !== "toc" && o.kind !== "index") return fail("kind must be toc or index");
+      if (o.kind !== "toc" && o.kind !== "index" && o.kind !== "endnotes") return fail("kind must be toc, index or endnotes");
       if (o.maxLevel !== undefined && !(isNum(o.maxLevel) && Number.isInteger(o.maxLevel) && o.maxLevel >= 1 && o.maxLevel <= 9)) return fail("maxLevel must be 1..9");
       const page = pageIdFrom(o);
       if (Array.isArray(page)) return fail(page[0]!);
@@ -176,6 +179,7 @@ export async function runCommand(o: Record<string, unknown>, file: File | null =
       if (!made) {
         return fail(o.kind === "toc"
           ? "No headings yet: give a paragraph style a heading level (set_text_style outlineLevel) and apply it."
+          : o.kind === "endnotes" ? "No endnotes yet: write [*the note] in the text where the reference goes."
           : "No index terms yet: mark a word in the text with [#term].");
       }
       commit(made.ops);
@@ -347,6 +351,29 @@ export async function runCommand(o: Record<string, unknown>, file: File | null =
         makeSetPropsOp(n.id, { x: norm.box.x, y: norm.box.y, width: norm.box.width, height: norm.box.height }, ["x", "y", "width", "height"]),
       ]);
       return ok({ nodeId: n.id, x: norm.box.x, y: norm.box.y, width: norm.box.width, height: norm.box.height });
+    }
+    case "apply_table_style": {
+      if (!isStr(o.tableId) || !isStr(o.styleId)) return fail("tableId and styleId are required");
+      const id = tableIdOf(scene, o.tableId);
+      if (!id) return fail("that is not a table (or a cell of one)");
+      const style = (scene.settings?.tableStyles ?? []).find((t) => t.id === o.styleId);
+      if (!style) return fail(`no table style ${o.styleId} (define it with set_document_settings tableStyles)`);
+      const ops = applyTableStyleOps(scene, id, style);
+      if (ops.length > 0) commit(ops);
+      return ok({ tableId: id, changed: ops.length });
+    }
+    case "check_text": {
+      let only: CheckCode[] | undefined;
+      if (o.checks !== undefined) {
+        if (!Array.isArray(o.checks) || !o.checks.every((c) => CHECK_CODES.includes(c as CheckCode))) return fail(`checks must be a list of: ${CHECK_CODES.join(", ")}`);
+        only = o.checks as CheckCode[];
+      }
+      const limit = isNum(o.limit) ? Math.max(1, Math.min(2000, Math.floor(o.limit))) : 200;
+      const issues = checkText(scene, only, limit);
+      return ok({ count: issues.length, issues });
+    }
+    case "list_editorial_notes": {
+      return ok({ notes: editorialNotes(scene) });
     }
     case "override_master_item": {
       if (!isStr(o.pageId) || !isStr(o.masterNodeId)) return fail("pageId and masterNodeId are required");

@@ -2,7 +2,7 @@ import type { Op } from "../gen/opendesigner/v1/opendesigner_pb";
 import { pageTextArea } from "../store/docSettings";
 import { orderKeyBetween } from "../store/orderKey";
 import { pageNumbers } from "../store/pageNumbers";
-import { headingsOf, indexEntries } from "../store/textTokens";
+import { endnoteEntries, headingsOf, indexEntries } from "../store/textTokens";
 import { childrenOf } from "../store/tree";
 import { toPbNode, type NodeLite, type SceneState, type TextStyleDefLite, type TextStyleLite } from "../store/types";
 import { makeCreateNodeOp, makeSetPropsOp, makeSetTextOp, makeSetTextStyleDefOp, uuid } from "./ops";
@@ -19,11 +19,11 @@ import { makeCreateNodeOp, makeSetPropsOp, makeSetTextOp, makeSetTextStyleDefOp,
 // restyle the "Contents n" / "Index" styles and regenerate, or edit the text by hand until the next update.
 
 export const META_CONTENTS = "contents.kind";
-export type ContentsKind = "toc" | "index";
+export type ContentsKind = "toc" | "index" | "endnotes";
 
 const BASE: TextStyleLite = { fontFamily: "", fontSize: 14, fontWeight: "", lineHeight: 1.4, align: "left" };
 
-export const contentsStyleId = (kind: ContentsKind, level = 1) => (kind === "toc" ? `contents-${level}` : "index-entry");
+export const contentsStyleId = (kind: ContentsKind, level = 1) => (kind === "toc" ? `contents-${level}` : kind === "endnotes" ? "endnote-entry" : level > 1 ? `index-entry-${level}` : "index-entry");
 
 /** The generated frame of this kind, if the document has one. */
 export function contentsNode(scene: SceneState, kind: ContentsKind): NodeLite | null {
@@ -33,7 +33,10 @@ export function contentsNode(scene: SceneState, kind: ContentsKind): NodeLite | 
 
 function styleDefs(kind: ContentsKind, width: number, maxLevel: number): TextStyleDefLite[] {
   const tab = [{ position: width, align: "right" as const, leader: "." }];
-  if (kind === "index") return [{ id: contentsStyleId("index"), name: "Index entry", style: BASE, tabStops: tab }];
+  if (kind === "endnotes") return [{ id: contentsStyleId("endnotes"), name: "Endnote", style: { ...BASE, fontSize: 12 }, spaceAfter: 4 }];
+  if (kind === "index") {
+    return [1, 2, 3, 4].map((level) => ({ id: contentsStyleId("index", level), name: level === 1 ? "Index entry" : `Index entry ${level}`, style: BASE, indentLeft: (level - 1) * 14, tabStops: tab }));
+  }
   return Array.from({ length: maxLevel }, (_, i) => ({
     id: contentsStyleId("toc", i + 1), name: `Contents ${i + 1}`,
     style: { ...BASE, fontWeight: i === 0 ? "600" : "" }, indentLeft: i * 18, spaceBefore: i === 0 ? 4 : 0, tabStops: tab,
@@ -54,10 +57,15 @@ export function generateContentsOps(scene: SceneState, kind: ContentsKind, pageI
     const items = headingsOf(scene).filter((h) => h.level <= maxLevel);
     lines = items.map((h) => `${h.text}\t${labels.get(h.pageId)?.label ?? ""}`);
     styles = items.map((h) => contentsStyleId("toc", Math.min(h.level, maxLevel)));
+  } else if (kind === "endnotes") {
+    const notes = endnoteEntries(scene);
+    lines = notes.map((e) => `${e.n}. ${e.text}`);
+    styles = notes.map(() => contentsStyleId("endnotes"));
   } else {
     const entries = indexEntries(scene);
-    lines = entries.map((e) => `${e.term}\t${e.pages.join(", ")}`);
-    styles = entries.map(() => contentsStyleId("index"));
+    // A sub-entry is indented; a heading-only parent has no page list.
+    lines = entries.map((e) => (e.pages.length > 0 ? `${e.label}\t${e.pages.join(", ")}` : e.label));
+    styles = entries.map((e) => contentsStyleId("index", e.level));
   }
   if (lines.length === 0) return null;
 
@@ -75,7 +83,7 @@ export function generateContentsOps(scene: SceneState, kind: ContentsKind, pageI
   }
   const top = childrenOf(scene, page.id).at(-1)?.orderKey ?? null;
   const node: NodeLite = {
-    id: uuid(), parentId: page.id, orderKey: orderKeyBetween(top, null), name: kind === "toc" ? "Contents" : "Index", visible: true, opacity: 1,
+    id: uuid(), parentId: page.id, orderKey: orderKeyBetween(top, null), name: kind === "toc" ? "Contents" : kind === "endnotes" ? "Endnotes" : "Index", visible: true, opacity: 1,
     x: area?.x ?? 0, y: area?.y ?? 0, width, height, rotation: 0, fills: [{ r: 0, g: 0, b: 0, a: 1 }], strokes: [], kind: "text", cornerRadius: 0, clipsContent: false,
     meta: { [META_CONTENTS]: kind }, text: { content, style: BASE, paragraphStyles: styles },
   };

@@ -93,7 +93,8 @@ Text
 - [x] Text wrap around objects (bounding box, gap); see docs/text-frames.md
 - [x] Anchored (inline) objects, tied to a place in the text; see docs/graphics-colour.md
 - [x] Footnotes, tables (rows, columns, header), table of contents, index; see docs/text-frames.md
-- [ ] Table and cell styles, cell spanning, index sub-entries
+- [x] Table styles (header/body/alternate), index sub-entries, endnotes, cross-references, conditional text, editorial notes, typographic text checks (no dictionary spell check); see docs/long-documents.md
+- [ ] Cell spanning
 - [x] Find/change (text, word, regex), browser spell check, text variables (running headers, page count, document name)
 - [x] Text on a path
 - [x] OpenType feature settings per style (SVG output and editing field; not drawn on the canvas)

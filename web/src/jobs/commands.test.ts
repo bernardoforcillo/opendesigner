@@ -83,7 +83,7 @@ describe("generate_contents", () => {
     expect(r.data.lines).toBe(1);
     const gen = nodes().find((n) => n.meta?.["contents.kind"] === "toc")!;
     expect(gen.text!.content).toContain("Chapter One");
-    expect((await cmd({ name: "generate_contents", kind: "glossary" })).message).toBe("kind must be toc or index");
+    expect((await cmd({ name: "generate_contents", kind: "glossary" })).message).toBe("kind must be toc, index or endnotes");
   });
 });
 
@@ -249,5 +249,59 @@ describe("vectors", () => {
     expect((await cmd({ name: "create_vector", paths: [{ anchors: [{ x: 1 }] }] })).message).toMatch(/numeric x and y/);
     expect((await cmd({ name: "create_vector", paths: tri, fill: { r: "red" } })).message).toMatch(/r, g and b/);
     expect((await cmd({ name: "set_vector_path", nodeId: "t1", paths: tri })).message).toBe("nodeId is not a vector node");
+  });
+});
+
+describe("long-document commands", () => {
+  it("apply a table style to header, body and alternate rows, and remember it", async () => {
+    const made = await cmd({ name: "insert_table", rows: 4, cols: 2, headerRows: 1 });
+    const tableId = made.data.tableId as string;
+    const s = useScene.getState().scene!;
+    const os = (id: string) => ({ id, name: id, sets: ["fills" as const], fills: [{ r: 1, g: 0, b: 0, a: 1 }] });
+    const td = (id: string) => ({ id, name: id, style: { fontFamily: "", fontSize: 12, fontWeight: "", lineHeight: 0, align: "left" as const } });
+    useScene.getState().setScene({
+      ...s,
+      objectStyles: { H: os("H"), B: os("B"), A: os("A") },
+      textStyles: { th: td("th"), tb: td("tb") },
+      settings: { tableStyles: [{ id: "ts1", name: "Report", headerObjectStyleId: "H", bodyObjectStyleId: "B", altObjectStyleId: "A", headerTextStyleId: "th", bodyTextStyleId: "tb" }] },
+    });
+    const r = await cmd({ name: "apply_table_style", tableId, styleId: "ts1" });
+    expect(r.ok).toBe(true);
+    const rects = nodes().filter((n) => n.meta?.["table.cell"] !== undefined);
+    const style = (row: number) => rects.filter((n) => n.meta!["table.cell"]!.startsWith(`${row},`)).map((n) => n.objectStyleId);
+    expect(style(0)).toEqual(["H", "H"]);
+    expect(style(1)).toEqual(["B", "B"]);
+    expect(style(2)).toEqual(["A", "A"]);
+    expect(style(3)).toEqual(["B", "B"]);
+    const texts = nodes().filter((n) => n.meta?.["table.text"] !== undefined);
+    expect(texts.filter((n) => n.meta!["table.text"]!.startsWith("0,")).every((n) => n.textStyleId === "th")).toBe(true);
+    expect(texts.filter((n) => !n.meta!["table.text"]!.startsWith("0,")).every((n) => n.textStyleId === "tb")).toBe(true);
+    expect(nodes().find((n) => n.id === tableId)!.meta!["table.style"]).toBe("ts1");
+    expect((await cmd({ name: "apply_table_style", tableId, styleId: "nope" })).message).toMatch(/no table style/);
+    expect((await cmd({ name: "apply_table_style", tableId: "t1", styleId: "ts1" })).message).toMatch(/not a table/);
+  });
+
+  it("checks the text for typographic slips and lists editorial notes", async () => {
+    const s = useScene.getState().scene!;
+    useScene.getState().setScene({ ...s, nodes: s.nodes.set("t2", text("t2", "It is is  a \"test\"... see - here , ok[!fix me]")) });
+    const r = await cmd({ name: "check_text" });
+    const codes = (r.data.issues as { nodeId: string; code: string }[]).filter((i) => i.nodeId === "t2").map((i) => i.code);
+    for (const c of ["repeated-word", "double-space", "straight-quote", "three-dots", "spaced-hyphen", "space-before-punctuation"]) expect(codes).toContain(c);
+    const only = await cmd({ name: "check_text", checks: ["three-dots"] });
+    expect((only.data.issues as { code: string }[]).every((i) => i.code === "three-dots")).toBe(true);
+    expect((await cmd({ name: "check_text", checks: ["spelling"] })).message).toMatch(/checks must be/);
+    const notes = await cmd({ name: "list_editorial_notes" });
+    expect(notes.data.notes).toHaveLength(1);
+    expect(notes.data.notes[0]).toMatchObject({ nodeId: "t2", text: "fix me" });
+  });
+
+  it("generates the endnotes", async () => {
+    const s = useScene.getState().scene!;
+    useScene.getState().setScene({ ...s, nodes: s.nodes.set("e1", text("e1", "One[*First source] two[*Second source]")) });
+    const r = await cmd({ name: "generate_contents", kind: "endnotes" });
+    expect(r.ok).toBe(true);
+    expect(r.data.lines).toBe(2);
+    const gen = nodes().find((n) => n.meta?.["contents.kind"] === "endnotes")!;
+    expect(gen.text!.content).toBe("1. First source\n2. Second source");
   });
 });

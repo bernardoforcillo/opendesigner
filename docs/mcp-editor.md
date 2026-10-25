@@ -42,3 +42,6 @@ Documents, versions and branches: `list_documents`, `create_document`, `rename_d
 - The editor must be open for the tools in the first table; the document is not rendered headlessly.
 - A tool that opens a page in the editor (`place_image` with `pageId`, the importers) moves the editor to that page, as a person picking it would.
 - Several editors open on the same document: jobs go to them in turn.
+
+## Long-document commands
+`apply_table_style`, `check_text`, `list_editorial_notes` and `generate_contents` kind `endnotes` run in the open editor; see long-documents.md.

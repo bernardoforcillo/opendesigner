@@ -911,6 +911,26 @@ message DocSettings {
   string icc_profile = 6;
   // Bibliographic metadata of the document as a book, for the ONIX export and the EPUB / PDF metadata.
   BookMetadata book = 7;
+  // Conditional text: spans of text marked [?name]...[/?] are shown or hidden by condition (docs/long-documents.md).
+  repeated TextCondition conditions = 8;
+  // Table styles: a named recipe a table can be given (header / body / alternate rows, object and text styles).
+  repeated TableStyle table_styles = 9;
+}
+
+// A condition of conditional text. A name no condition defines counts as visible. Hidden text is left out of the
+// canvas, the exports and the contents alike -- the text stays in the document.
+message TextCondition { string name = 1; bool visible = 2; }
+
+// A table style: which object style (fill, stroke...) and text style the header rows, the body rows and every
+// second body row of a table take. Empty ids leave that part alone.
+message TableStyle {
+  string id = 1;
+  string name = 2;
+  string header_object_style_id = 3;
+  string body_object_style_id = 4;
+  string alt_object_style_id = 5;     // every second body row
+  string header_text_style_id = 6;
+  string body_text_style_id = 7;
 }
 
 // Book metadata, named after the ONIX for Books 3.0 composites it feeds (docs/onix.md). Every field is optional;

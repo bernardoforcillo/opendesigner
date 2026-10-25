@@ -1,6 +1,7 @@
 import type { NodeLite, SceneState, TextStyleLite } from "../store/types";
 import { flattenStyle, type FlatStyle } from "../store/richText";
-import { textNodesInReadingOrder, tokensOf } from "../store/textTokens";
+import { destinationsOf, textNodesInReadingOrder, tokensOf, visibleText } from "../store/textTokens";
+import { pageNumbers } from "../store/pageNumbers";
 import { zipStore, type ZipEntry } from "./zip";
 import { opfMetadata, xmlEscape, type EpubMeta } from "./epub";
 
@@ -75,6 +76,8 @@ export function buildReflowEpub(scene: SceneState, meta: EpubMeta, images: Reado
   // Text keeps the order textNodesInReadingOrder gave it; images slot in by position on their page.
   items.sort((a, b) => a.page - b.page || a.n.y - b.n.y || a.n.x - b.n.x);
 
+  const dests = destinationsOf(scene);
+  const labels = pageNumbers(scene.pages);
   const assetFiles = new Map<string, { href: string; mime: string }>();
   const chapters: Chapter[] = [];
   const notes: { id: string; num: number; text: string }[][] = [];
@@ -90,7 +93,7 @@ export function buildReflowEpub(scene: SceneState, meta: EpubMeta, images: Reado
       (chapters[chapters.length - 1] ?? open(scene.pages.filter((p) => !p.isMaster)[page]?.name || "Start")).blocks.push({ kind: "img", src: f.href, alt: n.name });
       continue;
     }
-    const t = n.text!;
+    const t = visibleText(scene, n.text!);
     const content = t.content.replace(/\r\n?/g, "\n");
     const tokens = tokensOf(content);
     let ps = 0;
@@ -108,7 +111,12 @@ export function buildReflowEpub(scene: SceneState, meta: EpubMeta, images: Reado
         const tok = tokens.find((x) => x.at === i);
         if (tok) {
           close();
-          if (tok.kind === "footnote") {
+          if (tok.kind === "xref") {
+            const d = dests.get(tok.text);
+            const shown = !d ? "??" : tok.format === "text" ? d.paragraph : labels.get(d.pageId)?.label ?? "??";
+            html += xmlEscape(shown); plain += shown;
+          }
+          if (tok.kind === "footnote" || tok.kind === "endnote") {
             const num = ++footnoteCount;
             (notes[notes.length - 1] ?? (open("Start"), notes[notes.length - 1]!)).push({ id: `fn${num}`, num, text: tok.text });
             html += `<a epub:type="noteref" id="r${num}" href="#fn${num}"><sup>${num}</sup></a>`;

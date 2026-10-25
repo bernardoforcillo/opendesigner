@@ -1725,3 +1725,54 @@ func TestStructureAndVectorCommandsAreWired(t *testing.T) {
 	}
 	check("set_vector_path", map[string]any{"nodeId": "v"})
 }
+
+// TestLongDocumentSettingsAndCommands covers conditions and table styles in set_document_settings and the three long-document commands.
+func TestLongDocumentSettingsAndCommands(t *testing.T) {
+	url := serveInMemory(t)
+	docID := newDoc(t, odmcp.NewClient(url))
+	sess := startSession(t, url, docID, "mcp")
+	ctx := context.Background()
+
+	conds := []odmcp.ConditionIO{{Name: "Print", Visible: true}, {Name: "Web only"}}
+	styles := []odmcp.TableStyleIO{{Id: "ts1", Name: "Report", HeaderObjectStyleId: "os1", BodyTextStyleId: "tx1"}}
+	if _, err := sess.SetDocumentSettings(ctx, odmcp.SetDocumentSettingsInput{Conditions: &conds, TableStyles: &styles}); err != nil {
+		t.Fatalf("settings: %v", err)
+	}
+	dup := []odmcp.ConditionIO{{Name: "A"}, {Name: "A"}}
+	if _, err := sess.SetDocumentSettings(ctx, odmcp.SetDocumentSettingsInput{Conditions: &dup}); err == nil {
+		t.Fatal("a repeated condition should be refused")
+	}
+	badStyle := []odmcp.TableStyleIO{{Id: "has space", Name: "x"}}
+	if _, err := sess.SetDocumentSettings(ctx, odmcp.SetDocumentSettingsInput{TableStyles: &badStyle}); err == nil {
+		t.Fatal("a table style id with a space should be refused")
+	}
+	empty := []odmcp.ConditionIO{}
+	if _, err := sess.SetDocumentSettings(ctx, odmcp.SetDocumentSettingsInput{Conditions: &empty}); err != nil {
+		t.Fatalf("an empty list clears: %v", err)
+	}
+
+	var last map[string]any
+	fakeEditor(t, url, docID, func(job *opendesignerv1.EditorJob) *opendesignerv1.CompleteJobRequest {
+		last = nil
+		_ = json.Unmarshal([]byte(job.GetOptionsJson()), &last)
+		switch last["name"] {
+		case "apply_table_style":
+			return &opendesignerv1.CompleteJobRequest{Ok: true, Text: `{"tableId":"tbl","changed":7}`}
+		case "check_text":
+			return &opendesignerv1.CompleteJobRequest{Ok: true, Text: `{"count":1,"issues":[{"code":"double-space","nodeId":"n","pageId":"p","start":3,"end":5,"text":"  ","message":"More than one space in a row."}]}`}
+		}
+		return &opendesignerv1.CompleteJobRequest{Ok: true, Text: `{"notes":[{"nodeId":"n","pageId":"p","at":9,"text":"fix","context":"the words"}]}`}
+	})
+	ts, err := sess.ApplyTableStyle(ctx, odmcp.ApplyTableStyleInput{TableId: "tbl", StyleId: "ts1"})
+	if err != nil || ts.Changed != 7 || last["styleId"] != "ts1" {
+		t.Fatalf("table style: %+v %v %v", ts, err, last)
+	}
+	ck, err := sess.CheckText(ctx, odmcp.CheckTextInput{Checks: []string{"double-space"}, Limit: 5})
+	if err != nil || ck.Count != 1 || ck.Issues[0].Code != "double-space" || last["limit"] != float64(5) {
+		t.Fatalf("check: %+v %v %v", ck, err, last)
+	}
+	nt, err := sess.ListEditorialNotes(ctx, struct{}{})
+	if err != nil || len(nt.Notes) != 1 || nt.Notes[0].Text != "fix" {
+		t.Fatalf("notes: %+v %v", nt, err)
+	}
+}
