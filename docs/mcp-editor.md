@@ -45,3 +45,6 @@ Documents, versions and branches: `list_documents`, `create_document`, `rename_d
 
 ## Long-document commands
 `apply_table_style`, `check_text`, `list_editorial_notes` and `generate_contents` kind `endnotes` run in the open editor; see long-documents.md.
+
+## Object-tool commands
+`step_and_repeat`, `set_gap`, `fit_frame`, `clip_with_shape`, `create_qr_code`, `find_objects`, `change_objects`, `export_snippet`, `place_snippet`; see object-tools.md.

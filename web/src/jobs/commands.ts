@@ -23,6 +23,8 @@ import { nextOrderKey } from "../store/orderKey";
 import { normalizeVector } from "../store/vectorGeometry";
 import { toPbFills, toPbStrokes, toPbSubPaths, type FillLite, type SubPathLite } from "../store/types";
 import { makeCreateNodeOp, makeSetVectorPathOp, uuid } from "../tools/ops";
+import { changeObjectsOps, clipWithShapeOps, exportSnippet, findObjects, fitOps, gapOps, placeSnippetOps, qrOps, releaseClipOps, stepRepeatOps, type FitMode, type ObjectChange, type ObjectQuery } from "../tools/objectTools";
+import { QR_LEVELS, type QrLevel } from "../tools/qrcode";
 import { applyTableStyleOps } from "../tools/tableOps";
 import { CHECK_CODES, checkText, type CheckCode } from "../tools/textChecks";
 import { editorialNotes } from "../store/textTokens";
@@ -374,6 +376,102 @@ export async function runCommand(o: Record<string, unknown>, file: File | null =
     }
     case "list_editorial_notes": {
       return ok({ notes: editorialNotes(scene) });
+    }
+    case "step_and_repeat": {
+      const ids = nodeIdsOf(o, scene);
+      if (typeof ids === "string") return fail(ids);
+      if (!isNum(o.count) || !isNum(o.dx) || !isNum(o.dy)) return fail("count, dx and dy are required numbers");
+      const made = stepRepeatOps(scene, ids, { count: o.count, dx: o.dx, dy: o.dy });
+      if (typeof made === "string") return fail(made);
+      commit(made.ops);
+      return ok({ nodeIds: made.ids });
+    }
+    case "set_gap": {
+      const ids = nodeIdsOf(o, scene);
+      if (typeof ids === "string") return fail(ids);
+      if (o.axis !== "x" && o.axis !== "y") return fail("axis must be x or y");
+      if (!isNum(o.gap)) return fail("gap must be a number");
+      const ops = gapOps(scene, ids, o.axis, o.gap);
+      if (typeof ops === "string") return fail(ops);
+      if (ops.length > 0) commit(ops);
+      return ok({ moved: ops.length });
+    }
+    case "fit_frame": {
+      if (!isStr(o.nodeId)) return fail("nodeId is required");
+      const ops = fitOps(scene, o.nodeId, String(o.mode) as FitMode);
+      if (typeof ops === "string") return fail(ops);
+      if (ops.length > 0) commit(ops);
+      return ok({ changed: ops.length });
+    }
+    case "clip_with_shape": {
+      if (!isStr(o.shapeId)) return fail("shapeId is required");
+      if (o.release === true) {
+        const ops = releaseClipOps(scene, o.shapeId);
+        if (typeof ops === "string") return fail(ops);
+        commit(ops);
+        return ok({ released: true });
+      }
+      if (!Array.isArray(o.contentIds) || !o.contentIds.every(isStr)) return fail("contentIds must be a list of node ids");
+      const made = clipWithShapeOps(scene, o.shapeId, o.contentIds as string[]);
+      if (typeof made === "string") return fail(made);
+      commit(made.ops);
+      return ok({ groupId: made.groupId });
+    }
+    case "create_qr_code": {
+      if (!isStr(o.text) || o.text === "") return fail("text is required");
+      if (o.level !== undefined && !QR_LEVELS.includes(o.level as QrLevel)) return fail("level must be L, M, Q or H");
+      const page = pageIdFrom(o);
+      if (Array.isArray(page)) return fail(page[0]!);
+      const parent = o.parentId === undefined ? page : o.parentId;
+      if (!isStr(parent) || (!scene.nodes.has(parent) && !scene.pages.some((p) => p.id === parent))) return fail("parentId is not a page or a node");
+      let dark: FillLite | undefined, light: FillLite | undefined;
+      if (o.dark !== undefined) { const f = fillOf(o.dark); if (typeof f === "string") return fail(f); dark = f; }
+      if (o.light !== undefined) { const f = fillOf(o.light); if (typeof f === "string") return fail(f); light = f; }
+      const made = qrOps(scene, { text: o.text, level: o.level as QrLevel | undefined, size: isNum(o.size) ? o.size : undefined, x: isNum(o.x) ? o.x : 0, y: isNum(o.y) ? o.y : 0, parentId: parent, dark, light });
+      if (typeof made === "string") return fail(made);
+      commit(made.ops);
+      return ok({ groupId: made.groupId });
+    }
+    case "find_objects":
+    case "change_objects": {
+      const q: ObjectQuery = {};
+      if (o.kind !== undefined) { if (!isStr(o.kind)) return fail("kind must be a string"); q.kind = o.kind as ObjectQuery["kind"]; }
+      if (o.nameMatches !== undefined) { if (!isStr(o.nameMatches)) return fail("nameMatches must be a string"); q.name = o.nameMatches; }
+      if (o.fill !== undefined) { const f = fillOf(o.fill); if (typeof f === "string") return fail(f); q.fill = f; }
+      if (o.stroke !== undefined) { const f = fillOf(o.stroke); if (typeof f === "string") return fail(f); q.stroke = f; }
+      if (o.pageId !== undefined) { if (!isStr(o.pageId)) return fail("pageId must be a string"); q.pageId = o.pageId; }
+      const found = findObjects(scene, q);
+      if (typeof found === "string") return fail(found);
+      if (o.name === "find_objects") return ok({ count: found.length, nodes: found.slice(0, 500).map((n) => ({ id: n.id, name: n.name, kind: n.kind })) });
+      const c = (o.change ?? {}) as Record<string, unknown>;
+      const change: ObjectChange = {};
+      if (c.fill !== undefined) { const f = fillOf(c.fill); if (typeof f === "string") return fail(f); change.fill = f; }
+      if (c.stroke !== undefined) { const f = fillOf(c.stroke); if (typeof f === "string") return fail(f); change.stroke = f; }
+      if (c.strokeWeight !== undefined) { if (!isNum(c.strokeWeight) || c.strokeWeight < 0) return fail("strokeWeight must be >= 0"); change.strokeWeight = c.strokeWeight; }
+      if (c.opacity !== undefined) { if (!isNum(c.opacity) || c.opacity < 0 || c.opacity > 1) return fail("opacity must be from 0 to 1"); change.opacity = c.opacity; }
+      if (c.visible !== undefined) { if (!isBool(c.visible)) return fail("visible must be true or false"); change.visible = c.visible; }
+      if (c.rename !== undefined) { if (!isStr(c.rename)) return fail("rename must be a string"); change.rename = c.rename; }
+      if (Object.keys(change).length === 0) return fail("change needs at least one of fill, stroke, strokeWeight, opacity, visible, rename");
+      const ops = changeObjectsOps(scene, found, change, q);
+      if (ops.length > 0) commit(ops);
+      return ok({ matched: found.length, changed: ops.length });
+    }
+    case "export_snippet": {
+      const ids = nodeIdsOf(o, scene);
+      if (typeof ids === "string") return fail(ids);
+      const text = exportSnippet(scene, ids);
+      return text ? ok({ snippet: text }) : fail("nothing to export");
+    }
+    case "place_snippet": {
+      if (!isStr(o.snippet)) return fail("snippet is required");
+      const page = pageIdFrom(o);
+      if (Array.isArray(page)) return fail(page[0]!);
+      const parent = o.parentId === undefined ? page : o.parentId;
+      if (!isStr(parent) || (!scene.nodes.has(parent) && !scene.pages.some((p) => p.id === parent))) return fail("parentId is not a page or a node");
+      const made = placeSnippetOps(scene, o.snippet, isNum(o.x) ? o.x : 0, isNum(o.y) ? o.y : 0, parent);
+      if (typeof made === "string") return fail(made);
+      commit(made.ops);
+      return ok({ nodeIds: made.ids });
     }
     case "override_master_item": {
       if (!isStr(o.pageId) || !isStr(o.masterNodeId)) return fail("pageId and masterNodeId are required");

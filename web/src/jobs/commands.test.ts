@@ -305,3 +305,61 @@ describe("long-document commands", () => {
     expect(gen.text!.content).toBe("1. First source\n2. Second source");
   });
 });
+
+describe("object-tool commands", () => {
+  const rect = (id: string, x: number, over: Partial<NodeLite> = {}): NodeLite => ({
+    id, parentId: "page1", orderKey: id, name: id, visible: true, opacity: 1, x, y: 0, width: 40, height: 20, rotation: 0,
+    fills: [{ r: 1, g: 0, b: 0, a: 1 }], strokes: [], kind: "rect", cornerRadius: 0, clipsContent: false, ...over,
+  });
+  beforeEach(() => {
+    const s = useScene.getState().scene!;
+    useScene.getState().setScene({ ...s, nodes: s.nodes.set("r1", rect("r1", 0)).set("r2", rect("r2", 100)) });
+  });
+
+  it("step_and_repeat, set_gap and the refusals", async () => {
+    const r = await cmd({ name: "step_and_repeat", nodeIds: ["r1"], count: 2, dx: 0, dy: 30 });
+    expect(r.ok).toBe(true);
+    expect(r.data.nodeIds).toHaveLength(2);
+    expect(nodes().filter((n) => n.kind === "rect")).toHaveLength(4);
+    useScene.getState().undo();
+    expect(nodes().filter((n) => n.kind === "rect")).toHaveLength(2);
+    expect((await cmd({ name: "step_and_repeat", nodeIds: ["r1"], count: 0, dx: 1, dy: 0 })).message).toMatch(/count/);
+    const g = await cmd({ name: "set_gap", nodeIds: ["r1", "r2"], axis: "x", gap: 10 });
+    expect(g.data.moved).toBe(1);
+    expect(useScene.getState().scene!.nodes.get("r2")!.x).toBe(50);
+    expect((await cmd({ name: "set_gap", nodeIds: ["r1", "r2"], axis: "z", gap: 1 })).message).toMatch(/axis/);
+  });
+
+  it("create_qr_code, clip_with_shape, find_objects and change_objects", async () => {
+    const qr = await cmd({ name: "create_qr_code", text: "https://example.org", size: 90, x: 10, y: 10 });
+    expect(qr.ok).toBe(true);
+    expect(nodes().filter((n) => n.parentId === qr.data.groupId).map((n) => n.kind).sort()).toEqual(["rect", "vector"]);
+    expect((await cmd({ name: "create_qr_code", text: "x".repeat(400) })).message).toMatch(/too long/);
+    const clip = await cmd({ name: "clip_with_shape", shapeId: "r1", contentIds: ["r2"] });
+    expect(useScene.getState().scene!.nodes.get("r1")!.isMask).toBe(true);
+    expect((await cmd({ name: "clip_with_shape", shapeId: "r1", release: true })).data.released).toBe(true);
+    expect(clip.data.groupId).toBeTruthy();
+    const found = await cmd({ name: "find_objects", kind: "rect", fill: { r: 1, g: 0, b: 0 }, nameMatches: "^r[12]$" });
+    expect(found.data.count).toBe(2);
+    const changed = await cmd({ name: "change_objects", kind: "rect", nameMatches: "^r[12]$", change: { fill: { r: 0, g: 0, b: 1 }, opacity: 0.5 } });
+    expect(changed.data.matched).toBe(2);
+    expect(useScene.getState().scene!.nodes.get("r1")!.fills[0]).toMatchObject({ r: 0, b: 1 });
+    expect(useScene.getState().scene!.nodes.get("r1")!.opacity).toBe(0.5);
+    expect((await cmd({ name: "find_objects" })).message).toMatch(/at least one/);
+    expect((await cmd({ name: "change_objects", kind: "rect", change: {} })).message).toMatch(/at least one/);
+  });
+
+  it("snippets round-trip through export_snippet and place_snippet", async () => {
+    const e = await cmd({ name: "export_snippet", nodeIds: ["r1", "r2"] });
+    const p = await cmd({ name: "place_snippet", snippet: e.data.snippet, x: 300, y: 300 });
+    expect(p.ok).toBe(true);
+    const placed = (p.data.nodeIds as string[]).map((id) => useScene.getState().scene!.nodes.get(id)!);
+    expect(placed.map((n) => [n.x, n.y])).toEqual([[300, 300], [400, 300]]);
+    expect((await cmd({ name: "place_snippet", snippet: "{}" })).message).toMatch(/not an opendesigner snippet/);
+  });
+
+  it("fit_frame explains what it cannot do", async () => {
+    expect((await cmd({ name: "fit_frame", nodeId: "r1", mode: "fit" })).message).toMatch(/no image fill/);
+    expect((await cmd({ name: "fit_frame", nodeId: "r1", mode: "stretch" })).message).toMatch(/mode must be/);
+  });
+});

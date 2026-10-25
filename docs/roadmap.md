@@ -152,3 +152,7 @@ Output (docs/output.md)
 - [ ] Generate screens from text or screenshot using the document's own components and tokens
 - [ ] Design, code and flow tests in one pipeline (prototype -> codegen -> Playwright)
 - [x] Git-versionable bundle format: `opendesigner pack` / `unpack` (one JSON file per node, stable bytes); see docs/handoff.md
+
+## Object tools (block 8)
+- [x] Step and Repeat, Gap tool, frame fitting, clipping path, QR code, find/change objects, snippets (see docs/object-tools.md; all over MCP)
+- [ ] Gradient feather, InDesign-style GREP dialect, shared object library

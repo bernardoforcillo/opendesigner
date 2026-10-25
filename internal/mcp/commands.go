@@ -449,6 +449,238 @@ func (s *Session) ListEditorialNotes(ctx context.Context, _ struct{}) (ListEdito
 	return out, s.runCommand(ctx, "list_editorial_notes", "list_editorial_notes", nil, &out)
 }
 
+// --- object tools ---------------------------------------------------------------------------------------
+
+func rgbaArg(c *RGBA) map[string]any {
+	return map[string]any{"r": c.R, "g": c.G, "b": c.B, "a": c.A}
+}
+
+type StepAndRepeatInput struct {
+	NodeIds []string `json:"nodeIds"`
+	Count   int      `json:"count" jsonschema:"how many further copies, 1..200"`
+	Dx      float64  `json:"dx" jsonschema:"offset of each copy from the previous one, in document units"`
+	Dy      float64  `json:"dy"`
+}
+
+// StepAndRepeat makes a row, column or grid of copies.
+func (s *Session) StepAndRepeat(ctx context.Context, in StepAndRepeatInput) (DuplicateNodesOutput, error) {
+	var out DuplicateNodesOutput
+	return out, s.runCommand(ctx, "step_and_repeat", "step_and_repeat", map[string]any{"nodeIds": in.NodeIds, "count": in.Count, "dx": in.Dx, "dy": in.Dy}, &out)
+}
+
+type SetGapInput struct {
+	NodeIds []string `json:"nodeIds" jsonschema:"two or more nodes; the first (left or top) stays where it is"`
+	Axis    string   `json:"axis" jsonschema:"x (side by side) | y (stacked)"`
+	Gap     float64  `json:"gap" jsonschema:"the space between neighbouring objects, in document units (may be negative to overlap)"`
+}
+
+type MovedCountOutput struct {
+	Moved int `json:"moved"`
+}
+
+// SetGap is the Gap tool: it sets the space between neighbours.
+func (s *Session) SetGap(ctx context.Context, in SetGapInput) (MovedCountOutput, error) {
+	var out MovedCountOutput
+	return out, s.runCommand(ctx, "set_gap", "set_gap", map[string]any{"nodeIds": in.NodeIds, "axis": in.Axis, "gap": in.Gap}, &out)
+}
+
+type FitFrameInput struct {
+	NodeId string `json:"nodeId"`
+	Mode   string `json:"mode" jsonschema:"fill (image fill covers the frame) | fit (whole image inside the frame) | tile | frame-to-content (resize an image node to the image's own proportions, keeping its width)"`
+}
+
+type ChangedOutput struct {
+	Changed int `json:"changed" jsonschema:"operations applied (0 = already so)"`
+}
+
+// FitFrame fits an image to its frame, or the frame to its image.
+func (s *Session) FitFrame(ctx context.Context, in FitFrameInput) (ChangedOutput, error) {
+	var out ChangedOutput
+	return out, s.runCommand(ctx, "fit_frame", "fit_frame", map[string]any{"nodeId": in.NodeId, "mode": in.Mode}, &out)
+}
+
+type ClipWithShapeInput struct {
+	ShapeId    string   `json:"shapeId" jsonschema:"a rectangle, ellipse, frame or vector whose outline is the clipping path"`
+	ContentIds []string `json:"contentIds,omitempty" jsonschema:"what to clip; ignored when release is true"`
+	Release    bool     `json:"release,omitempty" jsonschema:"true: stop using shapeId as a clipping path (the group stays)"`
+}
+
+type ClipOutput struct {
+	GroupId  string `json:"groupId,omitempty"`
+	Released bool   `json:"released,omitempty"`
+}
+
+// ClipWithShape clips content to a shape's outline.
+func (s *Session) ClipWithShape(ctx context.Context, in ClipWithShapeInput) (ClipOutput, error) {
+	a := map[string]any{"shapeId": in.ShapeId}
+	if in.Release {
+		a["release"] = true
+	} else {
+		a["contentIds"] = in.ContentIds
+	}
+	var out ClipOutput
+	return out, s.runCommand(ctx, "clip_with_shape", "clip_with_shape", a, &out)
+}
+
+type CreateQRCodeInput struct {
+	Text     string  `json:"text" jsonschema:"UTF-8 text or a URL, up to 271 bytes at level L (fewer at higher levels)"`
+	Level    string  `json:"level,omitempty" jsonschema:"error correction L | M (default) | Q | H"`
+	X        float64 `json:"x,omitempty"`
+	Y        float64 `json:"y,omitempty"`
+	Size     float64 `json:"size,omitempty" jsonschema:"side of the square including its quiet zone (default 128)"`
+	PageId   string  `json:"pageId,omitempty"`
+	ParentId string  `json:"parentId,omitempty"`
+	Dark     *RGBA   `json:"dark,omitempty" jsonschema:"module colour (default black)"`
+	Light    *RGBA   `json:"light,omitempty" jsonschema:"background colour (default white)"`
+}
+
+// CreateQRCode draws a QR code as vectors.
+func (s *Session) CreateQRCode(ctx context.Context, in CreateQRCodeInput) (GroupIdOutput, error) {
+	a := map[string]any{"text": in.Text, "x": in.X, "y": in.Y}
+	if in.Level != "" {
+		a["level"] = in.Level
+	}
+	if in.Size != 0 {
+		a["size"] = in.Size
+	}
+	if in.PageId != "" {
+		a["pageId"] = in.PageId
+	}
+	if in.ParentId != "" {
+		a["parentId"] = in.ParentId
+	}
+	if in.Dark != nil {
+		a["dark"] = rgbaArg(in.Dark)
+	}
+	if in.Light != nil {
+		a["light"] = rgbaArg(in.Light)
+	}
+	var out GroupIdOutput
+	return out, s.runCommand(ctx, "create_qr_code", "create_qr_code", a, &out)
+}
+
+type ObjectQueryInput struct {
+	Kind        string `json:"kind,omitempty" jsonschema:"rect | ellipse | text | image | vector | group | frame | instance"`
+	NameMatches string `json:"nameMatches,omitempty" jsonschema:"regular expression on the layer name, case-insensitive"`
+	Fill        *RGBA  `json:"fill,omitempty" jsonschema:"nodes with a solid fill of this colour"`
+	Stroke      *RGBA  `json:"stroke,omitempty"`
+	PageId      string `json:"pageId,omitempty"`
+}
+
+func (q ObjectQueryInput) args() map[string]any {
+	a := map[string]any{}
+	if q.Kind != "" {
+		a["kind"] = q.Kind
+	}
+	if q.NameMatches != "" {
+		a["nameMatches"] = q.NameMatches
+	}
+	if q.Fill != nil {
+		a["fill"] = rgbaArg(q.Fill)
+	}
+	if q.Stroke != nil {
+		a["stroke"] = rgbaArg(q.Stroke)
+	}
+	if q.PageId != "" {
+		a["pageId"] = q.PageId
+	}
+	return a
+}
+
+type FoundObject struct {
+	Id   string `json:"id"`
+	Name string `json:"name"`
+	Kind string `json:"kind"`
+}
+
+type FindObjectsOutput struct {
+	Count int           `json:"count"`
+	Nodes []FoundObject `json:"nodes" jsonschema:"up to 500"`
+}
+
+// FindObjects finds nodes by kind, name or colour (give at least one criterion).
+func (s *Session) FindObjects(ctx context.Context, in ObjectQueryInput) (FindObjectsOutput, error) {
+	var out FindObjectsOutput
+	return out, s.runCommand(ctx, "find_objects", "find_objects", in.args(), &out)
+}
+
+type ObjectChangeIO struct {
+	Fill         *RGBA    `json:"fill,omitempty" jsonschema:"replaces the matching solid fill (all solid fills when the query names no fill colour)"`
+	Stroke       *RGBA    `json:"stroke,omitempty"`
+	StrokeWeight *float64 `json:"strokeWeight,omitempty"`
+	Opacity      *float64 `json:"opacity,omitempty" jsonschema:"0..1"`
+	Visible      *bool    `json:"visible,omitempty"`
+	Rename       *string  `json:"rename,omitempty"`
+}
+
+type ChangeObjectsInput struct {
+	ObjectQueryInput
+	Change ObjectChangeIO `json:"change"`
+}
+
+type ChangeObjectsOutput struct {
+	Matched int `json:"matched"`
+	Changed int `json:"changed"`
+}
+
+// ChangeObjects finds nodes and changes their appearance in one undo step.
+func (s *Session) ChangeObjects(ctx context.Context, in ChangeObjectsInput) (ChangeObjectsOutput, error) {
+	a := in.ObjectQueryInput.args()
+	c := map[string]any{}
+	if in.Change.Fill != nil {
+		c["fill"] = rgbaArg(in.Change.Fill)
+	}
+	if in.Change.Stroke != nil {
+		c["stroke"] = rgbaArg(in.Change.Stroke)
+	}
+	if in.Change.StrokeWeight != nil {
+		c["strokeWeight"] = *in.Change.StrokeWeight
+	}
+	if in.Change.Opacity != nil {
+		c["opacity"] = *in.Change.Opacity
+	}
+	if in.Change.Visible != nil {
+		c["visible"] = *in.Change.Visible
+	}
+	if in.Change.Rename != nil {
+		c["rename"] = *in.Change.Rename
+	}
+	a["change"] = c
+	var out ChangeObjectsOutput
+	return out, s.runCommand(ctx, "change_objects", "change_objects", a, &out)
+}
+
+type ExportSnippetOutput struct {
+	Snippet string `json:"snippet" jsonschema:"opaque text to keep and pass to place_snippet (in this or another document)"`
+}
+
+// ExportSnippet turns nodes (and their children) into a reusable snippet.
+func (s *Session) ExportSnippet(ctx context.Context, in NodeIdsInput) (ExportSnippetOutput, error) {
+	var out ExportSnippetOutput
+	return out, s.runCommand(ctx, "export_snippet", "export_snippet", map[string]any{"nodeIds": in.NodeIds}, &out)
+}
+
+type PlaceSnippetInput struct {
+	Snippet  string  `json:"snippet"`
+	X        float64 `json:"x,omitempty" jsonschema:"where its top-left corner goes"`
+	Y        float64 `json:"y,omitempty"`
+	PageId   string  `json:"pageId,omitempty"`
+	ParentId string  `json:"parentId,omitempty"`
+}
+
+// PlaceSnippet places a snippet made by export_snippet.
+func (s *Session) PlaceSnippet(ctx context.Context, in PlaceSnippetInput) (DuplicateNodesOutput, error) {
+	a := map[string]any{"snippet": in.Snippet, "x": in.X, "y": in.Y}
+	if in.PageId != "" {
+		a["pageId"] = in.PageId
+	}
+	if in.ParentId != "" {
+		a["parentId"] = in.ParentId
+	}
+	var out DuplicateNodesOutput
+	return out, s.runCommand(ctx, "place_snippet", "place_snippet", a, &out)
+}
+
 // --- vectors ------------------------------------------------------------------------------------------
 
 type AnchorIO struct {
@@ -534,6 +766,15 @@ func registerCommandTools(srv *mcp.Server, s *Session) {
 	addTool(srv, "apply_table_style", "Give a table the object styles (cell rectangles) and text styles (cell texts) of a table style: header rows, body rows, every second body row. Define table styles with set_document_settings tableStyles."+jobNote, s.ApplyTableStyle)
 	addTool(srv, "check_text", "Typographic slips in the text of the whole document: repeated words, double spaces, a space before , . ; :, straight quotes, three dots instead of an ellipsis, a spaced hyphen instead of an en dash. NOT a dictionary spell check (no word list ships with the editor; the browser's spell check marks misspellings while you type)."+jobNote, s.CheckText)
 	addTool(srv, "list_editorial_notes", "The editorial notes written [!comment] in the text: never drawn, exported or printed. Write one with set_text; remove it by editing the text."+jobNote, s.ListEditorialNotes)
+	addTool(srv, "step_and_repeat", "Step and Repeat: make N copies of nodes, each offset (dx, dy) from the previous (a row, a column, a staircase). Groups are copied with their children."+jobNote, s.StepAndRepeat)
+	addTool(srv, "set_gap", "The Gap tool: set the exact space between neighbouring objects along x or y, keeping the first one in place."+jobNote, s.SetGap)
+	addTool(srv, "fit_frame", "Frame fitting: make an image fill cover or fit inside its frame, tile it, or resize an image node to the image's own proportions."+jobNote, s.FitFrame)
+	addTool(srv, "clip_with_shape", "Clipping path: use a shape's outline to clip other nodes (they are grouped with it, the shape as a mask below them); release it with release=true."+jobNote, s.ClipWithShape)
+	addTool(srv, "create_qr_code", "Draw a QR code (ISO 18004, byte mode, versions 1-10) as vectors: a background square and one vector for the dark modules, so it prints sharp at any size."+jobNote, s.CreateQRCode)
+	addTool(srv, "find_objects", "Find nodes by kind, layer name (regex) or solid fill/stroke colour."+jobNote, s.FindObjects)
+	addTool(srv, "change_objects", "Find/change on objects: find nodes as find_objects does and change fill, stroke, stroke weight, opacity, visibility or name in one undo step. With a fill colour in the query, only fills of that colour are replaced."+jobNote, s.ChangeObjects)
+	addTool(srv, "export_snippet", "Turn nodes and their children into a snippet (text) to keep in a library and place later, here or in another document. Images keep their asset reference, so they show only where that asset exists."+jobNote, s.ExportSnippet)
+	addTool(srv, "place_snippet", "Place a snippet made by export_snippet with its top-left corner at x, y."+jobNote, s.PlaceSnippet)
 	addTool(srv, "create_vector", "Draw a vector from paths of anchors with optional bezier handles (handles are offsets from their anchor). The editor computes the curve's true bounds for the node's box (one implementation of that geometry), so use this rather than writing a vector by hand."+jobNote, s.CreateVector)
 	addTool(srv, "set_vector_path", "Replace a vector node's geometry; its box follows the new curve in the same step."+jobNote, s.SetVectorPath)
 	addTool(srv, "group_nodes", "Wrap nodes in a group (they keep their stacking order inside it)."+jobNote, s.GroupNodes)

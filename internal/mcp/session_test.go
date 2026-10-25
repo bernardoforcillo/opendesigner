@@ -1776,3 +1776,64 @@ func TestLongDocumentSettingsAndCommands(t *testing.T) {
 		t.Fatalf("notes: %+v %v", nt, err)
 	}
 }
+
+// TestObjectToolCommands covers the object-tool commands: each sends its arguments to the editor and reads the answer back.
+func TestObjectToolCommands(t *testing.T) {
+	url := serveInMemory(t)
+	docID := newDoc(t, odmcp.NewClient(url))
+	sess := startSession(t, url, docID, "mcp")
+	ctx := context.Background()
+
+	var last map[string]any
+	fakeEditor(t, url, docID, func(job *opendesignerv1.EditorJob) *opendesignerv1.CompleteJobRequest {
+		last = nil
+		_ = json.Unmarshal([]byte(job.GetOptionsJson()), &last)
+		switch last["name"] {
+		case "step_and_repeat", "place_snippet":
+			return &opendesignerv1.CompleteJobRequest{Ok: true, Text: `{"nodeIds":["a","b"]}`}
+		case "set_gap":
+			return &opendesignerv1.CompleteJobRequest{Ok: true, Text: `{"moved":2}`}
+		case "fit_frame":
+			return &opendesignerv1.CompleteJobRequest{Ok: true, Text: `{"changed":1}`}
+		case "clip_with_shape", "create_qr_code":
+			return &opendesignerv1.CompleteJobRequest{Ok: true, Text: `{"groupId":"grp"}`}
+		case "find_objects":
+			return &opendesignerv1.CompleteJobRequest{Ok: true, Text: `{"count":1,"nodes":[{"id":"n1","name":"Logo","kind":"rect"}]}`}
+		case "change_objects":
+			return &opendesignerv1.CompleteJobRequest{Ok: true, Text: `{"matched":3,"changed":3}`}
+		}
+		return &opendesignerv1.CompleteJobRequest{Ok: true, Text: `{"snippet":"{}"}`}
+	})
+	if r, err := sess.StepAndRepeat(ctx, odmcp.StepAndRepeatInput{NodeIds: []string{"n"}, Count: 3, Dx: 10, Dy: 0}); err != nil || len(r.NodeIds) != 2 || last["count"] != float64(3) || last["dx"] != float64(10) {
+		t.Fatalf("step: %+v %v %v", r, err, last)
+	}
+	if r, err := sess.SetGap(ctx, odmcp.SetGapInput{NodeIds: []string{"a", "b"}, Axis: "x", Gap: 4}); err != nil || r.Moved != 2 || last["axis"] != "x" {
+		t.Fatalf("gap: %+v %v", r, err)
+	}
+	if r, err := sess.FitFrame(ctx, odmcp.FitFrameInput{NodeId: "n", Mode: "fit"}); err != nil || r.Changed != 1 || last["mode"] != "fit" {
+		t.Fatalf("fit: %+v %v", r, err)
+	}
+	if r, err := sess.ClipWithShape(ctx, odmcp.ClipWithShapeInput{ShapeId: "s", ContentIds: []string{"c"}}); err != nil || r.GroupId != "grp" || last["contentIds"] == nil {
+		t.Fatalf("clip: %+v %v %v", r, err, last)
+	}
+	if _, err := sess.ClipWithShape(ctx, odmcp.ClipWithShapeInput{ShapeId: "s", Release: true}); err != nil || last["release"] != true || last["contentIds"] != nil {
+		t.Fatalf("release: %v %v", err, last)
+	}
+	dark := &odmcp.RGBA{R: 0, G: 0, B: 0.5, A: 1}
+	if r, err := sess.CreateQRCode(ctx, odmcp.CreateQRCodeInput{Text: "hi", Level: "Q", Size: 80, Dark: dark}); err != nil || r.GroupId != "grp" || last["level"] != "Q" || last["dark"] == nil {
+		t.Fatalf("qr: %+v %v %v", r, err, last)
+	}
+	if r, err := sess.FindObjects(ctx, odmcp.ObjectQueryInput{Kind: "rect", NameMatches: "^L"}); err != nil || r.Count != 1 || r.Nodes[0].Name != "Logo" || last["nameMatches"] != "^L" {
+		t.Fatalf("find: %+v %v", r, err)
+	}
+	op := 0.5
+	if r, err := sess.ChangeObjects(ctx, odmcp.ChangeObjectsInput{ObjectQueryInput: odmcp.ObjectQueryInput{Kind: "rect"}, Change: odmcp.ObjectChangeIO{Opacity: &op}}); err != nil || r.Changed != 3 || last["change"].(map[string]any)["opacity"] != 0.5 {
+		t.Fatalf("change: %+v %v %v", r, err, last)
+	}
+	if r, err := sess.ExportSnippet(ctx, odmcp.NodeIdsInput{NodeIds: []string{"n"}}); err != nil || r.Snippet != "{}" {
+		t.Fatalf("export: %+v %v", r, err)
+	}
+	if r, err := sess.PlaceSnippet(ctx, odmcp.PlaceSnippetInput{Snippet: "{}", X: 5, Y: 6}); err != nil || len(r.NodeIds) != 2 || last["x"] != float64(5) {
+		t.Fatalf("place: %+v %v", r, err)
+	}
+}
