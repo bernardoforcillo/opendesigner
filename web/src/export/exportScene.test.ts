@@ -564,6 +564,44 @@ describe("runDocumentExport", () => {
     expect(text).toContain("Second");
   });
 
+  it("imposes a booklet: sheet sides of two pages, blanks padded in", async () => {
+    install(twoPages());
+    const sc = useScene.getState().scene!;
+    useScene.getState().setScene({ ...sc, pages: sc.pages.map((p) => ({ ...p, width: 100, height: 50 })) });
+    const d = fakeDeps();
+    expect(await runDocumentExport("pdf", d, { booklet: true })).toBe(true);
+    const doc = await openPdf(d.saved[0].blob);
+    // 2 pages -> padded to 4 -> two sheet sides: (blank | 1) and (2 | blank)
+    expect(doc.numPages).toBe(2);
+    const widths = [(await doc.getPage(1)).view[2], (await doc.getPage(2)).view[2]];
+    expect(widths).toEqual([150, 150]); // two pages of 100 px = 75 pt, side by side
+  });
+
+  it("downloads one HTML file with a section per page", async () => {
+    install(twoPages());
+    const d = fakeDeps();
+    expect(await runDocumentExport("html", d)).toBe(true);
+    expect(d.saved[0].filename).toBe("Book.html");
+    const html = await d.saved[0].blob.text();
+    expect(html).toContain("<!doctype html>");
+    expect(html).toContain('id="page-1"');
+    expect(html).toContain('id="page-2"');
+    expect(html).toContain("Second");
+  });
+
+  it("downloads a PowerPoint deck and an IDML package, saying what they leave out", async () => {
+    install(twoPages());
+    const d = fakeDeps();
+    expect(await runDocumentExport("pptx", d)).toBe(true);
+    expect(d.saved[0].filename).toBe("Book.pptx");
+    expect(useScene.getState().notice).toMatch(/slides?\)?\. Effects/);
+    expect(await runDocumentExport("idml", d)).toBe(true);
+    expect(d.saved[1].filename).toBe("Book.idml");
+    expect(useScene.getState().notice).toMatch(/IDML written/);
+    const bytes = new Uint8Array(await d.saved[1].blob.arrayBuffer());
+    expect(new TextDecoder().decode(bytes.subarray(30, 30 + 8))).toBe("mimetype");
+  });
+
   it("skips empty pages and refuses an entirely empty document", async () => {
     const empty = sceneWith("E");
     install(empty);

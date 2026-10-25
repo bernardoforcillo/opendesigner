@@ -35,7 +35,26 @@ export function isValidDocSettings(s: DocSettingsMsg | undefined): boolean {
   const icc = s.iccProfile ?? "";
   // eslint-disable-next-line no-control-regex
   if (icc.length > 64 || icc.trim() !== icc || /[\u0000-\u001f\u007f]/.test(icc)) return false;
-  return finiteIn(s.baselineIncrement, 0, 1000) && Number.isFinite(s.baselineStart) && s.baselineStart >= 0 && isValidBook(s.book);
+  return finiteIn(s.baselineIncrement, 0, 1000) && Number.isFinite(s.baselineStart) && s.baselineStart >= 0 && isValidBook(s.book) && isValidLongDocument(s);
+}
+
+/** Parity with core.validateLongDocument: conditions and table styles. */
+export function isValidLongDocument(s: Pick<DocSettingsMsg, "conditions" | "tableStyles">): boolean {
+  const conditions = s.conditions ?? [], styles = s.tableStyles ?? [];
+  if (conditions.length > 50 || styles.length > 100) return false;
+  const seen = new Set<string>();
+  for (const c of conditions) {
+    if (!/^[A-Za-z0-9_ -]{1,40}$/.test(c.name) || c.name.trim() !== c.name || seen.has(c.name)) return false;
+    seen.add(c.name);
+  }
+  const ids = new Set<string>();
+  const idOk = /^[A-Za-z0-9_.-]{1,64}$/;
+  for (const t of styles) {
+    if (!idOk.test(t.id) || ids.has(t.id) || t.name === "" || !oneLine(t.name, 100)) return false;
+    ids.add(t.id);
+    for (const ref of [t.headerObjectStyleId, t.bodyObjectStyleId, t.altObjectStyleId, t.headerTextStyleId, t.bodyTextStyleId]) if (ref !== "" && !idOk.test(ref)) return false;
+  }
+  return true;
 }
 
 /** Parity with core.ValidISBN13: 13 digits with a correct check digit. */

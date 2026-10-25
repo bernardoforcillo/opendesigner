@@ -134,3 +134,36 @@ func atoi(s string) int {
 	}
 	return n
 }
+
+var (
+	conditionRe = regexp.MustCompile(`^[A-Za-z0-9_ -]{1,40}$`)
+	styleIDRe   = regexp.MustCompile(`^[A-Za-z0-9_.-]{1,64}$`)
+)
+
+// validateLongDocument checks DocSettings.conditions and DocSettings.table_styles.
+func validateLongDocument(s *opendesignerv1.DocSettings) error {
+	bad := func(what string) error { return fmt.Errorf("%w: %s", ErrBadDocSettings, what) }
+	if len(s.GetConditions()) > 50 || len(s.GetTableStyles()) > 100 {
+		return bad("too many conditions or table styles")
+	}
+	seen := map[string]bool{}
+	for _, c := range s.GetConditions() {
+		if c == nil || !conditionRe.MatchString(c.GetName()) || strings.TrimSpace(c.GetName()) != c.GetName() || seen[c.GetName()] {
+			return bad("condition")
+		}
+		seen[c.GetName()] = true
+	}
+	ids := map[string]bool{}
+	for _, t := range s.GetTableStyles() {
+		if t == nil || !styleIDRe.MatchString(t.GetId()) || ids[t.GetId()] || !bookText(t.GetName(), 100) || strings.Contains(t.GetName(), "\n") || t.GetName() == "" {
+			return bad("table style")
+		}
+		ids[t.GetId()] = true
+		for _, ref := range []string{t.GetHeaderObjectStyleId(), t.GetBodyObjectStyleId(), t.GetAltObjectStyleId(), t.GetHeaderTextStyleId(), t.GetBodyTextStyleId()} {
+			if ref != "" && !styleIDRe.MatchString(ref) {
+				return bad("table style reference")
+			}
+		}
+	}
+	return nil
+}

@@ -1,3 +1,4 @@
+import { forPdf } from "../../renderer/bidi";
 import type { BlendModeLite, FillLite, GradientLite, NodeLite } from "../../store/types";
 import type { Bounds } from "../../canvas/geometry";
 import { decorationBars, fontSizeOf, paragraphDecorations, placeTextLines, type MeasureText } from "../../renderer/text";
@@ -39,7 +40,12 @@ export interface PageDeps {
   images: Map<string, PreparedImage>;
   /** Image XObjects already written (shared across pages). */
   imageObjs: Map<string, number>;
+  /** Tagged PDF: text and images are wrapped in marked content, everything else is an artifact. `headingOf` = outline level of a text node. */
+  tagged?: { headingOf: (n: NodeLite) => number };
 }
+
+/** One marked-content item of a tagged page, in the page's drawing order. */
+export interface PdfTag { mcid: number; role: string; nodeId: string; alt?: string; x: number; y: number }
 
 export interface Placed { assetHash: string; width: number; height: number }
 
@@ -51,6 +57,8 @@ export interface PageRender {
   transparency: boolean;
   /** Effects the PDF cannot reproduce, by node id. */
   flattened: string[];
+  /** Tagged PDF only: the marked content on the page. */
+  tags: PdfTag[];
 }
 
 class Page {
@@ -63,6 +71,20 @@ class Page {
   transparency = false;
   flattened: string[] = [];
   constructor(readonly d: PageDeps) {}
+
+  /** Overprint graphics state for fills and/or strokes (OPM 1: a 0% plate in a colour does not knock out). */
+  overprint(mode: string): string {
+    const fill = mode === "fill" || mode === "both", stroke = mode === "stroke" || mode === "both";
+    if (!fill && !stroke) return "";
+    const name = `OP${fill ? "f" : ""}${stroke ? "s" : ""}`;
+    if (!this.gsKey.has(`op/${name}`)) {
+      this.gsKey.set(`op/${name}`, name);
+      this.gstates.push(`${pdfName(name)}<</Type/ExtGState${fill ? "/op true" : ""}${stroke ? "/OP true" : ""}/OPM 1>>`);
+    }
+    this.overprinted++;
+    return `${pdfName(name)} gs\n`;
+  }
+  overprinted = 0;
 
   gs(ca: number, CA: number, blend?: BlendModeLite): string {
     if (ca >= 1 && CA >= 1 && !blend) return "";
@@ -296,7 +318,7 @@ function drawText(pg: Page, n: NodeLite): void {
       pg.out.push(
         `${pg.gs(color.a, color.a)}${pg.d.colors.ops(paint, false)}${pdfName(font.res)} ${num(fontSizeOf(st))} Tf\n` +
         `${num(st.letterSpacing ?? 0)} Tc ${num((st.horizontalScale ?? 1) * 100)} Tz\n` +
-        `${num(c)} ${num(s)} ${num(s)} ${num(-c)} ${num(seg.x)} ${num(y)} Tm\n${font.encode(seg.text)} Tj\n`,
+        `${num(c)} ${num(s)} ${num(s)} ${num(-c)} ${num(seg.x)} ${num(y)} Tm\n${font.encode(forPdf(seg.text))} Tj\n`,
       );
     }
   }
@@ -332,6 +354,7 @@ export function renderPage(deps: PageDeps, nodes: readonly NodeLite[], bounds: B
   const pg = new Page(deps);
   const clipOf = new Map<string, string>();
   const clipOpen = new Set<string>();
+  const tags: PdfTag[] = [];
   // y flipped, origin at the bounds' top-left, scaled to points.
   pg.out.push(`${num(PT)} 0 0 ${num(-PT)} ${num(-bounds.x * PT)} ${num((bounds.y + bounds.height) * PT)} cm\n`);
   for (const n of nodes) {
@@ -341,7 +364,18 @@ export function renderPage(deps: PageDeps, nodes: readonly NodeLite[], bounds: B
       if (path !== null) { clipOf.set(n.parentId, path); continue; }
     }
     const clip = clipOf.get(n.parentId);
+    // Tagged PDF: a text or image is a structure element; any other drawing is an artifact (not part of the reading content).
+    const tagged = deps.tagged && (n.kind === "text" ? (n.text?.content ?? "").trim() !== "" : n.kind === "image");
+    if (deps.tagged) {
+      if (tagged) {
+        const level = n.kind === "text" ? deps.tagged.headingOf(n) : 0;
+        const tag: PdfTag = { mcid: tags.length, role: n.kind === "image" ? "Figure" : level > 0 ? `H${Math.min(6, level)}` : "P", nodeId: n.id, x: n.x, y: n.y, ...(n.kind === "image" ? { alt: String(n.meta?.["alt"] ?? n.name ?? "") } : {}) };
+        tags.push(tag);
+        pg.out.push(`/${tag.role} <</MCID ${tag.mcid}>> BDC\n`);
+      } else pg.out.push("/Artifact BMC\n");
+    }
     pg.out.push("q\n");
+    if (n.meta?.["overprint"]) pg.out.push(pg.overprint(n.meta["overprint"]));
     if (clip && !clipOpen.has(n.id)) pg.out.push(`${clip}W* n\n`);
     // Node opacity and blend mode wrap the whole node; the paint's own alpha is applied inside.
     if (n.opacity !== 1 || n.blendMode) pg.out.push(pg.gs(n.opacity, n.opacity, n.blendMode));
@@ -349,10 +383,11 @@ export function renderPage(deps: PageDeps, nodes: readonly NodeLite[], bounds: B
     else if (n.kind === "image") drawImage(pg, n);
     else drawShape(pg, n);
     pg.out.push("Q\n");
+    if (deps.tagged) pg.out.push("EMC\n");
   }
   const res: string[] = [];
   if (pg.xobjects.size) res.push(`/XObject<<${[...pg.xobjects].map(([k, v]) => `${pdfName(k)} ${v} 0 R`).join(" ")}>>`);
   if (pg.gstates.length) res.push(`/ExtGState<<${pg.gstates.join(" ")}>>`);
   if (pg.shadings.length) res.push(`/Shading<<${pg.shadings.join(" ")}>>`);
-  return { content: pg.out.join(""), resources: res.join(""), placed: pg.placed, transparency: pg.transparency, flattened: [...new Set(pg.flattened)] };
+  return { content: pg.out.join(""), resources: res.join(""), placed: pg.placed, transparency: pg.transparency, flattened: [...new Set(pg.flattened)], tags };
 }

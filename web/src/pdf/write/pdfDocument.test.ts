@@ -223,3 +223,88 @@ describe("images", () => {
     expect(report.lowResolution[0]).toMatchObject({ hash: "h", ppi: 10 });
   });
 });
+
+describe("buildPdf — tagged", () => {
+  const tagged = (over: Partial<PdfBuild> = {}) => build([
+    page([
+      node({ id: "h", kind: "text", x: 10, y: 10, width: 180, height: 20, text: { content: "Title", style: style({ fontSize: 24 }) } }),
+      node({ id: "box", x: 5, y: 5, width: 190, height: 90 }),
+      node({ id: "p", kind: "text", x: 10, y: 40, width: 180, height: 20, text: { content: "Body text", style: style() } }),
+      node({ id: "img", kind: "image", name: "Cat", meta: { alt: "A cat" }, x: 10, y: 70, width: 20, height: 20, image: { assetHash: "a".repeat(64), originalName: "", pixelWidth: 1, pixelHeight: 1 } }),
+    ]),
+  ], { tagged: true, headingOf: (n) => (n.id === "h" ? 1 : 0), language: "it", ...over });
+
+  it("marks the content and builds a structure tree in reading order, read back with pdf.js", async () => {
+    const { bytes } = await tagged();
+    const text = Buffer.from(bytes).toString("latin1");
+    expect(text).toContain("/MarkInfo<</Marked true>>");
+    expect(text).toContain("/Lang(it)");
+    expect(text).toContain("/StructTreeRoot");
+    const content = await contentOf(bytes);
+    expect(content).toContain("/H1 <</MCID 0>> BDC");
+    expect(content).toContain("/P <</MCID 1>> BDC");
+    expect(content).toContain("/Figure <</MCID 2>> BDC");
+    expect(content).toContain("/Artifact BMC");
+    expect((content.match(/BDC|BMC/g) ?? []).length).toBe((content.match(/EMC/g) ?? []).length);
+    const doc = await read(bytes);
+    const tree = await (await doc.getPage(1)).getStructTree();
+    const roles = (function walk(n: { role: string; children?: unknown[] }): string[] { return [n.role, ...(n.children ?? []).flatMap((c) => walk(c as never))]; })(tree as never);
+    expect(roles).toContain("H1");
+    expect(roles).toContain("P");
+    expect(roles).toContain("Figure");
+  });
+
+  it("writes none of it unless asked", async () => {
+    const { bytes } = await tagged({ tagged: false });
+    expect(Buffer.from(bytes).toString("latin1")).not.toContain("StructTreeRoot");
+    expect(await contentOf(bytes)).not.toContain("BDC");
+  });
+});
+
+describe("buildPdf — overprint", () => {
+  it("writes an overprint graphics state for the nodes that ask for it, and only for them", async () => {
+    const { bytes } = await build([page([
+      node({ id: "a", x: 0, y: 0, meta: { overprint: "fill" } }),
+      node({ id: "b", x: 20, y: 0, meta: { overprint: "both" } }),
+      node({ id: "c", x: 40, y: 0 }),
+    ])]);
+    const raw = Buffer.from(bytes).toString("latin1");
+    expect(raw).toContain("/Type/ExtGState/op true/OPM 1");
+    expect(raw).toContain("/Type/ExtGState/op true/OP true/OPM 1");
+    const content = await contentOf(bytes);
+    expect((content.match(/\/OPf gs/g) ?? []).length).toBe(1);
+    expect((content.match(/\/OPfs gs/g) ?? []).length).toBe(1);
+  });
+});
+
+describe("buildPdf — right-to-left and CJK text with a real font", () => {
+  const { existsSync, readFileSync } = require("node:fs") as typeof import("node:fs");
+  const free = "/usr/share/fonts/truetype/freefont/FreeSerif.ttf";
+  const textOf = async (bytes: Uint8Array) => {
+    const doc = await read(bytes);
+    const items = (await (await doc.getPage(1)).getTextContent()).items as { str: string }[];
+    return items.map((i) => i.str).join("");
+  };
+  const embedded = (family: string, path: string, content: string, over: Partial<PdfBuild> = {}) => build(
+    [page([node({ id: "t", kind: "text", x: 10, y: 10, width: 180, height: 40, text: { content, style: style({ fontFamily: family }) } })])],
+    { faces: [{ face: { id: "f", family, weight: "400", style: "normal", assetHash: "x" }, data: new Uint8Array(readFileSync(path)) }], ...over },
+  );
+
+  it.skipIf(!existsSync(free))("shapes Arabic into joined forms and reorders it, so the PDF reads right to left", async () => {
+    const { bytes, report } = await embedded("FreeSerif", free, "بيت");
+    expect(report.missingGlyphs).toEqual([]);
+    // pdf.js returns right-to-left text in logical order: beh initial, yeh medial, teh final. Joined forms mean the glyphs were drawn
+    // shaped and in visual order (unshaped input would come back as the plain letters).
+    expect(await textOf(bytes)).toBe("\ufe91\ufef4\ufe96");
+  });
+
+  it.skipIf(!existsSync(free))("orders Hebrew and keeps embedded Latin words readable", async () => {
+    const { bytes } = await embedded("FreeSerif", free, "אב abc ג");
+    expect(await textOf(bytes)).toBe("אב abc ג"); // read back in logical order by pdf.js, so it was drawn in visual order
+  });
+
+  it.skipIf(!existsSync(free))("leaves left-to-right text untouched", async () => {
+    const { bytes } = await embedded("FreeSerif", free, "Plain text");
+    expect(await textOf(bytes)).toBe("Plain text");
+  });
+});

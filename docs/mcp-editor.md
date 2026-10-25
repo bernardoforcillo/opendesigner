@@ -42,3 +42,15 @@ Documents, versions and branches: `list_documents`, `create_document`, `rename_d
 - The editor must be open for the tools in the first table; the document is not rendered headlessly.
 - A tool that opens a page in the editor (`place_image` with `pageId`, the importers) moves the editor to that page, as a person picking it would.
 - Several editors open on the same document: jobs go to them in turn.
+
+## Long-document commands
+`apply_table_style`, `check_text`, `list_editorial_notes` and `generate_contents` kind `endnotes` run in the open editor; see long-documents.md.
+
+## Object-tool commands
+`step_and_repeat`, `set_gap`, `fit_frame`, `clip_with_shape`, `create_qr_code`, `find_objects`, `change_objects`, `export_snippet`, `place_snippet`; see object-tools.md.
+
+## Format jobs
+`export_html`, `export_pptx`, `export_idml` (files), `import_idml`, `place_document` (commands with an input file), and the `booklet` / `tagged` options of `export_pdf`; see formats.md.
+
+## Platform tools
+`ink_report`, `convert_spots_to_process`, `merge_spot_inks`, `set_overprint`, `batch`, `list_editor_commands`; see platform.md.

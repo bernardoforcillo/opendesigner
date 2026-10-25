@@ -19,24 +19,44 @@ import type { NodeLite, PageLite, SceneState, TextLite, TextRunLite } from "./ty
 //                  store/masters.ts): the running header (the first heading of that level on the page,
 //                  else the last one before it), the page count and the document name.
 //
+//   [*note text]   an ENDNOTE: a superscript number in its own sequence; the notes are listed together by the
+//                  endnotes generator (tools/contents.ts), usually on the last page.
+//   [=name]        a TEXT ANCHOR: a named place in the text, not drawn; the target of cross-references.
+//   [>name]        a CROSS-REFERENCE to an anchor, drawn as its page number; [>name:text] draws the text of the
+//                  paragraph the anchor is in instead. Always current -- it is resolved when drawn; "??" when the
+//                  anchor does not exist.
+//   [!comment]     an EDITORIAL NOTE: never drawn, exported or printed; listed by editorialNotes().
+//   [?name] ... [/?]   CONDITIONAL TEXT: the span between is hidden everywhere (canvas, exports, contents, index)
+//                  while the document's condition `name` is hidden (DocSettings.conditions); the markers are
+//                  never drawn. A condition nobody defined is visible.
+//
 // Headings are the paragraphs whose paragraph style has an outline level (Styles… → Heading level).
 
-const TOKEN_RE = /\[\^([^\]\n]*)\]|\[#([^\]\n]*)\]|\[@([0-9A-Za-z_-]{4,64})\]/g;
+const TOKEN_RE = /\[\^([^\]\n]*)\]|\[#([^\]\n]*)\]|\[@([0-9A-Za-z_-]{4,64})\]|\[\*([^\]\n]*)\]|\[=([A-Za-z0-9_-]{1,40})\]|\[>([A-Za-z0-9_-]{1,40})(?::(page|text))?\]|\[!([^\]\n]*)\]|\[\?([A-Za-z0-9_ -]{1,40})\]|(\[\/\?\])/g;
 const SUPER = "⁰¹²³⁴⁵⁶⁷⁸⁹";
 
 /** 12 -> "¹²". */
 export const superscript = (n: number) => String(n).replace(/\d/g, (d) => SUPER[Number(d)]);
 
-export const hasTokens = (content: string) => content.includes("[^") || content.includes("[#") || content.includes("[@");
+export const hasTokens = (content: string) => /\[[\^#@*=>!?\/]/.test(content);
 
-export interface Token { kind: "footnote" | "index" | "anchor"; text: string; at: number; end: number }
+export type TokenKind = "footnote" | "index" | "anchor" | "endnote" | "dest" | "xref" | "note" | "cond" | "endcond";
+export interface Token { kind: TokenKind; text: string; at: number; end: number; /** xref only */ format?: "page" | "text" }
 
 /** The footnote and index markers of `content`, in order. */
 export function tokensOf(content: string): Token[] {
   const out: Token[] = [];
   for (const m of content.matchAll(TOKEN_RE)) {
     const at = m.index!, end = at + m[0].length;
-    out.push(m[1] !== undefined ? { kind: "footnote", text: m[1], at, end } : m[2] !== undefined ? { kind: "index", text: m[2], at, end } : { kind: "anchor", text: m[3], at, end });
+    if (m[1] !== undefined) out.push({ kind: "footnote", text: m[1], at, end });
+    else if (m[2] !== undefined) out.push({ kind: "index", text: m[2], at, end });
+    else if (m[3] !== undefined) out.push({ kind: "anchor", text: m[3], at, end });
+    else if (m[4] !== undefined) out.push({ kind: "endnote", text: m[4], at, end });
+    else if (m[5] !== undefined) out.push({ kind: "dest", text: m[5], at, end });
+    else if (m[6] !== undefined) out.push({ kind: "xref", text: m[6], at, end, format: m[7] === "text" ? "text" : "page" });
+    else if (m[8] !== undefined) out.push({ kind: "note", text: m[8], at, end });
+    else if (m[9] !== undefined) out.push({ kind: "cond", text: m[9], at, end });
+    else out.push({ kind: "endcond", text: "", at, end });
   }
   return out;
 }
@@ -81,6 +101,85 @@ export function rewriteTokens(t: TextLite, replace: (token: Token, index: number
   return { ...rest, content, ...(runs.length > 0 ? { runs } : {}) };
 }
 
+// --- conditional text ---------------------------------------------------------------------------
+
+/** Names of the conditions the document hides. */
+export const hiddenConditions = (scene: Pick<SceneState, "settings">): Set<string> =>
+  new Set((scene.settings?.conditions ?? []).filter((c) => !c.visible).map((c) => c.name));
+
+/** `t` without the characters in `ranges` ([start, end) of its content, sorted, disjoint): runs and paragraph styles follow. */
+function cutRanges(t: TextLite, ranges: readonly [number, number][]): TextLite {
+  if (ranges.length === 0) return t;
+  let content = "";
+  let cursor = 0;
+  for (const [a, b] of ranges) { content += t.content.slice(cursor, a); cursor = b; }
+  content += t.content.slice(cursor);
+  const move = (pos: number) => {
+    let removed = 0;
+    for (const [a, b] of ranges) {
+      if (pos <= a) break;
+      removed += Math.min(pos, b) - a;
+    }
+    return pos - removed;
+  };
+  const runs: TextRunLite[] = [];
+  for (const r of t.runs ?? []) {
+    const start = move(r.start), end = move(r.end);
+    if (end > start) runs.push({ start, end, styleId: r.styleId });
+  }
+  // A removed line break merges two paragraphs: the first keeps its style, the swallowed ones lose theirs.
+  let paragraphStyles = t.paragraphStyles;
+  if (paragraphStyles && paragraphStyles.length > 0) {
+    const drop = new Set<number>();
+    for (const [a, b] of ranges) {
+      const before = t.content.slice(0, a).split("\n").length - 1;
+      const inside = t.content.slice(a, b).split("\n").length - 1;
+      for (let k = 1; k <= inside; k++) drop.add(before + k);
+    }
+    if (drop.size > 0) paragraphStyles = paragraphStyles.filter((_, i) => !drop.has(i));
+  }
+  const { runs: _r, paragraphStyles: _p, ...rest } = t;
+  void _r; void _p;
+  return { ...rest, content, ...(runs.length > 0 ? { runs } : {}), ...(paragraphStyles && paragraphStyles.some((x) => x !== "") ? { paragraphStyles } : {}) };
+}
+
+/**
+ * `t` with the spans of the `hidden` conditions removed. Nested spans work; an unclosed [?name] hides to the
+ * end of the text. The markers of visible conditions stay (they are never drawn: see deriveTextTokens).
+ */
+export function hideConditions(t: TextLite, hidden: ReadonlySet<string>): TextLite {
+  if (hidden.size === 0 || !t.content.includes("[?")) return t;
+  const ranges: [number, number][] = [];
+  const stack: { name: string; at: number }[] = [];
+  const last = () => ranges[ranges.length - 1];
+  const addRange = (a: number, b: number) => {
+    // Merge with the previous range when they touch or overlap (the ranges come out sorted).
+    const prev = last();
+    if (prev && a <= prev[1]) prev[1] = Math.max(prev[1], b);
+    else ranges.push([a, b]);
+  };
+  for (const tok of tokensOf(t.content)) {
+    if (tok.kind === "cond") stack.push({ name: tok.text, at: tok.at });
+    else if (tok.kind === "endcond") {
+      const open = stack.pop();
+      if (open && hidden.has(open.name) && stack.every((s) => !hidden.has(s.name))) addRange(open.at, tok.end);
+    }
+  }
+  for (const open of stack) if (hidden.has(open.name)) addRange(open.at, t.content.length);
+  ranges.sort((a, b) => a[0] - b[0]);
+  // Re-merge after sorting (inner spans of an already hidden outer one).
+  const merged: [number, number][] = [];
+  for (const r of ranges) {
+    const prev = merged[merged.length - 1];
+    if (prev && r[0] <= prev[1]) prev[1] = Math.max(prev[1], r[1]);
+    else merged.push([r[0], r[1]]);
+  }
+  return cutRanges(t, merged);
+}
+
+/** The text of `t` as it is drawn as far as conditions go: hidden spans out. */
+export const visibleText = (scene: Pick<SceneState, "settings">, t: TextLite): TextLite => hideConditions(t, hiddenConditions(scene));
+
 // --- reading order and pages --------------------------------------------------------------------
 
 function pageIdOf(scene: SceneState, n: NodeLite, pageIds: ReadonlySet<string>): string | null {
@@ -122,10 +221,12 @@ export function headingsOf(scene: SceneState): Heading[] {
   if (levelOf.size === 0) return [];
   const out: Heading[] = [];
   for (const { node, pageId } of textNodesInReadingOrder(scene)) {
-    const ids = node.text!.paragraphStyles;
+    // Conditional text first: a hidden span (or paragraph) is not a heading.
+    const vt = visibleText(scene, node.text!);
+    const ids = vt.paragraphStyles;
     if (!ids || ids.every((id) => !levelOf.has(id))) continue;
     // A paragraph's text without the markers it carries.
-    const paragraphs = node.text!.content.replace(/\r\n?/g, "\n").split("\n");
+    const paragraphs = vt.content.replace(/\r\n?/g, "\n").split("\n");
     ids.forEach((id, i) => {
       const level = levelOf.get(id);
       const text = paragraphs[i]?.replace(TOKEN_RE, "").trim();
@@ -214,21 +315,35 @@ export function deriveTextTokens(scene: SceneState): SceneState {
   const edit = scene.nodes.edit();
   const changed: string[] = [];
   const notes = new Map<string, { n: number; text: string; node: NodeLite }[]>();
-  let counter = 0;
+  const hidden = hiddenConditions(scene);
+  const dests = destinationsOf(scene, hidden);
+  const labels = pageNumbers(scene.pages);
+  let counter = 0, endCounter = 0;
   for (const { node, pageId } of textNodesInReadingOrder(scene)) {
     if (!hasTokens(node.text!.content)) continue;
     const inline: { at: number; id: string }[] = [];
-    const text = rewriteTokens(node.text!, (tok, _i, offset) => {
-      if (tok.kind === "index") return "";
-      if (tok.kind === "anchor") {
-        const target = anchorTarget(scene, tok.text, node.id);
-        if (!target) return "";
-        inline.push({ at: offset, id: target.id });
-        return OBJECT_CHAR;
+    const text = rewriteTokens(hideConditions(node.text!, hidden), (tok, _i, offset) => {
+      switch (tok.kind) {
+        case "index": case "dest": case "note": case "cond": case "endcond": return "";
+        case "anchor": {
+          const target = anchorTarget(scene, tok.text, node.id);
+          if (!target) return "";
+          inline.push({ at: offset, id: target.id });
+          return OBJECT_CHAR;
+        }
+        case "xref": {
+          const d = dests.get(tok.text);
+          if (!d) return "??";
+          return tok.format === "text" ? d.paragraph : labels.get(d.pageId)?.label ?? "??";
+        }
+        case "endnote":
+          endCounter++;
+          return superscript(endCounter);
+        default:
+          counter++;
+          notes.set(pageId, [...(notes.get(pageId) ?? []), { n: counter, text: tok.text, node }]);
+          return superscript(counter);
       }
-      counter++;
-      notes.set(pageId, [...(notes.get(pageId) ?? []), { n: counter, text: tok.text, node }]);
-      return superscript(counter);
     });
     edit.set(node.id, { ...node, text: inline.length > 0 ? { ...text, inlineObjects: inline } : text });
     changed.push(node.id);
@@ -271,24 +386,96 @@ function footArea(scene: SceneState, page: PageLite, anchor: NodeLite): { x: num
   return { x: anchor.x + wt.e - 0, y: anchor.y + anchor.height + wt.f + 12, width: Math.max(10, anchor.width), bottom: null };
 }
 
-// --- index entries ------------------------------------------------------------------------------
+// --- cross-references, editorial notes, endnotes -------------------------------------------------
 
-export interface IndexEntry { term: string; pages: string[] }
+export interface Destination { pageId: string; paragraph: string }
 
-/** The index terms of the document with the labels of the pages they are on, alphabetically. */
-export function indexEntries(scene: SceneState): IndexEntry[] {
-  const labels = pageNumbers(scene.pages);
-  const terms = new Map<string, Set<string>>();
+/** The text anchors of the document ([=name]) with the page and the paragraph they are in; the first of a name wins. */
+export function destinationsOf(scene: SceneState, hidden: ReadonlySet<string> = hiddenConditions(scene)): Map<string, Destination> {
+  const out = new Map<string, Destination>();
   for (const { node, pageId } of textNodesInReadingOrder(scene)) {
-    for (const tok of tokensOf(node.text!.content)) {
-      const term = tok.text.trim();
-      if (tok.kind !== "index" || term === "") continue;
-      const set = terms.get(term) ?? new Set<string>();
-      set.add(labels.get(pageId)?.label ?? "");
-      terms.set(term, set);
+    const t = hideConditions(node.text!, hidden);
+    if (!t.content.includes("[=")) continue;
+    for (const tok of tokensOf(t.content)) {
+      if (tok.kind !== "dest" || out.has(tok.text)) continue;
+      const from = t.content.lastIndexOf("\n", tok.at - 1) + 1;
+      const to = t.content.indexOf("\n", tok.end);
+      const paragraph = t.content.slice(from, to < 0 ? undefined : to).replace(TOKEN_RE, "").replace(/\s+/g, " ").trim().slice(0, 80);
+      out.set(tok.text, { pageId, paragraph });
     }
   }
+  return out;
+}
+
+export interface EditorialNote { nodeId: string; pageId: string; at: number; text: string; context: string }
+
+/** The editorial notes ([!comment]) of the document in reading order; they are never drawn, exported or printed. */
+export function editorialNotes(scene: SceneState): EditorialNote[] {
+  const out: EditorialNote[] = [];
+  for (const { node, pageId } of textNodesInReadingOrder(scene)) {
+    const c = node.text!.content;
+    for (const tok of tokensOf(c)) {
+      if (tok.kind !== "note") continue;
+      const from = Math.max(0, tok.at - 25);
+      out.push({ nodeId: node.id, pageId, at: tok.at, text: tok.text.trim(), context: c.slice(from, tok.at).replace(TOKEN_RE, "").replace(/\s+/g, " ").trim() });
+    }
+  }
+  return out;
+}
+
+/** The endnotes ([*text]) of the document, numbered in reading order (the numbers the references show). */
+export function endnoteEntries(scene: SceneState): { n: number; text: string }[] {
+  const hidden = hiddenConditions(scene);
+  const out: { n: number; text: string }[] = [];
+  for (const { node } of textNodesInReadingOrder(scene)) {
+    for (const tok of tokensOf(hideConditions(node.text!, hidden).content)) if (tok.kind === "endnote") out.push({ n: out.length + 1, text: tok.text.trim() });
+  }
+  return out;
+}
+
+// --- index entries ------------------------------------------------------------------------------
+
+export interface IndexEntry {
+  /** The whole path, "Fruit:Apple". */
+  term: string;
+  /** 1 for a main entry, 2 for a sub-entry ("Fruit:Apple")... */
+  level: number;
+  /** The last part of the path, what is printed on the line. */
+  label: string;
+  pages: string[];
+}
+
+/**
+ * The index terms of the document with the labels of the pages they are on, alphabetically; a term with colons
+ * ([#Fruit:Apple]) is a sub-entry of "Fruit", which is listed too (with no pages of its own if none marks it).
+ */
+export function indexEntries(scene: SceneState): IndexEntry[] {
+  const labels = pageNumbers(scene.pages);
+  const hidden = hiddenConditions(scene);
+  const terms = new Map<string, Set<string>>();
+  const add = (path: string, page: string | null) => {
+    const set = terms.get(path) ?? new Set<string>();
+    if (page !== null) set.add(page);
+    terms.set(path, set);
+  };
+  for (const { node, pageId } of textNodesInReadingOrder(scene)) {
+    for (const tok of tokensOf(hideConditions(node.text!, hidden).content)) {
+      if (tok.kind !== "index") continue;
+      const parts = tok.text.split(":").map((p) => p.trim()).filter((p) => p !== "").slice(0, 4);
+      if (parts.length === 0) continue;
+      for (let k = 1; k < parts.length; k++) add(parts.slice(0, k).join(":"), null);
+      add(parts.join(":"), labels.get(pageId)?.label ?? "");
+    }
+  }
+  const cmp = (a: string, b: string) => a.localeCompare(b, undefined, { sensitivity: "base" });
   return [...terms.entries()]
-    .sort(([a], [b]) => a.localeCompare(b, undefined, { sensitivity: "base" }))
-    .map(([term, set]) => ({ term, pages: [...set] }));
+    .sort(([a], [b]) => {
+      const pa = a.split(":"), pb = b.split(":");
+      for (let i = 0; i < Math.min(pa.length, pb.length); i++) { const c = cmp(pa[i]!, pb[i]!); if (c !== 0) return c; }
+      return pa.length - pb.length;
+    })
+    .map(([term, set]) => {
+      const parts = term.split(":");
+      return { term, level: parts.length, label: parts[parts.length - 1]!, pages: [...set] };
+    });
 }

@@ -10,6 +10,8 @@ import { useDocNameEditing } from "./DocName";
 import { pickSvgFile } from "../../tools/svgImport";
 import { importFigFile, pickFigFile } from "../../fig/importFig";
 import { importPdfFile, pickPdfFile } from "../../pdf/importPdf";
+import { pickFile } from "../pickFile";
+import { runCommand } from "../../jobs/commands";
 import { runDocumentExport } from "../../export/exportScene";
 import { DiagramDialog } from "../DiagramDialog";
 import { VariablesDialog } from "../VariablesDialog";
@@ -24,6 +26,9 @@ import { LinksDialog } from "../LinksDialog";
 import { PrintPdfDialog } from "../PrintPdfDialog";
 import { DataMergeDialog } from "../DataMergeDialog";
 import { BookMetadataDialog } from "../BookMetadataDialog";
+import { LongDocumentDialog } from "../LongDocumentDialog";
+import { ObjectToolsDialog } from "../ObjectToolsDialog";
+import { InkManagerDialog } from "../InkManagerDialog";
 import { InsertTableDialog } from "../InsertTableDialog";
 import { generateContentsOps } from "../../tools/contents";
 import { VersionsDialog } from "../VersionsDialog";
@@ -80,6 +85,9 @@ export function DocMenu({ onNewDocument }: { onNewDocument: () => void }) {
   const [printOpen, setPrintOpen] = useState(false);
   const [mergeOpen, setMergeOpen] = useState(false);
   const [bookOpen, setBookOpen] = useState(false);
+  const [longOpen, setLongOpen] = useState(false);
+  const [objectToolsOpen, setObjectToolsOpen] = useState(false);
+  const [inksOpen, setInksOpen] = useState(false);
   const [tableOpen, setTableOpen] = useState(false);
   // What this kind of document needs: entries of other kinds of work are tucked away, not removed.
   const vertical = useScene((s) => verticalOf(s.scene));
@@ -113,6 +121,18 @@ export function DocMenu({ onNewDocument }: { onNewDocument: () => void }) {
               useScene.setState({ notice: r.ok ? r.message : `PDF import failed: ${r.message}` });
             });
           }
+          else if (k === "import-idml" || k === "place-document") {
+            void pickFile(k === "import-idml" ? ".idml" : ".docx,.rtf,.xlsx").then(async (f) => {
+              if (!f) return;
+              useScene.setState({ notice: `Reading ${f.name}…` });
+              const r = await runCommand({ name: k === "import-idml" ? "import_idml" : "place_document" }, f);
+              const data = r.ok && r.text ? (JSON.parse(r.text) as { message?: string }) : null;
+              useScene.setState({ notice: r.ok ? data?.message ?? "Done." : `${f.name}: ${r.message}` });
+            });
+          }
+          else if (k === "export-html") void runDocumentExport("html");
+          else if (k === "export-pptx") void runDocumentExport("pptx");
+          else if (k === "export-idml") void runDocumentExport("idml");
           else if (k === "export-pdf") void runDocumentExport("pdf");
           else if (k === "export-pdf-bleed") setPrintOpen(true);
           else if (k === "page-setup") setPageSetupOpen(true);
@@ -129,8 +149,11 @@ export function DocMenu({ onNewDocument }: { onNewDocument: () => void }) {
           else if (k === "links") setLinksOpen(true);
           else if (k === "data-merge") setMergeOpen(true);
           else if (k === "book-metadata") setBookOpen(true);
+          else if (k === "long-document") setLongOpen(true);
+          else if (k === "object-tools") setObjectToolsOpen(true);
+          else if (k === "ink-manager") setInksOpen(true);
           else if (k === "table") setTableOpen(true);
-          else if (k === "contents" || k === "index") generateContents(k === "contents" ? "toc" : "index");
+          else if (k === "contents" || k === "index" || k === "endnotes") generateContents(k === "contents" ? "toc" : k === "index" ? "index" : "endnotes");
           else if (k === "versions") setVersionsOpen(true);
           else if (k === "plugins") setPluginsOpen(true);
           else if (k === "share") setShareOpen(true);
@@ -169,6 +192,21 @@ export function DocMenu({ onNewDocument }: { onNewDocument: () => void }) {
               </MenuItem>
               <MenuItem id="import-pdf-image" className={ITEM}>
                 <Icon name="image" size={14} /> {t("Import PDF as pictures…")}
+              </MenuItem>
+              <MenuItem id="import-idml" className={ITEM}>
+                <Icon name="page" size={14} /> Import InDesign IDML… <span className="ml-auto text-[11px] text-fg-subtle">shapes and text</span>
+              </MenuItem>
+              <MenuItem id="place-document" className={ITEM}>
+                <Icon name="page" size={14} /> Place Word, RTF or Excel…
+              </MenuItem>
+              <MenuItem id="export-html" className={ITEM}>
+                <Icon name="download" size={14} /> Export all pages as HTML
+              </MenuItem>
+              <MenuItem id="export-pptx" className={ITEM}>
+                <Icon name="download" size={14} /> Export as PowerPoint (.pptx)
+              </MenuItem>
+              <MenuItem id="export-idml" className={ITEM}>
+                <Icon name="download" size={14} /> Export as InDesign IDML
               </MenuItem>
               <MenuItem id="export-pdf" className={ITEM}>
                 <Icon name="download" size={14} /> {t("Export all pages as PDF…")}
@@ -224,6 +262,15 @@ export function DocMenu({ onNewDocument }: { onNewDocument: () => void }) {
               <MenuItem id="links" className={ITEM}>
                 <Icon name="link" size={14} /> Links (images)…
               </MenuItem>
+              <MenuItem id="ink-manager" className={ITEM}>
+                <Icon name="plus" size={14} /> Ink manager (spot inks, overprint)…
+              </MenuItem>
+              <MenuItem id="object-tools" className={ITEM}>
+                <Icon name="plus" size={14} /> Object tools (repeat, gap, QR, clip, snippets)…
+              </MenuItem>
+              <MenuItem id="long-document" className={ITEM}>
+                <Icon name="plus" size={14} /> Long documents (conditions, table styles, notes)…
+              </MenuItem>
               <MenuItem id="book-metadata" className={ITEM}>
                 <Icon name="plus" size={14} /> Book metadata (ONIX)…
               </MenuItem>
@@ -243,6 +290,9 @@ export function DocMenu({ onNewDocument }: { onNewDocument: () => void }) {
                   </MenuItem>
                   <MenuItem id="index" className={ITEM}>
                     <Icon name="page" size={14} /> Index <span className="ml-auto text-[11px] text-fg-subtle">from [#term] marks</span>
+                  </MenuItem>
+                  <MenuItem id="endnotes" className={ITEM}>
+                    <Icon name="page" size={14} /> Endnotes <span className="ml-auto text-[11px] text-fg-subtle">from [*note] marks</span>
                   </MenuItem>
                 </>
               )}
@@ -321,13 +371,16 @@ export function DocMenu({ onNewDocument }: { onNewDocument: () => void }) {
     <PrintPdfDialog isOpen={printOpen} onOpenChange={setPrintOpen} />
     <DataMergeDialog isOpen={mergeOpen} onOpenChange={setMergeOpen} />
     <BookMetadataDialog isOpen={bookOpen} onOpenChange={setBookOpen} />
+    <LongDocumentDialog isOpen={longOpen} onOpenChange={setLongOpen} />
+    <ObjectToolsDialog isOpen={objectToolsOpen} onOpenChange={setObjectToolsOpen} />
+    <InkManagerDialog isOpen={inksOpen} onOpenChange={setInksOpen} />
     <InsertTableDialog isOpen={tableOpen} onOpenChange={setTableOpen} />
     </>
   );
 }
 
 // Writes (or refreshes) the contents or the index of the document into its frame on the page on screen.
-function generateContents(kind: "toc" | "index"): void {
+function generateContents(kind: "toc" | "index" | "endnotes"): void {
   const st = useScene.getState();
   const scene = st.scene;
   const pageId = st.currentPageId ?? scene?.pages[0]?.id;
@@ -336,13 +389,14 @@ function generateContents(kind: "toc" | "index"): void {
   if (!made) {
     useScene.setState({ notice: kind === "toc"
       ? "No headings yet: give a paragraph style a heading level (Styles… → Heading level) and use it."
+      : kind === "endnotes" ? "No endnotes yet: write [*the note] in the text where the reference goes."
       : "No index terms yet: mark a word in the text with [#term]." });
     return;
   }
   st.beginGesture();
   st.endGesture(made.ops);
   st.setSelection(made.selection);
-  useScene.setState({ notice: `${kind === "toc" ? "Contents" : "Index"} written: ${made.lines} ${made.lines === 1 ? "line" : "lines"}.` });
+  useScene.setState({ notice: `${kind === "toc" ? "Contents" : kind === "endnotes" ? "Endnotes" : "Index"} written: ${made.lines} ${made.lines === 1 ? "line" : "lines"}.` });
 }
 
 const ITEM =

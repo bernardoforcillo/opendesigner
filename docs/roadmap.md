@@ -120,7 +120,8 @@ Text
 - [x] Text wrap around objects (bounding box, gap); see docs/text-frames.md
 - [x] Anchored (inline) objects, tied to a place in the text; see docs/graphics-colour.md
 - [x] Footnotes, tables (rows, columns, header), table of contents, index; see docs/text-frames.md
-- [ ] Table and cell styles, cell spanning, index sub-entries
+- [x] Table styles (header/body/alternate), index sub-entries, endnotes, cross-references, conditional text, editorial notes, typographic text checks (no dictionary spell check); see docs/long-documents.md
+- [ ] Cell spanning
 - [x] Find/change (text, word, regex), browser spell check, text variables (running headers, page count, document name)
 - [x] Text on a path
 - [x] OpenType feature settings per style (SVG output and editing field; not drawn on the canvas)
@@ -186,3 +187,15 @@ Output (docs/output.md)
 - [ ] Generate screens from text or screenshot using the document's own components and tokens
 - [ ] Design, code and flow tests in one pipeline (prototype -> codegen -> Playwright)
 - [x] Git-versionable bundle format: `opendesigner pack` / `unpack` (one JSON file per node, stable bytes); see docs/handoff.md
+
+## Object tools (block 8)
+- [x] Step and Repeat, Gap tool, frame fitting, clipping path, QR code, find/change objects, snippets (see docs/object-tools.md; all over MCP)
+- [ ] Gradient feather, InDesign-style GREP dialect, shared object library
+
+## Formats (block 9)
+- [x] HTML, PowerPoint and IDML export; IDML import; place Word, RTF and Excel; tagged PDF; booklet imposition (see docs/formats.md; all over MCP)
+- [ ] INDD (not feasible), images in IDML/PPTX-other-types, PDF/UA validation, creep for booklets
+
+## Platform (block 10)
+- [x] Ink manager (spot -> process, aliases, total ink), overprint in the PDF; CJK line breaking with kinsoku; Arabic shaping and bidi ordering in the PDF; `batch` and `list_editor_commands` (see docs/platform.md)
+- [ ] Paragraph direction, vertical writing, ruby, Indic/Thai shaping, separation preview, trapping, overprint preview

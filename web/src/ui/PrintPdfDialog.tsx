@@ -29,8 +29,8 @@ function Check({ label, checked, onChange, disabled }: { label: string; checked:
 
 export function PrintPdfDialog({ isOpen, onOpenChange }: { isOpen: boolean; onOpenChange: (open: boolean) => void }) {
   const scene = useScene((s) => s.scene);
-  const [opts, setOpts] = useState<Required<Pick<PrintPdfOptions, "pdfx" | "bleed" | "marks" | "slug" | "spreads" | "interactive">>>({
-    pdfx: "none", bleed: true, marks: false, slug: false, spreads: false, interactive: true,
+  const [opts, setOpts] = useState<Required<Pick<PrintPdfOptions, "pdfx" | "bleed" | "marks" | "slug" | "spreads" | "interactive" | "booklet" | "tagged">>>({
+    pdfx: "none", bleed: true, marks: false, slug: false, spreads: false, interactive: true, booklet: false, tagged: false,
   });
   if (!scene || !isOpen) return null;
   const set = <K extends keyof typeof opts>(k: K, v: (typeof opts)[K]) => setOpts((o) => ({ ...o, [k]: v }));
@@ -53,6 +53,8 @@ export function PrintPdfDialog({ isOpen, onOpenChange }: { isOpen: boolean; onOp
             <Check label="Include slug" checked={opts.slug} onChange={(v) => set("slug", v)} />
             <Check label="Facing pages as spreads" checked={opts.spreads} disabled={!facing} onChange={(v) => set("spreads", v)} />
             <Check label="Bookmarks and links" checked={opts.interactive} onChange={(v) => set("interactive", v)} />
+            <Check label="Tagged PDF (reading order, headings, alt text)" checked={opts.tagged} onChange={(v) => set("tagged", v)} />
+            <Check label="Booklet: two pages per sheet side, saddle-stitch order" checked={opts.booklet} onChange={(v) => set("booklet", v)} />
           </div>
           <section aria-label="Preflight" className="flex flex-col gap-1">
             <h3 className="text-[12px] font-semibold">Preflight</h3>

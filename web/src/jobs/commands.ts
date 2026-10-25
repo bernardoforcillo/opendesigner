@@ -23,6 +23,14 @@ import { nextOrderKey } from "../store/orderKey";
 import { normalizeVector } from "../store/vectorGeometry";
 import { toPbFills, toPbStrokes, toPbSubPaths, type FillLite, type SubPathLite } from "../store/types";
 import { makeCreateNodeOp, makeSetVectorPathOp, uuid } from "../tools/ops";
+import { changeObjectsOps, clipWithShapeOps, exportSnippet, findObjects, fitOps, gapOps, placeSnippetOps, qrOps, releaseClipOps, stepRepeatOps, type FitMode, type ObjectChange, type ObjectQuery } from "../tools/objectTools";
+import { QR_LEVELS, type QrLevel } from "../tools/qrcode";
+import { PlaceError, parseDocx, parseRtf, parseXlsx, placeTableOps, placeTextOps } from "../tools/placeDocument";
+import { IdmlError, idmlOps, parseIdml } from "../export/idml";
+import { convertSpotsOps, inkReport, mergeSpotsOps, overprintOps, type OverprintMode } from "../tools/inks";
+import { applyTableStyleOps } from "../tools/tableOps";
+import { CHECK_CODES, checkText, type CheckCode } from "../tools/textChecks";
+import { editorialNotes } from "../store/textTokens";
 import { generateContentsOps } from "../tools/contents";
 import { overrideMasterItemOps } from "../tools/pageOps";
 import { MAX_TABLE_SIDE, addColumnOps, addRowOps, createTableOps, deleteColumnOps, deleteRowOps, resizeTableOps, tableIdOf } from "../tools/tableOps";
@@ -93,8 +101,11 @@ function pageIdFrom(o: Record<string, unknown>): string | string[] {
   return scene.pages.find((p) => !p.isMaster)?.id ?? scene.pages[0]!.id;
 }
 
+/** Every command the editor runs (kept in step with the switch below by a test). */
+const COMMAND_NAMES = ["align_nodes", "apply_table_style", "batch", "boolean_operation", "change_objects", "check_text", "clip_with_shape", "convert_spots_to_process", "create_qr_code", "create_vector", "duplicate_nodes", "edit_table", "export_snippet", "find_change", "find_objects", "fit_frame", "flatten_boolean", "generate_contents", "group_nodes", "ink_report", "insert_table", "list_commands", "list_editorial_notes", "merge_spot_inks", "outline_stroke", "override_master_item", "place_snippet", "reorder_node", "set_gap", "set_overprint", "set_vector_path", "step_and_repeat", "ungroup_nodes"];
+
 /** Commands that read an input file sent with the job. */
-const FILE_COMMANDS = new Set(["place_image", "relink_image", "import_svg", "import_pdf", "import_fig", "upload_font"]);
+const FILE_COMMANDS = new Set(["place_image", "relink_image", "import_svg", "import_pdf", "import_fig", "upload_font", "place_document", "import_idml"]);
 
 /** The page a placed or imported thing lands on: the importers use the editor's current page, so it is set to the one asked for. */
 function aimAt(o: Record<string, unknown>): string | null {
@@ -141,6 +152,42 @@ async function runFileCommand(o: Record<string, unknown>, file: File): Promise<J
       const r = await importFigFile(file);
       return r.ok ? ok({ message: r.message, warnings: r.warnings }) : fail(r.message);
     }
+    case "import_idml": {
+      try {
+        const { pages, notes } = await parseIdml(new Uint8Array(await file.arrayBuffer()));
+        const made = idmlOps(useScene.getState().scene!, pages);
+        commit(made.ops);
+        useScene.getState().setCurrentPage(made.pageIds[0]!);
+        const left = notes.length > 0 ? ` Not carried over: ${notes.join(", ")}.` : "";
+        return ok({ pages: made.pageIds.length, nodes: made.nodes, message: `Imported ${made.pageIds.length} page(s) with rectangles, ovals, polygons, lines and text. Images, effects, styles and master pages are not carried over.${left}` });
+      } catch (e) {
+        return fail(e instanceof IdmlError ? e.message : "the IDML file could not be read");
+      }
+    }
+    case "place_document": {
+      const bad = aimAt(o);
+      if (bad) return fail(bad);
+      const ext = /\.([a-z0-9]+)$/i.exec(file.name)?.[1]?.toLowerCase() ?? "";
+      if (!["docx", "rtf", "xlsx"].includes(ext)) return fail("place_document reads .docx, .rtf and .xlsx files");
+      const scene = useScene.getState().scene!;
+      const page = useScene.getState().currentPageId ?? scene.pages.find((p) => !p.isMaster)?.id ?? scene.pages[0]!.id;
+      try {
+        const bytes = new Uint8Array(await file.arrayBuffer());
+        if (ext === "xlsx") {
+          const made = placeTableOps(scene, await parseXlsx(bytes), page, point.x, point.y);
+          if (typeof made === "string") return fail(made);
+          commit(made.ops);
+          return ok({ nodeId: made.tableId, kind: "table" });
+        }
+        const paragraphs = ext === "docx" ? await parseDocx(bytes) : parseRtf(new TextDecoder().decode(bytes));
+        const made = placeTextOps(scene, paragraphs, page, point.x, point.y, isNum(o.width) ? o.width : 400);
+        if (typeof made === "string") return fail(made);
+        commit(made.ops);
+        return ok({ nodeId: made.nodeId, kind: "text", paragraphs: made.paragraphs, message: "Text and headings (bold, italic) were placed; images, tables, footnotes, fonts and colours of the file were not carried over." });
+      } catch (e) {
+        return fail(e instanceof PlaceError ? e.message : "the file could not be read");
+      }
+    }
     case "upload_font": {
       if (!isStr(o.family) || o.family.trim() === "") return fail("family is required");
       const weight = o.weight === undefined ? "400" : o.weight;
@@ -168,7 +215,7 @@ export async function runCommand(o: Record<string, unknown>, file: File | null =
   if (typeof o.name === "string" && FILE_COMMANDS.has(o.name)) return file ? runFileCommand(o, file) : fail(`${o.name} needs an input file`);
   switch (o.name) {
     case "generate_contents": {
-      if (o.kind !== "toc" && o.kind !== "index") return fail("kind must be toc or index");
+      if (o.kind !== "toc" && o.kind !== "index" && o.kind !== "endnotes") return fail("kind must be toc, index or endnotes");
       if (o.maxLevel !== undefined && !(isNum(o.maxLevel) && Number.isInteger(o.maxLevel) && o.maxLevel >= 1 && o.maxLevel <= 9)) return fail("maxLevel must be 1..9");
       const page = pageIdFrom(o);
       if (Array.isArray(page)) return fail(page[0]!);
@@ -176,6 +223,7 @@ export async function runCommand(o: Record<string, unknown>, file: File | null =
       if (!made) {
         return fail(o.kind === "toc"
           ? "No headings yet: give a paragraph style a heading level (set_text_style outlineLevel) and apply it."
+          : o.kind === "endnotes" ? "No endnotes yet: write [*the note] in the text where the reference goes."
           : "No index terms yet: mark a word in the text with [#term].");
       }
       commit(made.ops);
@@ -348,6 +396,167 @@ export async function runCommand(o: Record<string, unknown>, file: File | null =
       ]);
       return ok({ nodeId: n.id, x: norm.box.x, y: norm.box.y, width: norm.box.width, height: norm.box.height });
     }
+    case "apply_table_style": {
+      if (!isStr(o.tableId) || !isStr(o.styleId)) return fail("tableId and styleId are required");
+      const id = tableIdOf(scene, o.tableId);
+      if (!id) return fail("that is not a table (or a cell of one)");
+      const style = (scene.settings?.tableStyles ?? []).find((t) => t.id === o.styleId);
+      if (!style) return fail(`no table style ${o.styleId} (define it with set_document_settings tableStyles)`);
+      const ops = applyTableStyleOps(scene, id, style);
+      if (ops.length > 0) commit(ops);
+      return ok({ tableId: id, changed: ops.length });
+    }
+    case "check_text": {
+      let only: CheckCode[] | undefined;
+      if (o.checks !== undefined) {
+        if (!Array.isArray(o.checks) || !o.checks.every((c) => CHECK_CODES.includes(c as CheckCode))) return fail(`checks must be a list of: ${CHECK_CODES.join(", ")}`);
+        only = o.checks as CheckCode[];
+      }
+      const limit = isNum(o.limit) ? Math.max(1, Math.min(2000, Math.floor(o.limit))) : 200;
+      const issues = checkText(scene, only, limit);
+      return ok({ count: issues.length, issues });
+    }
+    case "list_editorial_notes": {
+      return ok({ notes: editorialNotes(scene) });
+    }
+    case "step_and_repeat": {
+      const ids = nodeIdsOf(o, scene);
+      if (typeof ids === "string") return fail(ids);
+      if (!isNum(o.count) || !isNum(o.dx) || !isNum(o.dy)) return fail("count, dx and dy are required numbers");
+      const made = stepRepeatOps(scene, ids, { count: o.count, dx: o.dx, dy: o.dy });
+      if (typeof made === "string") return fail(made);
+      commit(made.ops);
+      return ok({ nodeIds: made.ids });
+    }
+    case "set_gap": {
+      const ids = nodeIdsOf(o, scene);
+      if (typeof ids === "string") return fail(ids);
+      if (o.axis !== "x" && o.axis !== "y") return fail("axis must be x or y");
+      if (!isNum(o.gap)) return fail("gap must be a number");
+      const ops = gapOps(scene, ids, o.axis, o.gap);
+      if (typeof ops === "string") return fail(ops);
+      if (ops.length > 0) commit(ops);
+      return ok({ moved: ops.length });
+    }
+    case "fit_frame": {
+      if (!isStr(o.nodeId)) return fail("nodeId is required");
+      const ops = fitOps(scene, o.nodeId, String(o.mode) as FitMode);
+      if (typeof ops === "string") return fail(ops);
+      if (ops.length > 0) commit(ops);
+      return ok({ changed: ops.length });
+    }
+    case "clip_with_shape": {
+      if (!isStr(o.shapeId)) return fail("shapeId is required");
+      if (o.release === true) {
+        const ops = releaseClipOps(scene, o.shapeId);
+        if (typeof ops === "string") return fail(ops);
+        commit(ops);
+        return ok({ released: true });
+      }
+      if (!Array.isArray(o.contentIds) || !o.contentIds.every(isStr)) return fail("contentIds must be a list of node ids");
+      const made = clipWithShapeOps(scene, o.shapeId, o.contentIds as string[]);
+      if (typeof made === "string") return fail(made);
+      commit(made.ops);
+      return ok({ groupId: made.groupId });
+    }
+    case "create_qr_code": {
+      if (!isStr(o.text) || o.text === "") return fail("text is required");
+      if (o.level !== undefined && !QR_LEVELS.includes(o.level as QrLevel)) return fail("level must be L, M, Q or H");
+      const page = pageIdFrom(o);
+      if (Array.isArray(page)) return fail(page[0]!);
+      const parent = o.parentId === undefined ? page : o.parentId;
+      if (!isStr(parent) || (!scene.nodes.has(parent) && !scene.pages.some((p) => p.id === parent))) return fail("parentId is not a page or a node");
+      let dark: FillLite | undefined, light: FillLite | undefined;
+      if (o.dark !== undefined) { const f = fillOf(o.dark); if (typeof f === "string") return fail(f); dark = f; }
+      if (o.light !== undefined) { const f = fillOf(o.light); if (typeof f === "string") return fail(f); light = f; }
+      const made = qrOps(scene, { text: o.text, level: o.level as QrLevel | undefined, size: isNum(o.size) ? o.size : undefined, x: isNum(o.x) ? o.x : 0, y: isNum(o.y) ? o.y : 0, parentId: parent, dark, light });
+      if (typeof made === "string") return fail(made);
+      commit(made.ops);
+      return ok({ groupId: made.groupId });
+    }
+    case "find_objects":
+    case "change_objects": {
+      const q: ObjectQuery = {};
+      if (o.kind !== undefined) { if (!isStr(o.kind)) return fail("kind must be a string"); q.kind = o.kind as ObjectQuery["kind"]; }
+      if (o.nameMatches !== undefined) { if (!isStr(o.nameMatches)) return fail("nameMatches must be a string"); q.name = o.nameMatches; }
+      if (o.fill !== undefined) { const f = fillOf(o.fill); if (typeof f === "string") return fail(f); q.fill = f; }
+      if (o.stroke !== undefined) { const f = fillOf(o.stroke); if (typeof f === "string") return fail(f); q.stroke = f; }
+      if (o.pageId !== undefined) { if (!isStr(o.pageId)) return fail("pageId must be a string"); q.pageId = o.pageId; }
+      const found = findObjects(scene, q);
+      if (typeof found === "string") return fail(found);
+      if (o.name === "find_objects") return ok({ count: found.length, nodes: found.slice(0, 500).map((n) => ({ id: n.id, name: n.name, kind: n.kind })) });
+      const c = (o.change ?? {}) as Record<string, unknown>;
+      const change: ObjectChange = {};
+      if (c.fill !== undefined) { const f = fillOf(c.fill); if (typeof f === "string") return fail(f); change.fill = f; }
+      if (c.stroke !== undefined) { const f = fillOf(c.stroke); if (typeof f === "string") return fail(f); change.stroke = f; }
+      if (c.strokeWeight !== undefined) { if (!isNum(c.strokeWeight) || c.strokeWeight < 0) return fail("strokeWeight must be >= 0"); change.strokeWeight = c.strokeWeight; }
+      if (c.opacity !== undefined) { if (!isNum(c.opacity) || c.opacity < 0 || c.opacity > 1) return fail("opacity must be from 0 to 1"); change.opacity = c.opacity; }
+      if (c.visible !== undefined) { if (!isBool(c.visible)) return fail("visible must be true or false"); change.visible = c.visible; }
+      if (c.rename !== undefined) { if (!isStr(c.rename)) return fail("rename must be a string"); change.rename = c.rename; }
+      if (Object.keys(change).length === 0) return fail("change needs at least one of fill, stroke, strokeWeight, opacity, visible, rename");
+      const ops = changeObjectsOps(scene, found, change, q);
+      if (ops.length > 0) commit(ops);
+      return ok({ matched: found.length, changed: ops.length });
+    }
+    case "export_snippet": {
+      const ids = nodeIdsOf(o, scene);
+      if (typeof ids === "string") return fail(ids);
+      const text = exportSnippet(scene, ids);
+      return text ? ok({ snippet: text }) : fail("nothing to export");
+    }
+    case "place_snippet": {
+      if (!isStr(o.snippet)) return fail("snippet is required");
+      const page = pageIdFrom(o);
+      if (Array.isArray(page)) return fail(page[0]!);
+      const parent = o.parentId === undefined ? page : o.parentId;
+      if (!isStr(parent) || (!scene.nodes.has(parent) && !scene.pages.some((p) => p.id === parent))) return fail("parentId is not a page or a node");
+      const made = placeSnippetOps(scene, o.snippet, isNum(o.x) ? o.x : 0, isNum(o.y) ? o.y : 0, parent);
+      if (typeof made === "string") return fail(made);
+      commit(made.ops);
+      return ok({ nodeIds: made.ids });
+    }
+    case "ink_report": {
+      if (o.limit !== undefined && (!isNum(o.limit) || o.limit < 100 || o.limit > 400)) return fail("limit must be a total ink percentage from 100 to 400");
+      return ok(inkReport(scene, isNum(o.limit) ? o.limit : 300));
+    }
+    case "convert_spots_to_process": {
+      if (o.inks !== undefined && !(Array.isArray(o.inks) && o.inks.every(isStr))) return fail("inks must be a list of spot ink names");
+      const ops = convertSpotsOps(scene, o.inks as string[] | undefined);
+      if (typeof ops === "string") return fail(ops);
+      if (ops.length > 0) commit(ops);
+      return ok({ converted: ops.length });
+    }
+    case "merge_spot_inks": {
+      if (!isStr(o.from) || !isStr(o.to)) return fail("from and to are required");
+      const ops = mergeSpotsOps(scene, o.from, o.to);
+      if (typeof ops === "string") return fail(ops);
+      commit(ops);
+      return ok({ swatches: ops.length });
+    }
+    case "set_overprint": {
+      const ids = nodeIdsOf(o, scene);
+      if (typeof ids === "string") return fail(ids);
+      const ops = overprintOps(scene, ids, String(o.mode) as OverprintMode);
+      if (typeof ops === "string") return fail(ops);
+      if (ops.length > 0) commit(ops);
+      return ok({ changed: ops.length });
+    }
+    case "batch": {
+      if (!Array.isArray(o.commands) || o.commands.length === 0 || o.commands.length > 50) return fail("commands must be a list of 1..50 commands");
+      const results: unknown[] = [];
+      for (const [i, c] of o.commands.entries()) {
+        if (typeof c !== "object" || c === null || !isStr((c as { name?: unknown }).name)) return fail(`commands[${i}] needs a name`);
+        const name = (c as { name: string }).name;
+        if (name === "batch") return fail("a batch cannot contain a batch");
+        if (FILE_COMMANDS.has(name)) return fail(`commands[${i}]: ${name} needs a file and cannot run in a batch`);
+        const r = await runCommand(c as Record<string, unknown>, null);
+        if (!r.ok) return { ok: false, message: `commands[${i}] (${name}) failed: ${r.message}. The ${i} before it were applied (each is its own undo step).` };
+        results.push(r.text ? JSON.parse(r.text) : null);
+      }
+      return ok({ results });
+    }
+    case "list_commands":
+      return ok({ commands: COMMAND_NAMES, fileCommands: [...FILE_COMMANDS] });
     case "override_master_item": {
       if (!isStr(o.pageId) || !isStr(o.masterNodeId)) return fail("pageId and masterNodeId are required");
       const page = scene.pages.find((p) => p.id === o.pageId);

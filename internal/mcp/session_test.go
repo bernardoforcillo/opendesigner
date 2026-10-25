@@ -1758,3 +1758,217 @@ func TestStructureAndVectorCommandsAreWired(t *testing.T) {
 	}
 	check("set_vector_path", map[string]any{"nodeId": "v"})
 }
+
+// TestLongDocumentSettingsAndCommands covers conditions and table styles in set_document_settings and the three long-document commands.
+func TestLongDocumentSettingsAndCommands(t *testing.T) {
+	url := serveInMemory(t)
+	docID := newDoc(t, odmcp.NewClient(url))
+	sess := startSession(t, url, docID, "mcp")
+	ctx := context.Background()
+
+	conds := []odmcp.ConditionIO{{Name: "Print", Visible: true}, {Name: "Web only"}}
+	styles := []odmcp.TableStyleIO{{Id: "ts1", Name: "Report", HeaderObjectStyleId: "os1", BodyTextStyleId: "tx1"}}
+	if _, err := sess.SetDocumentSettings(ctx, odmcp.SetDocumentSettingsInput{Conditions: &conds, TableStyles: &styles}); err != nil {
+		t.Fatalf("settings: %v", err)
+	}
+	dup := []odmcp.ConditionIO{{Name: "A"}, {Name: "A"}}
+	if _, err := sess.SetDocumentSettings(ctx, odmcp.SetDocumentSettingsInput{Conditions: &dup}); err == nil {
+		t.Fatal("a repeated condition should be refused")
+	}
+	badStyle := []odmcp.TableStyleIO{{Id: "has space", Name: "x"}}
+	if _, err := sess.SetDocumentSettings(ctx, odmcp.SetDocumentSettingsInput{TableStyles: &badStyle}); err == nil {
+		t.Fatal("a table style id with a space should be refused")
+	}
+	empty := []odmcp.ConditionIO{}
+	if _, err := sess.SetDocumentSettings(ctx, odmcp.SetDocumentSettingsInput{Conditions: &empty}); err != nil {
+		t.Fatalf("an empty list clears: %v", err)
+	}
+
+	var last map[string]any
+	fakeEditor(t, url, docID, func(job *opendesignerv1.EditorJob) *opendesignerv1.CompleteJobRequest {
+		last = nil
+		_ = json.Unmarshal([]byte(job.GetOptionsJson()), &last)
+		switch last["name"] {
+		case "apply_table_style":
+			return &opendesignerv1.CompleteJobRequest{Ok: true, Text: `{"tableId":"tbl","changed":7}`}
+		case "check_text":
+			return &opendesignerv1.CompleteJobRequest{Ok: true, Text: `{"count":1,"issues":[{"code":"double-space","nodeId":"n","pageId":"p","start":3,"end":5,"text":"  ","message":"More than one space in a row."}]}`}
+		}
+		return &opendesignerv1.CompleteJobRequest{Ok: true, Text: `{"notes":[{"nodeId":"n","pageId":"p","at":9,"text":"fix","context":"the words"}]}`}
+	})
+	ts, err := sess.ApplyTableStyle(ctx, odmcp.ApplyTableStyleInput{TableId: "tbl", StyleId: "ts1"})
+	if err != nil || ts.Changed != 7 || last["styleId"] != "ts1" {
+		t.Fatalf("table style: %+v %v %v", ts, err, last)
+	}
+	ck, err := sess.CheckText(ctx, odmcp.CheckTextInput{Checks: []string{"double-space"}, Limit: 5})
+	if err != nil || ck.Count != 1 || ck.Issues[0].Code != "double-space" || last["limit"] != float64(5) {
+		t.Fatalf("check: %+v %v %v", ck, err, last)
+	}
+	nt, err := sess.ListEditorialNotes(ctx, struct{}{})
+	if err != nil || len(nt.Notes) != 1 || nt.Notes[0].Text != "fix" {
+		t.Fatalf("notes: %+v %v", nt, err)
+	}
+}
+
+// TestObjectToolCommands covers the object-tool commands: each sends its arguments to the editor and reads the answer back.
+func TestObjectToolCommands(t *testing.T) {
+	url := serveInMemory(t)
+	docID := newDoc(t, odmcp.NewClient(url))
+	sess := startSession(t, url, docID, "mcp")
+	ctx := context.Background()
+
+	var last map[string]any
+	fakeEditor(t, url, docID, func(job *opendesignerv1.EditorJob) *opendesignerv1.CompleteJobRequest {
+		last = nil
+		_ = json.Unmarshal([]byte(job.GetOptionsJson()), &last)
+		switch last["name"] {
+		case "step_and_repeat", "place_snippet":
+			return &opendesignerv1.CompleteJobRequest{Ok: true, Text: `{"nodeIds":["a","b"]}`}
+		case "set_gap":
+			return &opendesignerv1.CompleteJobRequest{Ok: true, Text: `{"moved":2}`}
+		case "fit_frame":
+			return &opendesignerv1.CompleteJobRequest{Ok: true, Text: `{"changed":1}`}
+		case "clip_with_shape", "create_qr_code":
+			return &opendesignerv1.CompleteJobRequest{Ok: true, Text: `{"groupId":"grp"}`}
+		case "find_objects":
+			return &opendesignerv1.CompleteJobRequest{Ok: true, Text: `{"count":1,"nodes":[{"id":"n1","name":"Logo","kind":"rect"}]}`}
+		case "change_objects":
+			return &opendesignerv1.CompleteJobRequest{Ok: true, Text: `{"matched":3,"changed":3}`}
+		}
+		return &opendesignerv1.CompleteJobRequest{Ok: true, Text: `{"snippet":"{}"}`}
+	})
+	if r, err := sess.StepAndRepeat(ctx, odmcp.StepAndRepeatInput{NodeIds: []string{"n"}, Count: 3, Dx: 10, Dy: 0}); err != nil || len(r.NodeIds) != 2 || last["count"] != float64(3) || last["dx"] != float64(10) {
+		t.Fatalf("step: %+v %v %v", r, err, last)
+	}
+	if r, err := sess.SetGap(ctx, odmcp.SetGapInput{NodeIds: []string{"a", "b"}, Axis: "x", Gap: 4}); err != nil || r.Moved != 2 || last["axis"] != "x" {
+		t.Fatalf("gap: %+v %v", r, err)
+	}
+	if r, err := sess.FitFrame(ctx, odmcp.FitFrameInput{NodeId: "n", Mode: "fit"}); err != nil || r.Changed != 1 || last["mode"] != "fit" {
+		t.Fatalf("fit: %+v %v", r, err)
+	}
+	if r, err := sess.ClipWithShape(ctx, odmcp.ClipWithShapeInput{ShapeId: "s", ContentIds: []string{"c"}}); err != nil || r.GroupId != "grp" || last["contentIds"] == nil {
+		t.Fatalf("clip: %+v %v %v", r, err, last)
+	}
+	if _, err := sess.ClipWithShape(ctx, odmcp.ClipWithShapeInput{ShapeId: "s", Release: true}); err != nil || last["release"] != true || last["contentIds"] != nil {
+		t.Fatalf("release: %v %v", err, last)
+	}
+	dark := &odmcp.RGBA{R: 0, G: 0, B: 0.5, A: 1}
+	if r, err := sess.CreateQRCode(ctx, odmcp.CreateQRCodeInput{Text: "hi", Level: "Q", Size: 80, Dark: dark}); err != nil || r.GroupId != "grp" || last["level"] != "Q" || last["dark"] == nil {
+		t.Fatalf("qr: %+v %v %v", r, err, last)
+	}
+	if r, err := sess.FindObjects(ctx, odmcp.ObjectQueryInput{Kind: "rect", NameMatches: "^L"}); err != nil || r.Count != 1 || r.Nodes[0].Name != "Logo" || last["nameMatches"] != "^L" {
+		t.Fatalf("find: %+v %v", r, err)
+	}
+	op := 0.5
+	if r, err := sess.ChangeObjects(ctx, odmcp.ChangeObjectsInput{ObjectQueryInput: odmcp.ObjectQueryInput{Kind: "rect"}, Change: odmcp.ObjectChangeIO{Opacity: &op}}); err != nil || r.Changed != 3 || last["change"].(map[string]any)["opacity"] != 0.5 {
+		t.Fatalf("change: %+v %v %v", r, err, last)
+	}
+	if r, err := sess.ExportSnippet(ctx, odmcp.NodeIdsInput{NodeIds: []string{"n"}}); err != nil || r.Snippet != "{}" {
+		t.Fatalf("export: %+v %v", r, err)
+	}
+	if r, err := sess.PlaceSnippet(ctx, odmcp.PlaceSnippetInput{Snippet: "{}", X: 5, Y: 6}); err != nil || len(r.NodeIds) != 2 || last["x"] != float64(5) {
+		t.Fatalf("place: %+v %v", r, err)
+	}
+}
+
+// TestFormatJobs covers the HTML, PowerPoint and IDML exports, IDML import and placing Word/RTF/Excel files.
+func TestFormatJobs(t *testing.T) {
+	url := serveInMemory(t)
+	docID := newDoc(t, odmcp.NewClient(url))
+	sess := startSession(t, url, docID, "mcp")
+	ctx := context.Background()
+
+	var kinds []string
+	var last map[string]any
+	fakeEditor(t, url, docID, func(job *opendesignerv1.EditorJob) *opendesignerv1.CompleteJobRequest {
+		kinds = append(kinds, job.GetKind())
+		last = nil
+		_ = json.Unmarshal([]byte(job.GetOptionsJson()), &last)
+		switch last["name"] {
+		case "import_idml":
+			return &opendesignerv1.CompleteJobRequest{Ok: true, Text: `{"pages":2,"nodes":7,"message":"Imported"}`}
+		case "place_document":
+			return &opendesignerv1.CompleteJobRequest{Ok: true, Text: `{"nodeId":"n","kind":"text","paragraphs":4}`}
+		}
+		return &opendesignerv1.CompleteJobRequest{Ok: true, Filename: "Book.out", ContentType: "application/octet-stream", Data: []byte("DATA")}
+	})
+	dir := t.TempDir()
+	for _, tc := range []struct {
+		kind string
+		call func() (odmcp.JobOutput, error)
+	}{
+		{"export_html", func() (odmcp.JobOutput, error) { return sess.ExportHtml(ctx, odmcp.ExportFileInput{OutPath: dir}) }},
+		{"export_pptx", func() (odmcp.JobOutput, error) { return sess.ExportPptx(ctx, odmcp.ExportFileInput{OutPath: dir}) }},
+		{"export_idml", func() (odmcp.JobOutput, error) { return sess.ExportIdml(ctx, odmcp.ExportFileInput{OutPath: dir}) }},
+	} {
+		out, err := tc.call()
+		if err != nil || out.Size != 4 || kinds[len(kinds)-1] != tc.kind {
+			t.Fatalf("%s: %+v %v %v", tc.kind, out, err, kinds)
+		}
+	}
+
+	src := filepath.Join(dir, "in.idml")
+	if err := os.WriteFile(src, []byte("PK"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	im, err := sess.ImportIdml(ctx, odmcp.ImportIdmlInput{Path: src})
+	if err != nil || im.Pages != 2 || im.Nodes != 7 || last["name"] != "import_idml" {
+		t.Fatalf("idml: %+v %v %v", im, err, last)
+	}
+	doc := filepath.Join(dir, "in.docx")
+	if err := os.WriteFile(doc, []byte("PK"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	pd, err := sess.PlaceDocument(ctx, odmcp.PlaceDocumentInput{FileAtInput: odmcp.FileAtInput{Path: doc, X: 5}, Width: 300})
+	if err != nil || pd.Kind != "text" || pd.Paragraphs != 4 || last["width"] != float64(300) || last["x"] != float64(5) {
+		t.Fatalf("place: %+v %v %v", pd, err, last)
+	}
+}
+
+// TestInkAndBatchCommands covers the ink manager, overprint and batch tools.
+func TestInkAndBatchCommands(t *testing.T) {
+	url := serveInMemory(t)
+	docID := newDoc(t, odmcp.NewClient(url))
+	sess := startSession(t, url, docID, "mcp")
+	ctx := context.Background()
+
+	var last map[string]any
+	fakeEditor(t, url, docID, func(job *opendesignerv1.EditorJob) *opendesignerv1.CompleteJobRequest {
+		last = nil
+		_ = json.Unmarshal([]byte(job.GetOptionsJson()), &last)
+		switch last["name"] {
+		case "ink_report":
+			return &opendesignerv1.CompleteJobRequest{Ok: true, Text: `{"process":{"swatches":2,"objects":5},"spots":[{"name":"PANTONE 871 C","swatches":["Gold"],"objects":3,"alt":{"c":0.1,"m":0.3,"y":0.9,"k":0}}],"overprint":1,"overLimit":[{"swatch":"Rich black","total":310}]}`}
+		case "convert_spots_to_process":
+			return &opendesignerv1.CompleteJobRequest{Ok: true, Text: `{"converted":2}`}
+		case "merge_spot_inks":
+			return &opendesignerv1.CompleteJobRequest{Ok: true, Text: `{"swatches":1}`}
+		case "set_overprint":
+			return &opendesignerv1.CompleteJobRequest{Ok: true, Text: `{"changed":2}`}
+		case "batch":
+			return &opendesignerv1.CompleteJobRequest{Ok: true, Text: `{"results":[{"changed":1},null]}`}
+		}
+		return &opendesignerv1.CompleteJobRequest{Ok: true, Text: `{"commands":["a","b"],"fileCommands":["place_image"]}`}
+	})
+	r, err := sess.InkReport(ctx, odmcp.InkReportInput{Limit: 280})
+	if err != nil || r.Process.Objects != 5 || r.Spots[0].Name != "PANTONE 871 C" || r.Spots[0].Alt.Y != 0.9 || r.OverLimit[0].Total != 310 || last["limit"] != float64(280) {
+		t.Fatalf("report: %+v %v %v", r, err, last)
+	}
+	if c, err := sess.ConvertSpotsToProcess(ctx, odmcp.ConvertSpotsInput{Inks: []string{"x"}}); err != nil || c.Converted != 2 || last["inks"] == nil {
+		t.Fatalf("convert: %+v %v", c, err)
+	}
+	if m, err := sess.MergeSpotInks(ctx, odmcp.MergeSpotInksInput{From: "a", To: "b"}); err != nil || m.Swatches != 1 || last["to"] != "b" {
+		t.Fatalf("merge: %+v %v", m, err)
+	}
+	if o, err := sess.SetOverprint(ctx, odmcp.SetOverprintInput{NodeIds: []string{"n"}, Mode: "both"}); err != nil || o.Changed != 2 || last["mode"] != "both" {
+		t.Fatalf("overprint: %+v %v", o, err)
+	}
+	b, err := sess.Batch(ctx, odmcp.BatchInput{Commands: []map[string]any{{"name": "set_overprint", "nodeIds": []string{"n"}, "mode": "fill"}, {"name": "ink_report"}}})
+	if err != nil || len(b.Results) != 2 || len(last["commands"].([]any)) != 2 {
+		t.Fatalf("batch: %+v %v %v", b, err, last)
+	}
+	l, err := sess.ListEditorCommands(ctx, struct{}{})
+	if err != nil || len(l.Commands) != 2 || l.FileCommands[0] != "place_image" || last["name"] != "list_commands" {
+		t.Fatalf("list: %+v %v %v", l, err, last)
+	}
+}

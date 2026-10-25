@@ -36,7 +36,7 @@ func (s *Session) runCommandWith(ctx context.Context, tool, name string, args ma
 }
 
 type GenerateContentsInput struct {
-	Kind     string `json:"kind" jsonschema:"toc (table of contents from the heading styles) | index (from the [#term] marks in the text)"`
+	Kind     string `json:"kind" jsonschema:"toc (table of contents from the heading styles) | index (from the [#term] and [#Parent:Child] marks in the text; sub-entries are indented) | endnotes (the notes written [*text])"`
 	PageId   string `json:"pageId,omitempty" jsonschema:"where to create the frame if the document has none (default: the first page); an existing frame is refreshed in place"`
 	MaxLevel int    `json:"maxLevel,omitempty" jsonschema:"toc only: deepest heading level listed, 1..9 (default 3)"`
 }
@@ -206,6 +206,44 @@ func (s *Session) ImportSvg(ctx context.Context, in FileAtInput) (NodeIdOutput, 
 	return out, s.runCommandWith(ctx, "import_svg", "import_svg", in.args(), in.Path, &out)
 }
 
+type PlaceDocumentInput struct {
+	FileAtInput
+	Width float64 `json:"width,omitempty" jsonschema:"width of the text frame for .docx/.rtf (default 400)"`
+}
+
+type PlaceDocumentOutput struct {
+	NodeId     string `json:"nodeId"`
+	Kind       string `json:"kind" jsonschema:"text (Word, RTF) | table (Excel)"`
+	Paragraphs int    `json:"paragraphs,omitempty"`
+	Message    string `json:"message,omitempty"`
+}
+
+// PlaceDocument places a Word, RTF or Excel file: text with headings and bold/italic, or a table.
+func (s *Session) PlaceDocument(ctx context.Context, in PlaceDocumentInput) (PlaceDocumentOutput, error) {
+	a := in.args()
+	if in.Width != 0 {
+		a["width"] = in.Width
+	}
+	var out PlaceDocumentOutput
+	return out, s.runCommandWith(ctx, "place_document", "place_document", a, in.Path, &out)
+}
+
+type ImportIdmlInput struct {
+	Path string `json:"path" jsonschema:"an .idml file on the machine the MCP server runs on, at most 32 MiB"`
+}
+
+type ImportIdmlOutput struct {
+	Pages   int    `json:"pages"`
+	Nodes   int    `json:"nodes"`
+	Message string `json:"message,omitempty"`
+}
+
+// ImportIdml adds the pages of an InDesign IDML file to the document.
+func (s *Session) ImportIdml(ctx context.Context, in ImportIdmlInput) (ImportIdmlOutput, error) {
+	var out ImportIdmlOutput
+	return out, s.runCommandWith(ctx, "import_idml", "import_idml", map[string]any{}, in.Path, &out)
+}
+
 type RelinkImageInput struct {
 	NodeId string `json:"nodeId" jsonschema:"an image node"`
 	Path   string `json:"path" jsonschema:"the new image file; the node keeps its width and takes the new image's shape"`
@@ -358,6 +396,421 @@ func (s *Session) ReorderNode(ctx context.Context, in ReorderInput) (MovedOutput
 	return out, s.runCommand(ctx, "reorder_node", "reorder_node", map[string]any{"nodeId": in.NodeId, "to": in.To}, &out)
 }
 
+// --- long documents -----------------------------------------------------------------------------------------
+
+type ApplyTableStyleInput struct {
+	TableId string `json:"tableId" jsonschema:"the table's group node, or any of its cells"`
+	StyleId string `json:"styleId" jsonschema:"a table style from set_document_settings tableStyles"`
+}
+
+type ApplyTableStyleOutput struct {
+	TableId string `json:"tableId"`
+	Changed int    `json:"changed" jsonschema:"how many operations it took (0 = the table already looked like that)"`
+}
+
+// ApplyTableStyle gives a table the object and text styles of a table style.
+func (s *Session) ApplyTableStyle(ctx context.Context, in ApplyTableStyleInput) (ApplyTableStyleOutput, error) {
+	var out ApplyTableStyleOutput
+	return out, s.runCommand(ctx, "apply_table_style", "apply_table_style", map[string]any{"tableId": in.TableId, "styleId": in.StyleId}, &out)
+}
+
+type CheckTextInput struct {
+	Checks []string `json:"checks,omitempty" jsonschema:"limit to: repeated-word | double-space | space-before-punctuation | straight-quote | three-dots | spaced-hyphen (default: all)"`
+	Limit  int      `json:"limit,omitempty" jsonschema:"1..2000 (default 200)"`
+}
+
+type TextIssueView struct {
+	Code    string `json:"code"`
+	NodeId  string `json:"nodeId"`
+	PageId  string `json:"pageId"`
+	Start   int    `json:"start" jsonschema:"UTF-16 offset in the node's content (with hidden conditional text removed)"`
+	End     int    `json:"end"`
+	Text    string `json:"text"`
+	Message string `json:"message"`
+}
+
+type CheckTextOutput struct {
+	Count  int             `json:"count"`
+	Issues []TextIssueView `json:"issues"`
+}
+
+// CheckText finds typographic slips in the document's text.
+func (s *Session) CheckText(ctx context.Context, in CheckTextInput) (CheckTextOutput, error) {
+	a := map[string]any{}
+	if len(in.Checks) > 0 {
+		a["checks"] = in.Checks
+	}
+	if in.Limit != 0 {
+		a["limit"] = in.Limit
+	}
+	var out CheckTextOutput
+	return out, s.runCommand(ctx, "check_text", "check_text", a, &out)
+}
+
+type EditorialNoteView struct {
+	NodeId  string `json:"nodeId"`
+	PageId  string `json:"pageId"`
+	At      int    `json:"at" jsonschema:"offset of the [!...] marker in the node's content"`
+	Text    string `json:"text"`
+	Context string `json:"context" jsonschema:"the words just before the marker"`
+}
+
+type ListEditorialNotesOutput struct {
+	Notes []EditorialNoteView `json:"notes"`
+}
+
+// ListEditorialNotes lists the [!comment] notes of the document.
+func (s *Session) ListEditorialNotes(ctx context.Context, _ struct{}) (ListEditorialNotesOutput, error) {
+	var out ListEditorialNotesOutput
+	return out, s.runCommand(ctx, "list_editorial_notes", "list_editorial_notes", nil, &out)
+}
+
+// --- object tools ---------------------------------------------------------------------------------------
+
+func rgbaArg(c *RGBA) map[string]any {
+	return map[string]any{"r": c.R, "g": c.G, "b": c.B, "a": c.A}
+}
+
+type StepAndRepeatInput struct {
+	NodeIds []string `json:"nodeIds"`
+	Count   int      `json:"count" jsonschema:"how many further copies, 1..200"`
+	Dx      float64  `json:"dx" jsonschema:"offset of each copy from the previous one, in document units"`
+	Dy      float64  `json:"dy"`
+}
+
+type DuplicateNodesOutput struct {
+	NodeIds []string `json:"nodeIds" jsonschema:"the copies, offset from the originals like a paste"`
+}
+
+// StepAndRepeat makes a row, column or grid of copies.
+func (s *Session) StepAndRepeat(ctx context.Context, in StepAndRepeatInput) (DuplicateNodesOutput, error) {
+	var out DuplicateNodesOutput
+	return out, s.runCommand(ctx, "step_and_repeat", "step_and_repeat", map[string]any{"nodeIds": in.NodeIds, "count": in.Count, "dx": in.Dx, "dy": in.Dy}, &out)
+}
+
+type SetGapInput struct {
+	NodeIds []string `json:"nodeIds" jsonschema:"two or more nodes; the first (left or top) stays where it is"`
+	Axis    string   `json:"axis" jsonschema:"x (side by side) | y (stacked)"`
+	Gap     float64  `json:"gap" jsonschema:"the space between neighbouring objects, in document units (may be negative to overlap)"`
+}
+
+type MovedCountOutput struct {
+	Moved int `json:"moved"`
+}
+
+// SetGap is the Gap tool: it sets the space between neighbours.
+func (s *Session) SetGap(ctx context.Context, in SetGapInput) (MovedCountOutput, error) {
+	var out MovedCountOutput
+	return out, s.runCommand(ctx, "set_gap", "set_gap", map[string]any{"nodeIds": in.NodeIds, "axis": in.Axis, "gap": in.Gap}, &out)
+}
+
+type FitFrameInput struct {
+	NodeId string `json:"nodeId"`
+	Mode   string `json:"mode" jsonschema:"fill (image fill covers the frame) | fit (whole image inside the frame) | tile | frame-to-content (resize an image node to the image's own proportions, keeping its width)"`
+}
+
+type ChangedOutput struct {
+	Changed int `json:"changed" jsonschema:"operations applied (0 = already so)"`
+}
+
+// FitFrame fits an image to its frame, or the frame to its image.
+func (s *Session) FitFrame(ctx context.Context, in FitFrameInput) (ChangedOutput, error) {
+	var out ChangedOutput
+	return out, s.runCommand(ctx, "fit_frame", "fit_frame", map[string]any{"nodeId": in.NodeId, "mode": in.Mode}, &out)
+}
+
+type ClipWithShapeInput struct {
+	ShapeId    string   `json:"shapeId" jsonschema:"a rectangle, ellipse, frame or vector whose outline is the clipping path"`
+	ContentIds []string `json:"contentIds,omitempty" jsonschema:"what to clip; ignored when release is true"`
+	Release    bool     `json:"release,omitempty" jsonschema:"true: stop using shapeId as a clipping path (the group stays)"`
+}
+
+type ClipOutput struct {
+	GroupId  string `json:"groupId,omitempty"`
+	Released bool   `json:"released,omitempty"`
+}
+
+// ClipWithShape clips content to a shape's outline.
+func (s *Session) ClipWithShape(ctx context.Context, in ClipWithShapeInput) (ClipOutput, error) {
+	a := map[string]any{"shapeId": in.ShapeId}
+	if in.Release {
+		a["release"] = true
+	} else {
+		a["contentIds"] = in.ContentIds
+	}
+	var out ClipOutput
+	return out, s.runCommand(ctx, "clip_with_shape", "clip_with_shape", a, &out)
+}
+
+type CreateQRCodeInput struct {
+	Text     string  `json:"text" jsonschema:"UTF-8 text or a URL, up to 271 bytes at level L (fewer at higher levels)"`
+	Level    string  `json:"level,omitempty" jsonschema:"error correction L | M (default) | Q | H"`
+	X        float64 `json:"x,omitempty"`
+	Y        float64 `json:"y,omitempty"`
+	Size     float64 `json:"size,omitempty" jsonschema:"side of the square including its quiet zone (default 128)"`
+	PageId   string  `json:"pageId,omitempty"`
+	ParentId string  `json:"parentId,omitempty"`
+	Dark     *RGBA   `json:"dark,omitempty" jsonschema:"module colour (default black)"`
+	Light    *RGBA   `json:"light,omitempty" jsonschema:"background colour (default white)"`
+}
+
+// CreateQRCode draws a QR code as vectors.
+func (s *Session) CreateQRCode(ctx context.Context, in CreateQRCodeInput) (GroupIdOutput, error) {
+	a := map[string]any{"text": in.Text, "x": in.X, "y": in.Y}
+	if in.Level != "" {
+		a["level"] = in.Level
+	}
+	if in.Size != 0 {
+		a["size"] = in.Size
+	}
+	if in.PageId != "" {
+		a["pageId"] = in.PageId
+	}
+	if in.ParentId != "" {
+		a["parentId"] = in.ParentId
+	}
+	if in.Dark != nil {
+		a["dark"] = rgbaArg(in.Dark)
+	}
+	if in.Light != nil {
+		a["light"] = rgbaArg(in.Light)
+	}
+	var out GroupIdOutput
+	return out, s.runCommand(ctx, "create_qr_code", "create_qr_code", a, &out)
+}
+
+type ObjectQueryInput struct {
+	Kind        string `json:"kind,omitempty" jsonschema:"rect | ellipse | text | image | vector | group | frame | instance"`
+	NameMatches string `json:"nameMatches,omitempty" jsonschema:"regular expression on the layer name, case-insensitive"`
+	Fill        *RGBA  `json:"fill,omitempty" jsonschema:"nodes with a solid fill of this colour"`
+	Stroke      *RGBA  `json:"stroke,omitempty"`
+	PageId      string `json:"pageId,omitempty"`
+}
+
+func (q ObjectQueryInput) args() map[string]any {
+	a := map[string]any{}
+	if q.Kind != "" {
+		a["kind"] = q.Kind
+	}
+	if q.NameMatches != "" {
+		a["nameMatches"] = q.NameMatches
+	}
+	if q.Fill != nil {
+		a["fill"] = rgbaArg(q.Fill)
+	}
+	if q.Stroke != nil {
+		a["stroke"] = rgbaArg(q.Stroke)
+	}
+	if q.PageId != "" {
+		a["pageId"] = q.PageId
+	}
+	return a
+}
+
+type FoundObject struct {
+	Id   string `json:"id"`
+	Name string `json:"name"`
+	Kind string `json:"kind"`
+}
+
+type FindObjectsOutput struct {
+	Count int           `json:"count"`
+	Nodes []FoundObject `json:"nodes" jsonschema:"up to 500"`
+}
+
+// FindObjects finds nodes by kind, name or colour (give at least one criterion).
+func (s *Session) FindObjects(ctx context.Context, in ObjectQueryInput) (FindObjectsOutput, error) {
+	var out FindObjectsOutput
+	return out, s.runCommand(ctx, "find_objects", "find_objects", in.args(), &out)
+}
+
+type ObjectChangeIO struct {
+	Fill         *RGBA    `json:"fill,omitempty" jsonschema:"replaces the matching solid fill (all solid fills when the query names no fill colour)"`
+	Stroke       *RGBA    `json:"stroke,omitempty"`
+	StrokeWeight *float64 `json:"strokeWeight,omitempty"`
+	Opacity      *float64 `json:"opacity,omitempty" jsonschema:"0..1"`
+	Visible      *bool    `json:"visible,omitempty"`
+	Rename       *string  `json:"rename,omitempty"`
+}
+
+type ChangeObjectsInput struct {
+	ObjectQueryInput
+	Change ObjectChangeIO `json:"change"`
+}
+
+type ChangeObjectsOutput struct {
+	Matched int `json:"matched"`
+	Changed int `json:"changed"`
+}
+
+// ChangeObjects finds nodes and changes their appearance in one undo step.
+func (s *Session) ChangeObjects(ctx context.Context, in ChangeObjectsInput) (ChangeObjectsOutput, error) {
+	a := in.ObjectQueryInput.args()
+	c := map[string]any{}
+	if in.Change.Fill != nil {
+		c["fill"] = rgbaArg(in.Change.Fill)
+	}
+	if in.Change.Stroke != nil {
+		c["stroke"] = rgbaArg(in.Change.Stroke)
+	}
+	if in.Change.StrokeWeight != nil {
+		c["strokeWeight"] = *in.Change.StrokeWeight
+	}
+	if in.Change.Opacity != nil {
+		c["opacity"] = *in.Change.Opacity
+	}
+	if in.Change.Visible != nil {
+		c["visible"] = *in.Change.Visible
+	}
+	if in.Change.Rename != nil {
+		c["rename"] = *in.Change.Rename
+	}
+	a["change"] = c
+	var out ChangeObjectsOutput
+	return out, s.runCommand(ctx, "change_objects", "change_objects", a, &out)
+}
+
+type ExportSnippetOutput struct {
+	Snippet string `json:"snippet" jsonschema:"opaque text to keep and pass to place_snippet (in this or another document)"`
+}
+
+// ExportSnippet turns nodes (and their children) into a reusable snippet.
+func (s *Session) ExportSnippet(ctx context.Context, in NodeIdsInput) (ExportSnippetOutput, error) {
+	var out ExportSnippetOutput
+	return out, s.runCommand(ctx, "export_snippet", "export_snippet", map[string]any{"nodeIds": in.NodeIds}, &out)
+}
+
+type PlaceSnippetInput struct {
+	Snippet  string  `json:"snippet"`
+	X        float64 `json:"x,omitempty" jsonschema:"where its top-left corner goes"`
+	Y        float64 `json:"y,omitempty"`
+	PageId   string  `json:"pageId,omitempty"`
+	ParentId string  `json:"parentId,omitempty"`
+}
+
+// PlaceSnippet places a snippet made by export_snippet.
+func (s *Session) PlaceSnippet(ctx context.Context, in PlaceSnippetInput) (DuplicateNodesOutput, error) {
+	a := map[string]any{"snippet": in.Snippet, "x": in.X, "y": in.Y}
+	if in.PageId != "" {
+		a["pageId"] = in.PageId
+	}
+	if in.ParentId != "" {
+		a["parentId"] = in.ParentId
+	}
+	var out DuplicateNodesOutput
+	return out, s.runCommand(ctx, "place_snippet", "place_snippet", a, &out)
+}
+
+// --- inks, overprint, batch -------------------------------------------------------------------------------
+
+type InkReportInput struct {
+	Limit int `json:"limit,omitempty" jsonschema:"total ink limit in percent to report swatches over (100..400, default 300)"`
+}
+
+type SpotInkView struct {
+	Name     string   `json:"name"`
+	Swatches []string `json:"swatches"`
+	Objects  int      `json:"objects" jsonschema:"objects painted with it"`
+	Alt      *struct {
+		C float64 `json:"c"`
+		M float64 `json:"m"`
+		Y float64 `json:"y"`
+		K float64 `json:"k"`
+	} `json:"alt,omitempty" jsonschema:"CMYK alternate, 0..1"`
+}
+
+type InkReportOutput struct {
+	Process struct {
+		Swatches int `json:"swatches"`
+		Objects  int `json:"objects"`
+	} `json:"process"`
+	Spots     []SpotInkView `json:"spots"`
+	Overprint int           `json:"overprint" jsonschema:"objects set to overprint"`
+	OverLimit []struct {
+		Swatch string `json:"swatch"`
+		Total  int    `json:"total"`
+	} `json:"overLimit"`
+}
+
+// InkReport is the ink manager's list: process and spot inks, overprint, total-ink problems.
+func (s *Session) InkReport(ctx context.Context, in InkReportInput) (InkReportOutput, error) {
+	a := map[string]any{}
+	if in.Limit != 0 {
+		a["limit"] = in.Limit
+	}
+	var out InkReportOutput
+	return out, s.runCommand(ctx, "ink_report", "ink_report", a, &out)
+}
+
+type ConvertSpotsInput struct {
+	Inks []string `json:"inks,omitempty" jsonschema:"spot ink names to convert (default: all); tints follow their base"`
+}
+
+type ConvertedOutput struct {
+	Converted int `json:"converted" jsonschema:"swatches turned into process colours (their CMYK alternate)"`
+}
+
+// ConvertSpotsToProcess turns spot inks into process colours.
+func (s *Session) ConvertSpotsToProcess(ctx context.Context, in ConvertSpotsInput) (ConvertedOutput, error) {
+	a := map[string]any{}
+	if len(in.Inks) > 0 {
+		a["inks"] = in.Inks
+	}
+	var out ConvertedOutput
+	return out, s.runCommand(ctx, "convert_spots_to_process", "convert_spots_to_process", a, &out)
+}
+
+type MergeSpotInksInput struct {
+	From string `json:"from" jsonschema:"a spot ink name in use"`
+	To   string `json:"to" jsonschema:"the ink it becomes (an alias: both print on one plate)"`
+}
+
+type MergedOutput struct {
+	Swatches int `json:"swatches"`
+}
+
+// MergeSpotInks aliases one spot ink to another.
+func (s *Session) MergeSpotInks(ctx context.Context, in MergeSpotInksInput) (MergedOutput, error) {
+	var out MergedOutput
+	return out, s.runCommand(ctx, "merge_spot_inks", "merge_spot_inks", map[string]any{"from": in.From, "to": in.To}, &out)
+}
+
+type SetOverprintInput struct {
+	NodeIds []string `json:"nodeIds"`
+	Mode    string   `json:"mode" jsonschema:"fill | stroke | both | off. Written to the PDF as overprint (not simulated on screen); overprinting white shows nothing on press and the preflight says so"`
+}
+
+// SetOverprint sets overprint on objects.
+func (s *Session) SetOverprint(ctx context.Context, in SetOverprintInput) (ChangedOutput, error) {
+	var out ChangedOutput
+	return out, s.runCommand(ctx, "set_overprint", "set_overprint", map[string]any{"nodeIds": in.NodeIds, "mode": in.Mode}, &out)
+}
+
+type BatchInput struct {
+	Commands []map[string]any `json:"commands" jsonschema:"1..50 editor commands, each an object with a name (a tool name of this server that runs in the editor, e.g. set_overprint) and that tool's arguments in the editor's own spelling (see list_editor_commands); run in order, stopping at the first failure"`
+}
+
+type BatchOutput struct {
+	Results []json.RawMessage `json:"results"`
+}
+
+// Batch runs several editor commands in one round trip.
+func (s *Session) Batch(ctx context.Context, in BatchInput) (BatchOutput, error) {
+	var out BatchOutput
+	return out, s.runCommand(ctx, "batch", "batch", map[string]any{"commands": in.Commands}, &out)
+}
+
+type ListEditorCommandsOutput struct {
+	Commands     []string `json:"commands"`
+	FileCommands []string `json:"fileCommands" jsonschema:"commands that need an input file and cannot run in a batch"`
+}
+
+// ListEditorCommands lists the commands the connected editor runs.
+func (s *Session) ListEditorCommands(ctx context.Context, _ struct{}) (ListEditorCommandsOutput, error) {
+	var out ListEditorCommandsOutput
+	return out, s.runCommand(ctx, "list_editor_commands", "list_commands", nil, &out)
+}
+
 // --- vectors ------------------------------------------------------------------------------------------
 
 type AnchorIO struct {
@@ -436,10 +889,30 @@ func registerCommandTools(srv *mcp.Server, s *Session) {
 	addTool(srv, "find_change", "Find (and optionally change) text across every text of the document, master pages included, in reading order: plain, whole word or regular expression, with or without case. Without `replace` it lists the matches; with it, it replaces them all in one undo step and keeps the formatting."+jobNote, s.FindChange)
 	addTool(srv, "place_image", "Upload an image file (PNG, JPEG, GIF, WebP) and place it as an image node, scaled down to at most 512 px on its long side. An SVG is imported as editable nodes instead (import_svg)."+jobNote, s.PlaceImage)
 	addTool(srv, "import_svg", "Import an SVG file as editable nodes (shapes, text, gradients, embedded images), centred at x, y."+jobNote, s.ImportSvg)
+	addTool(srv, "place_document", "Place a Word (.docx), RTF or Excel (.xlsx) file: Word/RTF become one text frame with paragraph styles (Heading 1-3 get an outline level, so the contents list them) and bold/italic runs; the first Excel sheet becomes a table. Images, tables and footnotes inside Word files, fonts, colours and formulas are not carried over (Excel gives cached values)."+jobNote, s.PlaceDocument)
+	addTool(srv, "import_idml", "Import an InDesign IDML file: its pages (with their sizes) are added to the document with rectangles, ovals, polygons, lines (as vectors with their handles) and text frames with their story text, solid fills and strokes (CMYK converted to RGB, naively). Images, effects, styles, master pages, tables and gradients are not carried over; rotation of boxes is not kept. INDD files cannot be opened."+jobNote, s.ImportIdml)
 	addTool(srv, "relink_image", "Point an image node at another file (the document's 'Relink'): the node keeps its width and takes the new image's shape."+jobNote, s.RelinkImage)
 	addTool(srv, "import_pdf", "Import a PDF: every page becomes a page of the document; mode editable (default) turns text, shapes and images into nodes and extracts the embedded fonts, mode image makes one picture per page. Up to 200 pages."+jobNote, s.ImportPdf)
 	addTool(srv, "import_fig", "Import a Figma .fig file (experimental reader; says what it could not carry over)."+jobNote, s.ImportFig)
 	addTool(srv, "upload_font", "Upload a font file and register it as a document font (family, weight, style); text styles whose fontFamily is that family then draw with it, and the PDF export embeds it."+jobNote, s.UploadFont)
+	addTool(srv, "apply_table_style", "Give a table the object styles (cell rectangles) and text styles (cell texts) of a table style: header rows, body rows, every second body row. Define table styles with set_document_settings tableStyles."+jobNote, s.ApplyTableStyle)
+	addTool(srv, "check_text", "Typographic slips in the text of the whole document: repeated words, double spaces, a space before , . ; :, straight quotes, three dots instead of an ellipsis, a spaced hyphen instead of an en dash. NOT a dictionary spell check (no word list ships with the editor; the browser's spell check marks misspellings while you type)."+jobNote, s.CheckText)
+	addTool(srv, "list_editorial_notes", "The editorial notes written [!comment] in the text: never drawn, exported or printed. Write one with set_text; remove it by editing the text."+jobNote, s.ListEditorialNotes)
+	addTool(srv, "step_and_repeat", "Step and Repeat: make N copies of nodes, each offset (dx, dy) from the previous (a row, a column, a staircase). Groups are copied with their children."+jobNote, s.StepAndRepeat)
+	addTool(srv, "set_gap", "The Gap tool: set the exact space between neighbouring objects along x or y, keeping the first one in place."+jobNote, s.SetGap)
+	addTool(srv, "fit_frame", "Frame fitting: make an image fill cover or fit inside its frame, tile it, or resize an image node to the image's own proportions."+jobNote, s.FitFrame)
+	addTool(srv, "clip_with_shape", "Clipping path: use a shape's outline to clip other nodes (they are grouped with it, the shape as a mask below them); release it with release=true."+jobNote, s.ClipWithShape)
+	addTool(srv, "create_qr_code", "Draw a QR code (ISO 18004, byte mode, versions 1-10) as vectors: a background square and one vector for the dark modules, so it prints sharp at any size."+jobNote, s.CreateQRCode)
+	addTool(srv, "find_objects", "Find nodes by kind, layer name (regex) or solid fill/stroke colour."+jobNote, s.FindObjects)
+	addTool(srv, "change_objects", "Find/change on objects: find nodes as find_objects does and change fill, stroke, stroke weight, opacity, visibility or name in one undo step. With a fill colour in the query, only fills of that colour are replaced."+jobNote, s.ChangeObjects)
+	addTool(srv, "export_snippet", "Turn nodes and their children into a snippet (text) to keep in a library and place later, here or in another document. Images keep their asset reference, so they show only where that asset exists."+jobNote, s.ExportSnippet)
+	addTool(srv, "place_snippet", "Place a snippet made by export_snippet with its top-left corner at x, y."+jobNote, s.PlaceSnippet)
+	addTool(srv, "ink_report", "The ink manager's list: process inks (swatches and objects in CMYK), spot inks with their swatches, objects and CMYK alternate, objects set to overprint, and swatches over the total-ink limit."+jobNote, s.InkReport)
+	addTool(srv, "convert_spots_to_process", "Turn spot inks into process colours (their CMYK alternate), all or the named ones; they then print on the four process plates."+jobNote, s.ConvertSpotsToProcess)
+	addTool(srv, "merge_spot_inks", "Ink alias: every swatch of spot ink `from` prints as spot ink `to` (one plate)."+jobNote, s.MergeSpotInks)
+	addTool(srv, "set_overprint", "Set overprint (fill, stroke, both, off) on objects; the PDF export writes the overprint graphics state. Not simulated on screen."+jobNote, s.SetOverprint)
+	addTool(srv, "batch", "Run up to 50 editor commands in order in one round trip, stopping at the first failure (each is its own undo step). Commands that need a file, and nested batches, are refused."+jobNote, s.Batch)
+	addTool(srv, "list_editor_commands", "List the command names the connected editor runs (the names `batch` takes)."+jobNote, s.ListEditorCommands)
 	addTool(srv, "create_vector", "Draw a vector from paths of anchors with optional bezier handles (handles are offsets from their anchor). The editor computes the curve's true bounds for the node's box (one implementation of that geometry), so use this rather than writing a vector by hand."+jobNote, s.CreateVector)
 	addTool(srv, "set_vector_path", "Replace a vector node's geometry; its box follows the new curve in the same step."+jobNote, s.SetVectorPath)
 	addTool(srv, "align_nodes", "Align (left, hcenter, right, top, middle, bottom) or distribute (distribute-h, distribute-v) nodes."+jobNote, s.AlignNodes)
