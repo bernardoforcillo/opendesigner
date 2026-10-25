@@ -28,6 +28,7 @@ import { SETTLE_MS } from "../renderer/layerCache";
 import { SceneSurface } from "../renderer/sceneSurface";
 import { useRenderer } from "../store/rendererChoice";
 import { drawOverlay, drawNodeEdit } from "../renderer/overlayRenderer";
+import { drawBuilderPreview, drawWidthEdit } from "../renderer/vectorToolsOverlay";
 import { screenToWorld } from "../canvas/camera";
 import { attachTools, eventToCanvasPoint } from "../tools/toolManager";
 import { attachClipboardShortcuts } from "../tools/clipboard";
@@ -72,6 +73,8 @@ import { linkTool } from "../tools/linkTool";
 import { stickyTool } from "../tools/stickyTool";
 import { voteTool } from "../tools/voteTool";
 import { nodeTool } from "../tools/nodeTool";
+import { widthTool } from "../tools/widthTool";
+import { builderTool } from "../tools/builderTool";
 import { withFlowArrows } from "../tools/flowSelect";
 
 // Registry of the available tools: the toolbar picks a key, attachTools
@@ -100,6 +103,8 @@ export const TOOLS: Partial<Record<ToolId, Tool>> = {
   link: linkTool,
   vote: voteTool,
   node: nodeTool,
+  width: widthTool,
+  builder: builderTool,
 };
 
 export const TOOL_LABELS: { id: ToolId; label: string }[] = [
@@ -116,6 +121,8 @@ export const TOOL_LABELS: { id: ToolId; label: string }[] = [
   { id: "text", label: "Text" },
   { id: "pen", label: "Pen" },
   { id: "node", label: "Node" },
+  { id: "width", label: "Variable width" },
+  { id: "builder", label: "Shape builder" },
   { id: "hand", label: "Hand" },
   { id: "comment", label: "Comment" },
 ];
@@ -205,6 +212,7 @@ export function App() {
     toolRef.current = id;
     setToolId(id);
     useScene.getState().enterNodeEdit(id === "node");
+    useScene.getState().enterWidthEdit(id === "width");
   };
   // An op rejected by the server is undone locally (the optimistic change
   // disappears from the canvas, see store/store.ts::rejectPending). A
@@ -471,6 +479,10 @@ export function App() {
           {
             const ne = useScene.getState().nodeEdit;
             if (ne) drawNodeEdit(octx, scene, camera, selection, ne.sel);
+            const we = useScene.getState().widthEdit;
+            if (we) drawWidthEdit(octx, scene, camera, selection, we.sel);
+            const bp = useScene.getState().builderPreview;
+            if (bp) drawBuilderPreview(octx, camera, bp);
           }
           {
             const votes = tally(peers, useFacilitation.getState().votes);

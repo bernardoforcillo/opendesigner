@@ -3,6 +3,7 @@ import { Button as RacButton, Menu, MenuItem, MenuTrigger, Popover } from "react
 import { Icon } from "../ui/ds";
 import { pathForDoc, relativeTime } from "./route";
 import { useAppNavigate } from "./nav";
+import { useT } from "../i18n";
 
 // A DOCUMENT'S CARD in the Home. The whole card is a REAL link (`/doc/<id>`):
 // it opens with a click, with Enter, in a new tab with the middle button, and
@@ -49,7 +50,6 @@ export function DocThumb({ screens, flows }: { screens: number; flows: number })
   );
 }
 
-const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
 
 export function DocCard({
   doc, now, onRename, onDelete,
@@ -59,6 +59,7 @@ export function DocCard({
   onRename: (id: string, name: string) => Promise<void>;
   onDelete: (doc: DocSummary) => void;
 }) {
+  const { t, tn } = useT();
   const navigate = useAppNavigate();
   const [renaming, setRenaming] = useState(false);
   const [draft, setDraft] = useState(doc.name);
@@ -80,13 +81,13 @@ export function DocCard({
     }
   }
 
-  const meta = [plural(doc.screens, "screen", "screens"), plural(doc.flows, "flow", "flows")].join(" · ");
+  const meta = [tn("{n} screens", doc.screens), tn("{n} flows", doc.flows)].join(" · ");
 
   return (
     <article className="group relative overflow-hidden rounded-xl border border-line bg-surface transition-shadow hover:shadow-[var(--shadow-bar)]">
       <a
         href={pathForDoc(doc.id)}
-        aria-label={`Open ${doc.name}`}
+        aria-label={t("Open {name}", { name: doc.name })}
         className="block outline-none focus-visible:shadow-[var(--ring)]"
         // While renaming the link must not steal clicks or Enter.
         onClick={(e) => {

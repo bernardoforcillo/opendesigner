@@ -6,6 +6,7 @@ and which it did not.
 
 ## Ported
 
+- **Plugins and import**: WebAssembly plugins (docs/handoff.md; a command-list ABI instead of FigCraft's host calls), and the `.fig` import tail: connectors, tables, sticky notes and similar layers, per-kind import counts (synthetic files only).
 - **Shapes and paints** (docs/shapes.md): angular and diamond gradients, polygon, star, arc and ring,
   corner smoothing and independent radii, arrowheads, per-side stroke weights, shared paint and effect styles.
 - **Layout and components**: min/max sizes, absolute children, baseline alignment, swap / detach /
@@ -18,16 +19,19 @@ and which it did not.
   (Rust) code target, `Transition.order` for if / else if / else chains, and the diamond (CSS layers) and
   angular / diamond (SVG patterns) gradients in code. The Leptos output passes `cargo check`; `trunk build`
   and the generated Playwright tests were not run (no wasm target or browser here).
+- **Vector** (docs/vector.md): variable-width strokes (width profile, presets, tool, panel, SVG as a filled outline) and the shape builder tool.
 - **Type and effects** (docs/typography.md, docs/effects.md): text case, super/subscript, lists, indent,
-  OpenType features, vertical alignment and inset, progressive blur, noise, texture and glass.
+  OpenType features, vertical alignment and inset, horizontal text scale (also in rich-text runs and in
+  paragraph / character styles), progressive blur, noise, texture and glass.
+- **Localization** (docs/localization.md): typed catalogs with plurals, live language switch, language from
+  the browser; first surfaces translated into seven languages (machine drafts).
 
 ## Not ported
 
 - Auto layout grid mode (fixed / hug / fr tracks, spans); groups as auto layout children.
-- Horizontal text scale; rich-text runs do not use the new case, list, script and inset features.
-- Shape builder, variable-width strokes, vector-network editing tools, noise/glass refraction.
-- Plugins in WebAssembly, localization catalogs, accessibility tree, accounts and teams.
-- Real-file `.fig` fidelity, Display P3, `.fig` export.
+- Vector-network editing tools, noise/glass refraction.
+- Accessibility tree, accounts and teams.
+- Variables from `.fig` files (only a warning counts the layers that use them), live connector ends, table structure beyond frames, real-file `.fig` fidelity, Display P3, `.fig` export.
 
 ## Unverified
 

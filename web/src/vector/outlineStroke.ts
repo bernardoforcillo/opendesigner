@@ -11,6 +11,7 @@ import type { NodeLite, SceneState } from "../store/types";
 import { toPbFills, toPbSubPaths } from "../store/types";
 import { vectorStyleOf } from "../renderer/vectorStyle";
 import { makeCreateNodeOp, makeDeleteOp, makeSetPropsOp, uuid } from "../tools/ops";
+import { variableStrokePolyline } from "./widthProfile";
 import { BEZIER_TOLERANCE, booleanRegion, localOutlines, regionOfNode } from "./boolean";
 
 // OUTLINE STROKE: turns the first stroke of a shape into a filled vector -- the
@@ -19,7 +20,8 @@ import { BEZIER_TOLERANCE, booleanRegion, localOutlines, regionOfNode } from "./
 // The stroke is the union of one quad per segment, a join piece per vertex and a cap
 // piece per open end, then clipped by the stroke alignment (inside = intersected with
 // the shape, outside = shape removed). Curves are flattened (BEZIER_TOLERANCE) and
-// dashes are not applied: the outline is of the solid line.
+// dashes are not applied: the outline is of the solid line. A variable-width stroke (vector/widthProfile.ts)
+// outlines to the region it draws, with its profile; it is always centred.
 
 type Pt = { x: number; y: number };
 
@@ -139,15 +141,21 @@ export function outlineStrokeOps(scene: SceneState, id: string): OutlineResult |
   // Work in the node's PARENT space (the space its own x/y live in).
   const t = localTransformOf(n);
   const pieces: MultiPolygon[] = [];
+  const variable = n.kind === "vector" && !!stroke.widthProfile && stroke.widthProfile.length > 0;
   for (const o of localOutlines(n, BEZIER_TOLERANCE)) {
     const pts = o.points.map((p) => applyTransform(t, p.x, p.y));
+    // A variable-width stroke is always centred and keeps its profile in the outline.
+    if (variable) {
+      pieces.push(...variableStrokePolyline(pts, o.closed, stroke.weight, stroke.widthProfile!, { cap: g.cap, join: g.join }));
+      continue;
+    }
     // Inside / outside strokes are the doubled line clipped to one side (as the canvas draws them).
     pieces.push(...strokePolyline(pts, o.closed, stroke.align === "center" ? stroke.weight : stroke.weight * 2, g));
   }
   if (pieces.length === 0) return null;
   let region: MultiPolygon = polygonClipping.union(pieces[0], ...pieces.slice(1));
   // Alignment: the stroke is centred by default; inside / outside clip it by the shape.
-  if (stroke.align !== "center") {
+  if (stroke.align !== "center" && !variable) {
     const fillRegion = regionOfNode(scene, n, worldTransformOf(scene, n.parentId));
     if (fillRegion.length > 0) {
       region = stroke.align === "inside" ? polygonClipping.intersection(region, fillRegion) : polygonClipping.difference(region, fillRegion);

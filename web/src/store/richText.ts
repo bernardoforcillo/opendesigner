@@ -71,6 +71,13 @@ export function overlay(base: TextStyleLite, over: TextStyleLite): TextStyleLite
   if (over.italic || base.italic) out.italic = true;
   if (over.underline || base.underline) out.underline = true;
   if (over.strikethrough || base.strikethrough) out.strikethrough = true;
+  // The type extras (case, script, list, indent, features, vertical alignment, inset, scale): "unset" inherits.
+  const extra = {
+    textCase: over.textCase ?? base.textCase, textScript: over.textScript ?? base.textScript, listKind: over.listKind ?? base.listKind,
+    indent: over.indent || base.indent, fontFeatures: over.fontFeatures || base.fontFeatures,
+    verticalAlign: over.verticalAlign ?? base.verticalAlign, inset: over.inset || base.inset, textScale: over.textScale || base.textScale,
+  };
+  for (const [k, v] of Object.entries(extra)) if (v !== undefined && v !== "") (out as unknown as Record<string, unknown>)[k] = v;
   return out;
 }
 
@@ -137,7 +144,7 @@ export function resolveRich(state: SceneState, t: TextLite, base: TextStyleLite,
   if (!any && runs.length === 0) return null;
   // The baseline grid matters only to paragraphs that ask for it, and only when the document has one.
   const inc = state.settings?.baselineIncrement ?? 0;
-  const grid = inc > 0 && paragraphs.some((p) => p.alignToGrid) ? { increment: inc, start: state.settings?.baselineStart ?? 0, boxY } : undefined;
+  const grid = inc > 0 && paragraphs.some((p) => p.alignToGrid) ? { increment: inc, start: state.settings?.baselineStart ?? 0, boxY: boxY + (base.inset ?? 0) } : undefined;
   return { paragraphs, runs, ...(grid ? { grid } : {}) };
 }
 

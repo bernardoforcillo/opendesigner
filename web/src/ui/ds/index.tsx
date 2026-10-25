@@ -1,6 +1,7 @@
 import { useState, type ReactNode } from "react";
 import { Button as RacButton, Tooltip, TooltipTrigger, type ButtonProps } from "react-aria-components";
 import { Icon, type IconName } from "./Icon";
+import { useT } from "../../i18n";
 
 export { Icon, type IconName } from "./Icon";
 
@@ -143,6 +144,7 @@ function useSectionOpen(title: string): [boolean, (v: boolean) => void] {
 export function Section({
   title, count, actions, children, className = "", bare,
 }: { title: string; count?: number; actions?: ReactNode; children?: ReactNode; className?: string; bare?: boolean }) {
+  const { tx } = useT();
   const [open, setOpen] = useSectionOpen(title);
   return (
     <section className={`border-t border-line first:border-t-0 ${className}`}>
@@ -153,7 +155,7 @@ export function Section({
           className={`flex h-7 min-w-0 items-center gap-1 rounded-md px-1.5 ${FOCUS} hover:bg-surface-3`}
         >
           <Icon name={open ? "chevronDown" : "chevronRight"} size={12} className="text-fg-subtle" />
-          <h3 className={cls.sectionTitle}>{title}</h3>
+          <h3 className={cls.sectionTitle}>{tx(title)}</h3>
           {count !== undefined && <span className="text-[11px] tabular-nums text-fg-subtle">{count}</span>}
         </RacButton>
         <div className="ml-auto flex items-center gap-0.5">{actions}</div>

@@ -25,6 +25,7 @@ import { MESH_BITMAP_SIZE, meshBitmap } from "./mesh";
 import { hasComputedOutline, traceCommands } from "./shapeGeometry";
 import { hasArrowheads, strokeHeads } from "./arrowheads";
 import { sideBandRects } from "./strokeSides";
+import { variableStrokeCommands } from "../vector/widthProfile";
 import { GRADIENT_BITMAP_SIZE, angularStart, gradientBitmap } from "./gradientBitmap";
 import { FX_TILE, blurBands, overlayEffects, overlayTile, progressiveBlur, tileUnit, withBandBlur, withExpandedGlass } from "./effectsFx";
 
@@ -1091,6 +1092,14 @@ function drawVector(ctx: CanvasRenderingContext2D, n: NodeLite, color: string, z
     ctx.lineDashOffset = vs.dashOffset;
     for (const s of n.strokes) {
       if (!(s.weight > 0)) continue;
+      if (s.widthProfile && s.widthProfile.length > 0) {
+        // VARIABLE WIDTH: the stroke's region (vector/widthProfile.ts), filled with its paint.
+        const region = new Path2D();
+        traceCommands(region, variableStrokeCommands(n, s));
+        ctx.fillStyle = paintStyle(ctx, s.color, n);
+        ctx.fill(region, "evenodd");
+        continue;
+      }
       ctx.strokeStyle = paintStyle(ctx, s.color, n);
       ctx.lineWidth = s.weight;
       ctx.stroke(stroke);

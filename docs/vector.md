@@ -33,3 +33,20 @@ A single shape with a stroke offers **Outline stroke**: a new vector with the st
 ## Stroke style
 
 Cap (butt / round / square), join (miter / round / bevel), miter limit and dash pattern are kept in the node's `meta` (`stroke.cap`, `stroke.join`, `stroke.miter`, `stroke.dash`, `stroke.dashOffset`, the same keys the SVG import writes) and apply to every stroke of the node. The panel's Stroke section edits them; Canvas 2D, CanvasKit and SVG export draw them. Code export draws borders as rings and ignores dashes and caps.
+
+## Variable-width strokes
+
+A vector's stroke can change width along its path. The stroke carries a **width profile** (`Stroke.width_profile` in the proto): a list of points `{position, left, right}`. `position` runs 0 to 1 along the length of each subpath (a closed path counts its closing segment); `left` and `right` are the half-widths on each side of the direction of travel, as **multiples of half the weight**, so `1 / 1` is the uniform stroke, `0 / 0` a point, and changing the weight scales the whole profile. Between points the widths are linear; before the first point and after the last they hold. At most 64 points, positions not decreasing, sides within 0 to 16 (`core.validateWidthProfile`, mirrored by `isValidWidthProfile`). An empty profile is the plain stroke.
+
+- **Panel**: a vector with a stroke shows **Variable width** under its stroke settings: a profile preset (uniform, taper, taper start, lens, bulge, pinch, brush), and a row per point with its position, left and right percentages, a remove button and **Add width point**.
+- **Tool** (`W`, in the dock): on the selected vector, click the path to add a point there (the stroke keeps its shape until a handle moves), drag one of a point's two handles to set the width of that side (Alt: both sides), Delete removes the selected point, Esc abandons a drag. Each drag is one gesture.
+- **Drawing**: the stroke is the union of one trapezoid per segment (split where a profile point falls) plus a wedge on the outer side of each turn and the caps (`vector/widthProfile.ts`). Canvas 2D and the GPU renderer **fill** that region with the stroke's paint instead of stroking; the SVG export writes it as a filled `<path>` of the outline. The stroke is always centred, joins are bevelled (round when the node's join is round) and dashes do not apply. The bounds overhang follows the widest side.
+- **Outline stroke** of such a stroke gives the same region as a vector, profile included.
+- **MCP**: `set_stroke` takes `widthPreset` (`uniform | taper | taper-start | lens | bulge | pinch | brush`) or explicit `widthProfile` points (which win over the preset).
+- Limits: only vectors vary in width (other shapes ignore the profile); code export draws the uniform stroke; arrowheads keep the nominal weight.
+
+## Shape builder
+
+**Shape builder** (`M`, in the dock): select two or more overlapping shapes (rectangles, ellipses, polygons, vectors, groups of them; all in the same parent), then **click** a region to take it as a shape of its own or **drag across** several regions to merge them into one shape; hold **Alt** to remove the regions instead. A tinted preview follows the pointer (red when Alt will remove). With fewer than two shapes selected a click on a shape adds it to the selection.
+
+The shapes are cut along each other's outlines into **regions**: the disjoint pieces of the plane that the same set of shapes covers (two crossing squares make three regions; a shape cut in two by another makes two; a hole stays a hole) (`vector/shapeBuilder.ts`, using the boolean code's `polygon-clipping`). One gesture replaces the source shapes by vectors, one per region, the regions you crossed merged into one (or dropped), each in the style of the topmost shape that covers it, and is one undo step. Limits: only fills make regions (strokes are not cut), and the unmerged regions are separated too, because the sources are replaced.

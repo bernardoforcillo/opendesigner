@@ -70,12 +70,29 @@ export function isValidShapePath(cur: NodeLite, p: PbNode, path: string): boolea
   }
 }
 
+export const MAX_WIDTH_POINTS = 64;
+export const MAX_WIDTH_SCALE = 16;
+
+/** A variable-width profile is within the limits of core.validateWidthProfile (absent / empty is fine). */
+export function isValidWidthProfile(profile: readonly { position: number; left: number; right: number }[] | undefined): boolean {
+  if (!profile) return true;
+  if (profile.length > MAX_WIDTH_POINTS) return false;
+  let prev = 0;
+  for (const p of profile) {
+    if (!Number.isFinite(p.position) || p.position < 0 || p.position > 1 || p.position < prev) return false;
+    prev = p.position;
+    for (const w of [p.left, p.right]) if (!Number.isFinite(w) || w < 0 || w > MAX_WIDTH_SCALE) return false;
+  }
+  return true;
+}
+
 /** Arrowhead enums are closed and side weights finite and non-negative (core.validateStrokeExtras). */
 export function areStrokeExtrasValid(strokes: readonly Stroke[]): boolean {
   return strokes.every((s) =>
     s.startCap >= ArrowHead.NONE && s.startCap <= ArrowHead.DIAMOND
     && s.endCap >= ArrowHead.NONE && s.endCap <= ArrowHead.DIAMOND
-    && (!s.sides || [s.sides.top, s.sides.right, s.sides.bottom, s.sides.left].every(finiteNonNeg)));
+    && (!s.sides || [s.sides.top, s.sides.right, s.sides.bottom, s.sides.left].every(finiteNonNeg))
+    && isValidWidthProfile(s.widthProfile));
 }
 
 /** The mask paths that address a shape parameter inside the `shape` oneof. */

@@ -55,12 +55,15 @@ export function isValidTextStyleDef(state: SceneState, d: PbTextStyleDef | undef
   // core.validateTextExtras: enums in range, finite non-negative indent/inset, a well-formed feature string.
   if (!(st.textCase >= 0 && st.textCase <= 4 && st.textScript >= 0 && st.textScript <= 2 &&
     st.listKind >= 0 && st.listKind <= 2 && st.verticalAlign >= 0 && st.verticalAlign <= 2 &&
-    finiteNonNeg(st.indent) && finiteNonNeg(st.inset) && isValidFontFeatures(st.fontFeatures))) return false;
+    finiteNonNeg(st.indent) && finiteNonNeg(st.inset) && isValidFontFeatures(st.fontFeatures) &&
+    (st.textScale === 0 || (st.textScale >= 1 && st.textScale <= 1000)))) return false;
   if (!Number.isFinite(st.letterSpacing) || Math.abs(st.letterSpacing) > 1000) return false;
   if (d.kind !== TextStyleKind.PARAGRAPH && d.kind !== TextStyleKind.CHARACTER) return false;
   if (![d.spaceBefore, d.spaceAfter, d.indentFirst, d.indentLeft].every(finiteNonNeg)) return false;
   const character = d.kind === TextStyleKind.CHARACTER;
   if (character && d.alignToGrid) return false;
+  // Parity with validateStyleRelations: list, indent, vertical alignment and inset are not for ranges.
+  if (character && (st.listKind !== 0 || st.indent !== 0 || st.verticalAlign !== 0 || st.inset !== 0)) return false;
   if (character && (d.nextStyleId !== "" || d.spaceBefore !== 0 || d.spaceAfter !== 0 || d.indentFirst !== 0 || d.indentLeft !== 0)) return false;
   if (d.nextStyleId !== "" && d.nextStyleId !== d.id) {
     const n = state.textStyles[d.nextStyleId];

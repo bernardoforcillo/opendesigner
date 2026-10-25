@@ -32,7 +32,7 @@ func scriptScale(st *opendesignerv1.TextStyle) float64 {
 // `size` is the unscaled font size and `lh` the line-height multiplier (both resolved);
 // `listable` is false when the text is bound to a component property (its content
 // cannot be split into paragraph elements).
-func textExtras(el *Element, st *opendesignerv1.TextStyle, size, lh float64, height float64, listable bool) {
+func textExtras(el *Element, st *opendesignerv1.TextStyle, size, lh float64, height float64, listable, rotated bool) {
 	switch st.GetTextCase() {
 	case opendesignerv1.TextCase_TEXT_CASE_UPPER:
 		el.addStyle("text-transform", "uppercase")
@@ -59,6 +59,27 @@ func textExtras(el *Element, st *opendesignerv1.TextStyle, size, lh float64, hei
 		}
 		if pad := asc + shift - sc*asc; pad > 0.5 {
 			el.addStyle("padding-top", px(pad))
+		}
+	}
+
+	// Horizontal scale: scaleX about the edge the text hangs from, with the width divided so the box
+	// keeps its size. A rotated text keeps the rotation transform alone (declared approximation).
+	if sc := st.GetTextScale(); sc > 0 && sc != 100 && sc <= 1000 && !rotated {
+		k := sc / 100
+		origin := "left top"
+		switch st.GetAlign() {
+		case opendesignerv1.TextAlign_TEXT_ALIGN_CENTER:
+			origin = "center top"
+		case opendesignerv1.TextAlign_TEXT_ALIGN_RIGHT:
+			origin = "right top"
+		}
+		el.addStyle("transform", "scaleX("+num(k)+")")
+		el.addStyle("transform-origin", origin)
+		if w := el.style("width"); strings.HasSuffix(w, "px") {
+			if v, err := strconv.ParseFloat(strings.TrimSuffix(w, "px"), 64); err == nil {
+				el.delStyle("width")
+				el.addStyle("width", px(v/k))
+			}
 		}
 	}
 

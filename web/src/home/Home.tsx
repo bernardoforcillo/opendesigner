@@ -11,6 +11,8 @@ import { DocCard, type DocSummary } from "./DocCard";
 import { TemplatePreview } from "./TemplatePreview";
 import { pathForDoc, parseJoinLink, sortRecent } from "./route";
 import { useAppNavigate } from "./nav";
+import { useT } from "../i18n";
+import { LanguageSelect } from "../i18n/LanguageSelect";
 import { startDocument, StartError, type StartClient } from "./startDocument";
 
 // THE HOME: the app's entry point. From here you start -- from a template or
@@ -52,6 +54,7 @@ export function Home({
   focusTemplates?: boolean;
   now?: () => number;
 }) {
+  const { t, tn } = useT();
   const routerNavigate = useAppNavigate();
   const navigate = navigateProp ?? routerNavigate;
   const [docs, setDocs] = useState<DocSummary[] | null>(null);
@@ -131,19 +134,20 @@ export function Home({
           <span className="text-[14px] font-semibold tracking-[-0.01em]">opendesigner</span>
         </div>
         <div className="ml-auto flex items-center gap-2">
+          <LanguageSelect />
           <JoinField navigate={navigate} />
           <Button variant="primary" icon="plus" onPress={() => void start(blankFor(vertical))} isDisabled={!!starting} className="h-8">
-            New document
+            {t("New document")}
           </Button>
         </div>
       </header>
 
       {startError && <Banner tone="danger" onClose={() => setStartError(null)}>{startError}</Banner>}
-      {loadError && <Banner tone="warn" onClose={() => setLoadError(null)}>Could not read the documents ({loadError}).</Banner>}
+      {loadError && <Banner tone="warn" onClose={() => setLoadError(null)}>{t("Could not read the documents ({error}).", { error: loadError })}</Banner>}
 
       <main className="min-h-0 flex-1 overflow-y-auto">
         <div className="mx-auto w-full max-w-[1040px] px-4 pb-16 pt-8 sm:px-6">
-          <div role="radiogroup" aria-label="Kind of document" className="mb-5 flex flex-wrap gap-2">
+          <div role="radiogroup" aria-label={t("Kind of document")} className="mb-5 flex flex-wrap gap-2">
             {VERTICAL_LIST.map((v) => (
               <button
                 type="button"
@@ -174,7 +178,7 @@ export function Home({
           </ol>
 
           <section ref={templatesRef} aria-labelledby="home-templates" className="mt-9">
-            <h2 id="home-templates" className="font-mono text-[10px] font-semibold uppercase tracking-[0.08em] text-fg-subtle">Start from a template</h2>
+            <h2 id="home-templates" className="font-mono text-[10px] font-semibold uppercase tracking-[0.08em] text-fg-subtle">{t("Start from a template")}</h2>
             <div className="mt-3 grid gap-3 [grid-template-columns:repeat(auto-fill,minmax(188px,1fr))]">
               {templates.map((t) => (
                 <TemplateCard key={t.id} template={t} busy={starting?.id === t.id ? starting : null} disabled={!!starting} onPick={() => void start(t)} />
@@ -184,17 +188,17 @@ export function Home({
 
           <section aria-labelledby="home-docs" className="mt-10">
             <h2 id="home-docs" className="flex items-baseline gap-2 font-mono text-[10px] font-semibold uppercase tracking-[0.08em] text-fg-subtle">
-              Your documents
-              {docs && docs.length > 0 && <span className="tabular-nums">{docs.length}</span>}
+              {t("Your documents")}
+              {docs && docs.length > 0 && <span aria-label={tn("{n} documents", docs.length)} className="tabular-nums">{docs.length}</span>}
             </h2>
             {docs === null ? (
-              <p role="status" className="mt-4 text-[13px] text-fg-subtle">Loading documents…</p>
+              <p role="status" className="mt-4 text-[13px] text-fg-subtle">{t("Loading documents…")}</p>
             ) : docs.length === 0 ? (
               <div className="mt-3 rounded-xl border border-dashed border-line-strong bg-surface">
                 <EmptyState
                   icon="page"
-                  title="No documents yet"
-                  hint="Pick a template above: in one click you get screens that are already connected, ready to try."
+                  title={t("No documents yet")}
+                  hint={t("Pick a template above: in one click you get screens that are already connected, ready to try.")}
                 />
               </div>
             ) : (
@@ -225,7 +229,7 @@ export function Home({
                 </p>
                 {deleteError && <p role="alert" className="mt-2 text-[12px] text-danger">{deleteError}</p>}
                 <div className="mt-4 flex justify-end gap-2">
-                  <Button variant="secondary" onPress={close} autoFocus>Cancel</Button>
+                  <Button variant="secondary" onPress={close} autoFocus>{t("Cancel")}</Button>
                   <RacButton
                     onPress={() => void confirmDelete()}
                     className="inline-flex h-7 items-center justify-center gap-1.5 rounded-md bg-danger px-2.5 text-[13px] font-medium text-white outline-none hover:brightness-110 focus-visible:shadow-[var(--ring)]"
@@ -272,26 +276,27 @@ function TemplateCard({
 
 /** "Join": paste a colleague's link (or their id) and you enter their document. */
 function JoinField({ navigate }: { navigate: (path: string) => void }) {
+  const { t } = useT();
   const [text, setText] = useState("");
   const [error, setError] = useState<string | null>(null);
 
   function join() {
     const id = parseJoinLink(text);
-    if (!id) { setError("That is not a valid opendesigner link."); return; }
+    if (!id) { setError(t("That is not a valid opendesigner link.")); return; }
     navigate(pathForDoc(id));
   }
 
   return (
     <form className="relative hidden items-center gap-1.5 sm:flex" onSubmit={(e) => { e.preventDefault(); join(); }}>
       <input
-        aria-label="Link to a shared document"
+        aria-label={t("Link to a shared document")}
         aria-invalid={error ? true : undefined}
-        placeholder="Paste a link to join"
+        placeholder={t("Paste a link to join")}
         value={text}
         onChange={(e) => { setText(e.target.value); setError(null); }}
         className="h-8 w-[220px] min-w-0 rounded-md border border-transparent bg-surface-2 px-2.5 text-[13px] text-fg placeholder:text-fg-subtle hover:border-line-strong focus:border-accent focus:bg-surface focus:outline-none"
       />
-      <Button type="submit" variant="secondary" icon="link" isDisabled={text.trim() === ""} className="h-8">Join</Button>
+      <Button type="submit" variant="secondary" icon="link" isDisabled={text.trim() === ""} className="h-8">{t("Join")}</Button>
       {error && <p role="alert" className="absolute right-0 top-9 z-10 whitespace-nowrap rounded-md bg-danger-soft px-2 py-1 text-[12px] text-danger">{error}</p>}
     </form>
   );

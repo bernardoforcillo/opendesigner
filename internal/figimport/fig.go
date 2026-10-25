@@ -56,6 +56,10 @@ type Result struct {
 	Nodes         []*opendesignerv1.Node
 	Width, Height float64
 	Warnings      []string
+	// Imported counts the layers that came in, by Figma kind ("FRAME": 12); Skipped counts the kinds
+	// left out. Together they are the import report's numbers.
+	Imported map[string]int
+	Skipped  map[string]int
 }
 
 // Import reads a .fig file (a zip, or the bare canvas.fig).
@@ -273,7 +277,7 @@ func convert(msg map[string]any, images map[string][]byte, opt Options) (*Result
 			blobs = append(blobs, nil)
 		}
 	}
-	c := &converter{opt: opt, images: images, blobs: blobs, counters: map[string]int{}, seenAssets: map[string]string{}, skipped: map[string]int{}}
+	c := &converter{opt: opt, images: images, blobs: blobs, counters: map[string]int{}, seenAssets: map[string]string{}, skipped: map[string]int{}, imported: map[string]int{}}
 
 	name := strings.TrimSpace(opt.Name)
 	if name == "" {
@@ -324,7 +328,10 @@ func convert(msg map[string]any, images map[string][]byte, opt Options) (*Result
 	nodes := append([]*opendesignerv1.Node{root}, c.nodes...)
 	// Drop empty page groups (nothing converted) so the tree has no hollow shells.
 	nodes = pruneEmpty(nodes)
-	res := &Result{Nodes: nodes, Width: root.Width, Height: root.Height, Warnings: c.warnings}
+	res := &Result{Nodes: nodes, Width: root.Width, Height: root.Height, Warnings: c.warnings, Imported: c.imported, Skipped: c.skipped}
+	if c.bound > 0 {
+		res.Warnings = append(res.Warnings, fmt.Sprintf("%d layers use variables: variables are not imported, the layers keep the values they show", c.bound))
+	}
 	for t, n := range c.skipped {
 		res.Warnings = append(res.Warnings, fmt.Sprintf("%d %s layers were not imported (that kind is not supported)", n, strings.ToLower(strings.ReplaceAll(t, "_", " "))))
 	}
@@ -355,6 +362,8 @@ type converter struct {
 	counters   map[string]int
 	warnings   []string
 	skipped    map[string]int
+	imported   map[string]int
+	bound      int // layers that bind a variable (their values are kept, the binding is not)
 	seenAssets map[string]string
 	instances  int
 }
@@ -479,9 +488,19 @@ func (c *converter) convertNode(f *fnode, parent string) {
 			c.warn("%q (%s) has no readable path and was imported as a rectangle", name, strings.ToLower(typ))
 			shape = &opendesignerv1.Node_Rect{Rect: &opendesignerv1.RectNode{}}
 		}
+	case "CONNECTOR":
+		shape = c.connector(f.raw, w, h)
+	case "TABLE", "TABLE_CELL", "SLIDE", "SLIDE_ROW", "SLIDE_GRID", "STICKY", "SHAPE_WITH_TEXT", "CODE_BLOCK":
+		// Layers with no counterpart come in as the closest frame; the text they carry becomes a text layer.
+		c.warn("%s layers were imported as frames (their special behaviour is not kept)", strings.ToLower(strings.ReplaceAll(typ, "_", " ")))
+		shape = &opendesignerv1.Node_Frame{Frame: &opendesignerv1.FrameNode{ClipsContent: typ == "SLIDE", AutoLayout: autoLayout(f.raw)}}
 	default:
 		c.skipped[typ]++
 		return
+	}
+	c.imported[typ]++
+	if hasVariables(f.raw) {
+		c.bound++
 	}
 	n := c.newNode(parent, name, shape)
 	if n.Name == "" {
@@ -507,7 +526,13 @@ func (c *converter) convertNode(f *fnode, parent string) {
 	n.Fills = c.paints(f.raw["fillPaints"], typ == "LINE")
 	n.Strokes = c.strokes(f.raw)
 	n.Effects = effects(f.raw["effects"])
-	if typ == "FRAME" || typ == "GROUP" || typ == "SECTION" || typ == "COMPONENT" || typ == "COMPONENT_SET" || typ == "SYMBOL" || typ == "INSTANCE" || typ == "BOOLEAN_OPERATION" {
+	if typ == "CONNECTOR" {
+		c.connectorPaint(n, f.raw)
+	}
+	if isLabelled(typ) {
+		c.label(n, f)
+	}
+	if typ == "FRAME" || typ == "GROUP" || typ == "SECTION" || isLabelled(typ) || typ == "COMPONENT" || typ == "COMPONENT_SET" || typ == "SYMBOL" || typ == "INSTANCE" || typ == "BOOLEAN_OPERATION" {
 		for _, ch := range f.children {
 			if typ == "BOOLEAN_OPERATION" {
 				break // the result is already in its own geometry
@@ -898,4 +923,102 @@ func pathCommands(b []byte) ([]*opendesignerv1.SubPath, bool) {
 		subs = append(subs, cur)
 	}
 	return subs, len(subs) > 0
+}
+
+// ---- the import tail: connectors, tables and other layers with no counterpart ----
+
+// isLabelled: the kinds that come in as frames and may carry their own text.
+func isLabelled(typ string) bool {
+	switch typ {
+	case "TABLE", "TABLE_CELL", "SLIDE", "SLIDE_ROW", "SLIDE_GRID", "STICKY", "SHAPE_WITH_TEXT", "CODE_BLOCK":
+		return true
+	}
+	return false
+}
+
+// label puts the text a frame-like layer carries (a table cell's content, a sticky note) in a text layer
+// that fills it. Cells and notes that have real child layers keep those and get no extra text.
+func (c *converter) label(n *opendesignerv1.Node, f *fnode) {
+	td := asMap(f.raw["textData"])
+	if len(f.children) > 0 || (asStr(td["characters"]) == "" && asStr(f.raw["characters"]) == "") {
+		return
+	}
+	t := c.newNode(n.Id, "Text", &opendesignerv1.Node_Text{Text: c.text(f.raw, n.Width)})
+	t.Width, t.Height = n.Width, n.Height
+	// The frame's own fills and strokes stay on the frame; the text is plain black on top.
+	t.Fills = []*opendesignerv1.Paint{solidPaint(0, 0, 0)}
+}
+
+// hasVariables: the layer records a variable bound to one of its fields.
+func hasVariables(raw map[string]any) bool {
+	for _, k := range []string{"variableConsumptionMap", "boundVariables", "variableData"} {
+		if raw[k] != nil {
+			return true
+		}
+	}
+	return false
+}
+
+// connector draws a connector between its ends. A saved path (strokeGeometry, an outline) is kept as the
+// vector it is. Without one the line is rebuilt from the style: the ends are taken to be the opposite
+// corners of the layer's box, (0,0) and (w,h), a straight line, an elbow (across, along, across, with the
+// bend half way) or a curve (a cubic with horizontal tangents).
+func (c *converter) connector(raw map[string]any, w, h float64) any {
+	if sub := c.geometry(raw["strokeGeometry"]); len(sub) > 0 {
+		return &opendesignerv1.Node_Vector{Vector: &opendesignerv1.VectorNode{Subpaths: sub}}
+	}
+	style := asStr(raw["connectorLineStyle"])
+	a := func(x, y float64) *opendesignerv1.Anchor { return &opendesignerv1.Anchor{X: x, Y: y} }
+	var anchors []*opendesignerv1.Anchor
+	switch {
+	case style == "ELBOWED" && w != 0 && h != 0:
+		anchors = []*opendesignerv1.Anchor{a(0, 0), a(w/2, 0), a(w/2, h), a(w, h)}
+	case style == "CURVED" && w != 0 && h != 0:
+		anchors = []*opendesignerv1.Anchor{{X: 0, Y: 0, OutX: w / 2}, {X: w, Y: h, InX: -w / 2}}
+	default:
+		anchors = []*opendesignerv1.Anchor{a(0, 0), a(w, h)}
+	}
+	if style == "ELBOWED" || style == "CURVED" {
+		c.warn("elbowed and curved connectors without a saved path were redrawn between the corners of their box")
+	}
+	return &opendesignerv1.Node_Vector{Vector: &opendesignerv1.VectorNode{Subpaths: []*opendesignerv1.SubPath{{Anchors: anchors}}}}
+}
+
+// connectorPaint: a drawn connector is a stroke; a saved path is the stroke's outline, so it is filled
+// with the stroke's colour instead.
+func (c *converter) connectorPaint(n *opendesignerv1.Node, raw map[string]any) {
+	if len(c.geometry(raw["strokeGeometry"])) > 0 {
+		n.Fills = c.paints(raw["strokePaints"], false)
+		n.Strokes = nil
+	} else {
+		n.Fills = nil
+	}
+	if t := asMap(raw["textData"]); asStr(t["characters"]) != "" {
+		c.warn("the labels of connectors were left out")
+	}
+	// The end points (which layers a connector joins) are not live links here.
+	if raw["connectorStart"] != nil || raw["connectorEnd"] != nil {
+		c.warn("connectors are not attached to the layers they joined: they are plain lines")
+	}
+}
+
+func solidPaint(r, g, b float64) *opendesignerv1.Paint {
+	return &opendesignerv1.Paint{Kind: &opendesignerv1.Paint_Solid{Solid: &opendesignerv1.SolidPaint{Color: &opendesignerv1.Color{R: float32(r), G: float32(g), B: float32(b), A: 1}}}}
+}
+
+// geometry reads a list of {commandsBlob} entries into subpaths (nil when there is none or it is unreadable).
+func (c *converter) geometry(v any) []*opendesignerv1.SubPath {
+	var subs []*opendesignerv1.SubPath
+	for _, g := range asList(v) {
+		idx := int(num(asMap(g), "commandsBlob", -1))
+		if idx < 0 || idx >= len(c.blobs) || c.blobs[idx] == nil {
+			continue
+		}
+		s, ok := pathCommands(c.blobs[idx])
+		if !ok {
+			return nil
+		}
+		subs = append(subs, s...)
+	}
+	return subs
 }

@@ -133,6 +133,37 @@ func validateStrokeExtras(strokes []*opendesignerv1.Stroke) error {
 				}
 			}
 		}
+		if err := validateWidthProfile(s.GetWidthProfile()); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// Limits of a variable-width profile (Stroke.width_profile).
+const (
+	MaxWidthPoints = 64
+	MaxWidthScale  = 16.0
+)
+
+// validateWidthProfile: at most MaxWidthPoints points, positions within 0..1 and not decreasing, both
+// widths finite within 0..MaxWidthScale.
+func validateWidthProfile(pts []*opendesignerv1.WidthPoint) error {
+	if len(pts) > MaxWidthPoints {
+		return fmt.Errorf("%w: a width profile has at most %d points, got %d", ErrStrokeExtra, MaxWidthPoints, len(pts))
+	}
+	prev := 0.0
+	for _, p := range pts {
+		pos := p.GetPosition()
+		if !finiteNum(pos) || pos < 0 || pos > 1 || pos < prev {
+			return fmt.Errorf("%w: width point positions must be within 0..1 and not decrease, got %v", ErrStrokeExtra, pos)
+		}
+		prev = pos
+		for _, w := range []float64{p.GetLeft(), p.GetRight()} {
+			if !finiteNum(w) || w < 0 || w > MaxWidthScale {
+				return fmt.Errorf("%w: width point sides must be within 0..%v, got %v", ErrStrokeExtra, MaxWidthScale, w)
+			}
+		}
 	}
 	return nil
 }

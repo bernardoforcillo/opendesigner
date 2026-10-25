@@ -15,9 +15,10 @@ import { MESH_BITMAP_SIZE, meshBitmap } from "../mesh";
 import { outlineCommands, type PathCmd } from "../shapeGeometry";
 import { hasArrowheads, strokeHeads } from "../arrowheads";
 import { sideBandRects } from "../strokeSides";
+import { variableStrokeCommands } from "../../vector/widthProfile";
 import { GRADIENT_BITMAP_SIZE, angularStart, gradientBitmap } from "../gradientBitmap";
 import { VECTOR_STROKE_PX, inkIsBox, nodeCenter } from "../shapes";
-import { decorationBars, fontSizeOf, piecesOfLine, placeTextLines, trackedOffsets, type MeasureFor } from "../text";
+import { decorationBars, fontSizeOf, hscaleOf, piecesOfLine, piecesOfSegment, placeTextLines, trackedOffsets, type MeasureFor } from "../text";
 import { FX_TILE, blurBands, overlayEffects, overlayTile, progressiveBlur, tileUnit, withBandBlur, withExpandedGlass } from "../effectsFx";
 import { hasRealStroke, vectorStyleOf } from "../vectorStyle";
 import type { FontBook } from "./canvaskit";
@@ -744,10 +745,13 @@ export class CanvasKitRenderer {
       lines = placeTextLines(this.measureFor(font), n, this.styleMeasure);
       this.textLines.set(n, lines);
     }
-    // A piece with letter spacing goes character by character, as on the 2D canvas.
-    const put = (text: string, x: number, y: number, f: Font, spacing: number) => {
-      if (!spacing) { sk.drawText(text, x, y, paint, f); return; }
-      for (const c of trackedOffsets(text, x, spacing, this.measureFor(f))) sk.drawText(c.ch, c.x, y, paint, f);
+    // A piece with letter spacing goes character by character, as on the 2D canvas; one with a horizontal
+    // scale is stretched about its start.
+    const put = (text: string, x: number, y: number, f: Font, spacing: number, hscale: number) => {
+      if (hscale !== 1) { sk.save(); sk.translate(x, 0); sk.scale(hscale, 1); sk.translate(-x, 0); }
+      if (!spacing) sk.drawText(text, x, y, paint, f);
+      else for (const c of trackedOffsets(text, x, spacing, this.measureFor(f))) sk.drawText(c.ch, c.x, y, paint, f);
+      if (hscale !== 1) sk.restore();
     };
     for (const line of lines) {
       if (!line.segments) {
@@ -755,15 +759,17 @@ export class CanvasKitRenderer {
           // Small caps and scripts are runs at another size; the font is cached per size.
           const f = p.scale === 1 ? font
             : this.fonts.fontFor(t.style.fontWeight, fontSizeOf(t.style) * p.scale, t.style.fontFamily, t.style.italic === true) ?? font;
-          put(p.text, p.x, p.y, f, t.style.letterSpacing ?? 0);
+          put(p.text, p.x, p.y, f, t.style.letterSpacing ?? 0, hscaleOf(t.style));
         }
         this.drawBars(sk, [{ x: line.x, width: line.width, style: t.style }], line.y, paint);
         continue;
       }
-      // Rich text: every piece in its own font, on the line's baseline.
+      // Rich text: every piece in its own font, on the line's baseline (or its own: scripts, small caps).
       for (const seg of line.segments) {
-        const f = this.fonts.fontFor(seg.style.fontWeight, fontSizeOf(seg.style), seg.style.fontFamily, seg.style.italic === true) ?? font;
-        put(seg.text, seg.x, line.y, f, seg.style.letterSpacing ?? 0);
+        for (const p of piecesOfSegment(seg, line.y)) {
+          const f = this.fonts.fontFor(seg.style.fontWeight, fontSizeOf(seg.style) * p.scale, seg.style.fontFamily, seg.style.italic === true) ?? font;
+          put(p.text, p.x, p.y, f, seg.style.letterSpacing ?? 0, hscaleOf(seg.style));
+        }
       }
       this.drawBars(sk, line.segments, line.y, paint);
     }
@@ -903,6 +909,12 @@ export class CanvasKitRenderer {
       const join = vs.join === "round" ? CK.StrokeJoin.Round : vs.join === "bevel" ? CK.StrokeJoin.Bevel : CK.StrokeJoin.Miter;
       for (const s of n.strokes) {
         if (!(s.weight > 0)) continue;
+        if (s.widthProfile && s.widthProfile.length > 0) {
+          // VARIABLE WIDTH: the stroke's region (vector/widthProfile.ts), filled with its paint.
+          const region = this.pathOf(variableStrokeCommands(n, s));
+          sk.drawPath(region, this.paintFor(this.fillP, s.color, n, n.opacity));
+          continue;
+        }
         const p = this.paintFor(this.strokeP, s.color, n, n.opacity);
         p.setStyle(CK.PaintStyle.Stroke);
         p.setStrokeWidth(s.weight);
