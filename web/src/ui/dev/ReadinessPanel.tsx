@@ -4,6 +4,7 @@ import { useScene } from "../../store/store";
 import type { Progress, ReadinessItem } from "../../dev/readiness";
 import { Badge, Button, EmptyState, Icon, cls } from "../ds";
 import { DevIcon, type DevIconName } from "../ds/dev-parts";
+import { ReadyListSection } from "./ReadyListSection";
 import { ReviewSection } from "./ReviewSection";
 import { applyFix, selectScreen, useReadiness } from "./useReadiness";
 
@@ -144,6 +145,7 @@ export function ReadinessPanel() {
             <ul className="pb-2">{rest.map((i) => <ItemRow key={i.id} item={i} />)}</ul>
           </section>
         )}
+        <ReadyListSection />
         <ReviewSection />
       </div>
     </div>

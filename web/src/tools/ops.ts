@@ -2,8 +2,8 @@ import { create, type MessageInitShape } from "@bufbuild/protobuf";
 import { NodeSchema, OpSchema } from "../gen/opendesigner/v1/opendesigner_pb";
 import type { Node, Op } from "../gen/opendesigner/v1/opendesigner_pb";
 import { useScene } from "../store/store";
-import { toPbComment, toPbClip, toPbComponentProperty, toPbComponentSet, toPbCollection, toPbVariable, toPbFont, toPbTextStyleDef, toPbFlow, toPbInstanceOverride, toPbSubPaths, toPbTextStyle, toPbTransition } from "../store/types";
-import type { CommentLite, ClipLite, CollectionLite, ComponentPropertyLite, ComponentSetLite, FontLite, TextStyleDefLite, VariableLite, FlowLite, InstanceOverrideLite, SubPathLite, TextStyleLite, TransitionLite } from "../store/types";
+import { toPbAnnotation, toPbReady, toPbComment, toPbClip, toPbComponentProperty, toPbComponentSet, toPbCollection, toPbVariable, toPbFont, toPbTextStyleDef, toPbFlow, toPbInstanceOverride, toPbSubPaths, toPbTextStyle, toPbTransition } from "../store/types";
+import type { AnnotationLite, ReadyLite, CommentLite, ClipLite, CollectionLite, ComponentPropertyLite, ComponentSetLite, FontLite, TextStyleDefLite, VariableLite, FlowLite, InstanceOverrideLite, SubPathLite, TextStyleLite, TransitionLite } from "../store/types";
 import type { MaskPath } from "../store/maskPaths";
 
 // Centralized construction of Ops: every tool goes through here, so opId and docId
@@ -262,6 +262,20 @@ export function makeSetCommentOp(c: CommentLite): Op {
 }
 export function makeDeleteCommentOp(id: string): Op {
   return create(OpSchema, { opId: uuid(), docId: docId(), kind: { case: "deleteComment", value: { id } } });
+}
+// --- dev mode ---------------------------------------------------------------
+export function makeSetAnnotationOp(a: AnnotationLite): Op {
+  return create(OpSchema, { opId: uuid(), docId: docId(), kind: { case: "setAnnotation", value: { annotation: toPbAnnotation(a) } } });
+}
+export function makeDeleteAnnotationOp(id: string): Op {
+  return create(OpSchema, { opId: uuid(), docId: docId(), kind: { case: "deleteAnnotation", value: { id } } });
+}
+/** Marks a frame ready for dev, or marks it again (a new baseline). The server takes the snapshot. */
+export function makeSetReadyForDevOp(r: ReadyLite): Op {
+  return create(OpSchema, { opId: uuid(), docId: docId(), kind: { case: "setReadyForDev", value: { ready: toPbReady(r) } } });
+}
+export function makeClearReadyForDevOp(nodeId: string): Op {
+  return create(OpSchema, { opId: uuid(), docId: docId(), kind: { case: "clearReadyForDev", value: { nodeId } } });
 }
 export function makeSetFontOp(f: FontLite): Op {
   return create(OpSchema, { opId: uuid(), docId: docId(), kind: { case: "setFont", value: { font: toPbFont(f) } } });

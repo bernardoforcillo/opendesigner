@@ -8,6 +8,7 @@ import { SHIPPED_EVENT } from "../../home/docPrefs";
 import { Badge, Button, EmptyState, cls } from "../ds";
 import { DevIcon } from "../ds/dev-parts";
 import { CopyButton } from "./CopyButton";
+import { DevStatusSection } from "./DevStatusSection";
 import { useReadiness } from "./useReadiness";
 
 // "SHIP" (right column of Develop): the last mile. A button that downloads
@@ -126,6 +127,8 @@ export function ShipPanel() {
             </button>
           ))}
         </section>
+
+        <div className="border-t border-line"><DevStatusSection /></div>
 
         {measured && <Measurements m={measured} />}
 

@@ -1,0 +1,410 @@
+{
+ "_comment": [
+  "Dev mode: annotations (upsert, delete) and ready-for-dev frames (mark, clear). The invalid ones -- unknown category, empty or long text, unknown node, a mark on a non-frame or with a long note, clearing a frame that was never marked -- are rejected. The server fills the snapshot of a ready frame (the frame and its descendants as they were when marked) and an edit afterwards does not touch it; the client keeps only the mark. Run from BOTH sides."
+ ],
+ "docId": "doc1",
+ "expected": {
+  "annotations": {
+   "a1": {
+    "author": "Ana",
+    "category": "interaction",
+    "createdAt": "1700000000",
+    "id": "a1",
+    "nodeId": "R",
+    "text": "Opens the cart as a sheet"
+   },
+   "a2": {
+    "category": "accessibility",
+    "createdAt": "1700000100",
+    "id": "a2",
+    "nodeId": "F",
+    "text": "Landmark: main"
+   }
+  },
+  "id": "doc1",
+  "name": "Untitled",
+  "nodes": {
+   "F": {
+    "frame": {},
+    "height": 200,
+    "id": "F",
+    "name": "Checkout",
+    "opacity": 1,
+    "orderKey": "a1",
+    "parentId": "page1",
+    "visible": true,
+    "width": 300
+   },
+   "G": {
+    "frame": {},
+    "height": 80,
+    "id": "G",
+    "name": "Cart",
+    "opacity": 1,
+    "orderKey": "a3",
+    "parentId": "page1",
+    "visible": true,
+    "width": 100,
+    "x": 800
+   },
+   "R": {
+    "height": 80,
+    "id": "R",
+    "name": "Buy",
+    "opacity": 1,
+    "orderKey": "a1",
+    "parentId": "F",
+    "rect": {},
+    "visible": true,
+    "width": 160,
+    "x": 10,
+    "y": 20
+   },
+   "X": {
+    "height": 80,
+    "id": "X",
+    "name": "Loose",
+    "opacity": 1,
+    "orderKey": "a2",
+    "parentId": "page1",
+    "rect": {},
+    "visible": true,
+    "width": 100,
+    "x": 400
+   }
+  },
+  "pages": [
+   {
+    "id": "page1",
+    "name": "Page 1"
+   }
+  ],
+  "readyForDev": {
+   "F": {
+    "markedAt": "1700000200",
+    "markedBy": "Ana",
+    "nodeId": "F",
+    "note": "Start with the button",
+    "snapshot": [
+     {
+      "frame": {},
+      "height": 200,
+      "id": "F",
+      "name": "Checkout",
+      "opacity": 1,
+      "orderKey": "a1",
+      "parentId": "page1",
+      "visible": true,
+      "width": 300
+     },
+     {
+      "height": 80,
+      "id": "R",
+      "name": "Buy",
+      "opacity": 1,
+      "orderKey": "a1",
+      "parentId": "F",
+      "rect": {},
+      "visible": true,
+      "width": 100,
+      "x": 10,
+      "y": 20
+     }
+    ]
+   }
+  },
+  "schemaVersion": 1
+ },
+ "ops": [
+  {
+   "createNode": {
+    "node": {
+     "frame": {},
+     "height": 200,
+     "id": "F",
+     "name": "Checkout",
+     "opacity": 1,
+     "orderKey": "a1",
+     "parentId": "page1",
+     "visible": true,
+     "width": 300,
+     "x": 0,
+     "y": 0
+    }
+   },
+   "docId": "doc1",
+   "opId": "o0"
+  },
+  {
+   "createNode": {
+    "node": {
+     "height": 80,
+     "id": "R",
+     "name": "Buy",
+     "opacity": 1,
+     "orderKey": "a1",
+     "parentId": "F",
+     "rect": {},
+     "visible": true,
+     "width": 100,
+     "x": 10,
+     "y": 20
+    }
+   },
+   "docId": "doc1",
+   "opId": "o1"
+  },
+  {
+   "createNode": {
+    "node": {
+     "height": 80,
+     "id": "X",
+     "name": "Loose",
+     "opacity": 1,
+     "orderKey": "a2",
+     "parentId": "page1",
+     "rect": {},
+     "visible": true,
+     "width": 100,
+     "x": 400,
+     "y": 0
+    }
+   },
+   "docId": "doc1",
+   "opId": "o2"
+  },
+  {
+   "createNode": {
+    "node": {
+     "frame": {},
+     "height": 80,
+     "id": "G",
+     "name": "Cart",
+     "opacity": 1,
+     "orderKey": "a3",
+     "parentId": "page1",
+     "visible": true,
+     "width": 100,
+     "x": 800,
+     "y": 0
+    }
+   },
+   "docId": "doc1",
+   "opId": "o3"
+  },
+  {
+   "docId": "doc1",
+   "opId": "o4",
+   "setAnnotation": {
+    "annotation": {
+     "author": "Ana",
+     "category": "interaction",
+     "createdAt": "1700000000",
+     "id": "a1",
+     "nodeId": "R",
+     "text": "Opens the cart"
+    }
+   }
+  },
+  {
+   "docId": "doc1",
+   "opId": "o5",
+   "setAnnotation": {
+    "annotation": {
+     "category": "accessibility",
+     "createdAt": "1700000100",
+     "id": "a2",
+     "nodeId": "F",
+     "text": "Landmark: main"
+    }
+   }
+  },
+  {
+   "docId": "doc1",
+   "opId": "o6",
+   "setAnnotation": {
+    "annotation": {
+     "author": "Ana",
+     "category": "interaction",
+     "createdAt": "1700000000",
+     "id": "a1",
+     "nodeId": "R",
+     "text": "Opens the cart as a sheet"
+    }
+   }
+  },
+  {
+   "docId": "doc1",
+   "opId": "o7",
+   "setAnnotation": {
+    "annotation": {
+     "category": "loud",
+     "id": "b",
+     "nodeId": "R",
+     "text": "x"
+    }
+   }
+  },
+  {
+   "docId": "doc1",
+   "opId": "o8",
+   "setAnnotation": {
+    "annotation": {
+     "category": "note",
+     "id": "b",
+     "nodeId": "R",
+     "text": ""
+    }
+   }
+  },
+  {
+   "docId": "doc1",
+   "opId": "o9",
+   "setAnnotation": {
+    "annotation": {
+     "category": "note",
+     "id": "b",
+     "nodeId": "R",
+     "text": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+    }
+   }
+  },
+  {
+   "docId": "doc1",
+   "opId": "o10",
+   "setAnnotation": {
+    "annotation": {
+     "category": "note",
+     "id": "b",
+     "nodeId": "ghost",
+     "text": "x"
+    }
+   }
+  },
+  {
+   "docId": "doc1",
+   "opId": "o11",
+   "setAnnotation": {
+    "annotation": {
+     "category": "note",
+     "id": "",
+     "nodeId": "R",
+     "text": "x"
+    }
+   }
+  },
+  {
+   "docId": "doc1",
+   "opId": "o12",
+   "setAnnotation": {
+    "annotation": {
+     "category": "content",
+     "id": "a3",
+     "nodeId": "X",
+     "text": "Placeholder copy"
+    }
+   }
+  },
+  {
+   "deleteAnnotation": {
+    "id": "a3"
+   },
+   "docId": "doc1",
+   "opId": "o13"
+  },
+  {
+   "deleteAnnotation": {
+    "id": "ghost"
+   },
+   "docId": "doc1",
+   "opId": "o14"
+  },
+  {
+   "docId": "doc1",
+   "opId": "o15",
+   "setReadyForDev": {
+    "ready": {
+     "markedAt": "1700000200",
+     "markedBy": "Ana",
+     "nodeId": "F",
+     "note": "Start with the button"
+    }
+   }
+  },
+  {
+   "docId": "doc1",
+   "opId": "o16",
+   "setReadyForDev": {
+    "ready": {
+     "markedAt": "1700000300",
+     "nodeId": "G"
+    }
+   }
+  },
+  {
+   "docId": "doc1",
+   "opId": "o17",
+   "setReadyForDev": {
+    "ready": {
+     "nodeId": "X"
+    }
+   }
+  },
+  {
+   "docId": "doc1",
+   "opId": "o18",
+   "setReadyForDev": {
+    "ready": {
+     "nodeId": "ghost"
+    }
+   }
+  },
+  {
+   "docId": "doc1",
+   "opId": "o19",
+   "setReadyForDev": {
+    "ready": {
+     "nodeId": "F",
+     "note": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+    }
+   }
+  },
+  {
+   "clearReadyForDev": {
+    "nodeId": "X"
+   },
+   "docId": "doc1",
+   "opId": "o20"
+  },
+  {
+   "clearReadyForDev": {
+    "nodeId": "G"
+   },
+   "docId": "doc1",
+   "opId": "o21"
+  },
+  {
+   "docId": "doc1",
+   "opId": "o22",
+   "setProps": {
+    "id": "R",
+    "mask": "width",
+    "patch": {
+     "width": 160
+    }
+   }
+  }
+ ],
+ "rejected": [
+  7,
+  8,
+  9,
+  10,
+  11,
+  14,
+  17,
+  18,
+  19,
+  20
+ ]
+}
