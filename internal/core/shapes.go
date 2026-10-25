@@ -136,6 +136,9 @@ func validateStrokeExtras(strokes []*opendesignerv1.Stroke) error {
 		if err := validateWidthProfile(s.GetWidthProfile()); err != nil {
 			return err
 		}
+		if err := validateBrush(s.GetBrush()); err != nil {
+			return err
+		}
 	}
 	return nil
 }
@@ -163,6 +166,45 @@ func validateWidthProfile(pts []*opendesignerv1.WidthPoint) error {
 			if !finiteNum(w) || w < 0 || w > MaxWidthScale {
 				return fmt.Errorf("%w: width point sides must be within 0..%v, got %v", ErrStrokeExtra, MaxWidthScale, w)
 			}
+		}
+	}
+	return nil
+}
+
+// Limits of a brush (Stroke.brush); mirrored by web/src/store/shapes.ts::isValidBrush.
+const (
+	MinBrushSpacing = 0.05
+	MaxBrushSpacing = 64.0
+	MaxBrushScatter = 8.0
+	MaxBrushAngle   = 180.0
+)
+
+// validateBrush: closed enums, and for a brush that is on (kind other than NONE) finite parameters within
+// their ranges. A NONE brush is the plain stroke, so its parameters are not looked at.
+func validateBrush(b *opendesignerv1.Brush) error {
+	if b == nil {
+		return nil
+	}
+	if b.GetKind() < opendesignerv1.BrushKind_BRUSH_KIND_NONE || b.GetKind() > opendesignerv1.BrushKind_BRUSH_KIND_SCATTER {
+		return fmt.Errorf("%w: unknown brush kind %v", ErrStrokeExtra, b.GetKind())
+	}
+	if b.GetKind() == opendesignerv1.BrushKind_BRUSH_KIND_NONE {
+		return nil
+	}
+	if b.GetTip() < opendesignerv1.BrushTip_BRUSH_TIP_DOT || b.GetTip() > opendesignerv1.BrushTip_BRUSH_TIP_LEAF {
+		return fmt.Errorf("%w: unknown brush tip %v", ErrStrokeExtra, b.GetTip())
+	}
+	for _, c := range []struct {
+		name        string
+		v, min, max float64
+	}{
+		{"spacing", b.GetSpacing(), MinBrushSpacing, MaxBrushSpacing},
+		{"scatter", b.GetScatter(), 0, MaxBrushScatter},
+		{"size jitter", b.GetSizeJitter(), 0, 1},
+		{"angle jitter", b.GetAngleJitter(), 0, MaxBrushAngle},
+	} {
+		if !finiteNum(c.v) || c.v < c.min || c.v > c.max {
+			return fmt.Errorf("%w: brush %s must be within %v..%v, got %v", ErrStrokeExtra, c.name, c.min, c.max, c.v)
 		}
 	}
 	return nil

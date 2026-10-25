@@ -16,6 +16,7 @@ import { outlineCommands, type PathCmd } from "../shapeGeometry";
 import { hasArrowheads, strokeHeads } from "../arrowheads";
 import { sideBandRects } from "../strokeSides";
 import { variableStrokeCommands } from "../../vector/widthProfile";
+import { brushStrokeCommands } from "../../vector/brush";
 import { GRADIENT_BITMAP_SIZE, angularStart, gradientBitmap } from "../gradientBitmap";
 import { VECTOR_STROKE_PX, inkIsBox, nodeCenter } from "../shapes";
 import { decorationBars, fontSizeOf, hscaleOf, piecesOfLine, piecesOfSegment, placeTextLines, trackedOffsets, type MeasureFor } from "../text";
@@ -497,8 +498,9 @@ export class CanvasKitRenderer {
   }
 
   // Path commands (renderer/shapeGeometry.ts) as a Skia path, freed with the frame. Even-odd, like the
-  // 2D canvas's rings and holes (an arc's ring is two opposite circles).
-  private pathOf(cmds: readonly PathCmd[]): Path {
+  // 2D canvas's rings and holes (an arc's ring is two opposite circles); `winding` for brush stamps, which
+  // are all wound the same way and must merge where they overlap.
+  private pathOf(cmds: readonly PathCmd[], winding = false): Path {
     const CK = this.CK;
     const b = new CK.PathBuilder();
     for (const c of cmds) {
@@ -507,7 +509,7 @@ export class CanvasKitRenderer {
       else if (c[0] === "C") b.cubicTo(c[1], c[2], c[3], c[4], c[5], c[6]);
       else b.close();
     }
-    b.setFillType(CK.FillType.EvenOdd);
+    b.setFillType(winding ? CK.FillType.Winding : CK.FillType.EvenOdd);
     const path: Path = b.detachAndDelete();
     (this.frame as Frame).garbage.push(path);
     return path;
@@ -909,6 +911,11 @@ export class CanvasKitRenderer {
       const join = vs.join === "round" ? CK.StrokeJoin.Round : vs.join === "bevel" ? CK.StrokeJoin.Bevel : CK.StrokeJoin.Miter;
       for (const s of n.strokes) {
         if (!(s.weight > 0)) continue;
+        if (s.brush) {
+          // BRUSH: tips stamped along the path (vector/brush.ts), filled NON-ZERO so overlapping stamps merge.
+          sk.drawPath(this.pathOf(brushStrokeCommands(n, s), true), this.paintFor(this.fillP, s.color, n, n.opacity));
+          continue;
+        }
         if (s.widthProfile && s.widthProfile.length > 0) {
           // VARIABLE WIDTH: the stroke's region (vector/widthProfile.ts), filled with its paint.
           const region = this.pathOf(variableStrokeCommands(n, s));

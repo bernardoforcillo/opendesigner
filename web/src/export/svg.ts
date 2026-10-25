@@ -5,6 +5,7 @@ import type { PathCmd } from "../renderer/shapeGeometry";
 import { strokeHeads } from "../renderer/arrowheads";
 import { sideBandRects } from "../renderer/strokeSides";
 import { variableStrokeCommands } from "../vector/widthProfile";
+import { brushStrokeCommands } from "../vector/brush";
 import type { Bounds } from "../canvas/geometry";
 import { firstBlur, firstShadow, resolvedFill } from "../renderer/canvasRenderer";
 import { fontFamilyOf, fontFeaturesOf, fontSizeOf, fontWeightOf, hscaleOf, piecesOfSegment, placeTextLines } from "../renderer/text";
@@ -275,6 +276,7 @@ function gradientRef(n: NodeLite, f: FillLite, defs: string[]): string | null {
 function strokeAttrs(n: NodeLite, defs: string[]): (Attr | null)[] {
   const s = n.strokes.find((st) => st.weight > 0);
   if (!s || s.sides) return []; // per-side weights go out as a band (sideBands)
+  if (s.brush) return []; // a brush goes out as filled stamps (brushStrokeElement)
   if (s.widthProfile && s.widthProfile.length > 0) return []; // variable width goes out as a filled outline (variableStrokeElement)
   const ref = gradientRef(n, s.color, defs);
   const vs = n.kind === "vector" || n.meta ? vectorStyleOf(n) : null;
@@ -336,12 +338,33 @@ function sideBands(n: NodeLite, defs: string[]): string {
 function variableStrokeElement(n: NodeLite, defs: string[]): string {
   let out = "";
   for (const s of n.strokes) {
-    if (!(s.weight > 0) || !s.widthProfile || s.widthProfile.length === 0) continue;
+    if (!(s.weight > 0) || s.brush || !s.widthProfile || s.widthProfile.length === 0) continue;
     const cmds = variableStrokeCommands(n, s);
     if (cmds.length === 0) continue;
     const ref = gradientRef(n, s.color, defs);
     out += `<path${attrs([
       attr("d", commandsToD(cmds.map((c): PathCmd => (c[0] === "M" ? ["M", c[1] + n.x, c[2] + n.y] : c[0] === "L" ? ["L", c[1] + n.x, c[2] + n.y] : c)), DECIMALS)), attr("fill-rule", "evenodd"),
+      attr("fill", ref ?? `rgb(${channel(s.color.r)},${channel(s.color.g)},${channel(s.color.b)})`),
+      s.color.a === 1 || ref !== null ? null : attr("fill-opacity", s.color.a),
+      n.opacity === 1 ? null : attr("opacity", n.opacity),
+    ])}/>`;
+  }
+  return out;
+}
+
+// A BRUSHED stroke goes out as one filled <path> of its stamps (vector/brush.ts, the same ones the canvas
+// fills), NON-ZERO so overlapping stamps merge, in the stroke's paint. The jitter is seeded, so the marks are
+// the ones on the canvas.
+function brushStrokeElement(n: NodeLite, defs: string[]): string {
+  let out = "";
+  for (const s of n.strokes) {
+    if (!(s.weight > 0) || !s.brush) continue;
+    const cmds = brushStrokeCommands(n, s);
+    if (cmds.length === 0) continue;
+    const ref = gradientRef(n, s.color, defs);
+    const moved = cmds.map((c): PathCmd => (c[0] === "Z" ? c : c[0] === "C" ? ["C", c[1] + n.x, c[2] + n.y, c[3] + n.x, c[4] + n.y, c[5] + n.x, c[6] + n.y] : [c[0], c[1] + n.x, c[2] + n.y]));
+    out += `<path${attrs([
+      attr("d", commandsToD(moved, DECIMALS)), attr("fill-rule", "nonzero"),
       attr("fill", ref ?? `rgb(${channel(s.color.r)},${channel(s.color.g)},${channel(s.color.b)})`),
       s.color.a === 1 || ref !== null ? null : attr("fill-opacity", s.color.a),
       n.opacity === 1 ? null : attr("opacity", n.opacity),
@@ -576,7 +599,7 @@ function elementBody(n: NodeLite, measure: MeasureText, href: ResolveImageHref, 
   const computed = computedElement(n, defs);
   if (computed !== null) return computed;
   if (n.kind === "ellipse") return ellipseElement(n, defs);
-  if (n.kind === "vector") return vectorElement(n, defs) + variableStrokeElement(n, defs) + arrowheadElements(n, defs);
+  if (n.kind === "vector") return vectorElement(n, defs) + variableStrokeElement(n, defs) + brushStrokeElement(n, defs) + arrowheadElements(n, defs);
   if (n.kind === "image") {
     const uri = href(n.image?.assetHash ?? "");
     return uri === null ? imagePlaceholderElement(n) : imageElement(n, uri, defs);

@@ -45,6 +45,20 @@ A vector's stroke can change width along its path. The stroke carries a **width 
 - **MCP**: `set_stroke` takes `widthPreset` (`uniform | taper | taper-start | lens | bulge | pinch | brush`) or explicit `widthProfile` points (which win over the preset).
 - Limits: only vectors vary in width (other shapes ignore the profile); code export draws the uniform stroke; arrowheads keep the nominal weight.
 
+## Brushes
+
+A vector's stroke can be drawn as a row of **tips stamped along the path** instead of a line. The stroke carries a **brush** (`Stroke.brush`, field 40): a `kind`, a `tip` and a few parameters. Distances are **multiples of the stroke weight**, so changing the weight scales the whole brush. Studied from FigCraft's stretch and scatter brushes; implemented from the behaviour, not the code.
+
+- **Kinds**: `stretch` lays tiles of one tip end to end, each `spacing` weights long and one weight wide (the tiles are rescaled a little so a whole number of them fills the path exactly); `scatter` stamps tips of one weight every `spacing` weights, starting on the first anchor (a closed path spreads them evenly round the loop).
+- **Tips**: dot, dash (a rounded bar twice as long as wide), square, diamond, leaf. Defined as unit-box path data in `vector/brush.ts`.
+- **Parameters**: `spacing` 0.05..64; `scatter` 0..8 (how far a stamp may stray across the path, a total spread in weights); `size_jitter` 0..1 (a stamp is scaled between 1 - j/2 and 1 + j/2; on a stretch tile it scales the width only); `angle_jitter` 0..180 degrees either way; `seed`. A `NONE` kind is the plain stroke and its parameters are not read. Limits in `core.validateBrush`, mirrored by `isValidBrush`; the golden fixture `testdata/golden/stroke_brush.json` runs both.
+- **Presets** (data, `BRUSH_PRESETS` and `internal/mcp/brush.go`): `chalk` (fine dots, wide spread, size jitter), `marker` (dash tiles), `dots` (evenly spaced dots), `leaves` (leaf tips, spread and turned).
+- **Determinism**: stamps are placed by arc length on the flattened path (the same flattening as the other vector tools) and jittered by a seeded generator (mulberry32, seed mixed with the subpath index). Each stamp takes four draws in a fixed order, so changing one parameter never reshuffles the others. The same document draws the same marks on the canvas, the GPU renderer and in the SVG export.
+- **Drawing**: the stamps are plain filled geometry in the node's local space. Canvas 2D and the GPU renderer fill them with the stroke's paint (gradients included); the SVG export writes one filled `<path>`. Every tip is wound the same way and filled **non-zero**, so overlapping stamps merge.
+- **Panel**: a vector with a stroke shows **Brush** under Variable width: a preset (or None), the kind, the tip, spacing / length, scatter, size jitter, angle jitter and seed. Each change is one undo step.
+- **MCP**: `set_stroke` takes `brush`: `{preset: chalk|marker|dots|leaves|none}` or `{kind: stretch|scatter, tip, spacing, scatter, sizeJitter, angleJitter, seed}`; explicit fields override the preset's.
+- Limits: vectors only (other shapes ignore the brush); a brush wins over a width profile and over dashes, and ignores cap and join; at most 5000 stamps per subpath (a closer spacing is widened to fit); a stretch tile is a straight tip rotated to the heading, not bent along a curve, so very tight curves show gaps or overlaps; Outline stroke and code export draw the plain stroke; arrowheads keep the nominal weight; there is no pen-pressure input and no user-defined tips yet.
+
 ## Shape builder
 
 **Shape builder** (`M`, in the dock): select two or more overlapping shapes (rectangles, ellipses, polygons, vectors, groups of them; all in the same parent), then **click** a region to take it as a shape of its own or **drag across** several regions to merge them into one shape; hold **Alt** to remove the regions instead. A tinted preview follows the pointer (red when Alt will remove). With fewer than two shapes selected a click on a shape adds it to the selection.

@@ -1,9 +1,9 @@
 import { NodeMap } from "./nodeMap";
 import { create } from "@bufbuild/protobuf";
-import { AnnotationSchema, ReadyForDevSchema, BlendMode, ImageScaleMode, TextStyleKind, ArrowHead, PaintStyleDefSchema, EffectStyleDefSchema, LayoutGridKind, CommentSchema, ClipSchema, Constraint, LayoutPositioning, LayoutSizing, ComponentPropertySchema, ComponentPropertyType, ComponentSetSchema, FlowSchema, FontFaceSchema, TextStyleDefSchema, VariableCollectionSchema, VariableSchema, VariableType, TransitionSchema, LayoutAlign, LayoutDirection, NodeSchema, StrokeAlign, TextAlign, TextCase, TextScript, ListKind, TextVAlign, NoiseMode, LayoutMode, GridTrackKind } from "../gen/opendesigner/v1/opendesigner_pb";
+import { AnnotationSchema, ReadyForDevSchema, BlendMode, ImageScaleMode, TextStyleKind, ArrowHead, PaintStyleDefSchema, EffectStyleDefSchema, LayoutGridKind, CommentSchema, ClipSchema, Constraint, LayoutPositioning, LayoutSizing, ComponentPropertySchema, ComponentPropertyType, ComponentSetSchema, FlowSchema, FontFaceSchema, TextStyleDefSchema, VariableCollectionSchema, VariableSchema, VariableType, TransitionSchema, LayoutAlign, LayoutDirection, NodeSchema, StrokeAlign, TextAlign, TextCase, TextScript, ListKind, TextVAlign, NoiseMode, LayoutMode, GridTrackKind, BrushKind, BrushTip } from "../gen/opendesigner/v1/opendesigner_pb";
 import type {
   Annotation as PbAnnotation, ReadyForDev as PbReady,
-  Document, Component as PbComponent, ComponentProperty as PbComponentProperty, ComponentSet as PbComponentSet, FontFace as PbFont, TextStyleDef as PbTextStyleDef, PaintStyleDef as PbPaintStyleDef, EffectStyleDef as PbEffectStyleDef, VariableCollection as PbCollection, Variable as PbVariable, Clip as PbClip, Flow as PbFlow, Transition as PbTransition, Node as PbNode, Comment as PbComment, LayoutGrid as PbLayoutGrid, Paint as PbPaint, Stroke as PbStroke, Effect as PbEffect, AutoLayout as PbAutoLayout,
+  Document, Component as PbComponent, ComponentProperty as PbComponentProperty, ComponentSet as PbComponentSet, FontFace as PbFont, TextStyleDef as PbTextStyleDef, PaintStyleDef as PbPaintStyleDef, EffectStyleDef as PbEffectStyleDef, VariableCollection as PbCollection, Variable as PbVariable, Clip as PbClip, Flow as PbFlow, Transition as PbTransition, Node as PbNode, Comment as PbComment, LayoutGrid as PbLayoutGrid, Paint as PbPaint, Stroke as PbStroke, Brush as PbBrush, Effect as PbEffect, AutoLayout as PbAutoLayout,
   TextNode as PbTextNode, TextStyle as PbTextStyle,
   SubPath as PbSubPath, VectorNode as PbVectorNode,
   InstanceNode as PbInstanceNode, InstanceOverride as PbInstanceOverride,
@@ -72,7 +72,11 @@ export type ArrowHeadLite = "arrow" | "triangle" | "circle" | "square" | "diamon
 export interface StrokeSidesLite { top: number; right: number; bottom: number; left: number }
 // A variable-width stroke's profile (see WidthPoint in the proto and vector/widthProfile.ts); absent = uniform.
 export interface WidthPointLite { position: number; left: number; right: number }
-export interface StrokeLite { color: FillLite; weight: number; align: StrokeAlignLite; startCap?: ArrowHeadLite; endCap?: ArrowHeadLite; sides?: StrokeSidesLite; widthProfile?: WidthPointLite[]; }
+// A brush (see Brush in the proto and vector/brush.ts); absent = the plain stroke. NONE collapses to absent.
+export type BrushKindLite = "stretch" | "scatter";
+export type BrushTipLite = "dot" | "dash" | "square" | "diamond" | "leaf";
+export interface BrushLite { kind: BrushKindLite; tip: BrushTipLite; spacing: number; scatter: number; sizeJitter: number; angleJitter: number; seed: number }
+export interface StrokeLite { color: FillLite; weight: number; align: StrokeAlignLite; startCap?: ArrowHeadLite; endCap?: ArrowHeadLite; sides?: StrokeSidesLite; widthProfile?: WidthPointLite[]; brush?: BrushLite; }
 
 // Auto layout of a frame (see AutoLayout in the proto and store/layout.ts). As
 // for StrokeAlignLite, enums are strings: UNSPECIFIED collapses to
@@ -774,6 +778,7 @@ export function toPbStrokes(strokes: readonly StrokeLite[]) {
     ...(s.endCap ? { endCap: ARROW_TO_PB[s.endCap] } : {}),
     ...(s.sides ? { sides: { ...s.sides } } : {}),
     ...(s.widthProfile && s.widthProfile.length > 0 ? { widthProfile: s.widthProfile.map((p) => ({ ...p })) } : {}),
+    ...(s.brush ? { brush: toPbBrush(s.brush) } : {}),
   }));
 }
 
@@ -986,6 +991,29 @@ export function toStrokeLite(s: PbStroke): StrokeLite {
     ...(ARROW_TO_LITE[s.endCap] ? { endCap: ARROW_TO_LITE[s.endCap] } : {}),
     ...(s.sides ? { sides: { top: s.sides.top, right: s.sides.right, bottom: s.sides.bottom, left: s.sides.left } } : {}),
     ...(s.widthProfile.length > 0 ? { widthProfile: s.widthProfile.map((p) => ({ position: p.position, left: p.left, right: p.right })) } : {}),
+    ...(s.brush && s.brush.kind !== BrushKind.NONE ? { brush: toBrushLite(s.brush) } : {}),
+  };
+}
+
+const BRUSH_KIND_TO_PB: Record<BrushKindLite, BrushKind> = { stretch: BrushKind.STRETCH, scatter: BrushKind.SCATTER };
+const BRUSH_TIP_TO_PB: Record<BrushTipLite, BrushTip> = {
+  dot: BrushTip.DOT, dash: BrushTip.DASH, square: BrushTip.SQUARE, diamond: BrushTip.DIAMOND, leaf: BrushTip.LEAF,
+};
+const BRUSH_TIP_TO_LITE: Record<number, BrushTipLite> = {
+  [BrushTip.DOT]: "dot", [BrushTip.DASH]: "dash", [BrushTip.SQUARE]: "square", [BrushTip.DIAMOND]: "diamond", [BrushTip.LEAF]: "leaf",
+};
+
+function toPbBrush(b: BrushLite) {
+  return {
+    kind: BRUSH_KIND_TO_PB[b.kind], tip: BRUSH_TIP_TO_PB[b.tip], spacing: b.spacing, scatter: b.scatter,
+    sizeJitter: b.sizeJitter, angleJitter: b.angleJitter, seed: b.seed,
+  };
+}
+
+function toBrushLite(b: PbBrush): BrushLite {
+  return {
+    kind: b.kind === BrushKind.SCATTER ? "scatter" : "stretch", tip: BRUSH_TIP_TO_LITE[b.tip] ?? "dot", spacing: b.spacing,
+    scatter: b.scatter, sizeJitter: b.sizeJitter, angleJitter: b.angleJitter, seed: b.seed,
   };
 }
 

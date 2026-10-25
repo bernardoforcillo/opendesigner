@@ -250,6 +250,8 @@ type StrokeSpec struct {
 	// WidthPreset / WidthProfile: a variable-width stroke on a vector (widthprofile.go).
 	WidthPreset  string           `json:"widthPreset,omitempty" jsonschema:"variable width preset: uniform | taper | taper-start | lens | bulge | pinch | brush"`
 	WidthProfile []WidthPointSpec `json:"widthProfile,omitempty" jsonschema:"explicit variable-width points (at most 64, positions 0..1 not decreasing); wins over widthPreset"`
+	// Brush: the stroke as repeated shapes along a vector's path (brush.go); wins over the width profile.
+	Brush *BrushSpec `json:"brush,omitempty" jsonschema:"brush for a vector stroke: {preset: chalk|marker|dots|leaves} or {kind: stretch|scatter, tip, spacing, scatter, sizeJitter, angleJitter, seed}"`
 }
 
 // SetStrokeInput replaces a node's whole stroke list.
@@ -310,6 +312,11 @@ func toStrokes(specs []StrokeSpec) ([]*opendesignerv1.Stroke, error) {
 			return nil, fmt.Errorf("strokes[%d]: %w", i, err)
 		}
 		st.WidthProfile = profile
+		brush, err := brushOf(sp.Brush)
+		if err != nil {
+			return nil, fmt.Errorf("strokes[%d]: %w", i, err)
+		}
+		st.Brush = brush
 		out = append(out, st)
 	}
 	if err := core.ValidateStrokes(out); err != nil {
@@ -640,7 +647,7 @@ func (s *Session) applyStyleID(ctx context.Context, tool string, nodeIDs []strin
 func registerShapeTools(srv *mcp.Server, s *Session) {
 	addTool(srv, "create_polygon", "Create a regular polygon node (3..60 sides; default 6). parentId defaults to the first page. Returns the new node id."+shapeConventions, s.CreatePolygon)
 	addTool(srv, "create_star", "Create a star node (3..60 points, innerRatio 0.05..0.95). parentId defaults to the first page. Returns the new node id."+shapeConventions, s.CreateStar)
-	addTool(srv, "set_stroke", "Replace a node's strokes. Each stroke: color (solid or gradient), weight, align (center|inside|outside), startCap / endCap arrowheads (none|arrow|triangle|circle|square|diamond; open vector paths only, the tip sits on the end point), and sides for per-side weights {top,right,bottom,left} on rectangles and frames, and widthPreset (taper|taper-start|lens|bulge|pinch|brush) or widthProfile [{position,left,right}] for a variable-width stroke on a vector (left / right are half-widths as multiples of weight/2).", s.SetStroke)
+	addTool(srv, "set_stroke", "Replace a node's strokes. Each stroke: color (solid or gradient), weight, align (center|inside|outside), startCap / endCap arrowheads (none|arrow|triangle|circle|square|diamond; open vector paths only, the tip sits on the end point), and sides for per-side weights {top,right,bottom,left} on rectangles and frames, and widthPreset (taper|taper-start|lens|bulge|pinch|brush) or widthProfile [{position,left,right}] for a variable-width stroke on a vector (left / right are half-widths as multiples of weight/2), and brush ({preset: chalk|marker|dots|leaves} or {kind: stretch|scatter, tip, spacing, scatter, sizeJitter, angleJitter, seed}; vectors only) to draw the stroke as repeated shapes along the path.", s.SetStroke)
 	addTool(srv, "list_paint_styles", "List the document's shared paint styles."+styleConventions, s.ListPaintStyles)
 	addTool(srv, "set_paint_style", "Create a paint style (omit id) or REPLACE one entirely (read it with list_paint_styles, edit, send it all back)."+styleConventions, s.SetPaintStyle)
 	addTool(srv, "delete_paint_style", "Delete a paint style; the nodes that used it keep their own paints.", s.DeletePaintStyle)

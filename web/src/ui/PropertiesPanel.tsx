@@ -40,6 +40,7 @@ import { StrokeStyleControls } from "./StrokeStyleControls";
 import { EffectStyleControls, PaintStyleControls, usesPaintStyleFor } from "./StyleControls";
 import { ArrowheadControls, ShapeControls, StrokeSidesControls } from "./ShapeControls";
 import { WidthControls } from "./WidthControls";
+import { BrushControls } from "./BrushControls";
 import { AutoLayoutControls, WrapInAutoLayoutButton } from "./AutoLayoutControls";
 import type { RgbLite } from "./fields/ColorField";
 import { toPbFills, toPbStrokes } from "../store/types";
@@ -1047,6 +1048,7 @@ export function PropertiesPanel() {
           <ArrowheadControls run={runGesture} />
           <StrokeSidesControls run={runGesture} />
           <WidthControls run={runGesture} />
+          <BrushControls run={runGesture} />
         </div>
       </Section>
 

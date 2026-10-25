@@ -1,5 +1,5 @@
-import { ArrowHead } from "../gen/opendesigner/v1/opendesigner_pb";
-import type { EllipseNode, Node as PbNode, RectNode, Stroke } from "../gen/opendesigner/v1/opendesigner_pb";
+import { ArrowHead, BrushKind, BrushTip } from "../gen/opendesigner/v1/opendesigner_pb";
+import type { Brush, EllipseNode, Node as PbNode, RectNode, Stroke } from "../gen/opendesigner/v1/opendesigner_pb";
 import type { NodeLite } from "./types";
 
 // The TS half of internal/core/shapes.go: the ranges of the parametric shapes (polygon, star, ellipse arc /
@@ -86,13 +86,30 @@ export function isValidWidthProfile(profile: readonly { position: number; left: 
   return true;
 }
 
+export const MIN_BRUSH_SPACING = 0.05;
+export const MAX_BRUSH_SPACING = 64;
+export const MAX_BRUSH_SCATTER = 8;
+export const MAX_BRUSH_ANGLE = 180;
+
+/** A brush is within the limits of core.validateBrush (absent / NONE is fine: its parameters are not read). */
+export function isValidBrush(b: Brush | undefined): boolean {
+  if (!b) return true;
+  if (b.kind < BrushKind.NONE || b.kind > BrushKind.SCATTER) return false;
+  if (b.kind === BrushKind.NONE) return true;
+  if (b.tip < BrushTip.DOT || b.tip > BrushTip.LEAF) return false;
+  const within = (v: number, lo: number, hi: number) => Number.isFinite(v) && v >= lo && v <= hi;
+  return within(b.spacing, MIN_BRUSH_SPACING, MAX_BRUSH_SPACING) && within(b.scatter, 0, MAX_BRUSH_SCATTER)
+    && within(b.sizeJitter, 0, 1) && within(b.angleJitter, 0, MAX_BRUSH_ANGLE);
+}
+
 /** Arrowhead enums are closed and side weights finite and non-negative (core.validateStrokeExtras). */
 export function areStrokeExtrasValid(strokes: readonly Stroke[]): boolean {
   return strokes.every((s) =>
     s.startCap >= ArrowHead.NONE && s.startCap <= ArrowHead.DIAMOND
     && s.endCap >= ArrowHead.NONE && s.endCap <= ArrowHead.DIAMOND
     && (!s.sides || [s.sides.top, s.sides.right, s.sides.bottom, s.sides.left].every(finiteNonNeg))
-    && isValidWidthProfile(s.widthProfile));
+    && isValidWidthProfile(s.widthProfile)
+    && isValidBrush(s.brush));
 }
 
 /** The mask paths that address a shape parameter inside the `shape` oneof. */

@@ -62,7 +62,7 @@ Legend: [x] done · [ ] to do
 - [x] Strokes: cap, join, miter limit and dashes on every shape (panel, canvas, GPU, SVG)
 - [x] Arrowheads on open vector strokes (arrow, triangle, circle, square, diamond at either end; panel, canvas, GPU, SVG, code, MCP `set_stroke`)
 - [x] Variable-width strokes on vectors (width points with a left and right width along the path, presets, a Variable width tool and panel; canvas, GPU, SVG as a filled outline, outline stroke, MCP `set_stroke`); see docs/vector.md
-- [ ] Advanced strokes: brushes
+- [x] Advanced strokes: brushes (stretch and scatter brushes with dot, dash, square, diamond and leaf tips, spacing, scatter, size and angle jitter and a seed; chalk, marker, dots and leaves presets; stamps placed by arc length with a seeded RNG; canvas, GPU, SVG as a filled path, panel, MCP `set_stroke`); see docs/vector.md. Pen pressure and user-defined tips are not done
 - [x] Shape builder tool: click or drag across the regions of overlapping shapes to merge them into one vector (Alt removes); see docs/vector.md
 - [x] Gradient mesh (a color grid blended over the box; the points do not move; code export uses the average color)
 - [x] SVG export and PDF (the SVG through the browser's print dialog, Save as PDF)

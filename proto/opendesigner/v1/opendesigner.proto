@@ -99,6 +99,37 @@ message Stroke {
   // stroke. Between points the widths are interpolated linearly; before the first and after the last
   // they stay. See WidthPoint.
   repeated WidthPoint width_profile = 30;
+  // Field 40-49 are the brushes track's.
+  // BRUSH (vectors): the stroke is drawn as a row of tips stamped along the path instead of a line. Absent
+  // (or kind NONE) = the plain stroke. A brush wins over width_profile and dashes. See Brush.
+  Brush brush = 40;
+}
+
+enum BrushKind {
+  BRUSH_KIND_NONE = 0;
+  BRUSH_KIND_STRETCH = 1;  // tiles of one tip laid end to end, each `spacing` weights long and one weight wide
+  BRUSH_KIND_SCATTER = 2;  // tips of one weight stamped every `spacing` weights, jittered
+}
+
+enum BrushTip {
+  BRUSH_TIP_DOT = 0;
+  BRUSH_TIP_DASH = 1;     // a rounded bar, twice as long as wide
+  BRUSH_TIP_SQUARE = 2;
+  BRUSH_TIP_DIAMOND = 3;
+  BRUSH_TIP_LEAF = 4;
+}
+
+// A brush: repeated shapes along the path, placed by arc length and jittered by a seeded RNG, so the same
+// document draws the same marks on every client and in the SVG export. Distances are MULTIPLES of the stroke
+// weight, so changing the weight scales the whole brush.
+message Brush {
+  BrushKind kind = 1;
+  BrushTip tip = 2;
+  double spacing = 3;      // 0.05..64: the distance between stamps (stretch: the length of one tile)
+  double scatter = 4;      // 0..8: how far a stamp may stray across the path (a total spread, in weights)
+  double size_jitter = 5;  // 0..1: random scale of a stamp, 1 = between half and one and a half
+  double angle_jitter = 6; // 0..180: random turn of a stamp in degrees, either way
+  uint32 seed = 7;         // seeds the jitter
 }
 
 // One point of a variable-width stroke. `position` runs 0..1 along each subpath's length. `left` and
