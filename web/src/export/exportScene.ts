@@ -1,25 +1,25 @@
-import { resolveScene } from "../store/variables";
-import { useScene } from "../store/store";
-import { fontString } from "../renderer/text";
-import { assetUrl } from "../rpc/assets";
-import type { ImageSource } from "../renderer/canvasRenderer";
-import type { NodeLite, PageLite, SceneState } from "../store/types";
-import { NodeMap } from "../store/nodeMap";
-import { isReachableFrom } from "../store/tree";
-import { exportRegion, type ExportRegion, type ExportScope } from "./region";
-import { buildHtml } from "./htmlExport";
-import { pageImageAlts, pageReadingText } from "./readingText";
-import { buildIdml } from "./idml";
-import { buildPptx, type PptxImage } from "./pptx";
-import { buildEpub, type EpubPage } from "./epub";
-import { buildReflowEpub, type ReflowImage } from "./epubReflow";
-import { dataUrlBytes } from "../pdf/write/pdfImages";
-import { nodesToSvg, type MeasureText, type ResolveImageHref } from "./svg";
-import { canvasToPngBlob, renderRegionToCanvas, type ExportScale } from "./png";
-import { hasErrors, preflightReport, preflightScene, type PreflightIssue } from "./preflight";
-import { buildPackage } from "./packageForPrint";
-import { buildDocumentPdf, buildRegionPdf, canvasRasterize, type PrintPdfOptions } from "./printPdf";
-import type { Rasterize } from "../pdf/write/pdfImages";
+import { resolveScene } from "@/store/variables";
+import { useScene } from "@/store/store";
+import { fontString } from "@/renderer/text";
+import { assetUrl } from "@/rpc/assets";
+import type { ImageSource } from "@/renderer/canvasRenderer";
+import type { NodeLite, PageLite, SceneState } from "@/store/types";
+import { NodeMap } from "@/store/nodeMap";
+import { isReachableFrom } from "@/store/tree";
+import { exportRegion, type ExportRegion, type ExportScope } from "@/export/region";
+import { buildHtml } from "@/export/htmlExport";
+import { pageImageAlts, pageReadingText } from "@/export/readingText";
+import { buildIdml } from "@/export/idml";
+import { buildPptx, type PptxImage } from "@/export/pptx";
+import { buildEpub, type EpubPage } from "@/export/epub";
+import { buildReflowEpub, type ReflowImage } from "@/export/epubReflow";
+import { dataUrlBytes } from "@/pdf/write/pdfImages";
+import { nodesToSvg, type MeasureText, type ResolveImageHref } from "@/export/svg";
+import { canvasToPngBlob, renderRegionToCanvas, type ExportScale } from "@/export/png";
+import { hasErrors, preflightReport, preflightScene, type PreflightIssue } from "@/export/preflight";
+import { buildPackage } from "@/export/packageForPrint";
+import { buildDocumentPdf, buildRegionPdf, canvasRasterize, type PrintPdfOptions } from "@/export/printPdf";
+import type { Rasterize } from "@/pdf/write/pdfImages";
 
 // EXPORT — the command.
 //

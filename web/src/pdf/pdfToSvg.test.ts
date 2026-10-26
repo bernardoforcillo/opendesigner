@@ -1,8 +1,8 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { describeFont, mul, pdfPageToSvg, type PdfPageInput } from "./pdfToSvg";
-import { importSvg } from "../svg/importSvg";
+import { describeFont, mul, pdfPageToSvg, type PdfPageInput } from "@/pdf/pdfToSvg";
+import { importSvg } from "@/svg/importSvg";
 
 // A tiny operator table with the pdf.js 4.x numbering.
 const OPS = {

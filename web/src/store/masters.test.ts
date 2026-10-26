@@ -1,13 +1,13 @@
 import { describe, it, expect } from "vitest";
 import { create } from "@bufbuild/protobuf";
-import { OpSchema } from "../gen/opendesigner/v1/opendesigner_pb";
-import type { Op } from "../gen/opendesigner/v1/opendesigner_pb";
-import { applyOp } from "./applyOp";
-import { invertOp } from "./history";
-import { deriveMasters, deletePageAllowed, masterCopyId, masterFieldsValid, updatePageAllowed } from "./masters";
-import { resolveScene } from "./variables";
-import { emptyScene, type NodeLite, type SceneState } from "./types";
-import { hitTest as pickAt, sortedVisible } from "../renderer/canvasRenderer";
+import { OpSchema } from "@/gen/opendesigner/v1/opendesigner_pb";
+import type { Op } from "@/gen/opendesigner/v1/opendesigner_pb";
+import { applyOp } from "@/store/applyOp";
+import { invertOp } from "@/store/history";
+import { deriveMasters, deletePageAllowed, masterCopyId, masterFieldsValid, updatePageAllowed } from "@/store/masters";
+import { resolveScene } from "@/store/variables";
+import { emptyScene, type NodeLite, type SceneState } from "@/store/types";
+import { hitTest as pickAt, sortedVisible } from "@/renderer/canvasRenderer";
 
 const node = (over: Partial<NodeLite> & { id: string }): NodeLite => ({
   parentId: "page1", orderKey: "a1", name: over.id, visible: true, opacity: 1, x: 0, y: 0, width: 50, height: 50, rotation: 0,

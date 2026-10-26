@@ -1,9 +1,9 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { render, screen, fireEvent, act, cleanup } from "@testing-library/react";
-import { LongDocumentDialog } from "./LongDocumentDialog";
-import { useScene } from "../store/store";
-import { emptyScene } from "../store/types";
-import type { Op } from "../gen/opendesigner/v1/opendesigner_pb";
+import { LongDocumentDialog } from "@/ui/LongDocumentDialog";
+import { useScene } from "@/store/store";
+import { emptyScene } from "@/store/types";
+import type { Op } from "@/gen/opendesigner/v1/opendesigner_pb";
 
 beforeEach(() => {
   cleanup();

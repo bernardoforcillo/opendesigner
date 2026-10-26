@@ -1,9 +1,9 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import { loadFixtureFonts } from "./testFonts";
-import { importPdfFile, isPdfFile, shareTextStyles, MAX_PDF_PAGES, type PdfImportDeps, type PdfRenderer } from "./importPdf";
-import { useScene } from "../store/store";
-import { emptyScene } from "../store/types";
-import type { Op } from "../gen/opendesigner/v1/opendesigner_pb";
+import { loadFixtureFonts } from "@/pdf/testFonts";
+import { importPdfFile, isPdfFile, shareTextStyles, MAX_PDF_PAGES, type PdfImportDeps, type PdfRenderer } from "@/pdf/importPdf";
+import { useScene } from "@/store/store";
+import { emptyScene } from "@/store/types";
+import type { Op } from "@/gen/opendesigner/v1/opendesigner_pb";
 
 function fakeDeps(pages: number, over: Partial<PdfImportDeps> = {}) {
   const destroy = vi.fn();

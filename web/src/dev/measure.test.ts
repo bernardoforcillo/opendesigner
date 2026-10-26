@@ -1,8 +1,8 @@
 import { describe, it, expect } from "vitest";
-import { measureNode } from "./measure";
-import { emptyScene } from "../store/types";
-import { NodeMap } from "../store/nodeMap";
-import type { NodeLite } from "../store/types";
+import { measureNode } from "@/dev/measure";
+import { emptyScene } from "@/store/types";
+import { NodeMap } from "@/store/nodeMap";
+import type { NodeLite } from "@/store/types";
 
 function node(over: Partial<NodeLite> & { id: string }): NodeLite {
   return { kind: "rect", parentId: "p", name: over.id, x: 0, y: 0, width: 10, height: 10, rotation: 0, visible: true, ...over } as NodeLite;

@@ -1,10 +1,10 @@
-import { useScene } from "../store/store";
-import type { ConstraintLite, NodeLite } from "../store/types";
-import { cls, Section } from "./ds";
-import { NumberField } from "./fields/NumberField";
-import { limitOf, limitOps, positioningOf, positioningOps, type LimitField } from "./layoutLimitOps";
-import { cellOf, cellOps, type CellField } from "./gridTrackOps";
-import { constraintOf, constraintOps, parentKind, sizingOf, sizingOps } from "./layoutRelationOps";
+import { useScene } from "@/store/store";
+import type { ConstraintLite, NodeLite } from "@/store/types";
+import { cls, Section } from "@/ui/ds";
+import { NumberField } from "@/ui/fields/NumberField";
+import { limitOf, limitOps, positioningOf, positioningOps, type LimitField } from "@/ui/layoutLimitOps";
+import { cellOf, cellOps, type CellField } from "@/ui/gridTrackOps";
+import { constraintOf, constraintOps, parentKind, sizingOf, sizingOps } from "@/ui/layoutRelationOps";
 
 // CONSTRAINTS and SIZING of the selection, i.e. its relation to the parent frame:
 //   - a node in a frame WITHOUT auto layout has CONSTRAINTS: when the frame is resized, the

@@ -1,13 +1,13 @@
 import { useMemo, useState } from "react";
-import { useScene } from "../store/store";
-import { useCommentsUi } from "../store/commentsUi";
-import { loadNickname } from "../store/presence";
-import { threadsOf } from "../store/comments";
-import { makeDeleteCommentOp, makeSetCommentOp, uuid } from "../tools/ops";
-import { submit as submitOps } from "../flow/commands";
-import { screenName } from "../flow/screens";
-import type { CommentLite, SceneState } from "../store/types";
-import { EmptyState, IconButton } from "./ds";
+import { useScene } from "@/store/store";
+import { useCommentsUi } from "@/store/commentsUi";
+import { loadNickname } from "@/store/presence";
+import { threadsOf } from "@/store/comments";
+import { makeDeleteCommentOp, makeSetCommentOp, uuid } from "@/tools/ops";
+import { submit as submitOps } from "@/flow/commands";
+import { screenName } from "@/flow/screens";
+import type { CommentLite, SceneState } from "@/store/types";
+import { EmptyState, IconButton } from "@/ui/ds";
 
 // THE COMMENTS PANEL: the threads of the current page (plus the orphaned ones, whose node
 // is gone), a composer for the pin being placed, and reply / resolve / delete on each

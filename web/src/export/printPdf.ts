@@ -1,13 +1,13 @@
-import { flattenStyle } from "../store/richText";
-import type { FontLite, NodeLite, PageLite, SceneState } from "../store/types";
-import type { Bounds } from "../canvas/geometry";
-import { headingsOf } from "../store/textTokens";
-import { isRightPage, pageNumbers } from "../store/pageNumbers";
-import { buildPdf, MARKS_MARGIN, type PdfLink, type PdfOutlineItem, type PdfPageSpec, type PdfReport, type PdfXMode } from "../pdf/write/pdfDocument";
-import { dataUrlBytes, prepareImage, type PreparedImage, type Rasterize } from "../pdf/write/pdfImages";
-import type { MeasureText } from "../renderer/text";
-import { contributorNames } from "./onix";
-import type { ExportRegion } from "./region";
+import { flattenStyle } from "@/store/richText";
+import type { FontLite, NodeLite, PageLite, SceneState } from "@/store/types";
+import type { Bounds } from "@/canvas/geometry";
+import { headingsOf } from "@/store/textTokens";
+import { isRightPage, pageNumbers } from "@/store/pageNumbers";
+import { buildPdf, MARKS_MARGIN, type PdfLink, type PdfOutlineItem, type PdfPageSpec, type PdfReport, type PdfXMode } from "@/pdf/write/pdfDocument";
+import { dataUrlBytes, prepareImage, type PreparedImage, type Rasterize } from "@/pdf/write/pdfImages";
+import type { MeasureText } from "@/renderer/text";
+import { contributorNames } from "@/export/onix";
+import type { ExportRegion } from "@/export/region";
 
 // THE PDF OF A DOCUMENT, from the resolved scene. This module decides WHAT goes on each PDF page (the
 // sheet, its bleed, the marks and slug around it, a spread as one wide page) and gathers what the

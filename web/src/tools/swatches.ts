@@ -1,9 +1,9 @@
-import type { Op } from "../gen/opendesigner/v1/opendesigner_pb";
-import { cmykToRgb, type Cmyk, type Rgb } from "../color/cmyk";
-import { cmykField, swatchCmyk, swatchColor, swatchesOf, tintCmyk, tintRgb } from "../store/graphics";
-import type { SceneState, VariableLite } from "../store/types";
-import { bindingOps } from "../ui/variableOps";
-import { makeDeleteVariableOp, makeSetCollectionOp, makeSetVariableOp, uuid } from "./ops";
+import type { Op } from "@/gen/opendesigner/v1/opendesigner_pb";
+import { cmykToRgb, type Cmyk, type Rgb } from "@/color/cmyk";
+import { cmykField, swatchCmyk, swatchColor, swatchesOf, tintCmyk, tintRgb } from "@/store/graphics";
+import type { SceneState, VariableLite } from "@/store/types";
+import { bindingOps } from "@/ui/variableOps";
+import { makeDeleteVariableOp, makeSetCollectionOp, makeSetVariableOp, uuid } from "@/tools/ops";
 
 // SWATCHES as ops. A swatch is a color variable with print data (store/graphics.ts), so applying one to a fill
 // or a stroke is a variable binding: change the swatch and everything that uses it follows. All the swatches live

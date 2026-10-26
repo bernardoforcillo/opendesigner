@@ -1,13 +1,13 @@
 import "@testing-library/jest-dom/vitest";
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { render, screen, fireEvent, cleanup } from "@testing-library/react";
-import type { Op } from "../gen/opendesigner/v1/opendesigner_pb";
-import { FindReplaceDialog } from "./FindReplaceDialog";
-import { InsertTableDialog } from "./InsertTableDialog";
-import { TableControls, TextOnPathControls, WrapControls } from "./TextLayoutControls";
-import { useScene } from "../store/store";
-import { createTableOps, readTable } from "../tools/tableOps";
-import { emptyScene, type NodeLite, type SceneState } from "../store/types";
+import type { Op } from "@/gen/opendesigner/v1/opendesigner_pb";
+import { FindReplaceDialog } from "@/ui/FindReplaceDialog";
+import { InsertTableDialog } from "@/ui/InsertTableDialog";
+import { TableControls, TextOnPathControls, WrapControls } from "@/ui/TextLayoutControls";
+import { useScene } from "@/store/store";
+import { createTableOps, readTable } from "@/tools/tableOps";
+import { emptyScene, type NodeLite, type SceneState } from "@/store/types";
 
 class FakeSync {
   submit(op: Op) {

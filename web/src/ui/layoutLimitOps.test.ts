@@ -1,10 +1,10 @@
 import { describe, it, expect } from "vitest";
 import { create } from "@bufbuild/protobuf";
-import { LayoutPositioning, NodeSchema, OpSchema } from "../gen/opendesigner/v1/opendesigner_pb";
-import type { Op } from "../gen/opendesigner/v1/opendesigner_pb";
-import { applyOp } from "../store/applyOp";
-import { emptyScene } from "../store/types";
-import { limitOf, limitOps, positioningOf, positioningOps } from "./layoutLimitOps";
+import { LayoutPositioning, NodeSchema, OpSchema } from "@/gen/opendesigner/v1/opendesigner_pb";
+import type { Op } from "@/gen/opendesigner/v1/opendesigner_pb";
+import { applyOp } from "@/store/applyOp";
+import { emptyScene } from "@/store/types";
+import { limitOf, limitOps, positioningOf, positioningOps } from "@/ui/layoutLimitOps";
 
 const create1 = (id: string, parentId: string, shape: object, over: object = {}): Op =>
   create(OpSchema, { opId: id, docId: "d", kind: { case: "createNode", value: { node: create(NodeSchema, { id, parentId, orderKey: id, visible: true, opacity: 1, width: 40, height: 20, shape, ...over } as never) } } });

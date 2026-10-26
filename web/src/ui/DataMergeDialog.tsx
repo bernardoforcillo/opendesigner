@@ -1,8 +1,8 @@
 import { useMemo, useState } from "react";
 import { Dialog, Modal, ModalOverlay } from "react-aria-components";
-import { useScene } from "../store/store";
-import { mergeOps, parseTable, placeholdersOnPage } from "../tools/dataMerge";
-import { Button } from "./ds";
+import { useScene } from "@/store/store";
+import { mergeOps, parseTable, placeholdersOnPage } from "@/tools/dataMerge";
+import { Button } from "@/ui/ds";
 
 // DATA MERGE (document menu): a page with {{Field}} placeholders in its text, and a CSV/TSV table with
 // one row per record. "Create merged pages" adds a page per record after the template, in one undo step.

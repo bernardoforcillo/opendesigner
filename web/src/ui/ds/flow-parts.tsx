@@ -1,7 +1,7 @@
 import type { ReactNode, SVGProps } from "react";
 import { Button as RacButton, TooltipTrigger, type ButtonProps } from "react-aria-components";
-import { Icon, type IconName } from "./Icon";
-import { Tip } from "./index";
+import { Icon, type IconName } from "@/ui/ds/Icon";
+import { Tip } from "@/ui/ds/index";
 
 // SHARED PIECES OF THE "FLOWS, PROTOTYPE AND CHROME" AREA (agent C).
 //

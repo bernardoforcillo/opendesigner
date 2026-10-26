@@ -1,12 +1,12 @@
 import { useState } from "react";
 import { Dialog, Modal, ModalOverlay } from "react-aria-components";
-import { useScene } from "../store/store";
-import { isValidBook, validIsbn13 } from "../store/docSettings";
-import { bookOf, bookToMsg, type BookLite, type DocSettingsLite } from "../store/types";
-import { makeSetDocSettingsOp } from "../tools/ops";
-import { buildOnix, onixProblems, type OnixRelease } from "../export/onix";
-import { downloadBlob } from "../export/exportScene";
-import { Button, cls } from "./ds";
+import { useScene } from "@/store/store";
+import { isValidBook, validIsbn13 } from "@/store/docSettings";
+import { bookOf, bookToMsg, type BookLite, type DocSettingsLite } from "@/store/types";
+import { makeSetDocSettingsOp } from "@/tools/ops";
+import { buildOnix, onixProblems, type OnixRelease } from "@/export/onix";
+import { downloadBlob } from "@/export/exportScene";
+import { Button, cls } from "@/ui/ds";
 
 // BOOK METADATA (document menu): the bibliographic record of the document -- ISBN, title, contributors,
 // language, publisher, date, subjects, prices, description -- stored in the document settings. It feeds

@@ -1,10 +1,10 @@
 import { describe, it, expect } from "vitest";
 import {
   BULLET, caseText, fontFeaturesOf, isSmallCaps, layoutText, ligaturesOff, placeTextLines, runsOf, piecesOfLine, styledMeasure, textPaintBounds,
-} from "./text";
-import { isValidFontFeatures } from "../store/typography";
-import { toPbTextStyle, toTextStyleLite } from "../store/types";
-import type { NodeLite, TextStyleLite } from "../store/types";
+} from "@/renderer/text";
+import { isValidFontFeatures } from "@/store/typography";
+import { toPbTextStyle, toTextStyleLite } from "@/store/types";
+import type { NodeLite, TextStyleLite } from "@/store/types";
 
 // 10px per character, like text.test.ts.
 const measure = (s: string) => s.length * 10;

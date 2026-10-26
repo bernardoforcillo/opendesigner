@@ -1,7 +1,7 @@
-import type { NodeLite } from "../store/types";
-import { flattenSubpath } from "../store/vectorGeometry";
-import { traceSubpath } from "./shapes";
-import { flattenCommands, hasComputedOutline, outlineCommands } from "./shapeGeometry";
+import type { NodeLite } from "@/store/types";
+import { flattenSubpath } from "@/store/vectorGeometry";
+import { traceSubpath } from "@/renderer/shapes";
+import { flattenCommands, hasComputedOutline, outlineCommands } from "@/renderer/shapeGeometry";
 
 // THE STROKE BEING DRAWN ("draw" of an animation).
 //

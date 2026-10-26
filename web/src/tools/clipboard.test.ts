@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { useScene } from "../store/store";
-import { emptyScene, type NodeLite } from "../store/types";
+import { useScene } from "@/store/store";
+import { emptyScene, type NodeLite } from "@/store/types";
 import {
   CLIPBOARD_FORMAT,
   CLIPBOARD_VERSION,
@@ -13,7 +13,7 @@ import {
   duplicateSelection,
   attachClipboardShortcuts,
   clipboardMemory,
-} from "./clipboard";
+} from "@/tools/clipboard";
 
 // --- fixtures ---------------------------------------------------------------
 

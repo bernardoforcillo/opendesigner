@@ -1,8 +1,8 @@
 import { describe, it, expect } from "vitest";
-import { buildPdf, type PdfBuild, type PdfPageSpec } from "./pdfDocument";
-import { prepareImage, dataUrlBytes } from "./pdfImages";
-import { encodePng } from "../../export/rawPng";
-import type { NodeLite, TextStyleLite, VariableLite } from "../../store/types";
+import { buildPdf, type PdfBuild, type PdfPageSpec } from "@/pdf/write/pdfDocument";
+import { prepareImage, dataUrlBytes } from "@/pdf/write/pdfImages";
+import { encodePng } from "@/export/rawPng";
+import type { NodeLite, TextStyleLite, VariableLite } from "@/store/types";
 
 const measure = (s: string) => s.length * 8;
 

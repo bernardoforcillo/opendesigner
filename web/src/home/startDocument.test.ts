@@ -1,10 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
-import { applyOp } from "../store/applyOp";
-import { emptyScene } from "../store/types";
-import { topLevelScreens } from "../flow/screens";
-import { templateById } from "../templates/catalog";
-import { applyTemplate, startDocument, StartError, type StartClient } from "./startDocument";
-import type { Op } from "../gen/opendesigner/v1/opendesigner_pb";
+import { applyOp } from "@/store/applyOp";
+import { emptyScene } from "@/store/types";
+import { topLevelScreens } from "@/flow/screens";
+import { templateById } from "@/templates/catalog";
+import { applyTemplate, startDocument, StartError, type StartClient } from "@/home/startDocument";
+import type { Op } from "@/gen/opendesigner/v1/opendesigner_pb";
 
 function fakeClient(over: Partial<StartClient> = {}) {
   const ops: { docId: string; clientId: string; op: Op }[] = [];

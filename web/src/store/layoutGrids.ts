@@ -1,6 +1,6 @@
-import { LayoutGridKind } from "../gen/opendesigner/v1/opendesigner_pb";
-import type { LayoutGrid as PbLayoutGrid } from "../gen/opendesigner/v1/opendesigner_pb";
-import type { LayoutGridLite, NodeLite } from "./types";
+import { LayoutGridKind } from "@/gen/opendesigner/v1/opendesigner_pb";
+import type { LayoutGrid as PbLayoutGrid } from "@/gen/opendesigner/v1/opendesigner_pb";
+import type { LayoutGridLite, NodeLite } from "@/store/types";
 
 // LAYOUT GRIDS of a frame -- editor guides and snap targets, never exported. The TS
 // twin of core.validateLayoutGrids (internal/core/layout_grids.go), plus the geometry

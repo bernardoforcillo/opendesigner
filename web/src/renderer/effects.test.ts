@@ -1,8 +1,8 @@
-import { nodesOf } from "../store/nodeMap";
+import { nodesOf } from "@/store/nodeMap";
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { drawScene, firstBlur, firstShadow } from "./canvasRenderer";
-import { emptyScene } from "../store/types";
-import type { EffectLite, NodeLite, SceneState } from "../store/types";
+import { drawScene, firstBlur, firstShadow } from "@/renderer/canvasRenderer";
+import { emptyScene } from "@/store/types";
+import type { EffectLite, NodeLite, SceneState } from "@/store/types";
 
 class FakePath2D { rect() {} roundRect() {} ellipse() {} addPath() {} }
 

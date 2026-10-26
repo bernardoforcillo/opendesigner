@@ -1,9 +1,16 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
+import path from "node:path";
 
 export default defineConfig({
   plugins: [react(), tailwindcss()],
+  resolve: {
+    alias: {
+      "@features": path.resolve(__dirname, "./src/features"),
+      "@": path.resolve(__dirname, "./src"),
+    },
+  },
   server: {
     proxy: {
       "/opendesigner.v1.DocumentService": { target: "http://localhost:8080", changeOrigin: true },

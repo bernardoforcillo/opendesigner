@@ -1,13 +1,13 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { create } from "@bufbuild/protobuf";
-import { NodeSchema } from "../gen/opendesigner/v1/opendesigner_pb";
+import { NodeSchema } from "@/gen/opendesigner/v1/opendesigner_pb";
 import {
   makeCreateComponentOp, makeCreateNodeOp, makeDeleteOp, makeInstanceNode,
   makeSetInstanceOverrideOp, makeSetPropsOp, makeSetTextOp,
-} from "./ops";
-import { useScene } from "../store/store";
-import { applyOp } from "../store/applyOp";
-import { emptyScene } from "../store/types";
+} from "@/tools/ops";
+import { useScene } from "@/store/store";
+import { applyOp } from "@/store/applyOp";
+import { emptyScene } from "@/store/types";
 
 beforeEach(() => {
   useScene.setState({

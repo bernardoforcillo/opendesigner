@@ -1,13 +1,13 @@
 import { describe, it, expect } from "vitest";
 import { create } from "@bufbuild/protobuf";
-import { NodeSchema } from "../gen/opendesigner/v1/opendesigner_pb";
-import type { Op } from "../gen/opendesigner/v1/opendesigner_pb";
-import { applyOp } from "../store/applyOp";
-import { emptyScene, toPbFills, type SceneState } from "../store/types";
-import { childrenOf } from "../store/tree";
-import { orderKeyBetween } from "../store/orderKey";
-import { makeCreateNodeOp, uuid } from "./ops";
-import { changeObjectsOps, clipWithShapeOps, exportSnippet, findObjects, fitOps, gapOps, placeSnippetOps, qrOps, releaseClipOps, stepRepeatOps } from "./objectTools";
+import { NodeSchema } from "@/gen/opendesigner/v1/opendesigner_pb";
+import type { Op } from "@/gen/opendesigner/v1/opendesigner_pb";
+import { applyOp } from "@/store/applyOp";
+import { emptyScene, toPbFills, type SceneState } from "@/store/types";
+import { childrenOf } from "@/store/tree";
+import { orderKeyBetween } from "@/store/orderKey";
+import { makeCreateNodeOp, uuid } from "@/tools/ops";
+import { changeObjectsOps, clipWithShapeOps, exportSnippet, findObjects, fitOps, gapOps, placeSnippetOps, qrOps, releaseClipOps, stepRepeatOps } from "@/tools/objectTools";
 
 const TOP = orderKeyBetween(orderKeyBetween(orderKeyBetween(null, null), null), null);
 const run = (s: SceneState, ops: Op[]) => ops.reduce(applyOp, s);

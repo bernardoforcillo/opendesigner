@@ -1,11 +1,11 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { cleanup, render, screen, fireEvent } from "@testing-library/react";
-import { useScene } from "../store/store";
-import { nodesOf } from "../store/nodeMap";
-import { emptyScene } from "../store/types";
-import type { NodeLite } from "../store/types";
-import type { Op } from "../gen/opendesigner/v1/opendesigner_pb";
-import { BooleanControls } from "./BooleanControls";
+import { useScene } from "@/store/store";
+import { nodesOf } from "@/store/nodeMap";
+import { emptyScene } from "@/store/types";
+import type { NodeLite } from "@/store/types";
+import type { Op } from "@/gen/opendesigner/v1/opendesigner_pb";
+import { BooleanControls } from "@/ui/BooleanControls";
 
 // Double of the transport: confirms every op at once (as in selection/align.test.ts).
 const sync = {

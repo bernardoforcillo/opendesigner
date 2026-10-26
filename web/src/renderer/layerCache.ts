@@ -1,6 +1,6 @@
-import type { Camera } from "../canvas/camera";
-import type { SceneState } from "../store/types";
-import { drawScene } from "./canvasRenderer";
+import type { Camera } from "@/canvas/camera";
+import type { SceneState } from "@/store/types";
+import { drawScene } from "@/renderer/canvasRenderer";
 
 // THE HEAVY FRAME AND THE MOVING CAMERA.
 //

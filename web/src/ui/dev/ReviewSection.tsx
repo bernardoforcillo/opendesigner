@@ -1,10 +1,10 @@
 import { useState } from "react";
 import { create } from "@bufbuild/protobuf";
-import { ReviewDesignRequestSchema } from "../../gen/opendesigner/v1/opendesigner_pb";
-import type { ReviewIssue } from "../../gen/opendesigner/v1/opendesigner_pb";
-import { docClient } from "../../rpc/client";
-import { useScene } from "../../store/store";
-import { Badge, Button, cls } from "../ds";
+import { ReviewDesignRequestSchema } from "@/gen/opendesigner/v1/opendesigner_pb";
+import type { ReviewIssue } from "@/gen/opendesigner/v1/opendesigner_pb";
+import { docClient } from "@/rpc/client";
+import { useScene } from "@/store/store";
+import { Badge, Button, cls } from "@/ui/ds";
 
 // DESIGN REVIEW (Develop → left panel): runs the server's mechanical review -- text contrast,
 // tap targets, design tokens -- and lists what it found; a click selects the node. It reads

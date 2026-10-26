@@ -1,8 +1,8 @@
 import { describe, it, expect } from "vitest";
-import { placeTextLines, type MeasureFor } from "../renderer/text";
-import { deriveTextPaths, pathTargetOf, textOnPathOps } from "./textPath";
-import { applyOp } from "./applyOp";
-import { emptyScene, type NodeLite, type SceneState, type TextStyleLite } from "./types";
+import { placeTextLines, type MeasureFor } from "@/renderer/text";
+import { deriveTextPaths, pathTargetOf, textOnPathOps } from "@/store/textPath";
+import { applyOp } from "@/store/applyOp";
+import { emptyScene, type NodeLite, type SceneState, type TextStyleLite } from "@/store/types";
 
 const mf: MeasureFor = (st) => (s) => s.length * (st.fontSize || 16) * 0.5;
 const style: TextStyleLite = { fontFamily: "", fontSize: 10, fontWeight: "", lineHeight: 1, align: "left" };

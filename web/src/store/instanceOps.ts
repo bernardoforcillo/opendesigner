@@ -1,7 +1,7 @@
-import type { InstanceNode as PbInstanceNode } from "../gen/opendesigner/v1/opendesigner_pb";
-import { effectiveComponentId, effectiveOverrides, isValidInstanceProps, propertyValueValid } from "./components";
-import { childrenOf, subtreeOf } from "./tree";
-import { toInstanceLite, type InstanceLite, type InstanceOverrideLite, type NodeLite, type SceneState } from "./types";
+import type { InstanceNode as PbInstanceNode } from "@/gen/opendesigner/v1/opendesigner_pb";
+import { effectiveComponentId, effectiveOverrides, isValidInstanceProps, propertyValueValid } from "@/store/components";
+import { childrenOf, subtreeOf } from "@/store/tree";
+import { toInstanceLite, type InstanceLite, type InstanceOverrideLite, type NodeLite, type SceneState } from "@/store/types";
 
 // INSTANCE OPERATIONS -- swap, reset, detach and "go to main component". The TypeScript twin of
 // internal/core/instances.go, which is the authority (same rules, same order).

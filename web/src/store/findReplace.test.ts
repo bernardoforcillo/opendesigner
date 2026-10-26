@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
-import { applyOp } from "./applyOp";
-import { compile, findAll, replaceOps, replacementFor } from "./findReplace";
-import { emptyScene, type NodeLite, type SceneState, type TextStyleLite } from "./types";
+import { applyOp } from "@/store/applyOp";
+import { compile, findAll, replaceOps, replacementFor } from "@/store/findReplace";
+import { emptyScene, type NodeLite, type SceneState, type TextStyleLite } from "@/store/types";
 
 const STYLE: TextStyleLite = { fontFamily: "", fontSize: 12, fontWeight: "", lineHeight: 1.2, align: "left" };
 const text = (id: string, parentId: string, content: string, y = 0, extra: Partial<NodeLite["text"] & object> = {}, over: Partial<NodeLite> = {}): NodeLite => ({

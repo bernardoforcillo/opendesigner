@@ -1,28 +1,28 @@
 import type {
   Canvas, CanvasKit, Font, GrDirectContext, Image as SkImage, ImageFilter, Paint, Path, Shader, Surface,
 } from "canvaskit-wasm";
-import type { Camera } from "../../canvas/camera";
-import { type Bounds, boundsIntersect, boundsOfNode, inflateBounds, strokeOutsetOfNode } from "../../canvas/geometry";
-import { type Transform, localTransformOf } from "../../canvas/transform";
-import { instanceDescentLocal, instanceOverrideMap, resolveInstance } from "../../store/instances";
-import type { EffectLite, FillLite, GradientLite, InstanceOverrideLite, MeshLite, NodeLite, SceneState, StrokeLite, TextStyleLite } from "../../store/types";
-import { anchorPoint, inHandlePoint, outHandlePoint, subpathFills } from "../../store/vectorGeometry";
+import type { Camera } from "@/canvas/camera";
+import { type Bounds, boundsIntersect, boundsOfNode, inflateBounds, strokeOutsetOfNode } from "@/canvas/geometry";
+import { type Transform, localTransformOf } from "@/canvas/transform";
+import { instanceDescentLocal, instanceOverrideMap, resolveInstance } from "@/store/instances";
+import type { EffectLite, FillLite, GradientLite, InstanceOverrideLite, MeshLite, NodeLite, SceneState, StrokeLite, TextStyleLite } from "@/store/types";
+import { anchorPoint, inHandlePoint, outHandlePoint, subpathFills } from "@/store/vectorGeometry";
 import {
   CLIP_MIN_PX, LOD_FLAT_PX, SKIP_SUBTREE_PX, type ImageSource, resolvedFill, rootsOf, withOverride,
-} from "../canvasRenderer";
-import { effectsOutset, sceneIndexOf } from "../sceneIndex";
-import { MESH_BITMAP_SIZE, meshBitmap } from "../mesh";
-import { outlineCommands, type PathCmd } from "../shapeGeometry";
-import { hasArrowheads, strokeHeads } from "../arrowheads";
-import { sideBandRects } from "../strokeSides";
-import { variableStrokeCommands } from "../../vector/widthProfile";
-import { brushStrokeCommands } from "../../vector/brush";
-import { GRADIENT_BITMAP_SIZE, angularStart, gradientBitmap } from "../gradientBitmap";
-import { VECTOR_STROKE_PX, inkIsBox, nodeCenter } from "../shapes";
-import { decorationBars, fontSizeOf, hscaleOf, paragraphDecorations, piecesOfLine, piecesOfSegment, placeTextLines, trackedOffsets, type MeasureFor } from "../text";
-import { FX_TILE, blurBands, overlayEffects, overlayTile, progressiveBlur, tileUnit, withBandBlur, withExpandedGlass } from "../effectsFx";
-import { hasRealStroke, vectorStyleOf } from "../vectorStyle";
-import type { FontBook } from "./canvaskit";
+} from "@/renderer/canvasRenderer";
+import { effectsOutset, sceneIndexOf } from "@/renderer/sceneIndex";
+import { MESH_BITMAP_SIZE, meshBitmap } from "@/renderer/mesh";
+import { outlineCommands, type PathCmd } from "@/renderer/shapeGeometry";
+import { hasArrowheads, strokeHeads } from "@/renderer/arrowheads";
+import { sideBandRects } from "@/renderer/strokeSides";
+import { variableStrokeCommands } from "@/vector/widthProfile";
+import { brushStrokeCommands } from "@/vector/brush";
+import { GRADIENT_BITMAP_SIZE, angularStart, gradientBitmap } from "@/renderer/gradientBitmap";
+import { VECTOR_STROKE_PX, inkIsBox, nodeCenter } from "@/renderer/shapes";
+import { decorationBars, fontSizeOf, hscaleOf, paragraphDecorations, piecesOfLine, piecesOfSegment, placeTextLines, trackedOffsets, type MeasureFor } from "@/renderer/text";
+import { FX_TILE, blurBands, overlayEffects, overlayTile, progressiveBlur, tileUnit, withBandBlur, withExpandedGlass } from "@/renderer/effectsFx";
+import { hasRealStroke, vectorStyleOf } from "@/renderer/vectorStyle";
+import type { FontBook } from "@/renderer/ck/canvaskit";
 
 // THE GPU RENDERER: the same drawing as renderer/canvasRenderer.ts, but with
 // CanvasKit (Skia in WebAssembly) on a WebGL context instead of Canvas 2D.
@@ -1003,7 +1003,7 @@ function concat(sk: Canvas, t: Transform): void {
 }
 
 // Like shapes.ts::traceSubpath, on a PathBuilder.
-function trace(b: import("canvaskit-wasm").PathBuilder, n: NodeLite, sp: import("../../store/types").SubPathLite): void {
+function trace(b: import("canvaskit-wasm").PathBuilder, n: NodeLite, sp: import("@/store/types").SubPathLite): void {
   const count = sp.anchors.length;
   const first = anchorPoint(n, sp.anchors[0]);
   b.moveTo(first.x, first.y);

@@ -1,15 +1,15 @@
 import { useEffect, useState } from "react";
 import { Button as RacButton, Menu, MenuItem, MenuTrigger, Popover, ToggleButton, ToggleButtonGroup, Tooltip, TooltipTrigger } from "react-aria-components";
 import type { ReactNode } from "react";
-import { Button, Icon, IconButton, Kbd, type IconName } from "../ds";
-import { useScene } from "../../store/store";
-import { usePanels } from "./panels";
-import { useFlowUi, type EditorMode } from "../../store/flowUi";
-import { useTimeline } from "../../animation/timelineStore";
-import { AnimIconButton } from "../ds/anim-parts";
-import type { ToolId } from "../../tools/types";
-import { isTextField } from "../../tools/toolManager";
-import { useT } from "../../i18n";
+import { Button, Icon, IconButton, Kbd, type IconName } from "@/ui/ds";
+import { useScene } from "@/store/store";
+import { usePanels } from "@/ui/shell/panels";
+import { useFlowUi, type EditorMode } from "@/store/flowUi";
+import { useTimeline } from "@/animation/timelineStore";
+import { AnimIconButton } from "@/ui/ds/anim-parts";
+import type { ToolId } from "@/tools/types";
+import { isTextField } from "@/tools/toolManager";
+import { useT } from "@/i18n";
 
 // THE TOOL DOCK: a floating bar at the bottom center of the canvas,
 // as in every design editor -- tools sit where the hand is, not in

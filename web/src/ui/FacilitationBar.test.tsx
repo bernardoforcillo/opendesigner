@@ -1,9 +1,9 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { FacilitationBar } from "./FacilitationBar";
-import { useFacilitation } from "../store/facilitation";
-import { newPeer, usePresence } from "../store/presence";
+import { FacilitationBar } from "@/ui/FacilitationBar";
+import { useFacilitation } from "@/store/facilitation";
+import { newPeer, usePresence } from "@/store/presence";
 
 afterEach(cleanup);
 beforeEach(() => {

@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { createHash } from "node:crypto";
-import { qrMatrix, qrRuns, qrVersionFor, qrCapacity } from "./qrcode";
+import { qrMatrix, qrRuns, qrVersionFor, qrCapacity } from "@/tools/qrcode";
 
 const PINNED = { helloM: "6e548e55859cd0121b4b7df64c45c4cdcab87e76", longL: "5cc6683e965db4b0e951d5a1b26f9babb39e2717", foxM: "c6db65cc33d480d74d7e6ba82acc90ce9eb44cc3" };
 

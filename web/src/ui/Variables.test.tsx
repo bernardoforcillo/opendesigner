@@ -1,15 +1,15 @@
 import "@testing-library/jest-dom/vitest";
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { render, screen, cleanup, fireEvent, within } from "@testing-library/react";
-import type { Op } from "../gen/opendesigner/v1/opendesigner_pb";
-import { useScene } from "../store/store";
-import { emptyScene, type CollectionLite, type NodeLite, type VariableLite } from "../store/types";
-import { PropertiesPanel } from "./PropertiesPanel";
-import { VariablesDialog } from "./VariablesDialog";
-import { VariablesSection } from "./VariablesSection";
+import type { Op } from "@/gen/opendesigner/v1/opendesigner_pb";
+import { useScene } from "@/store/store";
+import { emptyScene, type CollectionLite, type NodeLite, type VariableLite } from "@/store/types";
+import { PropertiesPanel } from "@/ui/PropertiesPanel";
+import { VariablesDialog } from "@/ui/VariablesDialog";
+import { VariablesSection } from "@/ui/VariablesSection";
 import {
   MIXED, aliasCandidates, bindingOps, boundVariable, modeOps, newCollection, newVariable, pinnedMode, removeModeOps, variablesOfType, withAlias, withMode, withoutAlias,
-} from "./variableOps";
+} from "@/ui/variableOps";
 
 // A server that accepts and echoes at once, like the other panel tests.
 class FakeSync {

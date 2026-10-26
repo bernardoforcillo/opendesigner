@@ -1,6 +1,6 @@
-import type { Op } from "../gen/opendesigner/v1/opendesigner_pb";
-import { makeSetPropsOp } from "../tools/ops";
-import type { AutoLayoutLite, GridCellLite, GridTrackLite, NodeLite, SceneState } from "../store/types";
+import type { Op } from "@/gen/opendesigner/v1/opendesigner_pb";
+import { makeSetPropsOp } from "@/tools/ops";
+import type { AutoLayoutLite, GridCellLite, GridTrackLite, NodeLite, SceneState } from "@/store/types";
 
 // The ops of GRID mode (docs/layout.md): which cell a child of a grid frame sits in, and the edits
 // of the track lists in the Auto layout section. Pure, like the other panel ops.

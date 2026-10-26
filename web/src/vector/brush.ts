@@ -1,9 +1,9 @@
-import type { BrushLite, BrushTipLite, NodeLite, StrokeLite } from "../store/types";
-import type { PathCmd } from "../renderer/shapeGeometry";
-import { BEZIER_TOLERANCE, localOutlines } from "./boolean";
-import { dedupe } from "./widthProfile";
+import type { BrushLite, BrushTipLite, NodeLite, StrokeLite } from "@/store/types";
+import type { PathCmd } from "@/renderer/shapeGeometry";
+import { BEZIER_TOLERANCE, localOutlines } from "@/vector/boolean";
+import { dedupe } from "@/vector/widthProfile";
 
-export { BRUSH_PRESETS, BRUSH_TIPS, brushPresetName, brushReach, hasBrush, hasBrushedStroke } from "./brushSpec";
+export { BRUSH_PRESETS, BRUSH_TIPS, brushPresetName, brushReach, hasBrush, hasBrushedStroke } from "@/vector/brushSpec";
 
 // BRUSHES (docs/vector.md): a vector's stroke drawn as a row of tips stamped along the path instead of a
 // line. Two kinds: STRETCH lays tiles of one tip end to end (each `spacing` weights long, one weight wide)

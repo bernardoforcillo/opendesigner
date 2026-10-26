@@ -1,21 +1,21 @@
 import "@testing-library/jest-dom/vitest";
 import { describe, it, expect, vi, afterEach, beforeEach } from "vitest";
 import { render, screen, fireEvent, cleanup, waitFor, act } from "@testing-library/react";
-import { App } from "./App";
-import { useScene } from "../store/store";
-import { useFlowUi } from "../store/flowUi";
-import { useTimeline } from "../animation/timelineStore";
-import { baseScene } from "../flow/testSupport";
-import type { ClipLite } from "../store/types";
-import * as overlayRenderer from "../renderer/overlayRenderer";
-import * as renderer from "../renderer/canvasRenderer";
+import { App } from "@/ui/App";
+import { useScene } from "@/store/store";
+import { useFlowUi } from "@/store/flowUi";
+import { useTimeline } from "@/animation/timelineStore";
+import { baseScene } from "@/flow/testSupport";
+import type { ClipLite } from "@/store/types";
+import * as overlayRenderer from "@/renderer/overlayRenderer";
+import * as renderer from "@/renderer/canvasRenderer";
 
 // The timeline inside App: the dock entry, M, the panel below the canvas, the pose
 // that reaches the renderer and -- the cost point -- an editor that stays at ZERO
 // frames with the panel open but idle.
 
-vi.mock("../rpc/client", () => ({ docClient: { createDocument: vi.fn(async () => ({ id: "doc-1" })) } }));
-vi.mock("../rpc/syncClient", () => ({
+vi.mock("@/rpc/client", () => ({ docClient: { createDocument: vi.fn(async () => ({ id: "doc-1" })) } }));
+vi.mock("@/rpc/syncClient", () => ({
   SyncClient: class {
     async start() {}
     stop() {}

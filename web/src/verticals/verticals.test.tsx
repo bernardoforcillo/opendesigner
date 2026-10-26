@@ -2,17 +2,17 @@ import "@testing-library/jest-dom/vitest";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import type { Op } from "../gen/opendesigner/v1/opendesigner_pb";
+import type { Op } from "@/gen/opendesigner/v1/opendesigner_pb";
 
-vi.mock("../home/nav", () => ({ useAppNavigate: () => vi.fn() }));
-vi.mock("../rpc/client", () => ({ docClient: {} }));
+vi.mock("@/home/nav", () => ({ useAppNavigate: () => vi.fn() }));
+vi.mock("@/rpc/client", () => ({ docClient: {} }));
 
 import { menuShows, modeFor, VERTICAL_DEFS, VERTICAL_LIST, verticalDef } from ".";
-import { DocMenu } from "../ui/shell/DocMenu";
-import { TopBar } from "../ui/shell/TopBar";
-import { useScene } from "../store/store";
-import { useFlowUi } from "../store/flowUi";
-import { emptyScene, type Vertical } from "../store/types";
+import { DocMenu } from "@/ui/shell/DocMenu";
+import { TopBar } from "@/ui/shell/TopBar";
+import { useScene } from "@/store/store";
+import { useFlowUi } from "@/store/flowUi";
+import { emptyScene, type Vertical } from "@/store/types";
 
 class FakeSync {
   submit(op: Op) {

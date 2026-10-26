@@ -1,8 +1,8 @@
-import { type Camera, worldToScreen } from "../canvas/camera";
-import { type Bounds, inflateBounds, pointInBounds, worldBoundsToScreen } from "../canvas/geometry";
+import { type Camera, worldToScreen } from "@/canvas/camera";
+import { type Bounds, inflateBounds, pointInBounds, worldBoundsToScreen } from "@/canvas/geometry";
 import {
   centerOf, localToWorld, normalizeDegrees, rotateAround, rotateVector, type Point,
-} from "../canvas/transform";
+} from "@/canvas/transform";
 
 const DEG_TO_RAD = Math.PI / 180;
 

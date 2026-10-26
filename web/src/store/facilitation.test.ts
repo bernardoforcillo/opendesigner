@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { activeTimer, emoteOf, formatRemaining, ranking, tally, useFacilitation, VOTES_PER_PERSON } from "./facilitation";
-import { newPeer } from "./presence";
+import { activeTimer, emoteOf, formatRemaining, ranking, tally, useFacilitation, VOTES_PER_PERSON } from "@/store/facilitation";
+import { newPeer } from "@/store/presence";
 
 beforeEach(() => useFacilitation.setState({ votes: [], timer: null, chat: "", reaction: "", emoteSeq: 0, following: null }));
 

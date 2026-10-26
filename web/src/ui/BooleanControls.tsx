@@ -1,8 +1,8 @@
-import { useScene } from "../store/store";
-import { makeSetPropsOp } from "../tools/ops";
-import { canOutlineStroke, outlineStrokeOps } from "../vector/outlineStroke";
-import { flattenGroupOps, isBooleanSource, liveBooleanOps, setBooleanOpOps, BOOLEAN_NAMES, type BooleanOp } from "../vector/boolean";
-import { booleanOpOf } from "../vector/regions";
+import { useScene } from "@/store/store";
+import { makeSetPropsOp } from "@/tools/ops";
+import { canOutlineStroke, outlineStrokeOps } from "@/vector/outlineStroke";
+import { flattenGroupOps, isBooleanSource, liveBooleanOps, setBooleanOpOps, BOOLEAN_NAMES, type BooleanOp } from "@/vector/boolean";
+import { booleanOpOf } from "@/vector/regions";
 
 const OPS: BooleanOp[] = ["union", "subtract", "intersect", "exclude"];
 

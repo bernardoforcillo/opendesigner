@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { crc32, zipStore } from "./zip";
+import { crc32, zipStore } from "@/export/zip";
 
 const enc = new TextEncoder();
 

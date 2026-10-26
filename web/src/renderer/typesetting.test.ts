@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
-import { layoutRich, placeTextLines, trackedMeasure, type MeasureFor } from "./text";
-import { resolveRich } from "../store/richText";
-import { emptyScene, type NodeLite, type ResolvedParagraph, type SceneState, type TextLite, type TextStyleDefLite, type TextStyleLite } from "../store/types";
+import { layoutRich, placeTextLines, trackedMeasure, type MeasureFor } from "@/renderer/text";
+import { resolveRich } from "@/store/richText";
+import { emptyScene, type NodeLite, type ResolvedParagraph, type SceneState, type TextLite, type TextStyleDefLite, type TextStyleLite } from "@/store/types";
 
 // 5 units per character at size 10 (width scales with the font size).
 const mf: MeasureFor = (st) => (s) => s.length * (st.fontSize || 16) * 0.5;

@@ -1,5 +1,5 @@
-import type { AnchorLite, SubPathLite } from "../store/types";
-import type { Transform } from "../canvas/transform";
+import type { AnchorLite, SubPathLite } from "@/store/types";
+import type { Transform } from "@/canvas/transform";
 
 // THE PARSER OF A <path>'s `d` AND THE CONVERSION INTO THE VECTOR MODEL.
 //

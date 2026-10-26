@@ -1,7 +1,7 @@
-import type { ClipLite, KeyframeLite, NodeLite, SceneState, TrackLite } from "../store/types";
-import { ancestorsOf } from "../store/tree";
-import { sampleTrack, type TrackProp } from "./engine";
-import { canDraw } from "./pose";
+import type { ClipLite, KeyframeLite, NodeLite, SceneState, TrackLite } from "@/store/types";
+import { ancestorsOf } from "@/store/tree";
+import { sampleTrack, type TrackProp } from "@/animation/engine";
+import { canDraw } from "@/animation/pose";
 
 // THE TIMELINE LOGIC: PURE functions on the clip, with no DOM or store.
 //

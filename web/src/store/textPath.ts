@@ -1,10 +1,10 @@
-import { applyTransform, compose, invertTransform, worldTransformOf } from "../canvas/transform";
-import { withMeta } from "../flow/meta";
-import type { Op } from "../gen/opendesigner/v1/opendesigner_pb";
-import { makeSetPropsOp } from "../tools/ops";
-import { recordDelta } from "./sceneDelta";
-import { flattenSubpath, type PointLite } from "./vectorGeometry";
-import type { NodeLite, SceneState } from "./types";
+import { applyTransform, compose, invertTransform, worldTransformOf } from "@/canvas/transform";
+import { withMeta } from "@/flow/meta";
+import type { Op } from "@/gen/opendesigner/v1/opendesigner_pb";
+import { makeSetPropsOp } from "@/tools/ops";
+import { recordDelta } from "@/store/sceneDelta";
+import { flattenSubpath, type PointLite } from "@/store/vectorGeometry";
+import type { NodeLite, SceneState } from "@/store/types";
 
 // TEXT ON A PATH. A text node with `meta["text.path"] = <id of a vector>` runs along the first outline of
 // that vector: the characters of its first paragraph are set one after another along the curve and turned

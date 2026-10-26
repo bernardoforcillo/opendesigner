@@ -1,8 +1,8 @@
 import { useState } from "react";
 import { Dialog, Modal, ModalOverlay } from "react-aria-components";
-import { useScene } from "../store/store";
-import { convertSpotsOps, inkReport, mergeSpotsOps, overprintOps, type OverprintMode } from "../tools/inks";
-import { Button, cls } from "./ds";
+import { useScene } from "@/store/store";
+import { convertSpotsOps, inkReport, mergeSpotsOps, overprintOps, type OverprintMode } from "@/tools/inks";
+import { Button, cls } from "@/ui/ds";
 
 // INK MANAGER (document menu): the process and spot inks of the document, spot -> process conversion, ink aliases, and overprint for the
 // selection. Overprint is written to the PDF; the screen does not simulate it.

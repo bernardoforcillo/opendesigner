@@ -1,16 +1,16 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { Op } from "../gen/opendesigner/v1/opendesigner_pb";
-import { nodesOf } from "../store/nodeMap";
-import { useScene } from "../store/store";
-import { emptyScene } from "../store/types";
-import type { NodeLite } from "../store/types";
-import { parsePlugin, type Plugin } from "./manifest";
-import { runPlugin } from "./run";
-import { checkMemory, executeWasm, IO_MAX, parseCommands, validateWasm, WasmError, bytesToBase64 } from "./wasm";
-import { assemble, I32, op } from "./wasmAsm";
-import { exampleModule, exampleWasmPlugin } from "./wasmExample";
-import { runWasmPlugin, snapshot, type WasmWorker } from "./wasmRun";
-import { PluginSession } from "./api";
+import type { Op } from "@/gen/opendesigner/v1/opendesigner_pb";
+import { nodesOf } from "@/store/nodeMap";
+import { useScene } from "@/store/store";
+import { emptyScene } from "@/store/types";
+import type { NodeLite } from "@/store/types";
+import { parsePlugin, type Plugin } from "@/plugins/manifest";
+import { runPlugin } from "@/plugins/run";
+import { checkMemory, executeWasm, IO_MAX, parseCommands, validateWasm, WasmError, bytesToBase64 } from "@/plugins/wasm";
+import { assemble, I32, op } from "@/plugins/wasmAsm";
+import { exampleModule, exampleWasmPlugin } from "@/plugins/wasmExample";
+import { runWasmPlugin, snapshot, type WasmWorker } from "@/plugins/wasmRun";
+import { PluginSession } from "@/plugins/api";
 
 const sync = { submit(op: Op) { useScene.getState().applyPending(op); useScene.getState().apply(op); } };
 const rect = (id: string): NodeLite => ({

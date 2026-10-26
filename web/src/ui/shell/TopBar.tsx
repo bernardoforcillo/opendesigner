@@ -1,15 +1,15 @@
 import type { ReactNode } from "react";
 import { ToggleButton, ToggleButtonGroup, Tooltip, TooltipTrigger } from "react-aria-components";
-import { Icon, IconButton, Kbd } from "../ds";
-import { useAccess } from "../../rpc/access";
-import { useScene } from "../../store/store";
-import { DocMenu } from "./DocMenu";
-import { DocName } from "./DocName";
-import { usePanels } from "./panels";
-import { useFlowUi, type EditorMode } from "../../store/flowUi";
-import { verticalOf } from "../../store/docSettings";
-import { verticalDef } from "../../verticals";
-import { useT } from "../../i18n";
+import { Icon, IconButton, Kbd } from "@/ui/ds";
+import { useAccess } from "@/rpc/access";
+import { useScene } from "@/store/store";
+import { DocMenu } from "@/ui/shell/DocMenu";
+import { DocName } from "@/ui/shell/DocName";
+import { usePanels } from "@/ui/shell/panels";
+import { useFlowUi, type EditorMode } from "@/store/flowUi";
+import { verticalOf } from "@/store/docSettings";
+import { verticalDef } from "@/verticals";
+import { useT } from "@/i18n";
 
 // THE TOP BAR: document identity, mode, people and status -- the
 // things that concern THE DOCUMENT, not the hand on the canvas (that stays in the

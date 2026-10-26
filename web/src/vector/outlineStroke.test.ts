@@ -1,9 +1,9 @@
 import { describe, it, expect } from "vitest";
-import { nodesOf } from "../store/nodeMap";
-import { applyOp } from "../store/applyOp";
-import { emptyScene } from "../store/types";
-import type { NodeLite, SceneState } from "../store/types";
-import { outlineStrokeOps, strokePolyline, canOutlineStroke } from "./outlineStroke";
+import { nodesOf } from "@/store/nodeMap";
+import { applyOp } from "@/store/applyOp";
+import { emptyScene } from "@/store/types";
+import type { NodeLite, SceneState } from "@/store/types";
+import { outlineStrokeOps, strokePolyline, canOutlineStroke } from "@/vector/outlineStroke";
 
 const stroke = (weight: number, align: "center" | "inside" | "outside" = "center") =>
   ({ color: { r: 0, g: 0, b: 1, a: 1 }, weight, align });

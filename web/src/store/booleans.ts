@@ -1,10 +1,10 @@
-import { worldTransformOf } from "../canvas/transform";
-import { booleanRegion, regionOf } from "../vector/regions";
-import { recordDelta } from "./sceneDelta";
-import { taggedOf } from "./tagged";
-import { subtreeOf } from "./tree";
-import { normalizeVector } from "./vectorGeometry";
-import type { NodeLite, SceneState } from "./types";
+import { worldTransformOf } from "@/canvas/transform";
+import { booleanRegion, regionOf } from "@/vector/regions";
+import { recordDelta } from "@/store/sceneDelta";
+import { taggedOf } from "@/store/tagged";
+import { subtreeOf } from "@/store/tree";
+import { normalizeVector } from "@/store/vectorGeometry";
+import type { NodeLite, SceneState } from "@/store/types";
 
 // LIVE BOOLEAN GROUPS. A group whose meta has `boolean.op` keeps its shapes as children and DRAWS as
 // the result of the operation over them, styled by the group's own fills, strokes and effects.

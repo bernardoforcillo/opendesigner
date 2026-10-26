@@ -1,4 +1,4 @@
-import type { AnchorLite, NodeLite, SubPathLite } from "./types";
+import type { AnchorLite, NodeLite, SubPathLite } from "@/store/types";
 
 // The ONLY reading of vector geometry. Renderer, hit-test, overlay and pen
 // tool all go through here: the two-space rule (anchors LOCAL to the node,

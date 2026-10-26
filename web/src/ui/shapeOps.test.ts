@@ -1,14 +1,14 @@
 import { describe, it, expect } from "vitest";
-import { nodesOf } from "../store/nodeMap";
-import { applyOp } from "../store/applyOp";
-import { resolveScene } from "../store/variables";
-import { emptyScene } from "../store/types";
-import type { NodeLite, SceneState } from "../store/types";
-import { makeSetPaintStyleDefOp } from "../tools/ops";
-import { arcOps, arrowheadOps, cornerRadiiOps, cornerSmoothingOps, polygonSidesOps, starOps, strokeSidesOps } from "./shapeOps";
+import { nodesOf } from "@/store/nodeMap";
+import { applyOp } from "@/store/applyOp";
+import { resolveScene } from "@/store/variables";
+import { emptyScene } from "@/store/types";
+import type { NodeLite, SceneState } from "@/store/types";
+import { makeSetPaintStyleDefOp } from "@/tools/ops";
+import { arcOps, arrowheadOps, cornerRadiiOps, cornerSmoothingOps, polygonSidesOps, starOps, strokeSidesOps } from "@/ui/shapeOps";
 import {
   applyEffectStyleOps, applyPaintStyleOps, createEffectStyleOps, createPaintStyleOps, deleteEffectStyleOps, deletePaintStyleOps,
-} from "./styleOps";
+} from "@/ui/styleOps";
 
 function base(over: Partial<NodeLite>): NodeLite {
   return {

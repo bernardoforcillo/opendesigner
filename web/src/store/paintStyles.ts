@@ -1,6 +1,6 @@
-import type { EffectStyleDef as PbEffectStyleDef, PaintStyleDef as PbPaintStyleDef } from "../gen/opendesigner/v1/opendesigner_pb";
-import { arePaintsValid } from "./paints";
-import type { NodeLite, SceneState } from "./types";
+import type { EffectStyleDef as PbEffectStyleDef, PaintStyleDef as PbPaintStyleDef } from "@/gen/opendesigner/v1/opendesigner_pb";
+import { arePaintsValid } from "@/store/paints";
+import type { NodeLite, SceneState } from "@/store/types";
 
 // The TS half of internal/core/styles.go: shared PAINT styles and EFFECT styles. A node names one with
 // fillStyleId / strokeStyleId / effectStyleId and draws with the style's values (resolved at read time,

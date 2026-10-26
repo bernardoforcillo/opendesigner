@@ -1,10 +1,10 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { render, screen, fireEvent, act, cleanup } from "@testing-library/react";
-import { InkManagerDialog } from "./InkManagerDialog";
-import { useScene } from "../store/store";
-import { emptyScene } from "../store/types";
-import { createSwatchOps } from "../tools/swatches";
-import type { Op } from "../gen/opendesigner/v1/opendesigner_pb";
+import { InkManagerDialog } from "@/ui/InkManagerDialog";
+import { useScene } from "@/store/store";
+import { emptyScene } from "@/store/types";
+import { createSwatchOps } from "@/tools/swatches";
+import type { Op } from "@/gen/opendesigner/v1/opendesigner_pb";
 
 beforeEach(() => {
   cleanup();

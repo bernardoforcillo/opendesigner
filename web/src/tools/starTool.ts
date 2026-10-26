@@ -1,5 +1,5 @@
-import { makeShapeTool } from "./shapeTool";
-import type { Tool } from "./types";
+import { makeShapeTool } from "@/tools/shapeTool";
+import type { Tool } from "@/tools/types";
 
 export const DEFAULT_STAR_SIZE = 100;
 export const DEFAULT_STAR_POINTS = 5;

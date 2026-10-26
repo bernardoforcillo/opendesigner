@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { taggedOf } from "./tagged";
-import { applyOp } from "./applyOp";
-import { nodesOf } from "./nodeMap";
-import { emptyScene } from "./types";
-import type { NodeLite, SceneState } from "./types";
-import { makeSetPropsOp } from "../tools/ops";
+import { taggedOf } from "@/store/tagged";
+import { applyOp } from "@/store/applyOp";
+import { nodesOf } from "@/store/nodeMap";
+import { emptyScene } from "@/store/types";
+import type { NodeLite, SceneState } from "@/store/types";
+import { makeSetPropsOp } from "@/tools/ops";
 
 const base = { visible: true, opacity: 1, x: 0, y: 0, width: 10, height: 10, rotation: 0, fills: [], strokes: [], cornerRadius: 0, clipsContent: false };
 const rect = (id: string, over: Partial<NodeLite> = {}): NodeLite => ({ ...base, id, parentId: "page1", orderKey: id, name: id, kind: "rect", ...over });

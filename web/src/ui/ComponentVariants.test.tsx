@@ -1,14 +1,14 @@
 import "@testing-library/jest-dom/vitest";
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { render, screen, cleanup, fireEvent, within } from "@testing-library/react";
-import type { Op } from "../gen/opendesigner/v1/opendesigner_pb";
-import { useScene } from "../store/store";
-import { emptyScene, type ComponentLite, type NodeLite, type SceneState } from "../store/types";
-import { ComponentDialog } from "./ComponentDialog";
-import { InstanceControls } from "./InstanceControls";
+import type { Op } from "@/gen/opendesigner/v1/opendesigner_pb";
+import { useScene } from "@/store/store";
+import { emptyScene, type ComponentLite, type NodeLite, type SceneState } from "@/store/types";
+import { ComponentDialog } from "@/ui/ComponentDialog";
+import { InstanceControls } from "@/ui/InstanceControls";
 import {
   addAxisOps, addOptionOps, addPropertyOps, chooseVariantOps, createSetOps, duplicateVariantOps, freeCombination, setPropertyValueOps, setVariantOps,
-} from "./componentOps";
+} from "@/ui/componentOps";
 
 class FakeSync {
   sent: Op[] = [];

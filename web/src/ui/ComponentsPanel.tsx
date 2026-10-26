@@ -1,11 +1,11 @@
 import { useState } from "react";
 import { Button as RacButton } from "react-aria-components";
-import { Button, EmptyState, Icon, IconButton, cls } from "./ds";
-import { useScene } from "../store/store";
-import { contentWorldBounds } from "../store/groups";
-import { nextOrderKey } from "../store/orderKey";
-import { ComponentDialog } from "./ComponentDialog";
-import { makeCreateComponentOp, makeCreateNodeOp, makeInstanceNode, uuid } from "../tools/ops";
+import { Button, EmptyState, Icon, IconButton, cls } from "@/ui/ds";
+import { useScene } from "@/store/store";
+import { contentWorldBounds } from "@/store/groups";
+import { nextOrderKey } from "@/store/orderKey";
+import { ComponentDialog } from "@/ui/ComponentDialog";
+import { makeCreateComponentOp, makeCreateNodeOp, makeInstanceNode, uuid } from "@/tools/ops";
 
 // COMPONENTS PANEL (M4) — lists the document's components (SceneState.
 // components) and, with a click, PLACES an instance of the chosen one on the current

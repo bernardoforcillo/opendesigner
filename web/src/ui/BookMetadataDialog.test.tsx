@@ -1,12 +1,12 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { render, screen, fireEvent, act, cleanup } from "@testing-library/react";
-import { BookMetadataDialog } from "./BookMetadataDialog";
-import { useScene } from "../store/store";
-import { emptyScene } from "../store/types";
-import type { Op } from "../gen/opendesigner/v1/opendesigner_pb";
+import { BookMetadataDialog } from "@/ui/BookMetadataDialog";
+import { useScene } from "@/store/store";
+import { emptyScene } from "@/store/types";
+import type { Op } from "@/gen/opendesigner/v1/opendesigner_pb";
 
 const downloads: { blob: Blob; name: string }[] = [];
-vi.mock("../export/exportScene", () => ({ downloadBlob: (blob: Blob, name: string) => { downloads.push({ blob, name }); } }));
+vi.mock("@/export/exportScene", () => ({ downloadBlob: (blob: Blob, name: string) => { downloads.push({ blob, name }); } }));
 
 beforeEach(() => {
   cleanup();

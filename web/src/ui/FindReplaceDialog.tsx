@@ -1,8 +1,8 @@
 import { useMemo, useState } from "react";
 import { Dialog, Modal, ModalOverlay } from "react-aria-components";
-import { useScene } from "../store/store";
-import { findAll, replaceOps, type FindOptions } from "../store/findReplace";
-import { Button, cls } from "./ds";
+import { useScene } from "@/store/store";
+import { findAll, replaceOps, type FindOptions } from "@/store/findReplace";
+import { Button, cls } from "@/ui/ds";
 
 // FIND AND CHANGE (document menu): search the text of every page, jump to a match, change one or all. Plain
 // text, case, whole word or a regular expression ($1 in the replacement). A change is one gesture = one undo.

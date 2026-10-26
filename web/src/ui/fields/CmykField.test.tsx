@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { CmykField } from "./CmykField";
+import { CmykField } from "@/ui/fields/CmykField";
 
 afterEach(cleanup);
 

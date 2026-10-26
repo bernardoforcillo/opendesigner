@@ -1,9 +1,9 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { nodesOf } from "../store/nodeMap";
-import { drawScene } from "./canvasRenderer";
-import { BLUR_BANDS } from "./effectsFx";
-import { emptyScene } from "../store/types";
-import type { EffectLite, NodeLite, SceneState } from "../store/types";
+import { nodesOf } from "@/store/nodeMap";
+import { drawScene } from "@/renderer/canvasRenderer";
+import { BLUR_BANDS } from "@/renderer/effectsFx";
+import { emptyScene } from "@/store/types";
+import type { EffectLite, NodeLite, SceneState } from "@/store/types";
 
 class FakePath2D { rect() {} roundRect() {} ellipse() {} addPath() {} moveTo() {} lineTo() {} closePath() {} }
 

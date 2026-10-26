@@ -1,10 +1,10 @@
-import type { Op } from "../gen/opendesigner/v1/opendesigner_pb";
-import type { NodeLite, StrokeLite, SubPathLite, WidthPointLite } from "../store/types";
-import { toPbStrokes } from "../store/types";
-import { flattenSubpath } from "../store/vectorGeometry";
-import { makeSetPropsOp } from "../tools/ops";
-import { BEZIER_TOLERANCE } from "./boolean";
-import { MAX_WIDTH_POINTS, MAX_WIDTH_SCALE, dedupe, widthAt } from "./widthProfile";
+import type { Op } from "@/gen/opendesigner/v1/opendesigner_pb";
+import type { NodeLite, StrokeLite, SubPathLite, WidthPointLite } from "@/store/types";
+import { toPbStrokes } from "@/store/types";
+import { flattenSubpath } from "@/store/vectorGeometry";
+import { makeSetPropsOp } from "@/tools/ops";
+import { BEZIER_TOLERANCE } from "@/vector/boolean";
+import { MAX_WIDTH_POINTS, MAX_WIDTH_SCALE, dedupe, widthAt } from "@/vector/widthProfile";
 
 // The EDITING half of variable-width strokes: where a width point sits on the path, which handle the
 // pointer grabs, and the profile after a drag, an insert or a delete. Pure functions on a node and its

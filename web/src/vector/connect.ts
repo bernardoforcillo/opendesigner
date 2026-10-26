@@ -1,17 +1,17 @@
 import { create } from "@bufbuild/protobuf";
-import { NodeSchema } from "../gen/opendesigner/v1/opendesigner_pb";
-import type { Op } from "../gen/opendesigner/v1/opendesigner_pb";
-import { invertTransform, mapBounds, worldBoundsOfNode, worldTransformOf } from "../canvas/transform";
-import { orderKeyBetween } from "../store/orderKey";
-import { childrenOf } from "../store/tree";
-import { normalizeVector } from "../store/vectorGeometry";
-import type { NodeLite, SceneState } from "../store/types";
-import { toPbStrokes, toPbSubPaths } from "../store/types";
-import { makeCreateNodeOp, makeSetPropsOp, uuid } from "../tools/ops";
+import { NodeSchema } from "@/gen/opendesigner/v1/opendesigner_pb";
+import type { Op } from "@/gen/opendesigner/v1/opendesigner_pb";
+import { invertTransform, mapBounds, worldBoundsOfNode, worldTransformOf } from "@/canvas/transform";
+import { orderKeyBetween } from "@/store/orderKey";
+import { childrenOf } from "@/store/tree";
+import { normalizeVector } from "@/store/vectorGeometry";
+import type { NodeLite, SceneState } from "@/store/types";
+import { toPbStrokes, toPbSubPaths } from "@/store/types";
+import { makeCreateNodeOp, makeSetPropsOp, uuid } from "@/tools/ops";
 import {
   META_CONNECTOR_FROM, META_CONNECTOR_HEAD, META_CONNECTOR_ROUTE, META_CONNECTOR_TO,
   connectorOf, connectorSubpaths, type ConnectorHead, type ConnectorRoute,
-} from "./connector";
+} from "@/vector/connector";
 
 // Making and editing connectors. The node stores the path it had when it was made, so the document
 // is meaningful to anything that does not derive (the server, an unpack in git); the editor then

@@ -1,10 +1,10 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { drawFlows, drawKindIcon, type FlowOverlayState } from "./flowRenderer";
-import { themeColors } from "./themeColors";
-import { FLOW_KINDS } from "../flow/meta";
-import { baseScene, flowOf, frame, transition, withFlows } from "../flow/testSupport";
-import { nodesOf } from "../store/nodeMap";
-import type { SceneState } from "../store/types";
+import { drawFlows, drawKindIcon, type FlowOverlayState } from "@/renderer/flowRenderer";
+import { themeColors } from "@/renderer/themeColors";
+import { FLOW_KINDS } from "@/flow/meta";
+import { baseScene, flowOf, frame, transition, withFlows } from "@/flow/testSupport";
+import { nodesOf } from "@/store/nodeMap";
+import type { SceneState } from "@/store/types";
 
 // The ctx is a double that counts strokes: jsdom has no real canvas 2D. What is
 // drawn is tested (how many arrows, dashing, culling, dpr), not the pixels:

@@ -1,23 +1,23 @@
 import "@testing-library/jest-dom/vitest";
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { render, screen, fireEvent, cleanup } from "@testing-library/react";
-import { App, TOOLS } from "./App";
-import { connectTool } from "../tools/connectTool";
-import { useFlowUi } from "../store/flowUi";
-import { useScene } from "../store/store";
-import { emptyScene } from "../store/types";
+import { App, TOOLS } from "@/ui/App";
+import { connectTool } from "@/tools/connectTool";
+import { useFlowUi } from "@/store/flowUi";
+import { useScene } from "@/store/store";
+import { emptyScene } from "@/store/types";
 
 // FLOWS MODE inside App: the toggle in the header, the tools, the
 // panels and the F / K shortcuts. App is the only place where they become
 // reachable (same reason as the toolbar tests in App.test.tsx).
 
-vi.mock("../rpc/client", () => ({
+vi.mock("@/rpc/client", () => ({
   docClient: {
     createDocument: vi.fn(async () => ({ id: "doc-1" })),
     analyzeFlows: vi.fn(async () => ({ reports: [] })),
   },
 }));
-vi.mock("../rpc/syncClient", () => ({
+vi.mock("@/rpc/syncClient", () => ({
   SyncClient: class {
     async start() {}
     stop() {}

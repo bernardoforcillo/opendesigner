@@ -1,12 +1,12 @@
 import { describe, it, expect } from "vitest";
 import { create, type MessageInitShape } from "@bufbuild/protobuf";
-import { ComponentPropertyType, NodeSchema, OpSchema } from "../gen/opendesigner/v1/opendesigner_pb";
-import type { Op } from "../gen/opendesigner/v1/opendesigner_pb";
-import { applyOp } from "./applyOp";
-import { invertOp } from "./history";
-import { detachInstance, pageOf, resetInstance, swapInstance, swapSize } from "./instanceOps";
-import { toPbNode, emptyScene, type SceneState } from "./types";
-import { makeSetInstanceOp } from "../tools/ops";
+import { ComponentPropertyType, NodeSchema, OpSchema } from "@/gen/opendesigner/v1/opendesigner_pb";
+import type { Op } from "@/gen/opendesigner/v1/opendesigner_pb";
+import { applyOp } from "@/store/applyOp";
+import { invertOp } from "@/store/history";
+import { detachInstance, pageOf, resetInstance, swapInstance, swapSize } from "@/store/instanceOps";
+import { toPbNode, emptyScene, type SceneState } from "@/store/types";
+import { makeSetInstanceOp } from "@/tools/ops";
 
 // Swap, reset and detach of instances: the TypeScript half of internal/core/instances_test.go.
 

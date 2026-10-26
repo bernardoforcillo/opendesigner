@@ -1,11 +1,11 @@
 import { describe, it, expect } from "vitest";
 import { create } from "@bufbuild/protobuf";
-import { LayoutGridKind, LayoutGridSchema } from "../gen/opendesigner/v1/opendesigner_pb";
-import { nodesOf } from "./nodeMap";
-import { emptyScene } from "./types";
-import type { LayoutGridLite, NodeLite } from "./types";
-import { areValidLayoutGrids, gridBands, gridLines, snapPositions } from "./layoutGrids";
-import { snapBounds, snapTargets } from "../selection/snap";
+import { LayoutGridKind, LayoutGridSchema } from "@/gen/opendesigner/v1/opendesigner_pb";
+import { nodesOf } from "@/store/nodeMap";
+import { emptyScene } from "@/store/types";
+import type { LayoutGridLite, NodeLite } from "@/store/types";
+import { areValidLayoutGrids, gridBands, gridLines, snapPositions } from "@/store/layoutGrids";
+import { snapBounds, snapTargets } from "@/selection/snap";
 
 const cols = (over: Partial<LayoutGridLite> = {}): LayoutGridLite => ({
   kind: "columns", size: 0, count: 4, gutter: 20, margin: 10, color: { r: 1, g: 0, b: 0, a: 0.1 }, ...over,

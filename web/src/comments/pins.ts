@@ -1,6 +1,6 @@
-import { applyTransform, invertTransform, worldTransformOf } from "../canvas/transform";
-import { threadsOf } from "../store/comments";
-import type { SceneState } from "../store/types";
+import { applyTransform, invertTransform, worldTransformOf } from "@/canvas/transform";
+import { threadsOf } from "@/store/comments";
+import type { SceneState } from "@/store/types";
 
 // WHERE A COMMENT'S PIN SITS. A comment attached to a node is an offset in the node's own
 // space, so the pin follows the node; a free one is in world coordinates on its page.

@@ -1,9 +1,9 @@
-import { nodesOf } from "../store/nodeMap";
+import { nodesOf } from "@/store/nodeMap";
 import { describe, it, expect } from "vitest";
-import { applyOp } from "../store/applyOp";
-import { emptyScene } from "../store/types";
-import type { NodeLite, SceneState } from "../store/types";
-import { DEFAULT_AUTO_LAYOUT, autoLayoutOps } from "./autoLayoutOps";
+import { applyOp } from "@/store/applyOp";
+import { emptyScene } from "@/store/types";
+import type { NodeLite, SceneState } from "@/store/types";
+import { DEFAULT_AUTO_LAYOUT, autoLayoutOps } from "@/ui/autoLayoutOps";
 
 function frameScene(autoLayout?: NodeLite["autoLayout"]): SceneState {
   const frame: NodeLite = {

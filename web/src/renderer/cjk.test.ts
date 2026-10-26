@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
-import { cjkBreaks, cjkSplit, hasCjk } from "./cjk";
-import { layoutText } from "./text";
-import { layoutRich } from "./text";
+import { cjkBreaks, cjkSplit, hasCjk } from "@/renderer/cjk";
+import { layoutText } from "@/renderer/text";
+import { layoutRich } from "@/renderer/text";
 
 describe("cjk breaks", () => {
   it("allows a break between ideographs and kana, not inside Latin words", () => {

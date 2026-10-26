@@ -1,11 +1,11 @@
-import { nodesOf } from "../store/nodeMap";
+import { nodesOf } from "@/store/nodeMap";
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import { createRectTool, DEFAULT_RECT_HEIGHT, DEFAULT_RECT_WIDTH } from "./rectTool";
-import type { ToolContext } from "./types";
-import type { Op } from "../gen/opendesigner/v1/opendesigner_pb";
-import { useScene } from "../store/store";
-import { emptyScene } from "../store/types";
-import type { NodeLite } from "../store/types";
+import { createRectTool, DEFAULT_RECT_HEIGHT, DEFAULT_RECT_WIDTH } from "@/tools/rectTool";
+import type { ToolContext } from "@/tools/types";
+import type { Op } from "@/gen/opendesigner/v1/opendesigner_pb";
+import { useScene } from "@/store/store";
+import { emptyScene } from "@/store/types";
+import type { NodeLite } from "@/store/types";
 
 function node(id: string, orderKey: string): NodeLite {
   return { id, parentId: "page1", orderKey, name: id, visible: true, opacity: 1,

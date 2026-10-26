@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Button as RacButton, Dialog, DialogTrigger, Popover } from "react-aria-components";
-import { usePresence, peerColor, saveNickname } from "../store/presence";
-import { Button, Icon } from "./ds";
+import { usePresence, peerColor, saveNickname } from "@/store/presence";
+import { Button, Icon } from "@/ui/ds";
 
 // How many avatars are shown before the "+N": in the top bar space is tight.
 const MAX_AVATARS = 4;

@@ -1,25 +1,25 @@
 import "@testing-library/jest-dom/vitest";
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { render, screen, fireEvent, cleanup } from "@testing-library/react";
-import { App, toolsForMode } from "./App";
-import { useFlowUi } from "../store/flowUi";
-import { useScene } from "../store/store";
-import { emptyScene } from "../store/types";
-import { baseScene } from "../flow/testSupport";
+import { App, toolsForMode } from "@/ui/App";
+import { useFlowUi } from "@/store/flowUi";
+import { useScene } from "@/store/store";
+import { emptyScene } from "@/store/types";
+import { baseScene } from "@/flow/testSupport";
 
 // DEVELOP MODE inside App: the selector's third segment, the panels that
 // replace those of Design/Flows, the reduced tools and the S shortcut.
 // As for Flows, App is the only place where they become reachable.
 
 const exportCode = vi.fn(async () => ({ files: [], warnings: [] }));
-vi.mock("../rpc/client", () => ({
+vi.mock("@/rpc/client", () => ({
   docClient: {
     createDocument: vi.fn(async () => ({ id: "doc-1" })),
     analyzeFlows: vi.fn(async () => ({ reports: [] })),
     exportCode: (...a: unknown[]) => (exportCode as (...x: unknown[]) => unknown)(...a),
   },
 }));
-vi.mock("../rpc/syncClient", () => ({
+vi.mock("@/rpc/syncClient", () => ({
   SyncClient: class {
     async start() {}
     stop() {}

@@ -1,5 +1,5 @@
-import { makeShapeTool } from "./shapeTool";
-import type { Tool } from "./types";
+import { makeShapeTool } from "@/tools/shapeTool";
+import type { Tool } from "@/tools/types";
 
 // Default size when the gesture is a plain click rather than a drag, and the number of sides a new polygon gets
 // (the panel changes it afterwards).

@@ -1,14 +1,14 @@
-import { useScene } from "../store/store";
-import type { NodeLite, TextStyleLite } from "../store/types";
-import { Button, cls } from "./ds";
-import { NumberField } from "./fields/NumberField";
-import { DEFAULT_LINE_HEIGHT } from "../renderer/text";
+import { useScene } from "@/store/store";
+import type { NodeLite, TextStyleLite } from "@/store/types";
+import { Button, cls } from "@/ui/ds";
+import { NumberField } from "@/ui/fields/NumberField";
+import { DEFAULT_LINE_HEIGHT } from "@/renderer/text";
 import {
   applyStyleOps, characterStyleOf, createStyleOps, effectiveStyle, familyChoices, formatOps, paragraphStyleOf, sharedStyleOf, styleOps, updateStyleOps,
-} from "./typographyOps";
-import { featureValue, withFeature } from "./fontFeatures";
-import { isValidFontFeatures } from "../store/typography";
-import { makeDeleteTextStyleDefOp } from "../tools/ops";
+} from "@/ui/typographyOps";
+import { featureValue, withFeature } from "@/ui/fontFeatures";
+import { isValidFontFeatures } from "@/store/typography";
+import { makeDeleteTextStyleDefOp } from "@/tools/ops";
 
 // THE TYPOGRAPHY CONTROLS of the properties panel's Text section: font family
 // (built-in stacks and the document's uploaded fonts), italic, line height and the

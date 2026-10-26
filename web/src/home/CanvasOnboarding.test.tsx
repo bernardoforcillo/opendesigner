@@ -2,13 +2,13 @@ import "@testing-library/jest-dom/vitest";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { CanvasOnboarding, fitCameraToScreens, FIT_MARGIN } from "./CanvasOnboarding";
-import { useScene } from "../store/store";
-import { useFlowUi } from "../store/flowUi";
-import { emptyScene } from "../store/types";
-import { baseScene, flowOf, transition, withFlows } from "../flow/testSupport";
-import { loadDocPrefs, SHIPPED_EVENT } from "./docPrefs";
-import { TEMPLATES } from "../templates/catalog";
+import { CanvasOnboarding, fitCameraToScreens, FIT_MARGIN } from "@/home/CanvasOnboarding";
+import { useScene } from "@/store/store";
+import { useFlowUi } from "@/store/flowUi";
+import { emptyScene } from "@/store/types";
+import { baseScene, flowOf, transition, withFlows } from "@/flow/testSupport";
+import { loadDocPrefs, SHIPPED_EVENT } from "@/home/docPrefs";
+import { TEMPLATES } from "@/templates/catalog";
 
 const client = () => ({ submitOp: vi.fn(async () => ({})) });
 

@@ -1,7 +1,7 @@
-import type { NodeLite, StrokeLite } from "../store/types";
-import { brushReach } from "../vector/brushSpec";
-import { type Camera, worldToScreen } from "./camera";
-import { rotatedAabb } from "./transform";
+import type { NodeLite, StrokeLite } from "@/store/types";
+import { brushReach } from "@/vector/brushSpec";
+import { type Camera, worldToScreen } from "@/canvas/camera";
+import { rotatedAabb } from "@/canvas/transform";
 
 export interface Bounds { x: number; y: number; width: number; height: number }
 

@@ -1,6 +1,6 @@
-import type { Op } from "../gen/opendesigner/v1/opendesigner_pb";
-import type { NodeLite, SceneState, VariableLite } from "../store/types";
-import { makeSetPropsOp, makeSetVariableOp } from "./ops";
+import type { Op } from "@/gen/opendesigner/v1/opendesigner_pb";
+import type { NodeLite, SceneState, VariableLite } from "@/store/types";
+import { makeSetPropsOp, makeSetVariableOp } from "@/tools/ops";
 
 // INK MANAGER and OVERPRINT. The inks of a document are the four process inks (swatches and objects defined in CMYK) and its spot
 // inks (swatches with a spot name). The manager reports them, turns spots into process colours, and merges one spot into another

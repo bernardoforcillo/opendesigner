@@ -1,9 +1,9 @@
 import { useMemo } from "react";
-import { useScene } from "../../store/store";
-import { annotationsInside, categoryColor, readyFrames } from "../../store/devMode";
-import { screenOf } from "../../flow/screens";
-import { useFlowUi } from "../../store/flowUi";
-import { Badge, cls } from "../ds";
+import { useScene } from "@/store/store";
+import { annotationsInside, categoryColor, readyFrames } from "@/store/devMode";
+import { screenOf } from "@/flow/screens";
+import { useFlowUi } from "@/store/flowUi";
+import { Badge, cls } from "@/ui/ds";
 
 // "READY FOR DEV" (Develop, left column): the frames the designer handed over, oldest first, with
 // the colours of the annotations inside each. Picking one is the FOCUS view: the frame becomes the

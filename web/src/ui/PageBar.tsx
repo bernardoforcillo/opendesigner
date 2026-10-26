@@ -1,14 +1,14 @@
 import { Fragment, useEffect, useRef, useState } from "react";
 import { Dialog, DialogTrigger, Popover } from "react-aria-components";
-import { Button, Icon, IconButton, cls } from "./ds";
-import { useScene } from "../store/store";
-import { makeCreatePageWithMasterOp, makeDeletePageOp, makeRenamePageOp, makeUpdatePageOp, uuid } from "../tools/ops";
-import { masterFieldsValid, regularPages } from "../store/masters";
-import { PageSetupDialog } from "./PageSetupDialog";
-import { setupOf } from "../store/docSettings";
-import { detachMasterOps } from "../tools/pageOps";
-import type { PageLite } from "../store/types";
-import type { Op } from "../gen/opendesigner/v1/opendesigner_pb";
+import { Button, Icon, IconButton, cls } from "@/ui/ds";
+import { useScene } from "@/store/store";
+import { makeCreatePageWithMasterOp, makeDeletePageOp, makeRenamePageOp, makeUpdatePageOp, uuid } from "@/tools/ops";
+import { masterFieldsValid, regularPages } from "@/store/masters";
+import { PageSetupDialog } from "@/ui/PageSetupDialog";
+import { setupOf } from "@/store/docSettings";
+import { detachMasterOps } from "@/tools/pageOps";
+import type { PageLite } from "@/store/types";
+import type { Op } from "@/gen/opendesigner/v1/opendesigner_pb";
 
 // PAGE SELECTOR (nesting track, client part). The canvas shows ONE
 // page at a time (canvasRenderer.ts::rootsOf reads currentPageId); this

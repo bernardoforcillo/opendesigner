@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { buildEpub, xmlEscape } from "./epub";
+import { buildEpub, xmlEscape } from "@/export/epub";
 
 const text = (u: Uint8Array) => new TextDecoder().decode(u);
 const svg = '<svg xmlns="http://www.w3.org/2000/svg" width="10" height="20"><rect width="10" height="20"/></svg>';
@@ -78,7 +78,7 @@ describe("book metadata in the package", () => {
 describe("accessible EPUB (fixed layout)", () => {
   const svg = '<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10"/>';
   const read = async (pages: Parameters<typeof buildEpub>[0]) => {
-    const { openZip, readZipText } = await import("./zipRead");
+    const { openZip, readZipText } = await import("@/export/zipRead");
     const z = openZip(buildEpub(pages, { title: "T", language: "it", modified: "2026-01-01T00:00:00Z" }));
     return { opf: (await readZipText(z, "OEBPS/content.opf"))!, page: (await readZipText(z, "OEBPS/page-001.xhtml"))!, nav: (await readZipText(z, "OEBPS/nav.xhtml"))! };
   };

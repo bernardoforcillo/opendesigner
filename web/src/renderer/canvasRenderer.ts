@@ -1,6 +1,6 @@
-import type { SceneState, NodeLite, FillLite, StrokeLite, InstanceOverrideLite, EffectLite, AnimInfo } from "../store/types";
-import type { Camera } from "../canvas/camera";
-import { type Bounds, boundsIntersect, boundsOfNode, inflateBounds, intersectBounds, worldVisualAabbOfNode } from "../canvas/geometry";
+import type { SceneState, NodeLite, FillLite, StrokeLite, InstanceOverrideLite, EffectLite, AnimInfo } from "@/store/types";
+import type { Camera } from "@/canvas/camera";
+import { type Bounds, boundsIntersect, boundsOfNode, inflateBounds, intersectBounds, worldVisualAabbOfNode } from "@/canvas/geometry";
 import {
   IDENTITY,
   applyTransform,
@@ -9,26 +9,26 @@ import {
   localTransformOf,
   mapBounds,
   type Transform,
-} from "../canvas/transform";
-import { sceneIndexOf } from "./sceneIndex";
-import { contentWorldBounds } from "../store/groups";
-import { instanceDescentLocal, instanceOverrideMap, resolveInstance } from "../store/instances";
+} from "@/canvas/transform";
+import { sceneIndexOf } from "@/renderer/sceneIndex";
+import { contentWorldBounds } from "@/store/groups";
+import { instanceDescentLocal, instanceOverrideMap, resolveInstance } from "@/store/instances";
 import {
   nodePath, hitTestNode, inkIsBox, nodeCenter, vectorPaths, hasInk, selectionBoundsOfNode,
   VECTOR_FILL_RULE, VECTOR_STROKE_PX,
-} from "./shapes";
-import { drawText, strokeText } from "./text";
-import { hasRealStroke, vectorStyleOf } from "./vectorStyle";
-import { drawDash, perimeterOf, vectorDrawSubpaths } from "./animDraw";
-import { imageCache, type CachedImage } from "./imageCache";
-import { MESH_BITMAP_SIZE, meshBitmap } from "./mesh";
-import { hasComputedOutline, traceCommands } from "./shapeGeometry";
-import { hasArrowheads, strokeHeads } from "./arrowheads";
-import { sideBandRects } from "./strokeSides";
-import { variableStrokeCommands } from "../vector/widthProfile";
-import { brushStrokeCommands } from "../vector/brush";
-import { GRADIENT_BITMAP_SIZE, angularStart, gradientBitmap } from "./gradientBitmap";
-import { FX_TILE, blurBands, overlayEffects, overlayTile, progressiveBlur, tileUnit, withBandBlur, withExpandedGlass } from "./effectsFx";
+} from "@/renderer/shapes";
+import { drawText, strokeText } from "@/renderer/text";
+import { hasRealStroke, vectorStyleOf } from "@/renderer/vectorStyle";
+import { drawDash, perimeterOf, vectorDrawSubpaths } from "@/renderer/animDraw";
+import { imageCache, type CachedImage } from "@/renderer/imageCache";
+import { MESH_BITMAP_SIZE, meshBitmap } from "@/renderer/mesh";
+import { hasComputedOutline, traceCommands } from "@/renderer/shapeGeometry";
+import { hasArrowheads, strokeHeads } from "@/renderer/arrowheads";
+import { sideBandRects } from "@/renderer/strokeSides";
+import { variableStrokeCommands } from "@/vector/widthProfile";
+import { brushStrokeCommands } from "@/vector/brush";
+import { GRADIENT_BITMAP_SIZE, angularStart, gradientBitmap } from "@/renderer/gradientBitmap";
+import { FX_TILE, blurBands, overlayEffects, overlayTile, progressiveBlur, tileUnit, withBandBlur, withExpandedGlass } from "@/renderer/effectsFx";
 
 const DEG_TO_RAD = Math.PI / 180;
 

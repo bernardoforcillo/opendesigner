@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { fontString, layoutText, alignOffsetX, drawText, placeTextLines, textPaintBounds } from "./text";
-import type { NodeLite, TextStyleLite } from "../store/types";
+import { fontString, layoutText, alignOffsetX, drawText, placeTextLines, textPaintBounds } from "@/renderer/text";
+import type { NodeLite, TextStyleLite } from "@/store/types";
 
 // DETERMINISTIC fake measure: 10px per character. It is the reason
 // layoutText takes a measure function instead of the ctx -- layout is

@@ -1,13 +1,13 @@
-import { swapInstance } from "../store/instanceOps";
-import { useScene } from "../store/store";
-import { topmostOf } from "../store/tree";
-import type { SceneState } from "../store/types";
-import { arrangeOps, arrangeSelection } from "../tools/arrange";
-import { duplicateSelection } from "../tools/clipboard";
-import { groupOps, ungroupOps } from "../tools/grouping";
-import { detachSelectedInstances, goToMainComponent, mainComponentOf, resetSelectedInstances, swapSelectedInstances } from "../tools/instanceActions";
-import { makeDeleteOp } from "../tools/ops";
-import { useContextMenu, type MenuEntry } from "./contextMenuStore";
+import { swapInstance } from "@/store/instanceOps";
+import { useScene } from "@/store/store";
+import { topmostOf } from "@/store/tree";
+import type { SceneState } from "@/store/types";
+import { arrangeOps, arrangeSelection } from "@/tools/arrange";
+import { duplicateSelection } from "@/tools/clipboard";
+import { groupOps, ungroupOps } from "@/tools/grouping";
+import { detachSelectedInstances, goToMainComponent, mainComponentOf, resetSelectedInstances, swapSelectedInstances } from "@/tools/instanceActions";
+import { makeDeleteOp } from "@/tools/ops";
+import { useContextMenu, type MenuEntry } from "@/ui/contextMenuStore";
 
 // WHAT THE CONTEXT MENU OFFERS for a selection. Pure on (scene, selection), so it is tested without a
 // DOM; every entry's action goes through the same functions the shortcuts and the properties panel

@@ -1,5 +1,5 @@
-import type { NodeLite, AutoLayoutLite, GridTrackLite, SceneState } from "./types";
-import { childrenOf } from "./tree";
+import type { NodeLite, AutoLayoutLite, GridTrackLite, SceneState } from "@/store/types";
+import { childrenOf } from "@/store/tree";
 
 // AUTO LAYOUT, GRID MODE -- the TypeScript half of internal/core/layout_grid.go, which is the
 // AUTHORITY (read its header for the rules). The arithmetic is written in the same order, and

@@ -1,6 +1,6 @@
-import { PluginError, PluginSession } from "./api";
-import type { Plugin } from "./manifest";
-import { runWasmPlugin } from "./wasmRun";
+import { PluginError, PluginSession } from "@/plugins/api";
+import type { Plugin } from "@/plugins/manifest";
+import { runWasmPlugin } from "@/plugins/wasmRun";
 
 // RUNNING A PLUGIN. The code runs in a sandboxed <iframe> (sandbox="allow-scripts" only: an opaque
 // origin, so no access to the editor, its storage or its cookies) whose CSP forbids every network

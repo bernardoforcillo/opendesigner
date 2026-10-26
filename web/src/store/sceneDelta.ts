@@ -1,4 +1,4 @@
-import type { SceneState } from "./types";
+import type { SceneState } from "@/store/types";
 
 // The PROVENANCE of a scene: which scene it was produced from and which nodes
 // were touched. applyOp records it for ops that touch a few known nodes

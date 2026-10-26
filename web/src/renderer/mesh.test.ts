@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { defaultMesh, meshBitmap, resizeMesh } from "./mesh";
-import type { MeshLite } from "../store/types";
+import { defaultMesh, meshBitmap, resizeMesh } from "@/renderer/mesh";
+import type { MeshLite } from "@/store/types";
 
 const red = { r: 1, g: 0, b: 0, a: 1 }, green = { r: 0, g: 1, b: 0, a: 1 }, blue = { r: 0, g: 0, b: 1, a: 1 }, white = { r: 1, g: 1, b: 1, a: 1 };
 const four: MeshLite = { rows: 2, cols: 2, colors: [red, green, blue, white] };

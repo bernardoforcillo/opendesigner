@@ -1,9 +1,9 @@
-import { hitTest } from "../renderer/canvasRenderer";
-import { worldBoundsOfNode } from "../canvas/transform";
-import { useScene } from "../store/store";
-import type { SceneState } from "../store/types";
-import { connectOps } from "../vector/connect";
-import type { Tool, ToolContext } from "./types";
+import { hitTest } from "@/renderer/canvasRenderer";
+import { worldBoundsOfNode } from "@/canvas/transform";
+import { useScene } from "@/store/store";
+import type { SceneState } from "@/store/types";
+import { connectOps } from "@/vector/connect";
+import type { Tool, ToolContext } from "@/tools/types";
 
 // "LINK" (L, in the Board). Drag from one thing to another and an arrow joins them -- an arrow that
 // FOLLOWS them (vector/connector.ts). A sticky note, a table cell group or a card is a group of

@@ -1,8 +1,8 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { buildOnix, contributorNames, onixDateTime, onixProblems } from "./onix";
-import type { BookLite } from "../store/types";
+import { buildOnix, contributorNames, onixDateTime, onixProblems } from "@/export/onix";
+import type { BookLite } from "@/store/types";
 
 const book: BookLite = {
   isbn13: "9788804668237", title: "Rose & <Name>", subtitle: "A novel", seriesName: "Classics", seriesNumber: "3", editionNumber: "2",

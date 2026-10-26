@@ -1,5 +1,5 @@
-import type { Annotation as PbAnnotation, ReadyForDev as PbReady } from "../gen/opendesigner/v1/opendesigner_pb";
-import type { AnnotationLite, ReadyLite, SceneState } from "./types";
+import type { Annotation as PbAnnotation, ReadyForDev as PbReady } from "@/gen/opendesigner/v1/opendesigner_pb";
+import type { AnnotationLite, ReadyLite, SceneState } from "@/store/types";
 
 // DEV MODE: the TypeScript twin of internal/core/devmode.go. Go is the authority; every rule here
 // repeats one there. Annotations are notes for the developer attached to a node; a ready frame is

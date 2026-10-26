@@ -1,18 +1,18 @@
 import polygonClipping from "polygon-clipping";
 import type { MultiPolygon, Pair, Ring } from "polygon-clipping";
 import { create } from "@bufbuild/protobuf";
-import { NodeSchema } from "../gen/opendesigner/v1/opendesigner_pb";
-import type { Op } from "../gen/opendesigner/v1/opendesigner_pb";
-import { applyTransform, localTransformOf, worldTransformOf } from "../canvas/transform";
-import { orderKeyBetween } from "../store/orderKey";
-import { childrenOf } from "../store/tree";
-import { normalizeVector } from "../store/vectorGeometry";
-import type { NodeLite, SceneState } from "../store/types";
-import { toPbFills, toPbSubPaths } from "../store/types";
-import { vectorStyleOf } from "../renderer/vectorStyle";
-import { makeCreateNodeOp, makeDeleteOp, makeSetPropsOp, uuid } from "../tools/ops";
-import { variableStrokePolyline } from "./widthProfile";
-import { BEZIER_TOLERANCE, booleanRegion, localOutlines, regionOfNode } from "./boolean";
+import { NodeSchema } from "@/gen/opendesigner/v1/opendesigner_pb";
+import type { Op } from "@/gen/opendesigner/v1/opendesigner_pb";
+import { applyTransform, localTransformOf, worldTransformOf } from "@/canvas/transform";
+import { orderKeyBetween } from "@/store/orderKey";
+import { childrenOf } from "@/store/tree";
+import { normalizeVector } from "@/store/vectorGeometry";
+import type { NodeLite, SceneState } from "@/store/types";
+import { toPbFills, toPbSubPaths } from "@/store/types";
+import { vectorStyleOf } from "@/renderer/vectorStyle";
+import { makeCreateNodeOp, makeDeleteOp, makeSetPropsOp, uuid } from "@/tools/ops";
+import { variableStrokePolyline } from "@/vector/widthProfile";
+import { BEZIER_TOLERANCE, booleanRegion, localOutlines, regionOfNode } from "@/vector/boolean";
 
 // OUTLINE STROKE: turns the first stroke of a shape into a filled vector -- the
 // stroke's own geometry, ready to be edited as a shape.

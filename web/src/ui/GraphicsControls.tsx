@@ -1,8 +1,8 @@
-import { useScene } from "../store/store";
-import { applyObjectStyleOps, createObjectStyleOps, redefineObjectStyleOps, stylable } from "../tools/objectStyles";
-import { layerOf, moveToLayerOps } from "../tools/layers";
-import { effectivePpi, fitImageOps, pickImageFile, ppiStatus, relinkImage } from "../tools/imageLinks";
-import { Button, cls } from "./ds";
+import { useScene } from "@/store/store";
+import { applyObjectStyleOps, createObjectStyleOps, redefineObjectStyleOps, stylable } from "@/tools/objectStyles";
+import { layerOf, moveToLayerOps } from "@/tools/layers";
+import { effectivePpi, fitImageOps, pickImageFile, ppiStatus, relinkImage } from "@/tools/imageLinks";
+import { Button, cls } from "@/ui/ds";
 
 // CONTROLS of the properties panel for shared looks and links:
 //  - Object style: apply a shared look to the selection, make one from it, redefine it;

@@ -1,11 +1,11 @@
-import type { Camera } from "../canvas/camera";
-import { worldToScreen } from "../canvas/camera";
-import { type Bounds, worldBoundsToScreen } from "../canvas/geometry";
-import type { SceneState } from "../store/types";
-import { peerColor, type Peers } from "../store/presence";
-import { emoteOf } from "../store/facilitation";
-import { selectionWorldBounds } from "./overlayRenderer";
-import { themeColors, withAlpha } from "./themeColors";
+import type { Camera } from "@/canvas/camera";
+import { worldToScreen } from "@/canvas/camera";
+import { type Bounds, worldBoundsToScreen } from "@/canvas/geometry";
+import type { SceneState } from "@/store/types";
+import { peerColor, type Peers } from "@/store/presence";
+import { emoteOf } from "@/store/facilitation";
+import { selectionWorldBounds } from "@/renderer/overlayRenderer";
+import { themeColors, withAlpha } from "@/renderer/themeColors";
 
 const LABEL_FONT = "600 11px Inter, system-ui, sans-serif";
 const LABEL_PAD_X = 6;

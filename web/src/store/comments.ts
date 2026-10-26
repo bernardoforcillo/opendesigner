@@ -1,5 +1,5 @@
-import type { Comment as PbComment } from "../gen/opendesigner/v1/opendesigner_pb";
-import type { SceneState } from "./types";
+import type { Comment as PbComment } from "@/gen/opendesigner/v1/opendesigner_pb";
+import type { SceneState } from "@/store/types";
 
 // COMMENTS: the TypeScript twin of internal/core/comments.go. Go is the authority; every
 // rule here repeats one there, and testdata/golden/comments.json runs both sides.

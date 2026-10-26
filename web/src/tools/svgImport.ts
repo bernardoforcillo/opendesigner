@@ -1,10 +1,10 @@
-import { screenToWorld } from "../canvas/camera";
-import { nextOrderKey } from "../store/orderKey";
-import { useScene } from "../store/store";
-import type { TextStyleLite } from "../store/types";
-import { uploadAsset, type AssetRef } from "../rpc/assets";
-import { fontString } from "../renderer/text";
-import { SvgImportError, importSvg } from "../svg/importSvg";
+import { screenToWorld } from "@/canvas/camera";
+import { nextOrderKey } from "@/store/orderKey";
+import { useScene } from "@/store/store";
+import type { TextStyleLite } from "@/store/types";
+import { uploadAsset, type AssetRef } from "@/rpc/assets";
+import { fontString } from "@/renderer/text";
+import { SvgImportError, importSvg } from "@/svg/importSvg";
 
 // IMPORT AN SVG INTO THE DOCUMENT.
 //

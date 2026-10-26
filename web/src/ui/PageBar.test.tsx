@@ -4,11 +4,11 @@
 import "@testing-library/jest-dom/vitest";
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { render, screen, fireEvent, cleanup } from "@testing-library/react";
-import { PageBar } from "./PageBar";
-import { useScene } from "../store/store";
-import { emptyScene } from "../store/types";
-import type { SceneState } from "../store/types";
-import type { Op } from "../gen/opendesigner/v1/opendesigner_pb";
+import { PageBar } from "@/ui/PageBar";
+import { useScene } from "@/store/store";
+import { emptyScene } from "@/store/types";
+import type { SceneState } from "@/store/types";
+import type { Op } from "@/gen/opendesigner/v1/opendesigner_pb";
 
 // SyncClient double: records the ops on the wire and models a server that accepts
 // and ECHOES at once (applyPending + apply), like in the tool tests. It serves to

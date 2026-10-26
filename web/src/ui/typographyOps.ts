@@ -1,9 +1,9 @@
-import type { Op } from "../gen/opendesigner/v1/opendesigner_pb";
-import { resolveNode } from "../store/variables";
-import type { FontLite, NodeLite, SceneState, TextStyleDefLite, TextStyleLite } from "../store/types";
-import { DEFAULT_FONT_FAMILY } from "../renderer/text";
-import { applyParagraphRange, applyRun, paragraphCount, richFields } from "../store/richText";
-import { makeSetFontOp, makeSetPropsOp, makeSetTextOp, makeSetTextStyleDefOp, uuid } from "../tools/ops";
+import type { Op } from "@/gen/opendesigner/v1/opendesigner_pb";
+import { resolveNode } from "@/store/variables";
+import type { FontLite, NodeLite, SceneState, TextStyleDefLite, TextStyleLite } from "@/store/types";
+import { DEFAULT_FONT_FAMILY } from "@/renderer/text";
+import { applyParagraphRange, applyRun, paragraphCount, richFields } from "@/store/richText";
+import { makeSetFontOp, makeSetPropsOp, makeSetTextOp, makeSetTextStyleDefOp, uuid } from "@/tools/ops";
 
 // The pure half of the typography UI (TypographyControls, FontsDialog): it reads a
 // scene and BUILDS ops, it never submits. The components hand the result to

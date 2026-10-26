@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { hitTestNode, isPaintable, vectorPaths, hasInk, VECTOR_HIT_PX } from "./shapes";
-import type { NodeLite, SubPathLite, AnchorLite } from "../store/types";
+import { hitTestNode, isPaintable, vectorPaths, hasInk, VECTOR_HIT_PX } from "@/renderer/shapes";
+import type { NodeLite, SubPathLite, AnchorLite } from "@/store/types";
 
 function node(kind: "rect" | "ellipse"): NodeLite {
   return { id: "n", parentId: "page1", orderKey: "a0", name: kind, visible: true, opacity: 1,

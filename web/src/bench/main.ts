@@ -1,9 +1,9 @@
-import { drawScene, hitTest } from "../renderer/canvasRenderer";
-import { applyOp } from "../store/applyOp";
-import { makeSetPropsOp } from "../tools/ops";
-import { sceneIndexOf } from "../renderer/sceneIndex";
-import { fitCamera, makeScene } from "./scene";
-import { resolveScene } from "../store/variables";
+import { drawScene, hitTest } from "@/renderer/canvasRenderer";
+import { applyOp } from "@/store/applyOp";
+import { makeSetPropsOp } from "@/tools/ops";
+import { sceneIndexOf } from "@/renderer/sceneIndex";
+import { fitCamera, makeScene } from "@/bench/scene";
+import { resolveScene } from "@/store/variables";
 
 const canvas = document.getElementById("c") as HTMLCanvasElement;
 const ctx = canvas.getContext("2d")!;
@@ -54,7 +54,7 @@ window.runFitOnly = (n: number, times: number) => {
   for (let i = 0; i < times; i++) drawScene(ctx, scene, fit, "page1");
 };
 
-import { SceneLayerCache } from "../renderer/layerCache";
+import { SceneLayerCache } from "@/renderer/layerCache";
 
 // @ts-expect-error exposed to Playwright
 window.runPan = (n: number) => {

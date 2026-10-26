@@ -1,18 +1,18 @@
 import { describe, it, expect } from "vitest";
 import polygonClipping from "polygon-clipping";
 import type { MultiPolygon } from "polygon-clipping";
-import { nodesOf } from "../store/nodeMap";
-import { applyOp } from "../store/applyOp";
-import { emptyScene } from "../store/types";
-import type { NodeLite, SceneState, WidthPointLite } from "../store/types";
-import { nodesToSvg } from "../export/svg";
-import { strokeOutsetOfNode } from "../canvas/geometry";
-import { outlineStrokeOps } from "./outlineStroke";
-import type { WidthGeometry } from "./widthProfile";
+import { nodesOf } from "@/store/nodeMap";
+import { applyOp } from "@/store/applyOp";
+import { emptyScene } from "@/store/types";
+import type { NodeLite, SceneState, WidthPointLite } from "@/store/types";
+import { nodesToSvg } from "@/export/svg";
+import { strokeOutsetOfNode } from "@/canvas/geometry";
+import { outlineStrokeOps } from "@/vector/outlineStroke";
+import type { WidthGeometry } from "@/vector/widthProfile";
 import {
   WIDTH_PRESETS, hasVariableWidth, isValidWidthProfile, presetNameOf, variableStrokeCommands, variableStrokePolyline,
   variableStrokeRegion, widthAt,
-} from "./widthProfile";
+} from "@/vector/widthProfile";
 
 const anchor = (x: number, y: number) => ({ x, y, inX: 0, inY: 0, outX: 0, outY: 0 });
 const black = { r: 0, g: 0, b: 0, a: 1 };

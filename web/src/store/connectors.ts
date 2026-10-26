@@ -1,9 +1,9 @@
-import { invertTransform, mapBounds, worldBoundsOfNode, worldTransformOf } from "../canvas/transform";
-import { connectorOf, connectorSubpaths } from "../vector/connector";
-import { recordDelta } from "./sceneDelta";
-import { taggedOf } from "./tagged";
-import { normalizeVector } from "./vectorGeometry";
-import type { SceneState } from "./types";
+import { invertTransform, mapBounds, worldBoundsOfNode, worldTransformOf } from "@/canvas/transform";
+import { connectorOf, connectorSubpaths } from "@/vector/connector";
+import { recordDelta } from "@/store/sceneDelta";
+import { taggedOf } from "@/store/tagged";
+import { normalizeVector } from "@/store/vectorGeometry";
+import type { SceneState } from "@/store/types";
 
 // CONNECTORS THAT FOLLOW THEIR SHAPES. A vector node with `connector.from` / `connector.to` meta is
 // redrawn between the two nodes wherever they are: like live booleans and variables the result is

@@ -1,8 +1,8 @@
-import type { Op } from "../gen/opendesigner/v1/opendesigner_pb";
-import { makeSetPropsOp } from "../tools/ops";
-import { toPbAutoLayout } from "../store/types";
-import type { AutoLayoutLite, GridTrackLite, NodeLite } from "../store/types";
-import type { NodeLookup } from "./gradientOps";
+import type { Op } from "@/gen/opendesigner/v1/opendesigner_pb";
+import { makeSetPropsOp } from "@/tools/ops";
+import { toPbAutoLayout } from "@/store/types";
+import type { AutoLayoutLite, GridTrackLite, NodeLite } from "@/store/types";
+import type { NodeLookup } from "@/ui/gradientOps";
 
 // The Auto layout panel's ops. They write ONLY the frame's auto_layout field:
 // the children's positions and the size of a hug frame are recomputed by the server (and

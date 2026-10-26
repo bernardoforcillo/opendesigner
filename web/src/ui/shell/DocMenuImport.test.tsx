@@ -3,11 +3,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
-vi.mock("../../rpc/client", () => ({ docClient: { renameDocument: vi.fn(async () => ({})) } }));
+vi.mock("@/rpc/client", () => ({ docClient: { renameDocument: vi.fn(async () => ({})) } }));
 
-import { DocMenu } from "./DocMenu";
-import { useScene } from "../../store/store";
-import { emptyScene } from "../../store/types";
+import { DocMenu } from "@/ui/shell/DocMenu";
+import { useScene } from "@/store/store";
+import { emptyScene } from "@/store/types";
 
 // "Import SVG…" from the document menu: opens the file picker and imports the
 // chosen file at the center of the view, like paste and drop.

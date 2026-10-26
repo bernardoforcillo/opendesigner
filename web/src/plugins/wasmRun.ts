@@ -1,7 +1,7 @@
-import { PluginError, PluginSession, type PluginNode } from "./api";
-import type { Plugin } from "./manifest";
-import type { RunResult } from "./run";
-import { bytesFromBase64, IO_MAX, parseCommands, WasmError } from "./wasm";
+import { PluginError, PluginSession, type PluginNode } from "@/plugins/api";
+import type { Plugin } from "@/plugins/manifest";
+import type { RunResult } from "@/plugins/run";
+import { bytesFromBase64, IO_MAX, parseCommands, WasmError } from "@/plugins/wasm";
 
 // RUNNING A WEBASSEMBLY PLUGIN. The module runs in a Worker that is terminated if it does not answer in
 // time (an endless loop cannot freeze the editor). It answers a list of commands; the commands then go

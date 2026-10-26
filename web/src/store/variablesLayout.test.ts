@@ -1,11 +1,11 @@
 import { describe, it, expect } from "vitest";
 import { create, type MessageInitShape } from "@bufbuild/protobuf";
-import { NodeSchema, OpSchema, VariableType } from "../gen/opendesigner/v1/opendesigner_pb";
-import type { Op } from "../gen/opendesigner/v1/opendesigner_pb";
-import { applyOp } from "./applyOp";
-import { invertOp } from "./history";
-import { bindingType, resolveNode } from "./variables";
-import { emptyScene, type SceneState } from "./types";
+import { NodeSchema, OpSchema, VariableType } from "@/gen/opendesigner/v1/opendesigner_pb";
+import type { Op } from "@/gen/opendesigner/v1/opendesigner_pb";
+import { applyOp } from "@/store/applyOp";
+import { invertOp } from "@/store/history";
+import { bindingType, resolveNode } from "@/store/variables";
+import { emptyScene, type SceneState } from "@/store/types";
 
 // Boolean variables (bound to "visible") and number variables bound to the spacing and padding
 // of an auto layout frame: the layout reads them in the frame's active mode. The TypeScript

@@ -1,11 +1,11 @@
 import { useMemo } from "react";
 import { Button as RacButton } from "react-aria-components";
-import { Badge, Icon } from "../ds";
-import { AnimIconButton } from "../ds/anim-parts";
-import { useScene } from "../../store/store";
-import { useTimeline, createClip, duplicateClipOp, removeClip } from "../../animation/timelineStore";
-import { clipsForSelection, formatTime } from "../../animation/timelineLogic";
-import { TRIGGER_LABELS } from "./labels";
+import { Badge, Icon } from "@/ui/ds";
+import { AnimIconButton } from "@/ui/ds/anim-parts";
+import { useScene } from "@/store/store";
+import { useTimeline, createClip, duplicateClipOp, removeClip } from "@/animation/timelineStore";
+import { clipsForSelection, formatTime } from "@/animation/timelineLogic";
+import { TRIGGER_LABELS } from "@/ui/timeline/labels";
 
 // THE DOCUMENT'S CLIP LIST (left column of the timeline): choosing
 // a clip opens it in the editor; creating, duplicating, deleting are ONE op each

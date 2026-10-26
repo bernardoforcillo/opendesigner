@@ -1,7 +1,7 @@
 // Test helper: the fonts pdf.js extracts from the fixture PDF (needs the legacy build under node).
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import type { ExtractedFont } from "./importPdf";
+import type { ExtractedFont } from "@/pdf/importPdf";
 
 export async function loadFixtureFonts(): Promise<ExtractedFont[]> {
   const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs");

@@ -1,10 +1,10 @@
-import { type Bounds, boundsOfNode, inflateBounds, intersectBounds, unionBounds, worldVisualAabbOfNode } from "../canvas/geometry";
-import { IDENTITY, type Transform, compose, localTransformOf, mapBounds, worldTransformOf } from "../canvas/transform";
-import { contentWorldBounds } from "../store/groups";
-import { bySiblingOrder, childIndexOf } from "../store/tree";
-import { PEditor, PMap } from "../store/nodeMap";
-import { deltaOf } from "../store/sceneDelta";
-import type { NodeLite, SceneState } from "../store/types";
+import { type Bounds, boundsOfNode, inflateBounds, intersectBounds, unionBounds, worldVisualAabbOfNode } from "@/canvas/geometry";
+import { IDENTITY, type Transform, compose, localTransformOf, mapBounds, worldTransformOf } from "@/canvas/transform";
+import { contentWorldBounds } from "@/store/groups";
+import { bySiblingOrder, childIndexOf } from "@/store/tree";
+import { PEditor, PMap } from "@/store/nodeMap";
+import { deltaOf } from "@/store/sceneDelta";
+import type { NodeLite, SceneState } from "@/store/types";
 
 // THE SCENE INDEX: what the renderer knows about the document and that does not change
 // as long as the document does not change.

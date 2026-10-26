@@ -1,7 +1,7 @@
 import { Dialog, Modal, ModalOverlay } from "react-aria-components";
-import { useScene } from "../store/store";
-import { createLayerOps, deleteLayerOps, moveToLayerOps, updateLayerOps } from "../tools/layers";
-import { Button, cls } from "./ds";
+import { useScene } from "@/store/store";
+import { createLayerOps, deleteLayerOps, moveToLayerOps, updateLayerOps } from "@/tools/layers";
+import { Button, cls } from "@/ui/ds";
 
 // LAYERS (document menu): layers shared by all pages. Put objects on a layer, then hide or lock it — on every page at
 // once — or keep it out of the print. Objects on no layer are unaffected. See docs/graphics-colour.md.

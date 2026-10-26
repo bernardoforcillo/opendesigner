@@ -1,44 +1,44 @@
 import { useState } from "react";
 import { Button as RacButton, Header, Menu, MenuSection, MenuItem, MenuTrigger, Popover, Separator } from "react-aria-components";
-import { Icon } from "../ds";
-import { useRenderer } from "../../store/rendererChoice";
-import { useViewPrefs } from "../../store/viewPrefs";
-import { useScene } from "../../store/store";
-import { useTheme } from "./theme";
-import { LANGUAGES, useLanguage, useT, type LanguageChoice } from "../../i18n";
-import { useDocNameEditing } from "./DocName";
-import { pickSvgFile } from "../../tools/svgImport";
-import { importFigFile, pickFigFile } from "../../fig/importFig";
-import { importPdfFile, pickPdfFile } from "../../pdf/importPdf";
-import { pickFile } from "../pickFile";
-import { runCommand } from "../../jobs/commands";
-import { runDocumentExport } from "../../export/exportScene";
-import { DiagramDialog } from "../DiagramDialog";
-import { VariablesDialog } from "../VariablesDialog";
-import { FontsDialog } from "../FontsDialog";
-import { StylesDialog } from "../StylesDialog";
-import { PageSetupDialog } from "../PageSetupDialog";
-import { FindReplaceDialog } from "../FindReplaceDialog";
-import { SwatchesDialog } from "../SwatchesDialog";
-import { ObjectStylesDialog } from "../ObjectStylesDialog";
-import { LayersDialog } from "../LayersDialog";
-import { LinksDialog } from "../LinksDialog";
-import { PrintPdfDialog } from "../PrintPdfDialog";
-import { DataMergeDialog } from "../DataMergeDialog";
-import { BookMetadataDialog } from "../BookMetadataDialog";
-import { LongDocumentDialog } from "../LongDocumentDialog";
-import { ObjectToolsDialog } from "../ObjectToolsDialog";
-import { InkManagerDialog } from "../InkManagerDialog";
-import { InsertTableDialog } from "../InsertTableDialog";
-import { generateContentsOps } from "../../tools/contents";
-import { VersionsDialog } from "../VersionsDialog";
-import { PluginsDialog } from "../PluginsDialog";
-import { ShareDialog } from "../ShareDialog";
-import { BoardDialog } from "../BoardDialog";
-import { useAppNavigate } from "../../home/nav";
-import { verticalOf } from "../../store/docSettings";
-import { makeSetDocSettingsOp } from "../../tools/ops";
-import { menuShows, VERTICAL_LIST } from "../../verticals";
+import { Icon } from "@/ui/ds";
+import { useRenderer } from "@/store/rendererChoice";
+import { useViewPrefs } from "@/store/viewPrefs";
+import { useScene } from "@/store/store";
+import { useTheme } from "@/ui/shell/theme";
+import { LANGUAGES, useLanguage, useT, type LanguageChoice } from "@/i18n";
+import { useDocNameEditing } from "@/ui/shell/DocName";
+import { pickSvgFile } from "@/tools/svgImport";
+import { importFigFile, pickFigFile } from "@/fig/importFig";
+import { importPdfFile, pickPdfFile } from "@/pdf/importPdf";
+import { pickFile } from "@/ui/pickFile";
+import { runCommand } from "@/jobs/commands";
+import { runDocumentExport } from "@/export/exportScene";
+import { DiagramDialog } from "@/ui/DiagramDialog";
+import { VariablesDialog } from "@/ui/VariablesDialog";
+import { FontsDialog } from "@/ui/FontsDialog";
+import { StylesDialog } from "@/ui/StylesDialog";
+import { PageSetupDialog } from "@/ui/PageSetupDialog";
+import { FindReplaceDialog } from "@/ui/FindReplaceDialog";
+import { SwatchesDialog } from "@/ui/SwatchesDialog";
+import { ObjectStylesDialog } from "@/ui/ObjectStylesDialog";
+import { LayersDialog } from "@/ui/LayersDialog";
+import { LinksDialog } from "@/ui/LinksDialog";
+import { PrintPdfDialog } from "@/ui/PrintPdfDialog";
+import { DataMergeDialog } from "@/ui/DataMergeDialog";
+import { BookMetadataDialog } from "@/ui/BookMetadataDialog";
+import { LongDocumentDialog } from "@/ui/LongDocumentDialog";
+import { ObjectToolsDialog } from "@/ui/ObjectToolsDialog";
+import { InkManagerDialog } from "@/ui/InkManagerDialog";
+import { InsertTableDialog } from "@/ui/InsertTableDialog";
+import { generateContentsOps } from "@/tools/contents";
+import { VersionsDialog } from "@/ui/VersionsDialog";
+import { PluginsDialog } from "@/ui/PluginsDialog";
+import { ShareDialog } from "@/ui/ShareDialog";
+import { BoardDialog } from "@/ui/BoardDialog";
+import { useAppNavigate } from "@/home/nav";
+import { verticalOf } from "@/store/docSettings";
+import { makeSetDocSettingsOp } from "@/tools/ops";
+import { menuShows, VERTICAL_LIST } from "@/verticals";
 
 // THE DOCUMENT MENU: the logo is the button. Inside: Home, new document,
 // rename, theme, renderer. The document name and the panel buttons sit
@@ -56,7 +56,7 @@ export function Logo() {
 
 // Renaming now lives in the name in the middle of the TopBar (shell/DocName.tsx);
 // the re-export keeps working whoever imported it from here.
-export { renameOpenDocument } from "./DocName";
+export { renameOpenDocument } from "@/ui/shell/DocName";
 
 export function DocMenu({ onNewDocument }: { onNewDocument: () => void }) {
   const navigate = useAppNavigate();

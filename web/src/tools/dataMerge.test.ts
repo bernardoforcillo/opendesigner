@@ -1,11 +1,11 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { fieldsIn, mergeOps, parseTable, placeholdersOnPage, substitute } from "./dataMerge";
-import { useScene } from "../store/store";
-import { emptyScene } from "../store/types";
-import type { NodeLite } from "../store/types";
-import type { Op } from "../gen/opendesigner/v1/opendesigner_pb";
+import { fieldsIn, mergeOps, parseTable, placeholdersOnPage, substitute } from "@/tools/dataMerge";
+import { useScene } from "@/store/store";
+import { emptyScene } from "@/store/types";
+import type { NodeLite } from "@/store/types";
+import type { Op } from "@/gen/opendesigner/v1/opendesigner_pb";
 
 describe("parseTable", () => {
   it("reads quoted cells, doubled quotes, embedded newlines and CRLF", () => {

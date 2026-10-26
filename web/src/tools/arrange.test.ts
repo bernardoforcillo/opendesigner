@@ -1,10 +1,10 @@
 import { describe, it, expect } from "vitest";
-import { applyOp } from "../store/applyOp";
-import { nodesOf } from "../store/nodeMap";
-import { childrenOf } from "../store/tree";
-import { emptyScene } from "../store/types";
-import type { NodeLite, SceneState } from "../store/types";
-import { arrangeOps } from "./arrange";
+import { applyOp } from "@/store/applyOp";
+import { nodesOf } from "@/store/nodeMap";
+import { childrenOf } from "@/store/tree";
+import { emptyScene } from "@/store/types";
+import type { NodeLite, SceneState } from "@/store/types";
+import { arrangeOps } from "@/tools/arrange";
 
 const rect = (id: string, key: string, parentId = "page1"): NodeLite => ({
   id, parentId, orderKey: key, name: id, visible: true, opacity: 1, x: 0, y: 0, width: 10, height: 10,

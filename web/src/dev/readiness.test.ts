@@ -1,12 +1,12 @@
 import { describe, it, expect } from "vitest";
-import { nodesOf } from "../store/nodeMap";
-import { emptyScene } from "../store/types";
-import type { NodeLite, SceneState } from "../store/types";
-import { baseScene, child, flowOf, frame, transition, withFlows } from "../flow/testSupport";
+import { nodesOf } from "@/store/nodeMap";
+import { emptyScene } from "@/store/types";
+import type { NodeLite, SceneState } from "@/store/types";
+import { baseScene, child, flowOf, frame, transition, withFlows } from "@/flow/testSupport";
 import {
   assignRoutesOps, computeReadiness, exportedScreens, normalizeRoute, plannedRoutes, progressOf, setStartsOps,
   slugOf, suggestStart, type ReportLike,
-} from "./readiness";
+} from "@/dev/readiness";
 
 // The checklist is pure: scene + report -> rows. Every check has its "fine"
 // case and its "broken" one; the blocker counts are those the

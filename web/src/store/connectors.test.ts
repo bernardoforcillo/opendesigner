@@ -1,12 +1,12 @@
 import { describe, expect, it } from "vitest";
 import { create } from "@bufbuild/protobuf";
-import { NodeSchema } from "../gen/opendesigner/v1/opendesigner_pb";
-import { deriveConnectors } from "./connectors";
-import { resolveScene } from "./variables";
-import { emptyScene, toNodeLite } from "./types";
-import { NodeMap } from "./nodeMap";
-import { connectOps, setConnectorOps } from "../vector/connect";
-import type { NodeLite, SceneState } from "./types";
+import { NodeSchema } from "@/gen/opendesigner/v1/opendesigner_pb";
+import { deriveConnectors } from "@/store/connectors";
+import { resolveScene } from "@/store/variables";
+import { emptyScene, toNodeLite } from "@/store/types";
+import { NodeMap } from "@/store/nodeMap";
+import { connectOps, setConnectorOps } from "@/vector/connect";
+import type { NodeLite, SceneState } from "@/store/types";
 
 function rect(id: string, x: number, y: number): NodeLite {
   return toNodeLite(create(NodeSchema, { id, parentId: "page1", orderKey: id, name: id, visible: true, opacity: 1, x, y, width: 50, height: 30, shape: { case: "rect", value: {} } }));

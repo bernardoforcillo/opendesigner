@@ -21,9 +21,9 @@ import {
   ROTATE_MARKER_OFFSET,
   ROTATE_MARKER_RADIUS,
   CORNER_IDS,
-} from "./handles";
-import { rotatedAabb } from "../canvas/transform";
-import { unionBounds } from "../canvas/geometry";
+} from "@/selection/handles";
+import { rotatedAabb } from "@/canvas/transform";
+import { unionBounds } from "@/canvas/geometry";
 
 const b = { x: 100, y: 100, width: 200, height: 100 };
 const cam = { x: 0, y: 0, zoom: 1 };

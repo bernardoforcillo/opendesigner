@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
-import { createHandTool } from "./handTool";
-import type { ToolContext } from "./types";
-import type { Camera } from "../canvas/camera";
+import { createHandTool } from "@/tools/handTool";
+import type { ToolContext } from "@/tools/types";
+import type { Camera } from "@/canvas/camera";
 
 function fakeCtx(start: Camera = { x: 0, y: 0, zoom: 1 }) {
   let camera = start;

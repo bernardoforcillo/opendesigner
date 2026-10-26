@@ -1,9 +1,9 @@
 import { describe, it, expect } from "vitest";
-import { baseScene } from "../flow/testSupport";
-import { annotationsInside, annotationsOf, categoryColor, readyFrames } from "../store/devMode";
-import { applyOp } from "../store/applyOp";
-import type { SceneState } from "../store/types";
-import { annotateOps, deleteAnnotationOps, devFrameOf, groupChanges, humanProperty, markReadyOps, unmarkOps } from "./devStatus";
+import { baseScene } from "@/flow/testSupport";
+import { annotationsInside, annotationsOf, categoryColor, readyFrames } from "@/store/devMode";
+import { applyOp } from "@/store/applyOp";
+import type { SceneState } from "@/store/types";
+import { annotateOps, deleteAnnotationOps, devFrameOf, groupChanges, humanProperty, markReadyOps, unmarkOps } from "@/dev/devStatus";
 
 const run = (scene: SceneState, ops: ReturnType<typeof markReadyOps>) => ops.reduce(applyOp, scene);
 

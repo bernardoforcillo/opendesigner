@@ -1,5 +1,5 @@
-import { assemble, I32, op } from "./wasmAsm";
-import { bytesToBase64 } from "./wasm";
+import { assemble, I32, op } from "@/plugins/wasmAsm";
+import { bytesToBase64 } from "@/plugins/wasm";
 
 // THE EXAMPLE WEBASSEMBLY PLUGIN. In text format it is:
 //

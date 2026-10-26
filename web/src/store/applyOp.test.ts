@@ -3,10 +3,10 @@ import { create, type MessageInitShape } from "@bufbuild/protobuf";
 import {
   OpSchema, NodeSchema, SetTextSchema, SetVectorPathSchema, VectorNodeSchema, TextAlign,
   InstanceOverrideSchema,
-} from "../gen/opendesigner/v1/opendesigner_pb";
-import type { Node as PbNode } from "../gen/opendesigner/v1/opendesigner_pb";
-import { applyOp } from "./applyOp";
-import { emptyScene, toNodeLite, toPbNode } from "./types";
+} from "@/gen/opendesigner/v1/opendesigner_pb";
+import type { Node as PbNode } from "@/gen/opendesigner/v1/opendesigner_pb";
+import { applyOp } from "@/store/applyOp";
+import { emptyScene, toNodeLite, toPbNode } from "@/store/types";
 
 function createRectOp(id: string, x: number, y: number) {
   const node = create(NodeSchema, {

@@ -1,16 +1,16 @@
 import { create, fromJson, toJson } from "@bufbuild/protobuf";
-import { NodeSchema } from "../gen/opendesigner/v1/opendesigner_pb";
-import type { Op } from "../gen/opendesigner/v1/opendesigner_pb";
-import { worldAabbOfNode } from "../canvas/geometry";
-import { applyOp } from "../store/applyOp";
-import { normalizeVector } from "../store/vectorGeometry";
-import { nextOrderKey, orderKeyBetween } from "../store/orderKey";
-import { subtreeOf, childrenOf } from "../store/tree";
-import { toNodeLite, toPbFills, toPbNode, toPbStrokes, toPbSubPaths, type FillLite, type NodeLite, type SceneState } from "../store/types";
-import { pasteOps } from "./clipboard";
-import { groupOps } from "./grouping";
-import { makeCreateNodeOp, makeSetPropsOp, uuid } from "./ops";
-import { qrMatrix, qrRuns, type QrLevel } from "./qrcode";
+import { NodeSchema } from "@/gen/opendesigner/v1/opendesigner_pb";
+import type { Op } from "@/gen/opendesigner/v1/opendesigner_pb";
+import { worldAabbOfNode } from "@/canvas/geometry";
+import { applyOp } from "@/store/applyOp";
+import { normalizeVector } from "@/store/vectorGeometry";
+import { nextOrderKey, orderKeyBetween } from "@/store/orderKey";
+import { subtreeOf, childrenOf } from "@/store/tree";
+import { toNodeLite, toPbFills, toPbNode, toPbStrokes, toPbSubPaths, type FillLite, type NodeLite, type SceneState } from "@/store/types";
+import { pasteOps } from "@/tools/clipboard";
+import { groupOps } from "@/tools/grouping";
+import { makeCreateNodeOp, makeSetPropsOp, uuid } from "@/tools/ops";
+import { qrMatrix, qrRuns, type QrLevel } from "@/tools/qrcode";
 
 // OBJECT TOOLS: Step and Repeat, the Gap tool, frame fitting, clipping paths, QR codes, find/change on OBJECTS, and snippets. Each
 // returns ops (never touches the store): the canvas tools, the dialog and the MCP commands all commit them as ONE gesture.

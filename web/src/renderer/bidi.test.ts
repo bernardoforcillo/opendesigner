@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync, existsSync } from "node:fs";
-import { arabicShape, forPdf, isRtl, visualOrder, hasArabic } from "./bidi";
+import { arabicShape, forPdf, isRtl, visualOrder, hasArabic } from "@/renderer/bidi";
 
 describe("arabicShape", () => {
   it("joins letters into presentation forms", () => {

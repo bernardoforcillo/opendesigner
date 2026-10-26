@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
-import type { Bounds } from "../canvas/geometry";
-import { SnapIndex, prepareSnapTargets, snapBounds, snapLines, snapMoving } from "./snap";
+import type { Bounds } from "@/canvas/geometry";
+import { SnapIndex, prepareSnapTargets, snapBounds, snapLines, snapMoving } from "@/selection/snap";
 
 function rng(seed: number) {
   let s = seed >>> 0;

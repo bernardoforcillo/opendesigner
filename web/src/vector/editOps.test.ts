@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { joinNodesOps, offsetOps, pathToolOps, setPathOps } from "./editOps";
-import { nodesOf } from "../store/nodeMap";
-import { emptyScene } from "../store/types";
-import type { AnchorLite, NodeLite, SubPathLite } from "../store/types";
+import { joinNodesOps, offsetOps, pathToolOps, setPathOps } from "@/vector/editOps";
+import { nodesOf } from "@/store/nodeMap";
+import { emptyScene } from "@/store/types";
+import type { AnchorLite, NodeLite, SubPathLite } from "@/store/types";
 
 const pt = (x: number, y: number): AnchorLite => ({ x, y, inX: 0, inY: 0, outX: 0, outY: 0 });
 const vec = (id: string, x: number, y: number, ...sps: SubPathLite[]): NodeLite => ({

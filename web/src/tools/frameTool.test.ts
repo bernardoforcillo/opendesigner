@@ -1,9 +1,9 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import { createFrameTool, DEFAULT_FRAME_HEIGHT, DEFAULT_FRAME_WIDTH } from "./frameTool";
-import type { ToolContext } from "./types";
-import type { Op } from "../gen/opendesigner/v1/opendesigner_pb";
-import { useScene } from "../store/store";
-import { emptyScene } from "../store/types";
+import { createFrameTool, DEFAULT_FRAME_HEIGHT, DEFAULT_FRAME_WIDTH } from "@/tools/frameTool";
+import type { ToolContext } from "@/tools/types";
+import type { Op } from "@/gen/opendesigner/v1/opendesigner_pb";
+import { useScene } from "@/store/store";
+import { emptyScene } from "@/store/types";
 
 class FakeSync {
   sent: Op[] = [];
@@ -65,7 +65,7 @@ describe("frameTool", () => {
   });
 
   it("the rectangle keeps its own gray (the fill config does not touch it)", async () => {
-    const { createRectTool } = await import("./rectTool");
+    const { createRectTool } = await import("@/tools/rectTool");
     const tool = createRectTool();
     const { ctx, sent } = fakeCtx();
     tool.onPointerDown!(at(0, 0), ctx);

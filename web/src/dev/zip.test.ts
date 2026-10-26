@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { crc32, dosDateTime, makeZip, safePath } from "./zip";
+import { crc32, dosDateTime, makeZip, safePath } from "@/dev/zip";
 
 const enc = (s: string) => new TextEncoder().encode(s);
 

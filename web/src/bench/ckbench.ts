@@ -1,7 +1,7 @@
-import { drawScene } from "../renderer/canvasRenderer";
-import { CanvasKitRenderer } from "../renderer/ck/ckRenderer";
-import { FontBook, loadCanvasKit } from "../renderer/ck/canvaskit";
-import { fitCamera, makeScene } from "./scene";
+import { drawScene } from "@/renderer/canvasRenderer";
+import { CanvasKitRenderer } from "@/renderer/ck/ckRenderer";
+import { FontBook, loadCanvasKit } from "@/renderer/ck/canvaskit";
+import { fitCamera, makeScene } from "@/bench/scene";
 
 const images = { get: () => ({ status: "loading" as const, image: null }) };
 const median = (xs: number[]) => [...xs].sort((a, b) => a - b)[Math.floor(xs.length / 2)];

@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { create } from "@bufbuild/protobuf";
-import { PresenceEventSchema } from "../gen/opendesigner/v1/opendesigner_pb";
-import { applyPresenceEvent, newPeer, peerColor, type Peers } from "./presence";
+import { PresenceEventSchema } from "@/gen/opendesigner/v1/opendesigner_pb";
+import { applyPresenceEvent, newPeer, peerColor, type Peers } from "@/store/presence";
 
 const update = (clientId: string, over: Record<string, unknown> = {}) =>
   create(PresenceEventSchema, {
@@ -49,7 +49,7 @@ describe("peerColor", () => {
 
 describe("usePresence.clear", () => {
   it("on an already empty store it does not notify (otherwise it redraws the scene for nothing)", async () => {
-    const { usePresence } = await import("./presence");
+    const { usePresence } = await import("@/store/presence");
     usePresence.setState({ peers: {} });
     let calls = 0;
     const unsub = usePresence.subscribe(() => { calls++; });

@@ -1,5 +1,5 @@
-import { frameOriginOf } from "./groups";
-import type { FillLite, NodeLite, SceneState, StrokeLite } from "./types";
+import { frameOriginOf } from "@/store/groups";
+import type { FillLite, NodeLite, SceneState, StrokeLite } from "@/store/types";
 
 // The layers panel shows the FRONT at the top of the list: it is the INVERSE
 // of the draw order (which goes from bottom to top, orderKey ascending). A

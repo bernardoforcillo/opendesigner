@@ -1,6 +1,6 @@
-import { ArrowHead, BrushKind, BrushTip } from "../gen/opendesigner/v1/opendesigner_pb";
-import type { Brush, EllipseNode, Node as PbNode, RectNode, Stroke } from "../gen/opendesigner/v1/opendesigner_pb";
-import type { NodeLite } from "./types";
+import { ArrowHead, BrushKind, BrushTip } from "@/gen/opendesigner/v1/opendesigner_pb";
+import type { Brush, EllipseNode, Node as PbNode, RectNode, Stroke } from "@/gen/opendesigner/v1/opendesigner_pb";
+import type { NodeLite } from "@/store/types";
 
 // The TS half of internal/core/shapes.go: the ranges of the parametric shapes (polygon, star, ellipse arc /
 // ring, rectangle corner smoothing and independent radii) and the stroke extras (arrowheads, per-side

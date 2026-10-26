@@ -1,15 +1,15 @@
 import "@testing-library/jest-dom/vitest";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
-import type { Op } from "../gen/opendesigner/v1/opendesigner_pb";
-import { LayersDialog } from "./LayersDialog";
-import { LinksDialog } from "./LinksDialog";
-import { ObjectStylesDialog } from "./ObjectStylesDialog";
-import { SwatchesDialog } from "./SwatchesDialog";
-import { ImageLinkControls, LayerControls, ObjectStyleControls } from "./GraphicsControls";
-import { AnchorControls } from "./TextLayoutControls";
-import { useScene } from "../store/store";
-import { emptyScene, type NodeLite, type SceneState } from "../store/types";
+import type { Op } from "@/gen/opendesigner/v1/opendesigner_pb";
+import { LayersDialog } from "@/ui/LayersDialog";
+import { LinksDialog } from "@/ui/LinksDialog";
+import { ObjectStylesDialog } from "@/ui/ObjectStylesDialog";
+import { SwatchesDialog } from "@/ui/SwatchesDialog";
+import { ImageLinkControls, LayerControls, ObjectStyleControls } from "@/ui/GraphicsControls";
+import { AnchorControls } from "@/ui/TextLayoutControls";
+import { useScene } from "@/store/store";
+import { emptyScene, type NodeLite, type SceneState } from "@/store/types";
 
 class FakeSync {
   submit(op: Op) {

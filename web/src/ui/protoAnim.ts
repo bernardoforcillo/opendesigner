@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { Camera } from "../canvas/camera";
-import type { SceneState } from "../store/types";
-import { poseScene } from "../animation/pose";
+import type { Camera } from "@/canvas/camera";
+import type { SceneState } from "@/store/types";
+import { poseScene } from "@/animation/pose";
 import {
   autoClipsForScreen, clipsUnder, pointerClipsForScreen, sampleRuns, startRuns, type ClipRun,
-} from "../animation/runtime";
+} from "@/animation/runtime";
 
 // THE PROTOTYPE'S ANIMATIONS ("Present"): connects the pure runtime
 // (animation/runtime.ts) to the player.

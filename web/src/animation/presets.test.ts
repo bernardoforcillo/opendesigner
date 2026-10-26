@@ -1,12 +1,12 @@
 import { describe, it, expect, beforeEach } from "vitest";
-import { baseScene, child } from "../flow/testSupport";
-import { nodesWith } from "../store/nodeMap";
-import { useScene } from "../store/store";
-import type { SceneState } from "../store/types";
-import { PRESETS, buildPreset, type PresetId } from "./presets";
-import { isValidClip } from "./validate";
-import { applyPreset, useTimeline } from "./timelineStore";
-import { sampleClip } from "./engine";
+import { baseScene, child } from "@/flow/testSupport";
+import { nodesWith } from "@/store/nodeMap";
+import { useScene } from "@/store/store";
+import type { SceneState } from "@/store/types";
+import { PRESETS, buildPreset, type PresetId } from "@/animation/presets";
+import { isValidClip } from "@/animation/validate";
+import { applyPreset, useTimeline } from "@/animation/timelineStore";
+import { sampleClip } from "@/animation/engine";
 
 function scene(): SceneState {
   const s = baseScene();

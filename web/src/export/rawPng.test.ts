@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { inflateSync } from "node:zlib";
-import { encodePng, pngDataUri } from "./rawPng";
+import { encodePng, pngDataUri } from "@/export/rawPng";
 
 function chunks(png: Uint8Array): { type: string; data: Uint8Array }[] {
   const out: { type: string; data: Uint8Array }[] = [];

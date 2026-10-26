@@ -1,13 +1,13 @@
 import { useState } from "react";
 import { Dialog, Modal, ModalOverlay } from "react-aria-components";
-import { useScene } from "../store/store";
-import { makeSetComponentSetOp } from "../tools/ops";
-import { Button, cls } from "./ds";
+import { useScene } from "@/store/store";
+import { makeSetComponentSetOp } from "@/tools/ops";
+import { Button, cls } from "@/ui/ds";
 import {
   NUMBER_ATTRIBUTES, addAxisOps, addOptionOps, addPropertyOps, createSetOps, duplicateVariantOps, leaveSetOps, membersOf, removePropertyOps,
   renameAxisOps, renameOptionOps, selectionInMaster, setPropertyDefaultOps, setPropertyOptionsOps, setVariantOps, swapChoices,
-} from "./componentOps";
-import type { ComponentPropertyLite } from "../store/types";
+} from "@/ui/componentOps";
+import type { ComponentPropertyLite } from "@/store/types";
 
 // THE COMPONENT DIALOG (Components panel → edit): turns a component into one variant of a
 // SET (axes such as State or Size, one option per axis for each variant; axes and options

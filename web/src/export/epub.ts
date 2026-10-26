@@ -1,5 +1,5 @@
-import type { BookLite } from "../store/types";
-import { zipStore, type ZipEntry } from "./zip";
+import type { BookLite } from "@/store/types";
+import { zipStore, type ZipEntry } from "@/export/zip";
 
 // EPUB 3, FIXED LAYOUT: every page of the document is one XHTML spine item that
 // holds the page's SVG as it is exported (export/svg.ts). Fixed layout is the

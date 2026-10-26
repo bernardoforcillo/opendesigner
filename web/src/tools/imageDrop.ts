@@ -1,11 +1,11 @@
 import { create } from "@bufbuild/protobuf";
-import { NodeSchema } from "../gen/opendesigner/v1/opendesigner_pb";
-import type { Op } from "../gen/opendesigner/v1/opendesigner_pb";
-import { useScene } from "../store/store";
-import { nextOrderKey, orderKeyBetween } from "../store/orderKey";
-import { uploadAsset, type AssetRef } from "../rpc/assets";
-import { makeCreateNodeOp, uuid } from "./ops";
-import { importSvgFile, isSvgFile } from "./svgImport";
+import { NodeSchema } from "@/gen/opendesigner/v1/opendesigner_pb";
+import type { Op } from "@/gen/opendesigner/v1/opendesigner_pb";
+import { useScene } from "@/store/store";
+import { nextOrderKey, orderKeyBetween } from "@/store/orderKey";
+import { uploadAsset, type AssetRef } from "@/rpc/assets";
+import { makeCreateNodeOp, uuid } from "@/tools/ops";
+import { importSvgFile, isSvgFile } from "@/tools/svgImport";
 
 // DROP AN IMAGE ONTO THE CANVAS (track 3, task 3).
 //

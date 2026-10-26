@@ -1,13 +1,13 @@
-import { worldToScreen, type Camera } from "../canvas/camera";
-import { worldBoundsToScreen, type Bounds } from "../canvas/geometry";
-import { worldBoundsOfNode } from "../canvas/transform";
-import type { NodeLite, SceneState } from "../store/types";
-import type { ConnectPreview } from "../store/flowUi";
-import { arrowFromRectToPoint, arrowhead, type Bezier, type Pt } from "../flow/geometry";
-import { arrowsInView, flowLayout, type Arrow } from "../flow/layout";
-import { kindOf, metaValue, META_KEYS, statusOf, type FlowKind } from "../flow/meta";
-import { topLevelScreens } from "../flow/screens";
-import { themeColors, withAlpha, type ThemeColors } from "./themeColors";
+import { worldToScreen, type Camera } from "@/canvas/camera";
+import { worldBoundsToScreen, type Bounds } from "@/canvas/geometry";
+import { worldBoundsOfNode } from "@/canvas/transform";
+import type { NodeLite, SceneState } from "@/store/types";
+import type { ConnectPreview } from "@/store/flowUi";
+import { arrowFromRectToPoint, arrowhead, type Bezier, type Pt } from "@/flow/geometry";
+import { arrowsInView, flowLayout, type Arrow } from "@/flow/layout";
+import { kindOf, metaValue, META_KEYS, statusOf, type FlowKind } from "@/flow/meta";
+import { topLevelScreens } from "@/flow/screens";
+import { themeColors, withAlpha, type ThemeColors } from "@/renderer/themeColors";
 
 // THE FLOWS MODE OVERLAY: arrows between screens, label pills,
 // entry marker, type/state badge on every screen and the

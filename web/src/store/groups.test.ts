@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { emptyScene, type NodeLite, type SceneState } from "./types";
+import { emptyScene, type NodeLite, type SceneState } from "@/store/types";
 import {
   contentWorldBounds,
   enterTargetOf,
@@ -8,7 +8,7 @@ import {
   selectionTargetOf,
   selectionTargetsOf,
   transformTargetsOf,
-} from "./groups";
+} from "@/store/groups";
 
 function node(id: string, parentId: string, x: number, y: number, extra: Partial<NodeLite> = {}): NodeLite {
   return {
@@ -427,7 +427,7 @@ describe("transformTargetsOf", () => {
 // origin: DERIVED bounds, no box of its own, selected as a unit.
 // Masters live under parentId "components" (not a page), as a real
 // component sits on a separate page.
-function instance(id: string, parentId: string, x: number, y: number, componentId: string, overrides: import("./types").InstanceOverrideLite[] = []): NodeLite {
+function instance(id: string, parentId: string, x: number, y: number, componentId: string, overrides: import("@/store/types").InstanceOverrideLite[] = []): NodeLite {
   return node(id, parentId, x, y, { kind: "instance", instance: { componentId, overrides }, fills: [] });
 }
 

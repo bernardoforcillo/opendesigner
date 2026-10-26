@@ -1,10 +1,10 @@
 import { describe, it, expect } from "vitest";
-import { nodesOf } from "./nodeMap";
-import { emptyScene } from "./types";
-import type { NodeLite, SceneState } from "./types";
-import { deriveBooleans } from "./booleans";
-import { resolveScene } from "./variables";
-import { vectorBounds } from "./vectorGeometry";
+import { nodesOf } from "@/store/nodeMap";
+import { emptyScene } from "@/store/types";
+import type { NodeLite, SceneState } from "@/store/types";
+import { deriveBooleans } from "@/store/booleans";
+import { resolveScene } from "@/store/variables";
+import { vectorBounds } from "@/store/vectorGeometry";
 
 const rect = (id: string, parentId: string, x: number, y: number, w: number, h: number, order = "a0"): NodeLite => ({
   id, parentId, orderKey: order, name: id, visible: true, opacity: 1, x, y, width: w, height: h, rotation: 0,

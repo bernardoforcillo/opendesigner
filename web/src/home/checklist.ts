@@ -1,6 +1,6 @@
-import type { SceneState } from "../store/types";
-import { isPageRoot, isScreenNode } from "../flow/screens";
-import { META_KEYS } from "../flow/meta";
+import type { SceneState } from "@/store/types";
+import { isPageRoot, isScreenNode } from "@/flow/screens";
+import { META_KEYS } from "@/flow/meta";
 
 // THE STARTER CHECKLIST: four steps that match the product's
 // journey (Design · Flows · Try · Develop). It TICKS ITSELF OFF by looking at the

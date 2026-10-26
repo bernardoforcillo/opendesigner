@@ -3,10 +3,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 
 const runPlugin = vi.hoisted(() => vi.fn());
-vi.mock("../plugins/run", () => ({ runPlugin }));
+vi.mock("@/plugins/run", () => ({ runPlugin }));
 
-import { PluginsDialog } from "./PluginsDialog";
-import { EXAMPLE_PLUGIN } from "../plugins/manifest";
+import { PluginsDialog } from "@/ui/PluginsDialog";
+import { EXAMPLE_PLUGIN } from "@/plugins/manifest";
 
 beforeEach(() => { localStorage.clear(); runPlugin.mockReset(); });
 afterEach(cleanup);

@@ -1,10 +1,10 @@
 import "@testing-library/jest-dom/vitest";
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { render, screen, cleanup, fireEvent } from "@testing-library/react";
-import { TopBar } from "./TopBar";
-import { useScene } from "../../store/store";
-import { useFlowUi } from "../../store/flowUi";
-import { usePanels } from "./panels";
+import { TopBar } from "@/ui/shell/TopBar";
+import { useScene } from "@/store/store";
+import { useFlowUi } from "@/store/flowUi";
+import { usePanels } from "@/ui/shell/panels";
 
 afterEach(cleanup);
 afterEach(() => useFlowUi.getState().setMode("design"));

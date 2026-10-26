@@ -1,13 +1,13 @@
 import { useMemo, useState } from "react";
-import { Button } from "./ds";
-import { useScene } from "../store/store";
-import { resolveScene } from "../store/variables";
-import { makeCreatePageWithMasterOp, uuid } from "../tools/ops";
-import { duplicatePageOps, movePageBy } from "../tools/pageOps";
-import { isRightPage, pageNumbers } from "../store/pageNumbers";
-import { setupOf } from "../store/docSettings";
-import type { FillLite, NodeLite, PageLite } from "../store/types";
-import { PageSetupDialog } from "./PageSetupDialog";
+import { Button } from "@/ui/ds";
+import { useScene } from "@/store/store";
+import { resolveScene } from "@/store/variables";
+import { makeCreatePageWithMasterOp, uuid } from "@/tools/ops";
+import { duplicatePageOps, movePageBy } from "@/tools/pageOps";
+import { isRightPage, pageNumbers } from "@/store/pageNumbers";
+import { setupOf } from "@/store/docSettings";
+import type { FillLite, NodeLite, PageLite } from "@/store/types";
+import { PageSetupDialog } from "@/ui/PageSetupDialog";
 
 // THE PAGES PANEL (Publishing): every page of the document as a thumbnail with its number, the master
 // it applies and its size; click to open it. Masters are listed apart, under the pages. It shows the

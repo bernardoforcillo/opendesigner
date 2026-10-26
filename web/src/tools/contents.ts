@@ -1,11 +1,11 @@
-import type { Op } from "../gen/opendesigner/v1/opendesigner_pb";
-import { pageTextArea } from "../store/docSettings";
-import { orderKeyBetween } from "../store/orderKey";
-import { pageNumbers } from "../store/pageNumbers";
-import { endnoteEntries, headingsOf, indexEntries } from "../store/textTokens";
-import { childrenOf } from "../store/tree";
-import { toPbNode, type NodeLite, type SceneState, type TextStyleDefLite, type TextStyleLite } from "../store/types";
-import { makeCreateNodeOp, makeSetPropsOp, makeSetTextOp, makeSetTextStyleDefOp, uuid } from "./ops";
+import type { Op } from "@/gen/opendesigner/v1/opendesigner_pb";
+import { pageTextArea } from "@/store/docSettings";
+import { orderKeyBetween } from "@/store/orderKey";
+import { pageNumbers } from "@/store/pageNumbers";
+import { endnoteEntries, headingsOf, indexEntries } from "@/store/textTokens";
+import { childrenOf } from "@/store/tree";
+import { toPbNode, type NodeLite, type SceneState, type TextStyleDefLite, type TextStyleLite } from "@/store/types";
+import { makeCreateNodeOp, makeSetPropsOp, makeSetTextOp, makeSetTextStyleDefOp, uuid } from "@/tools/ops";
 
 // TABLE OF CONTENTS and INDEX. Both are GENERATED text, like in a layout tool: a command writes the text into a
 // frame (which it creates, or finds again by its meta `contents.kind`) and running it again refreshes it.

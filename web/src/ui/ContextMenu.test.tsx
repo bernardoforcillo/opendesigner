@@ -2,12 +2,12 @@ import "@testing-library/jest-dom/vitest";
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { render, screen, cleanup, fireEvent, act, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import type { Op } from "../gen/opendesigner/v1/opendesigner_pb";
-import { useScene } from "../store/store";
-import { emptyScene, type NodeLite } from "../store/types";
-import { ContextMenuHost } from "./ContextMenu";
-import { contextMenuEntries, openContextMenu } from "./contextMenuItems";
-import { useContextMenu, type MenuEntry } from "./contextMenuStore";
+import type { Op } from "@/gen/opendesigner/v1/opendesigner_pb";
+import { useScene } from "@/store/store";
+import { emptyScene, type NodeLite } from "@/store/types";
+import { ContextMenuHost } from "@/ui/ContextMenu";
+import { contextMenuEntries, openContextMenu } from "@/ui/contextMenuItems";
+import { useContextMenu, type MenuEntry } from "@/ui/contextMenuStore";
 
 class FakeSync {
   sent: Op[] = [];

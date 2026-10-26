@@ -2,8 +2,8 @@ import { describe, it, expect } from "vitest";
 import {
   boundsOfNode, boundsIntersect, intersectBounds, normalizeRect, pointInBounds, strokeOutset,
   strokeOutsetOfNode, unionBounds, visualBoundsOfNode, worldAabbOfNode, worldVisualAabbOfNode,
-} from "./geometry";
-import type { NodeLite, StrokeAlignLite, StrokeLite } from "../store/types";
+} from "@/canvas/geometry";
+import type { NodeLite, StrokeAlignLite, StrokeLite } from "@/store/types";
 
 function rect(x: number, y: number, width: number, height: number): NodeLite {
   return { id: "n", parentId: "page1", orderKey: "a000000", name: "n", visible: true, opacity: 1,

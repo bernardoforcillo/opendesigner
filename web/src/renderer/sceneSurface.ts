@@ -1,12 +1,12 @@
-import type { Camera } from "../canvas/camera";
-import { type RendererChoice, useRenderer } from "../store/rendererChoice";
-import type { SceneState } from "../store/types";
-import { type ImageSource, resizeCanvasToDisplaySize } from "./canvasRenderer";
-import { CanvasKitRenderer } from "./ck/ckRenderer";
-import { FontBook, loadCanvasKit } from "./ck/canvaskit";
-import { SceneLayerCache } from "./layerCache";
-import { syncDocumentFonts } from "./fontRegistry";
-import { fontFamiliesOnPage } from "./pageFonts";
+import type { Camera } from "@/canvas/camera";
+import { type RendererChoice, useRenderer } from "@/store/rendererChoice";
+import type { SceneState } from "@/store/types";
+import { type ImageSource, resizeCanvasToDisplaySize } from "@/renderer/canvasRenderer";
+import { CanvasKitRenderer } from "@/renderer/ck/ckRenderer";
+import { FontBook, loadCanvasKit } from "@/renderer/ck/canvaskit";
+import { SceneLayerCache } from "@/renderer/layerCache";
+import { syncDocumentFonts } from "@/renderer/fontRegistry";
+import { fontFamiliesOnPage } from "@/renderer/pageFonts";
 
 // THE GPU RENDERER, PACKAGED: CanvasKit + the fonts + the renderer, with the
 // same call surface as the CPU drawing.

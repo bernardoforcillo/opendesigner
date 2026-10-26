@@ -1,9 +1,9 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { render, screen, fireEvent, act, cleanup } from "@testing-library/react";
-import { DataMergeDialog } from "./DataMergeDialog";
-import { useScene } from "../store/store";
-import { emptyScene } from "../store/types";
-import type { Op } from "../gen/opendesigner/v1/opendesigner_pb";
+import { DataMergeDialog } from "@/ui/DataMergeDialog";
+import { useScene } from "@/store/store";
+import { emptyScene } from "@/store/types";
+import type { Op } from "@/gen/opendesigner/v1/opendesigner_pb";
 
 beforeEach(() => {
   cleanup();

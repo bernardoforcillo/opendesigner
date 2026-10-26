@@ -1,6 +1,6 @@
-import { insertDiagram } from "../diagram/insert";
-import { renderBoard, type BoardClient } from "../board/board";
-import type { Tool } from "./types";
+import { insertDiagram } from "@/diagram/insert";
+import { renderBoard, type BoardClient } from "@/board/board";
+import type { Tool } from "@/tools/types";
 
 // "STICKY" (N, in the Board). A click drops a sticky note centered on the pointer. The note is drawn
 // by the server (the same function as the Whiteboard dialog and the MCP tool), so it is the same

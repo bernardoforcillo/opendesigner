@@ -1,8 +1,8 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { cleanup, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { PresenceBar } from "./PresenceBar";
-import { newPeer, usePresence } from "../store/presence";
+import { PresenceBar } from "@/ui/PresenceBar";
+import { newPeer, usePresence } from "@/store/presence";
 
 describe("PresenceBar", () => {
   afterEach(cleanup);

@@ -1,10 +1,10 @@
 import polygonClipping from "polygon-clipping";
 import type { Geom, MultiPolygon, Pair, Ring } from "polygon-clipping";
-import { applyTransform, compose, invertTransform, localTransformOf, worldTransformOf, type Transform } from "../canvas/transform";
-import { childrenOf } from "../store/tree";
-import { flattenSubpath, subpathFills } from "../store/vectorGeometry";
-import type { NodeLite, SceneState, SubPathLite } from "../store/types";
-import { flattenCommands, hasComputedOutline, outlineCommands } from "../renderer/shapeGeometry";
+import { applyTransform, compose, invertTransform, localTransformOf, worldTransformOf, type Transform } from "@/canvas/transform";
+import { childrenOf } from "@/store/tree";
+import { flattenSubpath, subpathFills } from "@/store/vectorGeometry";
+import type { NodeLite, SceneState, SubPathLite } from "@/store/types";
+import { flattenCommands, hasComputedOutline, outlineCommands } from "@/renderer/shapeGeometry";
 
 // The PURE geometry of boolean operations: the region a node fills, and the result of an
 // operation over regions. No store, no ops -- the derived scene (store/booleans.ts) and the

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { arcToCubics, cmdsToSubPaths, parsePathData, subPathsToD, transformCmds, type PathCmd } from "./pathData";
+import { arcToCubics, cmdsToSubPaths, parsePathData, subPathsToD, transformCmds, type PathCmd } from "@/svg/pathData";
 
 // A shorthand for reading commands in tests: "M0,0 L10,-5" -> ["M0,0","L10,-5"].
 function show(cmds: readonly PathCmd[]): string[] {

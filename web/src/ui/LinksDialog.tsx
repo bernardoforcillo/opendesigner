@@ -1,7 +1,7 @@
 import { Dialog, Modal, ModalOverlay } from "react-aria-components";
-import { useScene } from "../store/store";
-import { imageLinks, pickImageFile, ppiStatus, relinkImage } from "../tools/imageLinks";
-import { Button } from "./ds";
+import { useScene } from "@/store/store";
+import { imageLinks, pickImageFile, ppiStatus, relinkImage } from "@/tools/imageLinks";
+import { Button } from "@/ui/ds";
 
 // LINKS (document menu): every image of the document with the file it came from, its size, its effective
 // resolution at the size it is placed, and a way to open it (select it on its page) or relink it to another file.

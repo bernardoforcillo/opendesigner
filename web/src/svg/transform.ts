@@ -1,4 +1,4 @@
-import { IDENTITY, compose, type Transform } from "../canvas/transform";
+import { IDENTITY, compose, type Transform } from "@/canvas/transform";
 
 // SVG's `transform` attribute (and the CSS property of the same name in simple cases)
 // as an affine matrix {a,b,c,d,e,f} -- the same shape as canvas/transform.ts,

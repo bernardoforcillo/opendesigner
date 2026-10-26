@@ -1,13 +1,13 @@
-import { withMeta } from "../flow/meta";
-import { fontString, insetOf, layoutRich, layoutText, lineHeightOf, fontSizeOf, trackedMeasure, trackedMeasureFor } from "../renderer/text";
-import { worldTransformOf } from "../canvas/transform";
-import { paragraphCount, resolveRich } from "./richText";
-import { keepBreak } from "./keeps";
-import type { Op } from "../gen/opendesigner/v1/opendesigner_pb";
-import { makeSetPropsOp, makeSetTextOp } from "../tools/ops";
-import { recordDelta } from "./sceneDelta";
-import { wrapRectsOf } from "./wrap";
-import type { NodeLite, SceneState, TextLite, TextRunLite, TextStyleLite } from "./types";
+import { withMeta } from "@/flow/meta";
+import { fontString, insetOf, layoutRich, layoutText, lineHeightOf, fontSizeOf, trackedMeasure, trackedMeasureFor } from "@/renderer/text";
+import { worldTransformOf } from "@/canvas/transform";
+import { paragraphCount, resolveRich } from "@/store/richText";
+import { keepBreak } from "@/store/keeps";
+import type { Op } from "@/gen/opendesigner/v1/opendesigner_pb";
+import { makeSetPropsOp, makeSetTextOp } from "@/tools/ops";
+import { recordDelta } from "@/store/sceneDelta";
+import { wrapRectsOf } from "@/store/wrap";
+import type { NodeLite, SceneState, TextLite, TextRunLite, TextStyleLite } from "@/store/types";
 
 // THREADED TEXT FRAMES. Text frames can be chained: the text of the chain's FIRST frame (its "story")
 // flows from one frame into the next as each one fills up, across pages if they are on different

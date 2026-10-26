@@ -1,9 +1,9 @@
-import type { Op } from "../gen/opendesigner/v1/opendesigner_pb";
-import { hitTestNode } from "../renderer/shapes";
-import { META_NEXT } from "../store/threads";
-import { subtreeOf, childrenOf } from "../store/tree";
-import { toPbNode, type PageLite, type SceneState } from "../store/types";
-import { makeCreateNodeOp, makeCreatePageWithMasterOp, makeMovePageOp, makeUpdatePageOp, uuid } from "./ops";
+import type { Op } from "@/gen/opendesigner/v1/opendesigner_pb";
+import { hitTestNode } from "@/renderer/shapes";
+import { META_NEXT } from "@/store/threads";
+import { subtreeOf, childrenOf } from "@/store/tree";
+import { toPbNode, type PageLite, type SceneState } from "@/store/types";
+import { makeCreateNodeOp, makeCreatePageWithMasterOp, makeMovePageOp, makeUpdatePageOp, uuid } from "@/tools/ops";
 
 // PAGE STRUCTURE GESTURES: each returns the ops of ONE gesture (one undo step).
 

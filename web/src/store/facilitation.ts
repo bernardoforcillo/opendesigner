@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import type { Peers } from "./presence";
+import type { Peers } from "@/store/presence";
 
 // FACILITATION: what a workshop needs on top of a shared canvas -- dot voting, a countdown, cursor
 // chat and reactions, and following someone's view. Like the cursor it is EPHEMERAL: each person

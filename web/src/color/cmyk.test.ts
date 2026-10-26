@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { cmykString, cmykToRgb, rgbToCmyk } from "./cmyk";
+import { cmykString, cmykToRgb, rgbToCmyk } from "@/color/cmyk";
 
 describe("cmyk", () => {
   it("converts the primaries and the extremes", () => {

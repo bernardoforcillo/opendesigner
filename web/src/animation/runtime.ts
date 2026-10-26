@@ -1,8 +1,8 @@
-import type { ClipLite, SceneState } from "../store/types";
-import { worldBoundsOfNode } from "../canvas/transform";
-import { clipTimeline, sampleClip, type NodeAnim } from "./engine";
-import { mergeAnim } from "./pose";
-import { isInside } from "./timelineLogic";
+import type { ClipLite, SceneState } from "@/store/types";
+import { worldBoundsOfNode } from "@/canvas/transform";
+import { clipTimeline, sampleClip, type NodeAnim } from "@/animation/engine";
+import { mergeAnim } from "@/animation/pose";
+import { isInside } from "@/animation/timelineLogic";
 
 // THE PROTOTYPE RUNTIME: which clips run, since when, and what state they sample
 // "now". PURE functions with no timers -- whoever uses them (ui/PrototypePlayer.tsx)

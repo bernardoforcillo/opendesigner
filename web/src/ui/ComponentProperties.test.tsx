@@ -1,14 +1,14 @@
 import "@testing-library/jest-dom/vitest";
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { render, screen, cleanup, fireEvent } from "@testing-library/react";
-import type { Op } from "../gen/opendesigner/v1/opendesigner_pb";
-import { useScene } from "../store/store";
-import { emptyScene, type ComponentLite, type NodeLite, type SceneState } from "../store/types";
-import { ComponentDialog } from "./ComponentDialog";
-import { InstanceControls } from "./InstanceControls";
+import type { Op } from "@/gen/opendesigner/v1/opendesigner_pb";
+import { useScene } from "@/store/store";
+import { emptyScene, type ComponentLite, type NodeLite, type SceneState } from "@/store/types";
+import { ComponentDialog } from "@/ui/ComponentDialog";
+import { InstanceControls } from "@/ui/InstanceControls";
 import {
   addPropertyOps, renameAxisOps, renameOptionOps, setPropertyDefaultOps, setPropertyOptionsOps, setPropertyValueOps, swapChoices,
-} from "./componentOps";
+} from "@/ui/componentOps";
 
 // Number, option-list and swap properties, and renames, in the component dialog, the instance
 // controls and the pure op builders behind them.

@@ -1,9 +1,9 @@
-import type { Op } from "../gen/opendesigner/v1/opendesigner_pb";
-import { normalizeVector } from "../store/vectorGeometry";
-import type { NodeLite, SceneState, SubPathLite } from "../store/types";
-import { makeDeleteOp, makeSetPropsOp, makeSetVectorPathOp } from "../tools/ops";
-import { cornerAll, joinSubpaths, offsetSubpaths, simplifySubpath, smoothAll } from "./pathOps";
-import { subpathFills } from "../store/vectorGeometry";
+import type { Op } from "@/gen/opendesigner/v1/opendesigner_pb";
+import { normalizeVector } from "@/store/vectorGeometry";
+import type { NodeLite, SceneState, SubPathLite } from "@/store/types";
+import { makeDeleteOp, makeSetPropsOp, makeSetVectorPathOp } from "@/tools/ops";
+import { cornerAll, joinSubpaths, offsetSubpaths, simplifySubpath, smoothAll } from "@/vector/pathOps";
+import { subpathFills } from "@/store/vectorGeometry";
 
 // The ops that apply a path edit to a vector node. The invariant (store/vectorGeometry.ts::
 // normalizeVector) is that the node's box hugs its geometry, so a new path travels with the

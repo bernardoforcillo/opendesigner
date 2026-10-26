@@ -1,13 +1,13 @@
-import { useScene } from "../store/store";
-import type { Op } from "../gen/opendesigner/v1/opendesigner_pb";
-import type { NoiseModeLite } from "../store/types";
-import { cls } from "./ds";
-import { ColorField } from "./fields/ColorField";
-import { NumberField } from "./fields/NumberField";
+import { useScene } from "@/store/store";
+import type { Op } from "@/gen/opendesigner/v1/opendesigner_pb";
+import type { NoiseModeLite } from "@/store/types";
+import { cls } from "@/ui/ds";
+import { ColorField } from "@/ui/fields/ColorField";
+import { NumberField } from "@/ui/fields/NumberField";
 import {
   DEFAULT_NOISE, RAMP_DIRECTIONS, fxOf, glassOps, noiseOps, progressiveOf, progressiveOps, progressiveTargetOps, rampDirectionOf, textureOps,
   type RampDirection,
-} from "./effectFxOps";
+} from "@/ui/effectFxOps";
 
 const lookup = (id: string) => useScene.getState().scene?.nodes.at(id);
 

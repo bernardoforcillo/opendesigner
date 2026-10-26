@@ -1,10 +1,10 @@
 import { useState } from "react";
 import { Dialog, Modal, ModalOverlay } from "react-aria-components";
-import { useScene } from "../store/store";
-import { runDocumentExport, runPackage } from "../export/exportScene";
-import { preflightScene } from "../export/preflight";
-import type { PrintPdfOptions } from "../export/printPdf";
-import { Button, cls } from "./ds";
+import { useScene } from "@/store/store";
+import { runDocumentExport, runPackage } from "@/export/exportScene";
+import { preflightScene } from "@/export/preflight";
+import type { PrintPdfOptions } from "@/export/printPdf";
+import { Button, cls } from "@/ui/ds";
 
 // EXPORT PDF (document menu): the options of a PDF going to a printer, with the preflight of the document
 // beside them. The preflight here reads the document; what only the writer can see (image resolution,

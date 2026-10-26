@@ -1,8 +1,8 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { applyOp } from "./applyOp";
-import { canLink, chainsOf, deriveThreads, flowStory, headOf, isThreaded, META_NEXT, setThreadMeasure, threadOps, unlinkOps } from "./threads";
-import { resolveScene } from "./variables";
-import { emptyScene, type NodeLite, type SceneState, type TextStyleLite } from "./types";
+import { applyOp } from "@/store/applyOp";
+import { canLink, chainsOf, deriveThreads, flowStory, headOf, isThreaded, META_NEXT, setThreadMeasure, threadOps, unlinkOps } from "@/store/threads";
+import { resolveScene } from "@/store/variables";
+import { emptyScene, type NodeLite, type SceneState, type TextStyleLite } from "@/store/types";
 
 // 10 units per character; line height 20 (font 16 x 1.25).
 const STYLE: TextStyleLite = { fontFamily: "", fontSize: 16, fontWeight: "", lineHeight: 1.25, align: "left" };

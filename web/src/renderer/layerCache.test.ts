@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { emptyScene } from "../store/types";
+import { emptyScene } from "@/store/types";
 
 // fake drawScene, which "costs" what the test says: time is decided by
 // performance.now, so the tests do not depend on the machine's speed.
@@ -8,9 +8,9 @@ let now = 0;
 const drawSceneMock = vi.fn(() => {
   now += cost;
 });
-vi.mock("./canvasRenderer", () => ({ drawScene: (...a: unknown[]) => (drawSceneMock as (...x: unknown[]) => void)(...a) }));
+vi.mock("@/renderer/canvasRenderer", () => ({ drawScene: (...a: unknown[]) => (drawSceneMock as (...x: unknown[]) => void)(...a) }));
 
-import { HEAVY_MS, SceneLayerCache } from "./layerCache";
+import { HEAVY_MS, SceneLayerCache } from "@/renderer/layerCache";
 
 function fakeCtx(width = 1200, height = 800, clientWidth = 600) {
   const canvas = { width, height, clientWidth } as HTMLCanvasElement;

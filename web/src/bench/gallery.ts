@@ -1,6 +1,6 @@
-import { NodeMap } from "../store/nodeMap";
-import { emptyScene } from "../store/types";
-import type { NodeLite, SceneState } from "../store/types";
+import { NodeMap } from "@/store/nodeMap";
+import { emptyScene } from "@/store/types";
+import type { NodeLite, SceneState } from "@/store/types";
 
 // A scene that tests, in 1200x800, everything the two renderers must draw
 // the same: shapes, strokes (center/inside/outside), gradients, effects, rotation,

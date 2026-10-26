@@ -1,11 +1,11 @@
 import { create, type MessageInitShape } from "@bufbuild/protobuf";
-import { NodeSchema } from "../gen/opendesigner/v1/opendesigner_pb";
-import type { Op } from "../gen/opendesigner/v1/opendesigner_pb";
-import { nextOrderKey } from "../store/orderKey";
-import { useScene } from "../store/store";
-import type { NodeLite } from "../store/types";
-import { makeCreateNodeOp, makeDeleteOp, makeSetPropsOp, uuid } from "../tools/ops";
-import type { Permission } from "./manifest";
+import { NodeSchema } from "@/gen/opendesigner/v1/opendesigner_pb";
+import type { Op } from "@/gen/opendesigner/v1/opendesigner_pb";
+import { nextOrderKey } from "@/store/orderKey";
+import { useScene } from "@/store/store";
+import type { NodeLite } from "@/store/types";
+import { makeCreateNodeOp, makeDeleteOp, makeSetPropsOp, uuid } from "@/tools/ops";
+import type { Permission } from "@/plugins/manifest";
 
 // THE PLUGIN API, host side. A plugin script calls `od.<method>(...)` inside a sandbox; each call
 // arrives here as (method, args) and is checked, applied and answered. All a plugin writes goes in

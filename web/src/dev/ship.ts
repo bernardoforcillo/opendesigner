@@ -1,6 +1,6 @@
-import type { CodeFile, CodeTarget } from "./codegen";
-import { makeZip } from "./zip";
-import { slugOf } from "./readiness";
+import type { CodeFile, CodeTarget } from "@/dev/codegen";
+import { makeZip } from "@/dev/zip";
+import { slugOf } from "@/dev/readiness";
 
 // SHIPPING: the zip's name, the commands to copy, the tools' names for
 // agents. All pure text (and the zip), so the view stays thin and the commands

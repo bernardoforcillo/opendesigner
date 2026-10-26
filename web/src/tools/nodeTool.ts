@@ -1,14 +1,14 @@
-import { useScene } from "../store/store";
-import type { NodeLite, SubPathLite } from "../store/types";
-import { hitTest } from "../renderer/canvasRenderer";
-import { PEN_ANCHOR_GRAB_PX } from "../renderer/overlayRenderer";
-import { editable, setPathOps } from "../vector/editOps";
+import { useScene } from "@/store/store";
+import type { NodeLite, SubPathLite } from "@/store/types";
+import { hitTest } from "@/renderer/canvasRenderer";
+import { PEN_ANCHOR_GRAB_PX } from "@/renderer/overlayRenderer";
+import { editable, setPathOps } from "@/vector/editOps";
 import {
   deleteAnchor, insertAnchor, isSmooth, makeCorner, makeSmooth, moveAnchor, moveHandle, nearestOnPath,
-} from "../vector/pathOps";
-import { hasInHandle, hasOutHandle } from "../store/vectorGeometry";
-import { makeDeleteOp } from "./ops";
-import type { Tool } from "./types";
+} from "@/vector/pathOps";
+import { hasInHandle, hasOutHandle } from "@/store/vectorGeometry";
+import { makeDeleteOp } from "@/tools/ops";
+import type { Tool } from "@/tools/types";
 
 // THE NODE TOOL (N): edit the anchors of a vector. On the selected vector it drags anchors and their
 // handles, a click on the outline adds an anchor there, a double click on an anchor flips it between

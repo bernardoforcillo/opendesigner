@@ -2,8 +2,8 @@ import { describe, it, expect } from "vitest";
 import {
   EASING_PRESETS, clampBezier, curvePath, dragControl, easingToBezier, formatBezier, fromPx, nudgeControl, presetIdOf, toPx,
   type CurveBox,
-} from "./easingEdit";
-import { isValidEasing } from "./engine";
+} from "@/animation/easingEdit";
+import { isValidEasing } from "@/animation/engine";
 
 const BOX: CurveBox = { width: 168, height: 124, pad: 18 };
 

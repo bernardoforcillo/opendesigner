@@ -1,14 +1,14 @@
 import { describe, it, expect } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
-import { applyOp } from "../store/applyOp";
-import { emptyScene, toNodeLite, type NodeLite, type SceneState } from "../store/types";
-import { vectorBounds } from "../store/vectorGeometry";
-import { applyTransform } from "../canvas/transform";
-import { nodesToSvg } from "../export/svg";
-import { MAX_SVG_BYTES, SvgImportError, importSvg, imageSizeOf, type ImportOptions, type ImportResult } from "./importSvg";
-import { parsePathData, transformCmds, type PathCmd } from "./pathData";
-import { parseTransform } from "./transform";
+import { applyOp } from "@/store/applyOp";
+import { emptyScene, toNodeLite, type NodeLite, type SceneState } from "@/store/types";
+import { vectorBounds } from "@/store/vectorGeometry";
+import { applyTransform } from "@/canvas/transform";
+import { nodesToSvg } from "@/export/svg";
+import { MAX_SVG_BYTES, SvgImportError, importSvg, imageSizeOf, type ImportOptions, type ImportResult } from "@/svg/importSvg";
+import { parsePathData, transformCmds, type PathCmd } from "@/svg/pathData";
+import { parseTransform } from "@/svg/transform";
 
 // --- helpers ------------------------------------------------------------------
 

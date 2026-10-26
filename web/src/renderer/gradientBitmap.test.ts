@@ -1,8 +1,8 @@
 import { describe, it, expect, vi } from "vitest";
-import { angularStart, colorAtStops, gradientBitmap, gradientDrawable, gradientPosition } from "./gradientBitmap";
-import { paintStyle } from "./canvasRenderer";
-import { nodesToSvg } from "../export/svg";
-import type { FillLite, GradientLite, NodeLite } from "../store/types";
+import { angularStart, colorAtStops, gradientBitmap, gradientDrawable, gradientPosition } from "@/renderer/gradientBitmap";
+import { paintStyle } from "@/renderer/canvasRenderer";
+import { nodesToSvg } from "@/export/svg";
+import type { FillLite, GradientLite, NodeLite } from "@/store/types";
 
 const red = { r: 1, g: 0, b: 0, a: 1 };
 const blue = { r: 0, g: 0, b: 1, a: 1 };

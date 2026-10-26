@@ -7,12 +7,12 @@ import {
   alignTarget,
   distributeDeltas,
   minSelection,
-} from "./align";
-import type { AlignKind } from "./align";
-import { useScene } from "../store/store";
-import { emptyScene } from "../store/types";
-import type { NodeLite, SceneState } from "../store/types";
-import type { Op } from "../gen/opendesigner/v1/opendesigner_pb";
+} from "@/selection/align";
+import type { AlignKind } from "@/selection/align";
+import { useScene } from "@/store/store";
+import { emptyScene } from "@/store/types";
+import type { NodeLite, SceneState } from "@/store/types";
+import type { Op } from "@/gen/opendesigner/v1/opendesigner_pb";
 
 function node(over: Partial<NodeLite> & { id: string }): NodeLite {
   return {

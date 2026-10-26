@@ -1,9 +1,9 @@
-import type { Op } from "../gen/opendesigner/v1/opendesigner_pb";
-import { makeSetPropsOp } from "../tools/ops";
-import { toPbEffects } from "../store/types";
-import type { EffectLite, NodeLite } from "../store/types";
-import type { NodeLookup } from "./gradientOps";
-import type { GlassLite, NoiseLite, ProgressiveBlurLite, TextureLite } from "../renderer/effectsFx";
+import type { Op } from "@/gen/opendesigner/v1/opendesigner_pb";
+import { makeSetPropsOp } from "@/tools/ops";
+import { toPbEffects } from "@/store/types";
+import type { EffectLite, NodeLite } from "@/store/types";
+import type { NodeLookup } from "@/ui/gradientOps";
+import type { GlassLite, NoiseLite, ProgressiveBlurLite, TextureLite } from "@/renderer/effectsFx";
 
 // The panel's ops for progressive blur, noise, texture and glass. Like the other effect
 // controls they govern the FIRST effect of their kind (progressive blur: the first of the

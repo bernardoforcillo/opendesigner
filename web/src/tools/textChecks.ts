@@ -1,5 +1,5 @@
-import { visibleText, textNodesInReadingOrder } from "../store/textTokens";
-import type { SceneState } from "../store/types";
+import { visibleText, textNodesInReadingOrder } from "@/store/textTokens";
+import type { SceneState } from "@/store/types";
 
 // TEXT CHECKS: typographic slips a proofreader would catch, found in the text of the whole document. This is NOT
 // a dictionary spell check -- no word list ships with the editor -- the browser's own spell check marks

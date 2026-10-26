@@ -1,14 +1,14 @@
-import { forPdf } from "../../renderer/bidi";
-import type { BlendModeLite, FillLite, GradientLite, NodeLite } from "../../store/types";
-import type { Bounds } from "../../canvas/geometry";
-import { decorationBars, fontSizeOf, paragraphDecorations, placeTextLines, type MeasureText } from "../../renderer/text";
-import { resolvedFill } from "../../renderer/canvasRenderer";
-import { hasRealStroke, vectorStyleOf } from "../../renderer/vectorStyle";
-import { meshBitmap } from "../../renderer/mesh";
-import { writeImage, type PreparedImage } from "./pdfImages";
-import { num, pdfName, type PdfFile } from "./pdfFile";
-import type { PdfColors } from "./pdfColor";
-import type { PdfFonts } from "./pdfFonts";
+import { forPdf } from "@/renderer/bidi";
+import type { BlendModeLite, FillLite, GradientLite, NodeLite } from "@/store/types";
+import type { Bounds } from "@/canvas/geometry";
+import { decorationBars, fontSizeOf, paragraphDecorations, placeTextLines, type MeasureText } from "@/renderer/text";
+import { resolvedFill } from "@/renderer/canvasRenderer";
+import { hasRealStroke, vectorStyleOf } from "@/renderer/vectorStyle";
+import { meshBitmap } from "@/renderer/mesh";
+import { writeImage, type PreparedImage } from "@/pdf/write/pdfImages";
+import { num, pdfName, type PdfFile } from "@/pdf/write/pdfFile";
+import type { PdfColors } from "@/pdf/write/pdfColor";
+import type { PdfFonts } from "@/pdf/write/pdfFonts";
 
 // A PAGE'S CONTENT STREAM, from the same nodes the SVG export draws (export/region.ts picks and orders
 // them). One world unit is one CSS pixel = 0.75 pt; the page's initial matrix flips y so nodes keep

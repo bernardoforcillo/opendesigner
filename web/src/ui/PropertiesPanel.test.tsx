@@ -3,13 +3,13 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { render, screen, cleanup, fireEvent, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { toJson, fromJson } from "@bufbuild/protobuf";
-import { OpSchema } from "../gen/opendesigner/v1/opendesigner_pb";
-import type { Op } from "../gen/opendesigner/v1/opendesigner_pb";
-import { PropertiesPanel } from "./PropertiesPanel";
-import { contentWorldBounds } from "../store/groups";
-import { useScene } from "../store/store";
-import { emptyScene } from "../store/types";
-import type { InstanceOverrideLite, NodeLite, StrokeAlignLite, StrokeLite, TextLite } from "../store/types";
+import { OpSchema } from "@/gen/opendesigner/v1/opendesigner_pb";
+import type { Op } from "@/gen/opendesigner/v1/opendesigner_pb";
+import { PropertiesPanel } from "@/ui/PropertiesPanel";
+import { contentWorldBounds } from "@/store/groups";
+import { useScene } from "@/store/store";
+import { emptyScene } from "@/store/types";
+import type { InstanceOverrideLite, NodeLite, StrokeAlignLite, StrokeLite, TextLite } from "@/store/types";
 
 // SyncClient double: records the ops that end up ON THE WIRE and models a
 // server that accepts and ECHOES at once (applyPending + apply), like

@@ -1,5 +1,5 @@
-import { hexFill, type IdGen } from "./builder";
-import { Pager, type PublishingBuilt } from "./publishing";
+import { hexFill, type IdGen } from "@/templates/builder";
+import { Pager, type PublishingBuilt } from "@/templates/publishing";
 
 // THE DESIGN TEMPLATES: a poster on a real sheet and a brand sheet on the open canvas. Like the
 // publishing ones they are plain data (see publishing.ts for the shape).

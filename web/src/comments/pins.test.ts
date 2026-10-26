@@ -1,9 +1,9 @@
 import { describe, it, expect } from "vitest";
-import { nodesOf } from "../store/nodeMap";
-import { emptyScene } from "../store/types";
-import type { CommentLite, NodeLite, SceneState } from "../store/types";
-import { threadsOf } from "../store/comments";
-import { draftWorld, pinAt, pinsOf, placement } from "./pins";
+import { nodesOf } from "@/store/nodeMap";
+import { emptyScene } from "@/store/types";
+import type { CommentLite, NodeLite, SceneState } from "@/store/types";
+import { threadsOf } from "@/store/comments";
+import { draftWorld, pinAt, pinsOf, placement } from "@/comments/pins";
 
 const frame = (over: Partial<NodeLite> = {}): NodeLite => ({
   id: "f", parentId: "page1", orderKey: "a0", name: "Card", visible: true, opacity: 1, x: 100, y: 50, width: 200, height: 100, rotation: 0,

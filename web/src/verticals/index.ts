@@ -1,6 +1,6 @@
-import type { IconName } from "../ui/ds/Icon";
-import type { EditorMode } from "../store/flowUi";
-import type { Vertical } from "../store/types";
+import type { IconName } from "@/ui/ds/Icon";
+import type { EditorMode } from "@/store/flowUi";
+import type { Vertical } from "@/store/types";
 
 // THE VERTICALS. A document is for one kind of work, and the editor shows what that work needs:
 //

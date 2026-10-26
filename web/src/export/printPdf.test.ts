@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { emptyScene, type PageLite, type SceneState } from "../store/types";
-import { BLANK_PAGE, bookletGroups } from "./printPdf";
+import { emptyScene, type PageLite, type SceneState } from "@/store/types";
+import { BLANK_PAGE, bookletGroups } from "@/export/printPdf";
 
 const sceneOf = (n: number): SceneState => {
   const s = emptyScene("d", "d");

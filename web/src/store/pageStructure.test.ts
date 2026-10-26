@@ -1,13 +1,13 @@
 import { describe, it, expect } from "vitest";
 import { create } from "@bufbuild/protobuf";
-import { OpSchema } from "../gen/opendesigner/v1/opendesigner_pb";
-import type { Op } from "../gen/opendesigner/v1/opendesigner_pb";
-import { applyOp } from "./applyOp";
-import { invertOp } from "./history";
-import { effectiveGuides, deriveMasters, isLeftPage, masterCopyId, masterFieldsValid } from "./masters";
-import { formatPageNumber, pageNumbers } from "./pageNumbers";
-import { isValidPageSetup, pageColumns, pageGuideBoxes, pageTextArea } from "./docSettings";
-import { emptyScene, type NodeLite, type PageLite, type SceneState } from "./types";
+import { OpSchema } from "@/gen/opendesigner/v1/opendesigner_pb";
+import type { Op } from "@/gen/opendesigner/v1/opendesigner_pb";
+import { applyOp } from "@/store/applyOp";
+import { invertOp } from "@/store/history";
+import { effectiveGuides, deriveMasters, isLeftPage, masterCopyId, masterFieldsValid } from "@/store/masters";
+import { formatPageNumber, pageNumbers } from "@/store/pageNumbers";
+import { isValidPageSetup, pageColumns, pageGuideBoxes, pageTextArea } from "@/store/docSettings";
+import { emptyScene, type NodeLite, type PageLite, type SceneState } from "@/store/types";
 
 const op = (kind: Op["kind"]): Op => create(OpSchema, { opId: "o", docId: "d", kind });
 const node = (over: Partial<NodeLite> & { id: string }): NodeLite => ({

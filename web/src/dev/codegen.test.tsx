@@ -1,11 +1,11 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { act, cleanup, render } from "@testing-library/react";
-import { useScene } from "../store/store";
-import { baseScene, transition, withFlows, flowOf } from "../flow/testSupport";
+import { useScene } from "@/store/store";
+import { baseScene, transition, withFlows, flowOf } from "@/flow/testSupport";
 import {
   CODEGEN_DEBOUNCE_MS, fileForNode, groupFiles, groupOf, nodeIdOfFile, refreshCode, resetCodegen, setCodeFetcher,
   textOf, useCodeExport, useCodegen, type CodeFetcher, type CodeFile, type CodeTarget,
-} from "./codegen";
+} from "@/dev/codegen";
 
 const enc = (s: string) => new TextEncoder().encode(s);
 const file = (path: string, text = ""): CodeFile => ({ path, bytes: enc(text) });

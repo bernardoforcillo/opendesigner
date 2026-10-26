@@ -1,5 +1,5 @@
-import type { Bounds } from "../canvas/geometry";
-import type { NodeLite, SubPathLite } from "../store/types";
+import type { Bounds } from "@/canvas/geometry";
+import type { NodeLite, SubPathLite } from "@/store/types";
 
 // CONNECTORS: a vector node whose meta names the two nodes it joins. The path is DERIVED from where
 // those nodes are (store/connectors.ts), so moving a box moves the arrow. This file is only geometry:

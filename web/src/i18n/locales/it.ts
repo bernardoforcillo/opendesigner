@@ -1,5 +1,5 @@
-import type { Message } from "../core";
-import type { MessageKey } from "./en";
+import type { Message } from "@/i18n/core";
+import type { MessageKey } from "@/i18n/locales/en";
 
 // Italian. MACHINE DRAFT: waiting for a native speaker's review (docs/localization.md).
 export const it: Record<MessageKey, Message> = {

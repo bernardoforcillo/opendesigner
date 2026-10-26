@@ -1,8 +1,8 @@
 import type { ReactNode, SVGProps } from "react";
 import { Button as RacButton, TooltipTrigger, type ButtonProps } from "react-aria-components";
-import { Icon, type IconName } from "./Icon";
-import { Tip } from "./index";
-import type { NodeLite } from "../../store/types";
+import { Icon, type IconName } from "@/ui/ds/Icon";
+import { Tip } from "@/ui/ds/index";
+import type { NodeLite } from "@/store/types";
 
 // DESIGN SYSTEM PIECES FOR ANIMATION (timeline, recording).
 //

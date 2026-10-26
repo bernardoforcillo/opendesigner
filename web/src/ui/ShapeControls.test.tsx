@@ -1,11 +1,11 @@
 import "@testing-library/jest-dom/vitest";
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { render, screen, cleanup, fireEvent } from "@testing-library/react";
-import type { Op } from "../gen/opendesigner/v1/opendesigner_pb";
-import { useScene } from "../store/store";
-import { emptyScene, type NodeLite } from "../store/types";
-import { ArrowheadControls, ShapeControls, StrokeSidesControls } from "./ShapeControls";
-import { EffectStyleControls, PaintStyleControls } from "./StyleControls";
+import type { Op } from "@/gen/opendesigner/v1/opendesigner_pb";
+import { useScene } from "@/store/store";
+import { emptyScene, type NodeLite } from "@/store/types";
+import { ArrowheadControls, ShapeControls, StrokeSidesControls } from "@/ui/ShapeControls";
+import { EffectStyleControls, PaintStyleControls } from "@/ui/StyleControls";
 
 class FakeSync {
   sent: Op[] = [];

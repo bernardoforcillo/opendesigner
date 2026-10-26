@@ -1,12 +1,12 @@
-import { AnimIconButton } from "../ds/anim-parts";
-import { NumberField } from "../fields/NumberField";
-import { useScene } from "../../store/store";
-import type { ClipLite } from "../../store/types";
-import { commitClip, useTimeline } from "../../animation/timelineStore";
+import { AnimIconButton } from "@/ui/ds/anim-parts";
+import { NumberField } from "@/ui/fields/NumberField";
+import { useScene } from "@/store/store";
+import type { ClipLite } from "@/store/types";
+import { commitClip, useTimeline } from "@/animation/timelineStore";
 import {
   PROP_LABEL, PROP_UNIT, deleteKeyframes, duplicateKeyframes, updateKeyframe, type KeyRef,
-} from "../../animation/timelineLogic";
-import { EasingEditor } from "./EasingEditor";
+} from "@/animation/timelineLogic";
+import { EasingEditor } from "@/ui/timeline/EasingEditor";
 
 // THE INSPECTOR of the selected keyframe (right column of the timeline): time,
 // value, easing with the mini-curve, duplicate and delete. Every change is ONE SetClip.

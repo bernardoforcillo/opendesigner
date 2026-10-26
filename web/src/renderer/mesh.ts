@@ -1,4 +1,4 @@
-import type { MeshLite } from "../store/types";
+import type { MeshLite } from "@/store/types";
 
 // MESH GRADIENTS, rasterized. A mesh is a small grid of colors; every renderer wants it as an image
 // it can stretch over the node's box (the browser's smoothing or the GPU's sampling does the rest),

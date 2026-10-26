@@ -1,8 +1,8 @@
-import type { Op } from "../gen/opendesigner/v1/opendesigner_pb";
-import { defaultDeps, type ImageDropDeps } from "./imageDrop";
-import { makeSetImageOp, makeSetPropsOp } from "./ops";
-import { useScene } from "../store/store";
-import type { NodeLite, SceneState } from "../store/types";
+import type { Op } from "@/gen/opendesigner/v1/opendesigner_pb";
+import { defaultDeps, type ImageDropDeps } from "@/tools/imageDrop";
+import { makeSetImageOp, makeSetPropsOp } from "@/tools/ops";
+import { useScene } from "@/store/store";
+import type { NodeLite, SceneState } from "@/store/types";
 
 // LINKED IMAGES. An image node is a reference to a file in the document's asset store plus what is known about the
 // file it was placed from: its name and its size in pixels (recorded when it is dropped). That is what the

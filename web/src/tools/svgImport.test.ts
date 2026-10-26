@@ -1,10 +1,10 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import { useScene } from "../store/store";
-import { emptyScene, type NodeLite } from "../store/types";
+import { useScene } from "@/store/store";
+import { emptyScene, type NodeLite } from "@/store/types";
 import {
   importSvgAt, importSvgFile, importedNotice, isSvgFile, looksLikeSvg, pickSvgFile, viewportCenter,
   type SvgImportDeps,
-} from "./svgImport";
+} from "@/tools/svgImport";
 
 const HASH = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
 const PNG = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";

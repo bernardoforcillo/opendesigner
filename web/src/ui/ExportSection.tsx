@@ -1,9 +1,9 @@
 import { useState } from "react";
 import { Label, Radio, RadioGroup } from "react-aria-components";
-import { runExport, type ExportFormat, type ExportRequest } from "../export/exportScene";
-import { EXPORT_SCALES, type ExportScale } from "../export/png";
-import { Button } from "./ds";
-import { SEGMENT, SEGMENTED_TRACK } from "./ds/flow-parts";
+import { runExport, type ExportFormat, type ExportRequest } from "@/export/exportScene";
+import { EXPORT_SCALES, type ExportScale } from "@/export/png";
+import { Button } from "@/ui/ds";
+import { SEGMENT, SEGMENTED_TRACK } from "@/ui/ds/flow-parts";
 
 // THE EXPORT SECTION in the properties panel.
 //

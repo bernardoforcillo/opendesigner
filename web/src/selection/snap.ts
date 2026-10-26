@@ -1,9 +1,9 @@
-import type { Camera } from "../canvas/camera";
-import { type Bounds, worldAabbOfNode } from "../canvas/geometry";
-import type { SceneState } from "../store/types";
-import { snapPositions } from "../store/layoutGrids";
-import { pageGuideBoxes } from "../store/docSettings";
-import { effectiveGuides, isLeftPage } from "../store/masters";
+import type { Camera } from "@/canvas/camera";
+import { type Bounds, worldAabbOfNode } from "@/canvas/geometry";
+import type { SceneState } from "@/store/types";
+import { snapPositions } from "@/store/layoutGrids";
+import { pageGuideBoxes } from "@/store/docSettings";
+import { effectiveGuides, isLeftPage } from "@/store/masters";
 
 // SNAP — AUTOMATIC ALIGNMENT DURING A GESTURE.
 //

@@ -1,11 +1,11 @@
-import { nodesOf } from "../store/nodeMap";
+import { nodesOf } from "@/store/nodeMap";
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import { createSelectTool } from "./selectTool";
-import type { ToolContext } from "./types";
-import type { Op } from "../gen/opendesigner/v1/opendesigner_pb";
-import { useScene } from "../store/store";
-import { emptyScene } from "../store/types";
-import type { AutoLayoutLite, NodeLite } from "../store/types";
+import { createSelectTool } from "@/tools/selectTool";
+import type { ToolContext } from "@/tools/types";
+import type { Op } from "@/gen/opendesigner/v1/opendesigner_pb";
+import { useScene } from "@/store/store";
+import { emptyScene } from "@/store/types";
+import type { AutoLayoutLite, NodeLite } from "@/store/types";
 
 const AL: AutoLayoutLite = {
   direction: "horizontal", spacing: 10, paddingLeft: 0, paddingTop: 0, paddingRight: 0, paddingBottom: 0,

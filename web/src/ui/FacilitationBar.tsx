@@ -1,9 +1,9 @@
 import { useEffect, useState } from "react";
-import { useScene } from "../store/store";
-import { usePresence } from "../store/presence";
+import { useScene } from "@/store/store";
+import { usePresence } from "@/store/presence";
 import {
   CHAT_MAX, REACTIONS, activeTimer, formatRemaining, ranking, tally, useFacilitation,
-} from "../store/facilitation";
+} from "@/store/facilitation";
 
 const BTN = "h-7 rounded-md px-2 text-[12px] text-fg-muted outline-none hover:bg-surface-3 hover:text-fg focus-visible:shadow-[var(--ring)] disabled:opacity-40";
 

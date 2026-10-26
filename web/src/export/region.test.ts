@@ -1,8 +1,8 @@
 import { describe, it, expect } from "vitest";
-import { exportRegion } from "./region";
-import { emptyScene } from "../store/types";
-import type { MeasureText } from "../renderer/text";
-import type { NodeLite, SceneState, TextStyleLite } from "../store/types";
+import { exportRegion } from "@/export/region";
+import { emptyScene } from "@/store/types";
+import type { MeasureText } from "@/renderer/text";
+import type { NodeLite, SceneState, TextStyleLite } from "@/store/types";
 
 // FAKE and deterministic measure: 10 units per character, as in svg.test.ts.
 // Measuring glyphs for real would need a canvas, and the result would change from

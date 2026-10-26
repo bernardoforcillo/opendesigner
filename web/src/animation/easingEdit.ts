@@ -1,4 +1,4 @@
-import { NAMED_BEZIER, SPRING_BEZIER, easingFn, parseCubicBezier } from "./engine";
+import { NAMED_BEZIER, SPRING_BEZIER, easingFn, parseCubicBezier } from "@/animation/engine";
 
 // The CURVE editor: pure logic (no DOM) behind the mini easing curve.
 // A curve is always a cubic Bézier (x1, y1, x2, y2) with x values in [0,1]

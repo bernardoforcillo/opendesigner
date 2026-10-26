@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Dialog, Modal, ModalOverlay } from "react-aria-components";
-import { DiagramError, insertDiagram, renderDiagram, selectedDiagram } from "../diagram/insert";
-import { viewportCenter } from "../tools/svgImport";
+import { DiagramError, insertDiagram, renderDiagram, selectedDiagram } from "@/diagram/insert";
+import { viewportCenter } from "@/tools/svgImport";
 
 // CREATE (OR EDIT) A DIAGRAM: you write or paste Mermaid text -- a
 // flowchart or a UML diagram (classes, sequence, states) -- and the canvas

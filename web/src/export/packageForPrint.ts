@@ -1,9 +1,9 @@
-import type { SceneState } from "../store/types";
-import { sfntKind } from "../pdf/sfnt";
-import { dataUrlBytes } from "../pdf/write/pdfImages";
-import type { PdfReport } from "../pdf/write/pdfDocument";
-import type { PreflightIssue } from "./preflight";
-import { zipStore, type ZipEntry } from "./zip";
+import type { SceneState } from "@/store/types";
+import { sfntKind } from "@/pdf/sfnt";
+import { dataUrlBytes } from "@/pdf/write/pdfImages";
+import type { PdfReport } from "@/pdf/write/pdfDocument";
+import type { PreflightIssue } from "@/export/preflight";
+import { zipStore, type ZipEntry } from "@/export/zip";
 
 // PACKAGE FOR PRINT: one zip a print shop can open without this editor -- the PDF, every uploaded font,
 // every placed image file, and a plain-text report of what is in it. It does NOT contain the editable

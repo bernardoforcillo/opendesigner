@@ -1,10 +1,10 @@
-import { useScene } from "../store/store";
-import { DEFAULT_WRAP_OFFSET, isWrapper, wrapOffsetOf, wrapOps } from "../store/wrap";
-import { META_TEXT_PATH, textOnPathOps } from "../store/textPath";
-import { addColumnOps, addRowOps, cellOf, deleteColumnOps, deleteRowOps, readTable, resizeTableOps, tableIdOf } from "../tools/tableOps";
-import { anchorOps, anchorsOf, releaseAnchorOps } from "../store/anchored";
-import { Button } from "./ds";
-import { NumberField } from "./fields/NumberField";
+import { useScene } from "@/store/store";
+import { DEFAULT_WRAP_OFFSET, isWrapper, wrapOffsetOf, wrapOps } from "@/store/wrap";
+import { META_TEXT_PATH, textOnPathOps } from "@/store/textPath";
+import { addColumnOps, addRowOps, cellOf, deleteColumnOps, deleteRowOps, readTable, resizeTableOps, tableIdOf } from "@/tools/tableOps";
+import { anchorOps, anchorsOf, releaseAnchorOps } from "@/store/anchored";
+import { Button } from "@/ui/ds";
+import { NumberField } from "@/ui/fields/NumberField";
 
 // CONTROLS of the properties panel for the layout of text around and along things:
 //  - Text wrap: an object that text flows around (store/wrap.ts);

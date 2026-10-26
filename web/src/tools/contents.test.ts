@@ -1,8 +1,8 @@
 import { describe, it, expect } from "vitest";
-import { applyOp } from "../store/applyOp";
-import { resolveScene } from "../store/variables";
-import { emptyScene, type NodeLite, type SceneState, type TextStyleLite } from "../store/types";
-import { contentsNode, generateContentsOps } from "./contents";
+import { applyOp } from "@/store/applyOp";
+import { resolveScene } from "@/store/variables";
+import { emptyScene, type NodeLite, type SceneState, type TextStyleLite } from "@/store/types";
+import { contentsNode, generateContentsOps } from "@/tools/contents";
 
 const STYLE: TextStyleLite = { fontFamily: "", fontSize: 12, fontWeight: "", lineHeight: 1.2, align: "left" };
 const text = (id: string, parentId: string, content: string, paragraphStyles?: string[], y = 0): NodeLite => ({

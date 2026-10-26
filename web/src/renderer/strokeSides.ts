@@ -1,4 +1,4 @@
-import type { NodeLite, StrokeLite } from "../store/types";
+import type { NodeLite, StrokeLite } from "@/store/types";
 
 // PER-SIDE STROKE WEIGHTS (docs/shapes.md): a rectangle or frame stroke with its own weight on each side is
 // the band between an outer and an inner rectangle (filled even-odd with the stroke's paint). Where the band

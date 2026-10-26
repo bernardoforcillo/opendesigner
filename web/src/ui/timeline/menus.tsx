@@ -1,10 +1,10 @@
 import { Button as RacButton, Menu, MenuItem, MenuTrigger, Popover, Separator } from "react-aria-components";
-import { Icon } from "../ds";
-import { AnimIcon } from "../ds/anim-parts";
-import { useScene } from "../../store/store";
-import { useTimeline, addPropertyTracks, applyPreset } from "../../animation/timelineStore";
-import { PROP_LABEL, findTrack, isInside, propsFor } from "../../animation/timelineLogic";
-import { PRESETS } from "../../animation/presets";
+import { Icon } from "@/ui/ds";
+import { AnimIcon } from "@/ui/ds/anim-parts";
+import { useScene } from "@/store/store";
+import { useTimeline, addPropertyTracks, applyPreset } from "@/animation/timelineStore";
+import { PROP_LABEL, findTrack, isInside, propsFor } from "@/animation/timelineLogic";
+import { PRESETS } from "@/animation/presets";
 
 // THE TWO MENUS that bring a layer into an animation: "+ Property" (one
 // track at a time, on what is selected) and "Animate with a preset" (a ready-made

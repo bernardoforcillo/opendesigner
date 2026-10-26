@@ -1,14 +1,14 @@
 import "@testing-library/jest-dom/vitest";
 import { describe, it, expect, afterEach } from "vitest";
 import { render, screen, cleanup } from "@testing-library/react";
-import { applyOp } from "../store/applyOp";
-import { builtToOps } from "./builder";
-import { blankFor, DESIGN_TEMPLATES, PUBLISHING_TEMPLATES, templateById, templatesFor, TEMPLATES } from "./catalog";
-import { resolveScene } from "../store/variables";
-import { chainsOf } from "../store/threads";
-import { masterCopyId } from "../store/masters";
-import { emptyScene, type SceneState } from "../store/types";
-import { TemplatePreview } from "../home/TemplatePreview";
+import { applyOp } from "@/store/applyOp";
+import { builtToOps } from "@/templates/builder";
+import { blankFor, DESIGN_TEMPLATES, PUBLISHING_TEMPLATES, templateById, templatesFor, TEMPLATES } from "@/templates/catalog";
+import { resolveScene } from "@/store/variables";
+import { chainsOf } from "@/store/threads";
+import { masterCopyId } from "@/store/masters";
+import { emptyScene, type SceneState } from "@/store/types";
+import { TemplatePreview } from "@/home/TemplatePreview";
 
 afterEach(cleanup);
 

@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { applyTransform } from "../canvas/transform";
-import { isTranslationM, lengthScaleOf, parseTransform, similarityOf } from "./transform";
+import { applyTransform } from "@/canvas/transform";
+import { isTranslationM, lengthScaleOf, parseTransform, similarityOf } from "@/svg/transform";
 
 const pt = (t: ReturnType<typeof parseTransform>, x: number, y: number) => {
   const p = applyTransform(t.matrix, x, y);

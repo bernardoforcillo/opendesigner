@@ -1,6 +1,6 @@
-import { worldTransformOf } from "../canvas/transform";
-import { formatPageNumber } from "./pageNumbers";
-import type { NestedStyleLite, NodeLite, ParagraphRuleLite, ResolvedParagraph, ResolvedRun, RichText, SceneState, TabStopLite, TextLite, TextRunLite, TextStyleDefLite, TextStyleLite } from "./types";
+import { worldTransformOf } from "@/canvas/transform";
+import { formatPageNumber } from "@/store/pageNumbers";
+import type { NestedStyleLite, NodeLite, ParagraphRuleLite, ResolvedParagraph, ResolvedRun, RichText, SceneState, TabStopLite, TextLite, TextRunLite, TextStyleDefLite, TextStyleLite } from "@/store/types";
 
 // RICH TEXT -- paragraph styles per paragraph and character styles over ranges. The TypeScript twin
 // of internal/core/richtext.go (Go is the authority) plus what only the editor needs: resolving the

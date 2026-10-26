@@ -1,4 +1,4 @@
-import type { Effect as PbEffect } from "../gen/opendesigner/v1/opendesigner_pb";
+import type { Effect as PbEffect } from "@/gen/opendesigner/v1/opendesigner_pb";
 
 // EFFECT VALUES -- the TypeScript twin of internal/core/effects.go. Go is the authority;
 // each rule repeats one there (see the list at the top of that file).

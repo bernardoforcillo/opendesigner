@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Button as RacButton } from "react-aria-components";
-import { Icon } from "../ds";
+import { Icon } from "@/ui/ds";
 
 // Copy to the clipboard with confirmation ("Copied" for a second). `navigator.clipboard`
 // is missing outside a secure context and in jsdom: there we fall back to a temporary

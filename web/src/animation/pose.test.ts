@@ -1,11 +1,11 @@
 import { describe, it, expect } from "vitest";
-import { baseScene, child } from "../flow/testSupport";
-import { nodesWith } from "../store/nodeMap";
-import { sceneIndexOf, buildIndex } from "../renderer/sceneIndex";
-import { worldTransformOf } from "../canvas/transform";
-import type { SceneState } from "../store/types";
-import { canDraw, mergeAnim, poseScene, sampleWithDraft } from "./pose";
-import type { NodeAnim } from "./engine";
+import { baseScene, child } from "@/flow/testSupport";
+import { nodesWith } from "@/store/nodeMap";
+import { sceneIndexOf, buildIndex } from "@/renderer/sceneIndex";
+import { worldTransformOf } from "@/canvas/transform";
+import type { SceneState } from "@/store/types";
+import { canDraw, mergeAnim, poseScene, sampleWithDraft } from "@/animation/pose";
+import type { NodeAnim } from "@/animation/engine";
 
 const anim = (o: Record<string, NodeAnim>) => new Map(Object.entries(o));
 

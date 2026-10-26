@@ -1,9 +1,9 @@
 import { describe, it, expect, beforeEach, vi, afterEach } from "vitest";
-import { executeJob } from "./editorJobs";
-import { useScene } from "../store/store";
-import { emptyScene } from "../store/types";
-import type { NodeLite } from "../store/types";
-import type { Op } from "../gen/opendesigner/v1/opendesigner_pb";
+import { executeJob } from "@/jobs/editorJobs";
+import { useScene } from "@/store/store";
+import { emptyScene } from "@/store/types";
+import type { NodeLite } from "@/store/types";
+import type { Op } from "@/gen/opendesigner/v1/opendesigner_pb";
 
 const style = { fontFamily: "", fontSize: 16, fontWeight: "", lineHeight: 0, align: "left" as const };
 const text = (id: string, content: string, over: Partial<NodeLite> = {}): NodeLite => ({
@@ -386,7 +386,7 @@ describe("place_document", () => {
 
 describe("import_idml", () => {
   it("adds the pages and items of an IDML file made by export_idml", async () => {
-    const { buildIdml } = await import("../export/idml");
+    const { buildIdml } = await import("@/export/idml");
     const before = useScene.getState().scene!;
     const pkg = buildIdml(before, "Doc")!;
     const pagesBefore = useScene.getState().scene!.pages.length;
@@ -402,7 +402,7 @@ describe("import_idml", () => {
 
 describe("ink, overprint and batch commands", () => {
   it("reports inks, sets overprint and converts spots", async () => {
-    const { createSwatchOps } = await import("../tools/swatches");
+    const { createSwatchOps } = await import("@/tools/swatches");
     const s0 = useScene.getState().scene!;
     const made = createSwatchOps(s0, { name: "Gold", cmyk: { c: 10, m: 30, y: 90, k: 0 }, spotName: "PANTONE 871 C" })!;
     for (const op of made.ops) useScene.getState().apply(op);

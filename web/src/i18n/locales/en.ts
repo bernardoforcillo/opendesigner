@@ -1,4 +1,4 @@
-import type { PluralForms } from "../core";
+import type { PluralForms } from "@/i18n/core";
 
 // THE SOURCE CATALOG. Every key is the English text as the code writes it, and the
 // value is that same text, so `en` is built from the list: add a string by adding

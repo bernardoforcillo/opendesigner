@@ -1,9 +1,9 @@
 import { describe, it, expect } from "vitest";
-import { layoutRich, paragraphDecorations, cssVariationSettings, type MeasureFor } from "./text";
-import { nodesToSvg } from "../export/svg";
-import { setThreadMeasure } from "../store/threads";
-import { resolveScene } from "../store/variables";
-import { emptyScene, type NodeLite, type ResolvedParagraph, type SceneState, type TextLite, type TextStyleLite } from "../store/types";
+import { layoutRich, paragraphDecorations, cssVariationSettings, type MeasureFor } from "@/renderer/text";
+import { nodesToSvg } from "@/export/svg";
+import { setThreadMeasure } from "@/store/threads";
+import { resolveScene } from "@/store/variables";
+import { emptyScene, type NodeLite, type ResolvedParagraph, type SceneState, type TextLite, type TextStyleLite } from "@/store/types";
 
 // 5 units per character at size 10.
 const mf: MeasureFor = (st) => (s) => s.length * (st.fontSize || 10) * 0.5;

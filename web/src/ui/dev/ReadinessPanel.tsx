@@ -1,12 +1,12 @@
 import { useState } from "react";
 import { Button as RacButton } from "react-aria-components";
-import { useScene } from "../../store/store";
-import type { Progress, ReadinessItem } from "../../dev/readiness";
-import { Badge, Button, EmptyState, Icon, cls } from "../ds";
-import { DevIcon, type DevIconName } from "../ds/dev-parts";
-import { ReadyListSection } from "./ReadyListSection";
-import { ReviewSection } from "./ReviewSection";
-import { applyFix, selectScreen, useReadiness } from "./useReadiness";
+import { useScene } from "@/store/store";
+import type { Progress, ReadinessItem } from "@/dev/readiness";
+import { Badge, Button, EmptyState, Icon, cls } from "@/ui/ds";
+import { DevIcon, type DevIconName } from "@/ui/ds/dev-parts";
+import { ReadyListSection } from "@/ui/dev/ReadyListSection";
+import { ReviewSection } from "@/ui/dev/ReviewSection";
+import { applyFix, selectScreen, useReadiness } from "@/ui/dev/useReadiness";
 
 // "READINESS" (left column of Develop): the checklist that says whether the
 // document is ready to become code. Failures rise to the top, each

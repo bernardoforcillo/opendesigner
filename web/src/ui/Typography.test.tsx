@@ -1,13 +1,13 @@
 import "@testing-library/jest-dom/vitest";
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { render, screen, cleanup, fireEvent, waitFor } from "@testing-library/react";
-import type { Op } from "../gen/opendesigner/v1/opendesigner_pb";
-import { useScene } from "../store/store";
-import { emptyScene, type FontLite, type NodeLite, type TextStyleDefLite } from "../store/types";
-import { FontsDialog } from "./FontsDialog";
-import { PropertiesPanel } from "./PropertiesPanel";
-import { TypographyControls } from "./TypographyControls";
-import { applyStyleOps, createStyleOps, familyChoices, guessFontFromFilename, sharedStyleOf, styleOps } from "./typographyOps";
+import type { Op } from "@/gen/opendesigner/v1/opendesigner_pb";
+import { useScene } from "@/store/store";
+import { emptyScene, type FontLite, type NodeLite, type TextStyleDefLite } from "@/store/types";
+import { FontsDialog } from "@/ui/FontsDialog";
+import { PropertiesPanel } from "@/ui/PropertiesPanel";
+import { TypographyControls } from "@/ui/TypographyControls";
+import { applyStyleOps, createStyleOps, familyChoices, guessFontFromFilename, sharedStyleOf, styleOps } from "@/ui/typographyOps";
 
 class FakeSync {
   sent: Op[] = [];

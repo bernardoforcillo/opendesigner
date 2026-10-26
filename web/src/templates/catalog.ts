@@ -1,10 +1,10 @@
-import type { IconName } from "../ui/ds/Icon";
-import { builtToOps, DocBuilder, PALETTE, SCREEN_W } from "./builder";
-import type { BuiltTemplate, IdGen } from "./builder";
-import type { Op } from "../gen/opendesigner/v1/opendesigner_pb";
-import type { Vertical } from "../store/types";
-import { buildPoster, buildBrandSheet } from "./design";
-import { buildBook, buildMagazine, buildReport } from "./publishing";
+import type { IconName } from "@/ui/ds/Icon";
+import { builtToOps, DocBuilder, PALETTE, SCREEN_W } from "@/templates/builder";
+import type { BuiltTemplate, IdGen } from "@/templates/builder";
+import type { Op } from "@/gen/opendesigner/v1/opendesigner_pb";
+import type { Vertical } from "@/store/types";
+import { buildPoster, buildBrandSheet } from "@/templates/design";
+import { buildBook, buildMagazine, buildReport } from "@/templates/publishing";
 
 // THE TEMPLATE CATALOG. Each one is a REAL starting point: 390x844 mobile
 // screens with a plausible interface (titles, fields, buttons), an already

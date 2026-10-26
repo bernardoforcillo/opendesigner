@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { hyphenPoints } from "./hyphenate";
+import { hyphenPoints } from "@/renderer/hyphenate";
 
 const split = (w: string) => {
   const pts = hyphenPoints(w);

@@ -1,6 +1,6 @@
-import type { FillLite, NodeLite, SceneState } from "../../store/types";
-import { rgbToCmyk } from "../../color/cmyk";
-import { num, pdfName, type PdfFile } from "./pdfFile";
+import type { FillLite, NodeLite, SceneState } from "@/store/types";
+import { rgbToCmyk } from "@/color/cmyk";
+import { num, pdfName, type PdfFile } from "@/pdf/write/pdfFile";
 
 // COLOUR IN A PDF. Three kinds of paint come out of a document:
 //   - a swatch with a CMYK definition  -> DeviceCMYK (the numbers the user typed, untouched);

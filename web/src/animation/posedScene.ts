@@ -1,8 +1,8 @@
-import { useScene } from "../store/store";
-import type { SceneState } from "../store/types";
-import { resolveScene } from "../store/variables";
-import { poseScene, sampleWithDraft } from "./pose";
-import { useTimeline } from "./timelineStore";
+import { useScene } from "@/store/store";
+import type { SceneState } from "@/store/types";
+import { resolveScene } from "@/store/variables";
+import { poseScene, sampleWithDraft } from "@/animation/pose";
+import { useTimeline } from "@/animation/timelineStore";
 
 // THE SCENE THE CANVAS SHOWS. With the timeline stopped (or closed, or before the
 // first scrub) it is the document's scene, the SAME instance as the store:

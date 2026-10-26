@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from "vitest";
-import { loadRendererChoice, useRenderer } from "./rendererChoice";
+import { loadRendererChoice, useRenderer } from "@/store/rendererChoice";
 
 beforeEach(() => {
   localStorage.clear();

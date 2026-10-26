@@ -1,8 +1,8 @@
-import { intersectBounds, unionBounds, worldAabbOfNode, type Bounds } from "../canvas/geometry";
-import { IDENTITY, compose, localTransformOf, mapBounds, type Transform, worldBoundsOfNode, worldToLocal, worldTransformOf } from "../canvas/transform";
-import { ancestorsOf, childrenOf } from "./tree";
-import { instanceDescentLocal, instanceOverrideMap, isInstance, resolveInstance } from "./instances";
-import type { InstanceOverrideLite, NodeLite, SceneState } from "./types";
+import { intersectBounds, unionBounds, worldAabbOfNode, type Bounds } from "@/canvas/geometry";
+import { IDENTITY, compose, localTransformOf, mapBounds, type Transform, worldBoundsOfNode, worldToLocal, worldTransformOf } from "@/canvas/transform";
+import { ancestorsOf, childrenOf } from "@/store/tree";
+import { instanceDescentLocal, instanceOverrideMap, isInstance, resolveInstance } from "@/store/instances";
+import type { InstanceOverrideLite, NodeLite, SceneState } from "@/store/types";
 
 // GROUPS: what they are, where their bounds end up and which node a
 // click selects.

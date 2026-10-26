@@ -2,12 +2,12 @@ import "@testing-library/jest-dom/vitest";
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { render, screen, fireEvent, cleanup, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { TimelinePanel } from "./TimelinePanel";
-import { LABEL_W } from "./TrackArea";
-import { useScene } from "../../store/store";
-import { useTimeline } from "../../animation/timelineStore";
-import { baseScene } from "../../flow/testSupport";
-import type { ClipLite, SceneState } from "../../store/types";
+import { TimelinePanel } from "@/ui/timeline/TimelinePanel";
+import { LABEL_W } from "@/ui/timeline/TrackArea";
+import { useScene } from "@/store/store";
+import { useTimeline } from "@/animation/timelineStore";
+import { baseScene } from "@/flow/testSupport";
+import type { ClipLite, SceneState } from "@/store/types";
 
 // The timeline pieces under jsdom: what it shows, what it writes (one op per gesture),
 // the keyboard inside the panel. Drawing on the canvas and real dragging

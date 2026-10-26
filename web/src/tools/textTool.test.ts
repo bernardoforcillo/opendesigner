@@ -1,11 +1,11 @@
-import { nodesOf , nodesWith } from "../store/nodeMap";
+import { nodesOf , nodesWith } from "@/store/nodeMap";
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import { createTextTool, DEFAULT_TEXT_HEIGHT, DEFAULT_TEXT_WIDTH } from "./textTool";
-import type { ToolContext } from "./types";
-import type { Op } from "../gen/opendesigner/v1/opendesigner_pb";
-import { useScene } from "../store/store";
-import { emptyScene } from "../store/types";
-import type { NodeLite } from "../store/types";
+import { createTextTool, DEFAULT_TEXT_HEIGHT, DEFAULT_TEXT_WIDTH } from "@/tools/textTool";
+import type { ToolContext } from "@/tools/types";
+import type { Op } from "@/gen/opendesigner/v1/opendesigner_pb";
+import { useScene } from "@/store/store";
+import { emptyScene } from "@/store/types";
+import type { NodeLite } from "@/store/types";
 
 function node(id: string, orderKey: string): NodeLite {
   return { id, parentId: "page1", orderKey, name: id, visible: true, opacity: 1,

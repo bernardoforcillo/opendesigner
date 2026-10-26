@@ -1,9 +1,9 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { create } from "@bufbuild/protobuf";
-import { NodeSchema, OpSchema } from "../gen/opendesigner/v1/opendesigner_pb";
-import type { Op } from "../gen/opendesigner/v1/opendesigner_pb";
-import { useScene } from "./store";
-import { emptyScene, toNodeLite } from "./types";
+import { NodeSchema, OpSchema } from "@/gen/opendesigner/v1/opendesigner_pb";
+import type { Op } from "@/gen/opendesigner/v1/opendesigner_pb";
+import { useScene } from "@/store/store";
+import { emptyScene, toNodeLite } from "@/store/types";
 
 // The confirmed/pending model seen FROM THE STORE, without network: `apply` is the
 // authoritative record that arrives from Subscribe, `applyPending` is the optimistic

@@ -1,6 +1,6 @@
-import type { NodeLite, SceneState } from "../store/types";
-import { fontFamilyOf, placeTextLines, type MeasureText } from "../renderer/text";
-import type { PdfReport, PdfXMode } from "../pdf/write/pdfDocument";
+import type { NodeLite, SceneState } from "@/store/types";
+import { fontFamilyOf, placeTextLines, type MeasureText } from "@/renderer/text";
+import type { PdfReport, PdfXMode } from "@/pdf/write/pdfDocument";
 
 // PREFLIGHT: what a print shop's checker would flag, as far as this editor can see it. Two parts:
 //  - `preflightScene` reads the document (no export needed): fonts, overset text, bleed, colour mode,

@@ -1,9 +1,9 @@
-import type { Op } from "../gen/opendesigner/v1/opendesigner_pb";
-import { makeSetPropsOp } from "../tools/ops";
-import { toPbStrokes } from "../store/types";
-import type { ArrowHeadLite, CornerRadiiLite, NodeLite, StrokeLite, StrokeSidesLite } from "../store/types";
-import { MAX_POLYGON_SIDES, MAX_STAR_RATIO, MIN_POLYGON_SIDES, MIN_STAR_RATIO } from "../store/shapes";
-import type { NodeLookup } from "./gradientOps";
+import type { Op } from "@/gen/opendesigner/v1/opendesigner_pb";
+import { makeSetPropsOp } from "@/tools/ops";
+import { toPbStrokes } from "@/store/types";
+import type { ArrowHeadLite, CornerRadiiLite, NodeLite, StrokeLite, StrokeSidesLite } from "@/store/types";
+import { MAX_POLYGON_SIDES, MAX_STAR_RATIO, MIN_POLYGON_SIDES, MIN_STAR_RATIO } from "@/store/shapes";
+import type { NodeLookup } from "@/ui/gradientOps";
 
 // The panel's ops for the parametric shapes (docs/shapes.md): polygon sides, star points and depth, ellipse
 // arc and ring, rectangle corner smoothing and independent radii, and the stroke's arrowheads and per-side

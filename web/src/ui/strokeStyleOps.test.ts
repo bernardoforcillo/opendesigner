@@ -1,9 +1,9 @@
 import { describe, it, expect } from "vitest";
-import { nodesOf } from "../store/nodeMap";
-import { applyOp } from "../store/applyOp";
-import { emptyScene } from "../store/types";
-import type { NodeLite, SceneState } from "../store/types";
-import { normalizeDash, strokeStyleOps } from "./strokeStyleOps";
+import { nodesOf } from "@/store/nodeMap";
+import { applyOp } from "@/store/applyOp";
+import { emptyScene } from "@/store/types";
+import type { NodeLite, SceneState } from "@/store/types";
+import { normalizeDash, strokeStyleOps } from "@/ui/strokeStyleOps";
 
 const scene = (meta?: Record<string, string>): SceneState => ({
   ...emptyScene("d", "t"),

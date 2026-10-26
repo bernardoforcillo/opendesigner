@@ -1,11 +1,11 @@
-import { hitTest } from "../renderer/canvasRenderer";
-import { worldBoundsOfNode } from "../canvas/transform";
-import { connectOps, submit } from "../flow/commands";
-import { connectSource } from "../flow/screens";
-import { useFlowUi } from "../store/flowUi";
-import { useScene } from "../store/store";
-import type { SceneState } from "../store/types";
-import type { Tool, ToolContext } from "./types";
+import { hitTest } from "@/renderer/canvasRenderer";
+import { worldBoundsOfNode } from "@/canvas/transform";
+import { connectOps, submit } from "@/flow/commands";
+import { connectSource } from "@/flow/screens";
+import { useFlowUi } from "@/store/flowUi";
+import { useScene } from "@/store/store";
+import type { SceneState } from "@/store/types";
+import type { Tool, ToolContext } from "@/tools/types";
 
 // "CONNECT" (K key). Drag from one screen (a top-level frame)
 // to another: on release a `click` transition is born in the current flow.

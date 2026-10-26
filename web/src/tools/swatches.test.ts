@@ -1,12 +1,12 @@
 import { describe, it, expect } from "vitest";
 import { create } from "@bufbuild/protobuf";
-import { OpSchema } from "../gen/opendesigner/v1/opendesigner_pb";
-import { applyOp } from "../store/applyOp";
-import { invertOp } from "../store/history";
-import { resolveScene } from "../store/variables";
-import { swatchCmyk, swatchesOf } from "../store/graphics";
-import { emptyScene, type NodeLite, type SceneState } from "../store/types";
-import { applySwatchOps, createSwatchOps, deleteSwatchOps, swatchFromColor, updateSwatchOps } from "./swatches";
+import { OpSchema } from "@/gen/opendesigner/v1/opendesigner_pb";
+import { applyOp } from "@/store/applyOp";
+import { invertOp } from "@/store/history";
+import { resolveScene } from "@/store/variables";
+import { swatchCmyk, swatchesOf } from "@/store/graphics";
+import { emptyScene, type NodeLite, type SceneState } from "@/store/types";
+import { applySwatchOps, createSwatchOps, deleteSwatchOps, swatchFromColor, updateSwatchOps } from "@/tools/swatches";
 
 const rect = (id: string): NodeLite => ({
   id, parentId: "page1", orderKey: "a" + id, name: id, visible: true, opacity: 1, x: 0, y: 0, width: 10, height: 10, rotation: 0,

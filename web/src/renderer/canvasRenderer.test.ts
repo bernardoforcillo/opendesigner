@@ -1,11 +1,11 @@
 import { describe, it, expect, afterEach, beforeEach, vi } from "vitest";
-import { hitTest, nodesIntersecting, resizeCanvasToDisplaySize, drawScene, paintStyle, plainShape } from "./canvasRenderer";
-import type { CachedImage } from "./imageCache";
-import { VECTOR_STROKE_PX } from "./shapes";
-import type { Camera } from "../canvas/camera";
-import { emptyScene } from "../store/types";
-import { contentWorldBounds } from "../store/groups";
-import type { FillLite, NodeLite, SceneState, AnchorLite, SubPathLite } from "../store/types";
+import { hitTest, nodesIntersecting, resizeCanvasToDisplaySize, drawScene, paintStyle, plainShape } from "@/renderer/canvasRenderer";
+import type { CachedImage } from "@/renderer/imageCache";
+import { VECTOR_STROKE_PX } from "@/renderer/shapes";
+import type { Camera } from "@/canvas/camera";
+import { emptyScene } from "@/store/types";
+import { contentWorldBounds } from "@/store/groups";
+import type { FillLite, NodeLite, SceneState, AnchorLite, SubPathLite } from "@/store/types";
 
 function frameNode(id: string, parentId: string, x: number, y: number, w: number, h: number, clips: boolean, order = "a0"): NodeLite {
   return { id, parentId, orderKey: order, name: id, visible: true, opacity: 1,
@@ -1203,7 +1203,7 @@ describe("drawScene: images", () => {
 
 function instanceNode(
   id: string, componentId: string, x: number, y: number,
-  overrides: import("../store/types").InstanceOverrideLite[] = [], over: Partial<NodeLite> = {},
+  overrides: import("@/store/types").InstanceOverrideLite[] = [], over: Partial<NodeLite> = {},
 ): NodeLite {
   return { ...rect(id, x, y, "a0"), kind: "instance", fills: [], instance: { componentId, overrides }, ...over };
 }

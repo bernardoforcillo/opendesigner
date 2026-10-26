@@ -1,9 +1,9 @@
-import { useScene } from "../store/store";
-import type { Op } from "../gen/opendesigner/v1/opendesigner_pb";
-import type { LayoutGridLite } from "../store/types";
-import { cls, IconButton, Section } from "./ds";
-import { NumberField } from "./fields/NumberField";
-import { addGridOps, editGridOps, removeGridOps } from "./layoutGridOps";
+import { useScene } from "@/store/store";
+import type { Op } from "@/gen/opendesigner/v1/opendesigner_pb";
+import type { LayoutGridLite } from "@/store/types";
+import { cls, IconButton, Section } from "@/ui/ds";
+import { NumberField } from "@/ui/fields/NumberField";
+import { addGridOps, editGridOps, removeGridOps } from "@/ui/layoutGridOps";
 
 const lookup = (id: string) => useScene.getState().scene?.nodes.at(id);
 const KINDS: { value: LayoutGridLite["kind"]; label: string }[] = [

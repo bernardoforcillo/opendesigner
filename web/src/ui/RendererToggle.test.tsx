@@ -1,8 +1,8 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { cleanup, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { RendererToggle } from "./RendererToggle";
-import { useRenderer } from "../store/rendererChoice";
+import { RendererToggle } from "@/ui/RendererToggle";
+import { useRenderer } from "@/store/rendererChoice";
 
 beforeEach(() => {
   localStorage.clear();

@@ -1,11 +1,11 @@
 import { describe, it, expect } from "vitest";
-import { nodesOf } from "../store/nodeMap";
-import { applyOp } from "../store/applyOp";
-import { emptyScene } from "../store/types";
-import type { NodeLite, SceneState } from "../store/types";
+import { nodesOf } from "@/store/nodeMap";
+import { applyOp } from "@/store/applyOp";
+import { emptyScene } from "@/store/types";
+import type { NodeLite, SceneState } from "@/store/types";
 import {
   builderFaces, builderSources, facesAlong, faceContains, polygonArea, shapeBuilderOps,
-} from "./shapeBuilder";
+} from "@/vector/shapeBuilder";
 
 const rect = (id: string, x: number, y: number, w: number, h: number, over: Partial<NodeLite> = {}): NodeLite => ({
   id, parentId: "page1", orderKey: `a${id}`, name: id, visible: true, opacity: 1, x, y, width: w, height: h, rotation: 0,

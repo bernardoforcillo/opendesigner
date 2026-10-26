@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { computeStyle, declaredProps, parseCss, parseDeclarations, specificityOf, splitTopLevel } from "./styles";
+import { computeStyle, declaredProps, parseCss, parseDeclarations, specificityOf, splitTopLevel } from "@/svg/styles";
 
 function el(xml: string): Element {
   const doc = new DOMParser().parseFromString(`<svg xmlns="http://www.w3.org/2000/svg">${xml}</svg>`, "image/svg+xml");

@@ -6,10 +6,10 @@ import {
   EXPORT_SCALES,
   MAX_CANVAS_SIDE,
   MAX_CANVAS_AREA,
-} from "./png";
-import { exportRegion } from "./region";
-import { emptyScene } from "../store/types";
-import type { NodeLite, SceneState } from "../store/types";
+} from "@/export/png";
+import { exportRegion } from "@/export/region";
+import { emptyScene } from "@/store/types";
+import type { NodeLite, SceneState } from "@/store/types";
 
 // jsdom has neither a 2D context nor Path2D: the canvas is a double that RECORDS
 // instead of drawing. It is exactly what is needed here -- the pixel proof is in

@@ -1,4 +1,4 @@
-import { useScene } from "../store/store";
+import { useScene } from "@/store/store";
 
 // "HAVE YOU ALREADY TRIED THE PROTOTYPE?" -- a user habit, not document:
 // it lives in localStorage (per document) and feeds the "Try" step of the

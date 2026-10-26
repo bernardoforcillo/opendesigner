@@ -1,12 +1,12 @@
-import type { Op } from "../gen/opendesigner/v1/opendesigner_pb";
-import { effectiveComponentId, parseNumber } from "../store/components";
-import { nextOrderKey } from "../store/orderKey";
-import { subtreeOf } from "../store/tree";
-import { toPbNode } from "../store/types";
-import type { ComponentLite, ComponentPropertyLite, ComponentSetLite, NodeLite, SceneState } from "../store/types";
+import type { Op } from "@/gen/opendesigner/v1/opendesigner_pb";
+import { effectiveComponentId, parseNumber } from "@/store/components";
+import { nextOrderKey } from "@/store/orderKey";
+import { subtreeOf } from "@/store/tree";
+import { toPbNode } from "@/store/types";
+import type { ComponentLite, ComponentPropertyLite, ComponentSetLite, NodeLite, SceneState } from "@/store/types";
 import {
   makeCreateComponentOp, makeCreateNodeOp, makeSetComponentDefOp, makeSetComponentSetOp, makeSetInstancePropsOp, uuid,
-} from "../tools/ops";
+} from "@/tools/ops";
 
 // The pure half of the component variants / properties UI (InstanceControls,
 // ComponentDialog): it reads a scene and BUILDS ops, it never submits. The

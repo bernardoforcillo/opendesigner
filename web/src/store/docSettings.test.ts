@@ -1,11 +1,11 @@
 import { describe, it, expect } from "vitest";
 import { create } from "@bufbuild/protobuf";
-import { OpSchema } from "../gen/opendesigner/v1/opendesigner_pb";
-import type { Op } from "../gen/opendesigner/v1/opendesigner_pb";
-import { applyOp } from "./applyOp";
-import { invertOp } from "./history";
-import { isValidDocSettings, isValidPageSetup, pageColumns, pageTextArea, setupOf, verticalOf } from "./docSettings";
-import { emptyScene, type SceneState } from "./types";
+import { OpSchema } from "@/gen/opendesigner/v1/opendesigner_pb";
+import type { Op } from "@/gen/opendesigner/v1/opendesigner_pb";
+import { applyOp } from "@/store/applyOp";
+import { invertOp } from "@/store/history";
+import { isValidDocSettings, isValidPageSetup, pageColumns, pageTextArea, setupOf, verticalOf } from "@/store/docSettings";
+import { emptyScene, type SceneState } from "@/store/types";
 
 const op = (kind: Op["kind"]): Op => create(OpSchema, { opId: "o", docId: "d", kind });
 const settings = (s: Partial<{ vertical: string; baselineIncrement: number; baselineStart: number; presentDevice: string }>) =>
@@ -109,8 +109,8 @@ describe("page setup", () => {
   });
 });
 
-import { baselineLines, MAX_BASELINE_LINES, pageGuideBoxes } from "./docSettings";
-import { snapTargets } from "../selection/snap";
+import { baselineLines, MAX_BASELINE_LINES, pageGuideBoxes } from "@/store/docSettings";
+import { snapTargets } from "@/selection/snap";
 
 describe("page guides", () => {
   const page = { id: "p", name: "p", width: 400, height: 600, marginTop: 50, marginBottom: 50, marginLeft: 40, marginRight: 40, columns: 2, gutter: 20 };

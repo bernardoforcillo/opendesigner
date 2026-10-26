@@ -1,7 +1,7 @@
-import { useScene } from "../store/store";
-import { swapInstance } from "../store/instanceOps";
-import { detachSelectedInstances, goToMainComponent, mainComponentOf, resetSelectedInstances, swapSelectedInstances } from "../tools/instanceActions";
-import { Button, cls, Section } from "./ds";
+import { useScene } from "@/store/store";
+import { swapInstance } from "@/store/instanceOps";
+import { detachSelectedInstances, goToMainComponent, mainComponentOf, resetSelectedInstances, swapSelectedInstances } from "@/tools/instanceActions";
+import { Button, cls, Section } from "@/ui/ds";
 
 // THE COMMANDS of a selected component INSTANCE: go to its main component, swap it for another
 // component (keeping the overrides that still fit), reset its overrides -- all of them or

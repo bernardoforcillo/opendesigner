@@ -1,9 +1,9 @@
-import { localToWorld } from "../canvas/transform";
-import { anchorPoint, inHandlePoint, outHandlePoint } from "../store/vectorGeometry";
-import { childrenOf } from "../store/tree";
-import type { FillLite, NodeLite, SceneState } from "../store/types";
-import { xmlEscape } from "./epub";
-import { zipStore, type ZipEntry } from "./zip";
+import { localToWorld } from "@/canvas/transform";
+import { anchorPoint, inHandlePoint, outHandlePoint } from "@/store/vectorGeometry";
+import { childrenOf } from "@/store/tree";
+import type { FillLite, NodeLite, SceneState } from "@/store/types";
+import { xmlEscape } from "@/export/epub";
+import { zipStore, type ZipEntry } from "@/export/zip";
 
 // PPTX (PowerPoint, OOXML): one slide per page, in the page's own size. What is written: rectangles (with rounded corners),
 // ellipses, vectors (as custom geometry), text boxes (one paragraph per line of the story, font, size, weight, italic, colour,

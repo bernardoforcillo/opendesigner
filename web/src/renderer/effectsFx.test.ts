@@ -1,14 +1,14 @@
 import { describe, it, expect } from "vitest";
 import {
   BLUR_BANDS, FX_TILE, blurBands, expandGlass, noiseTile, overlayEffects, progressiveBlur, rampRadius, textureTile, tileUnit, withBandBlur, withExpandedGlass,
-} from "./effectsFx";
-import type { EffectLite, NodeLite } from "../store/types";
-import type { NoiseLite, ProgressiveBlurLite } from "./effectsFx";
-import { effectsOutset } from "./sceneIndex";
-import { areValidEffects } from "../store/effects";
-import { toEffectLite, toPbEffects } from "../store/types";
+} from "@/renderer/effectsFx";
+import type { EffectLite, NodeLite } from "@/store/types";
+import type { NoiseLite, ProgressiveBlurLite } from "@/renderer/effectsFx";
+import { effectsOutset } from "@/renderer/sceneIndex";
+import { areValidEffects } from "@/store/effects";
+import { toEffectLite, toPbEffects } from "@/store/types";
 import { create } from "@bufbuild/protobuf";
-import { EffectSchema } from "../gen/opendesigner/v1/opendesigner_pb";
+import { EffectSchema } from "@/gen/opendesigner/v1/opendesigner_pb";
 
 const rect = (effects: EffectLite[], over: Partial<NodeLite> = {}): NodeLite => ({
   id: "r", parentId: "page1", orderKey: "a1", name: "r", visible: true, opacity: 1,

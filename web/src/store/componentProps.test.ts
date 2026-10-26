@@ -1,14 +1,14 @@
 import { describe, it, expect } from "vitest";
 import { create, type MessageInitShape } from "@bufbuild/protobuf";
-import { ComponentPropertyType, NodeSchema, OpSchema } from "../gen/opendesigner/v1/opendesigner_pb";
-import type { Op } from "../gen/opendesigner/v1/opendesigner_pb";
-import { hitTest, withOverride } from "../renderer/canvasRenderer";
-import { applyOp } from "./applyOp";
-import { effectiveOverrides, parseNumber, propertyValue } from "./components";
-import { contentWorldBounds } from "./groups";
-import { invertOp } from "./history";
-import { instanceOverrideMap, resolveInstance } from "./instances";
-import { emptyScene, type SceneState } from "./types";
+import { ComponentPropertyType, NodeSchema, OpSchema } from "@/gen/opendesigner/v1/opendesigner_pb";
+import type { Op } from "@/gen/opendesigner/v1/opendesigner_pb";
+import { hitTest, withOverride } from "@/renderer/canvasRenderer";
+import { applyOp } from "@/store/applyOp";
+import { effectiveOverrides, parseNumber, propertyValue } from "@/store/components";
+import { contentWorldBounds } from "@/store/groups";
+import { invertOp } from "@/store/history";
+import { instanceOverrideMap, resolveInstance } from "@/store/instances";
+import { emptyScene, type SceneState } from "@/store/types";
 
 // NUMBER / INSTANCE_SWAP properties and option lists on TEXT, and rename-aware set edits:
 // the TypeScript half of internal/core/components_props_test.go.

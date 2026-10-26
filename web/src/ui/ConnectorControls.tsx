@@ -1,6 +1,6 @@
-import { useScene } from "../store/store";
-import { connectorOf } from "../vector/connector";
-import { connectOps, setConnectorOps, type ConnectorOptions } from "../vector/connect";
+import { useScene } from "@/store/store";
+import { connectorOf } from "@/vector/connector";
+import { connectOps, setConnectorOps, type ConnectorOptions } from "@/vector/connect";
 
 const BTN = "h-7 flex-1 rounded-md px-2 text-[12px] text-fg-muted outline-none hover:bg-surface-3 hover:text-fg focus-visible:shadow-[var(--ring)]";
 

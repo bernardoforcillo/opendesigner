@@ -1,20 +1,20 @@
 import "@testing-library/jest-dom/vitest";
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { render, cleanup, waitFor } from "@testing-library/react";
-import { App } from "./App";
-import { useFlowUi } from "../store/flowUi";
-import { useScene } from "../store/store";
-import { emptyScene } from "../store/types";
-import * as overlayRenderer from "../renderer/overlayRenderer";
-import * as flowRenderer from "../renderer/flowRenderer";
+import { App } from "@/ui/App";
+import { useFlowUi } from "@/store/flowUi";
+import { useScene } from "@/store/store";
+import { emptyScene } from "@/store/types";
+import * as overlayRenderer from "@/renderer/overlayRenderer";
+import * as flowRenderer from "@/renderer/flowRenderer";
 
-vi.mock("../rpc/client", () => ({
+vi.mock("@/rpc/client", () => ({
   docClient: {
     createDocument: vi.fn(async () => ({ id: "doc-1" })),
     analyzeFlows: vi.fn(async () => ({ reports: [] })),
   },
 }));
-vi.mock("../rpc/syncClient", () => ({
+vi.mock("@/rpc/syncClient", () => ({
   SyncClient: class {
     async start() {}
     stop() {}

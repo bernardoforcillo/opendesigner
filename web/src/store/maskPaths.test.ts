@@ -2,12 +2,12 @@ import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { create, toJson, fromJson, type MessageInitShape } from "@bufbuild/protobuf";
-import { OpSchema, NodeSchema, BlendMode, LayoutGridKind, Constraint, LayoutSizing, LayoutPositioning, StrokeAlign, VariableType, LayoutAlign, LayoutDirection } from "../gen/opendesigner/v1/opendesigner_pb";
-import type { Op } from "../gen/opendesigner/v1/opendesigner_pb";
-import { applyOp } from "./applyOp";
-import { emptyScene, type NodeLite } from "./types";
-import { MASK_PATHS, isMaskPath, type MaskPath } from "./maskPaths";
-import { makeSetPropsOp } from "../tools/ops";
+import { OpSchema, NodeSchema, BlendMode, LayoutGridKind, Constraint, LayoutSizing, LayoutPositioning, StrokeAlign, VariableType, LayoutAlign, LayoutDirection } from "@/gen/opendesigner/v1/opendesigner_pb";
+import type { Op } from "@/gen/opendesigner/v1/opendesigner_pb";
+import { applyOp } from "@/store/applyOp";
+import { emptyScene, type NodeLite } from "@/store/types";
+import { MASK_PATHS, isMaskPath, type MaskPath } from "@/store/maskPaths";
+import { makeSetPropsOp } from "@/tools/ops";
 
 // ---------------------------------------------------------------------------
 // Helper condivisi

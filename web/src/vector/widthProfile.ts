@@ -1,10 +1,10 @@
 import polygonClipping from "polygon-clipping";
 import type { MultiPolygon, Pair, Ring } from "polygon-clipping";
-import type { NodeLite, StrokeLite, WidthPointLite } from "../store/types";
-import { vectorStyleOf } from "../renderer/vectorStyle";
-import type { PathCmd } from "../renderer/shapeGeometry";
-export { isValidWidthProfile, MAX_WIDTH_POINTS, MAX_WIDTH_SCALE } from "../store/shapes";
-import { BEZIER_TOLERANCE, localOutlines } from "./boolean";
+import type { NodeLite, StrokeLite, WidthPointLite } from "@/store/types";
+import { vectorStyleOf } from "@/renderer/vectorStyle";
+import type { PathCmd } from "@/renderer/shapeGeometry";
+export { isValidWidthProfile, MAX_WIDTH_POINTS, MAX_WIDTH_SCALE } from "@/store/shapes";
+import { BEZIER_TOLERANCE, localOutlines } from "@/vector/boolean";
 
 // VARIABLE-WIDTH STROKES (docs/vector.md): a stroke whose width changes along the path. The profile is a
 // list of points {position 0..1, left, right} per subpath; `left` / `right` are the half-widths on each

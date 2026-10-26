@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { LIGHT_FALLBACK, resetThemeColors, subscribeTheme, themeColors, withAlpha } from "./themeColors";
+import { LIGHT_FALLBACK, resetThemeColors, subscribeTheme, themeColors, withAlpha } from "@/renderer/themeColors";
 
 afterEach(() => {
   document.documentElement.removeAttribute("data-theme");

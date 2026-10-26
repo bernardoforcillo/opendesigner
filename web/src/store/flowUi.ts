@@ -1,7 +1,7 @@
 import { create } from "zustand";
-import type { Bounds } from "../canvas/geometry";
-import type { FlowLite, SceneState } from "./types";
-import { markPresented } from "../dev/presented";
+import type { Bounds } from "@/canvas/geometry";
+import type { FlowLite, SceneState } from "@/store/types";
+import { markPresented } from "@/dev/presented";
 
 // VIEW STATE OF THE "FLOWS" MODE. Like currentPageId and selection in the
 // scene store, it is INTERFACE state: it is not document, does not go over the

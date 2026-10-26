@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { emptyScene, type NodeLite, type SceneState } from "./types";
-import { childrenOf, documentOrder, subtreeOf, descendantsOf, ancestorsOf, isAncestorOf, isReachableFrom, topmostOf } from "./tree";
+import { emptyScene, type NodeLite, type SceneState } from "@/store/types";
+import { childrenOf, documentOrder, subtreeOf, descendantsOf, ancestorsOf, isAncestorOf, isReachableFrom, topmostOf } from "@/store/tree";
 
 function node(id: string, parentId: string, orderKey: string): NodeLite {
   return {

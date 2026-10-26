@@ -1,4 +1,4 @@
-import { deviceGeometry, type Box, type DeviceSpec } from "../flow/devices";
+import { deviceGeometry, type Box, type DeviceSpec } from "@/flow/devices";
 
 // The device frame of Present, BEHIND the screen's canvas: the body, and the details that tell a
 // phone, a tablet or a browser window apart (see flow/devices.ts). The island and the home bar of a

@@ -1,8 +1,8 @@
-import type { Op } from "../gen/opendesigner/v1/opendesigner_pb";
-import type { BrushLite, NodeLite, StrokeLite } from "../store/types";
-import { toPbStrokes } from "../store/types";
-import { MAX_BRUSH_ANGLE, MAX_BRUSH_SCATTER, MAX_BRUSH_SPACING, MIN_BRUSH_SPACING } from "../store/shapes";
-import { makeSetPropsOp } from "../tools/ops";
+import type { Op } from "@/gen/opendesigner/v1/opendesigner_pb";
+import type { BrushLite, NodeLite, StrokeLite } from "@/store/types";
+import { toPbStrokes } from "@/store/types";
+import { MAX_BRUSH_ANGLE, MAX_BRUSH_SCATTER, MAX_BRUSH_SPACING, MIN_BRUSH_SPACING } from "@/store/shapes";
+import { makeSetPropsOp } from "@/tools/ops";
 
 // The EDITING half of brushes: the stroke whose brush the panel edits, and the ops that write it (ui/BrushControls.tsx).
 

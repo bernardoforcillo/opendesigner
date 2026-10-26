@@ -1,11 +1,11 @@
 import { useEffect, useState } from "react";
 import { Dialog, Modal, ModalOverlay } from "react-aria-components";
-import { useScene } from "../store/store";
-import { isValidPageSetup, PAGE_PRESETS, setupOf } from "../store/docSettings";
-import { makeSetDocSettingsOp, makeUpdatePageOp } from "../tools/ops";
-import type { GuideLite, NumberStyle, PageLite } from "../store/types";
-import { Button, cls } from "./ds";
-import { NumberField } from "./fields/NumberField";
+import { useScene } from "@/store/store";
+import { isValidPageSetup, PAGE_PRESETS, setupOf } from "@/store/docSettings";
+import { makeSetDocSettingsOp, makeUpdatePageOp } from "@/tools/ops";
+import type { GuideLite, NumberStyle, PageLite } from "@/store/types";
+import { Button, cls } from "@/ui/ds";
+import { NumberField } from "@/ui/fields/NumberField";
 
 // THE PAGE SETUP DIALOG (page list → Page setup…): the sheet of a page -- size, margins, columns, bleed --
 // and the document's baseline grid. A page with a size is paper: the editor draws it with its margins,

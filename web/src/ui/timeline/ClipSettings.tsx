@@ -1,16 +1,16 @@
 import { useMemo } from "react";
 import { Button as RacButton, Dialog, DialogTrigger, Popover } from "react-aria-components";
-import { cls } from "../ds";
-import { Field } from "../ds/flow-parts";
-import { AnimIconButton } from "../ds/anim-parts";
-import { CommitField } from "../fields/CommitField";
-import { NumberField } from "../fields/NumberField";
-import { useScene } from "../../store/store";
-import type { ClipLite } from "../../store/types";
-import { CLIP_TRIGGERS } from "../../animation/engine";
-import { commitClip } from "../../animation/timelineStore";
-import { targetCandidates, withDuration } from "../../animation/timelineLogic";
-import { TRIGGER_HINTS, TRIGGER_LABELS } from "./labels";
+import { cls } from "@/ui/ds";
+import { Field } from "@/ui/ds/flow-parts";
+import { AnimIconButton } from "@/ui/ds/anim-parts";
+import { CommitField } from "@/ui/fields/CommitField";
+import { NumberField } from "@/ui/fields/NumberField";
+import { useScene } from "@/store/store";
+import type { ClipLite } from "@/store/types";
+import { CLIP_TRIGGERS } from "@/animation/engine";
+import { commitClip } from "@/animation/timelineStore";
+import { targetCandidates, withDuration } from "@/animation/timelineLogic";
+import { TRIGGER_HINTS, TRIGGER_LABELS } from "@/ui/timeline/labels";
 
 // The open clip's SETTINGS, in a popover from the button in the
 // transport bar: they are what is touched rarely, and in a fixed row they would eat

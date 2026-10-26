@@ -1,10 +1,10 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { runExport, exportFileName, downloadBlob } from "./exportScene";
-import type { ExportDeps, DocumentExportDeps } from "./exportScene";
-import { runDocumentExport, runPackage } from "./exportScene";
-import { useScene } from "../store/store";
-import { emptyScene } from "../store/types";
-import type { NodeLite, SceneState } from "../store/types";
+import { runExport, exportFileName, downloadBlob } from "@/export/exportScene";
+import type { ExportDeps, DocumentExportDeps } from "@/export/exportScene";
+import { runDocumentExport, runPackage } from "@/export/exportScene";
+import { useScene } from "@/store/store";
+import { emptyScene } from "@/store/types";
+import type { NodeLite, SceneState } from "@/store/types";
 
 function node(over: Partial<NodeLite> & { id: string }): NodeLite {
   return {

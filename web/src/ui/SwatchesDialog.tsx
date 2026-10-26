@@ -1,13 +1,13 @@
 import { useState } from "react";
 import { Dialog, Modal, ModalOverlay } from "react-aria-components";
-import { useScene } from "../store/store";
-import { cmykToRgb, rgbToCmyk } from "../color/cmyk";
-import { swatchCmyk, swatchColor, swatchesOf } from "../store/graphics";
-import { applySwatchOps, createSwatchOps, deleteSwatchOps, swatchFromColor, updateSwatchOps } from "../tools/swatches";
-import { makeSetDocSettingsOp } from "../tools/ops";
-import type { VariableLite } from "../store/types";
-import { Button, cls } from "./ds";
-import { NumberField } from "./fields/NumberField";
+import { useScene } from "@/store/store";
+import { cmykToRgb, rgbToCmyk } from "@/color/cmyk";
+import { swatchCmyk, swatchColor, swatchesOf } from "@/store/graphics";
+import { applySwatchOps, createSwatchOps, deleteSwatchOps, swatchFromColor, updateSwatchOps } from "@/tools/swatches";
+import { makeSetDocSettingsOp } from "@/tools/ops";
+import type { VariableLite } from "@/store/types";
+import { Button, cls } from "@/ui/ds";
+import { NumberField } from "@/ui/fields/NumberField";
 
 // SWATCHES (document menu): the document's palette. A swatch is a named color — RGB, CMYK process, spot, or a tint of
 // another swatch — that fills and strokes can USE: change the swatch and everything that uses it follows. Also the

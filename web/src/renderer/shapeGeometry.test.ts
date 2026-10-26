@@ -1,12 +1,12 @@
 import { describe, it, expect } from "vitest";
 import {
   arcCommands, clampedRadii, commandsToD, flattenCommands, hasComputedOutline, outlineCommands, pointInRings, polygonVertices, roundedRectCommands, starVertices,
-} from "./shapeGeometry";
-import { arrowEnds, arrowHead, hasArrowheads, strokeHeads } from "./arrowheads";
-import { sideBandRects } from "./strokeSides";
-import { hitTestNode } from "./shapes";
-import { strokeOutset } from "../canvas/geometry";
-import type { NodeLite } from "../store/types";
+} from "@/renderer/shapeGeometry";
+import { arrowEnds, arrowHead, hasArrowheads, strokeHeads } from "@/renderer/arrowheads";
+import { sideBandRects } from "@/renderer/strokeSides";
+import { hitTestNode } from "@/renderer/shapes";
+import { strokeOutset } from "@/canvas/geometry";
+import type { NodeLite } from "@/store/types";
 
 function node(over: Partial<NodeLite>): NodeLite {
   return {

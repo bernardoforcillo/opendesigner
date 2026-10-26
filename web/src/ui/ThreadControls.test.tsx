@@ -1,11 +1,11 @@
 import "@testing-library/jest-dom/vitest";
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { render, screen, cleanup, fireEvent } from "@testing-library/react";
-import type { Op } from "../gen/opendesigner/v1/opendesigner_pb";
-import { useScene } from "../store/store";
-import { emptyScene, type NodeLite } from "../store/types";
-import { META_NEXT, setThreadMeasure } from "../store/threads";
-import { ThreadControls } from "./ThreadControls";
+import type { Op } from "@/gen/opendesigner/v1/opendesigner_pb";
+import { useScene } from "@/store/store";
+import { emptyScene, type NodeLite } from "@/store/types";
+import { META_NEXT, setThreadMeasure } from "@/store/threads";
+import { ThreadControls } from "@/ui/ThreadControls";
 
 class FakeSync {
   submit(op: Op) {

@@ -1,9 +1,9 @@
 import { describe, it, expect } from "vitest";
-import { applyOp } from "../store/applyOp";
-import { deriveMasters, masterCopyId } from "../store/masters";
-import { emptyScene, type NodeLite, type SceneState } from "../store/types";
-import { childrenOf } from "../store/tree";
-import { detachMasterOps, duplicatePageOps, masterItemAt, movePageBy, overrideMasterItemOps } from "./pageOps";
+import { applyOp } from "@/store/applyOp";
+import { deriveMasters, masterCopyId } from "@/store/masters";
+import { emptyScene, type NodeLite, type SceneState } from "@/store/types";
+import { childrenOf } from "@/store/tree";
+import { detachMasterOps, duplicatePageOps, masterItemAt, movePageBy, overrideMasterItemOps } from "@/tools/pageOps";
 
 const node = (over: Partial<NodeLite> & { id: string }): NodeLite => ({
   parentId: "page1", orderKey: "a1", name: over.id, visible: true, opacity: 1, x: 0, y: 0, width: 50, height: 50, rotation: 0,

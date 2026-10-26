@@ -1,15 +1,15 @@
 import { create } from "zustand";
-import { useScene } from "../store/store";
-import type { ClipLite, SceneState } from "../store/types";
-import { makeDeleteClipOp, makeSetClipOp, uuid } from "../tools/ops";
-import { clipTimeline, type NodeAnim } from "./engine";
-import { asPlayed } from "./runtime";
-import { setRecordHook,propChangesOfOps, type RecordHook } from "./recordHook";
+import { useScene } from "@/store/store";
+import type { ClipLite, SceneState } from "@/store/types";
+import { makeDeleteClipOp, makeSetClipOp, uuid } from "@/tools/ops";
+import { clipTimeline, type NodeAnim } from "@/animation/engine";
+import { asPlayed } from "@/animation/runtime";
+import { setRecordHook,propChangesOfOps, type RecordHook } from "@/animation/recordHook";
 import {
   addPropertyTrack, baseValueOf, defaultTargetId, duplicateClip, findTrack, isInside, newClip, propsFor, recordChanges,
   uniqueClipName, unwrapDegrees, valueAt, type KeyRef,
-} from "./timelineLogic";
-import { buildPreset, type PresetId } from "./presets";
+} from "@/animation/timelineLogic";
+import { buildPreset, type PresetId } from "@/animation/presets";
 
 // THE TIMELINE STATE: VIEW state, like the camera and the selection -- it is not
 // document, it does not go over the network and does not enter undo. What is instead document

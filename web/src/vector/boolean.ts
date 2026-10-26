@@ -1,16 +1,16 @@
-import type { Op } from "../gen/opendesigner/v1/opendesigner_pb";
+import type { Op } from "@/gen/opendesigner/v1/opendesigner_pb";
 import { create } from "@bufbuild/protobuf";
-import { NodeSchema } from "../gen/opendesigner/v1/opendesigner_pb";
-import { worldTransformOf } from "../canvas/transform";
-import { orderKeyBetween } from "../store/orderKey";
-import { childrenOf, documentOrder, topmostOf } from "../store/tree";
-import { normalizeVector } from "../store/vectorGeometry";
-import type { NodeLite, SceneState } from "../store/types";
-import { toPbEffects, toPbFills, toPbStrokes, toPbSubPaths } from "../store/types";
-import { makeCreateNodeOp, makeDeleteOp, makeSetPropsOp, uuid } from "../tools/ops";
-import { groupOps } from "../tools/grouping";
-import { META_BOOLEAN, booleanOpOf } from "./regions";
-import { BEZIER_TOLERANCE, booleanRegion, isBooleanSource, localOutlines, regionOf, regionOfNode, type BooleanOp } from "./regions";
+import { NodeSchema } from "@/gen/opendesigner/v1/opendesigner_pb";
+import { worldTransformOf } from "@/canvas/transform";
+import { orderKeyBetween } from "@/store/orderKey";
+import { childrenOf, documentOrder, topmostOf } from "@/store/tree";
+import { normalizeVector } from "@/store/vectorGeometry";
+import type { NodeLite, SceneState } from "@/store/types";
+import { toPbEffects, toPbFills, toPbStrokes, toPbSubPaths } from "@/store/types";
+import { makeCreateNodeOp, makeDeleteOp, makeSetPropsOp, uuid } from "@/tools/ops";
+import { groupOps } from "@/tools/grouping";
+import { META_BOOLEAN, booleanOpOf } from "@/vector/regions";
+import { BEZIER_TOLERANCE, booleanRegion, isBooleanSource, localOutlines, regionOf, regionOfNode, type BooleanOp } from "@/vector/regions";
 
 export { BEZIER_TOLERANCE, booleanRegion, isBooleanSource, localOutlines, regionOfNode };
 export type { BooleanOp };

@@ -1,12 +1,12 @@
 import { describe, it, expect } from "vitest";
-import type { Op } from "../gen/opendesigner/v1/opendesigner_pb";
-import { applyOp } from "../store/applyOp";
-import { emptyScene, toPbNode, type SceneState } from "../store/types";
-import { orderKeyBetween } from "../store/orderKey";
-import { makeCreateNodeOp } from "./ops";
-import { createSwatchOps } from "./swatches";
-import { convertSpotsOps, inkReport, mergeSpotsOps, overprintOps } from "./inks";
-import { preflightScene } from "../export/preflight";
+import type { Op } from "@/gen/opendesigner/v1/opendesigner_pb";
+import { applyOp } from "@/store/applyOp";
+import { emptyScene, toPbNode, type SceneState } from "@/store/types";
+import { orderKeyBetween } from "@/store/orderKey";
+import { makeCreateNodeOp } from "@/tools/ops";
+import { createSwatchOps } from "@/tools/swatches";
+import { convertSpotsOps, inkReport, mergeSpotsOps, overprintOps } from "@/tools/inks";
+import { preflightScene } from "@/export/preflight";
 
 const run = (s: SceneState, ops: Op[]) => ops.reduce(applyOp, s);
 

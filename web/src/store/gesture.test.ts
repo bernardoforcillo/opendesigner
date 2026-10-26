@@ -1,9 +1,9 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { create } from "@bufbuild/protobuf";
-import { NodeSchema, OpSchema } from "../gen/opendesigner/v1/opendesigner_pb";
-import type { Op } from "../gen/opendesigner/v1/opendesigner_pb";
-import { useScene } from "./store";
-import { emptyScene } from "./types";
+import { NodeSchema, OpSchema } from "@/gen/opendesigner/v1/opendesigner_pb";
+import type { Op } from "@/gen/opendesigner/v1/opendesigner_pb";
+import { useScene } from "@/store/store";
+import { emptyScene } from "@/store/types";
 
 // Double of SyncClient (see rpc/syncClient.ts): records the ops that end up
 // ON THE WIRE and models a server that accepts and ECHOES immediately -- applyPending (op

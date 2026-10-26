@@ -1,9 +1,9 @@
-import { useScene } from "../store/store";
-import type { Op } from "../gen/opendesigner/v1/opendesigner_pb";
-import type { WidthPointLite } from "../store/types";
-import { WIDTH_PRESETS, presetNameOf } from "../vector/widthProfile";
-import { addWidthPointInGap, profileOf, removeWidthPoint, setWidthPoint, setWidthProfileOps, widthStrokeOf } from "../vector/widthEdit";
-import { NumberField } from "./fields/NumberField";
+import { useScene } from "@/store/store";
+import type { Op } from "@/gen/opendesigner/v1/opendesigner_pb";
+import type { WidthPointLite } from "@/store/types";
+import { WIDTH_PRESETS, presetNameOf } from "@/vector/widthProfile";
+import { addWidthPointInGap, profileOf, removeWidthPoint, setWidthPoint, setWidthProfileOps, widthStrokeOf } from "@/vector/widthEdit";
+import { NumberField } from "@/ui/fields/NumberField";
 
 const lookup = (id: string) => useScene.getState().scene?.nodes.at(id);
 type Run = (build: (ids: readonly string[]) => Op[]) => void;

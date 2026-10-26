@@ -1,27 +1,27 @@
 import "@testing-library/jest-dom/vitest";
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import type { Op } from "../../gen/opendesigner/v1/opendesigner_pb";
-import { useScene } from "../../store/store";
-import { useFlowUi } from "../../store/flowUi";
-import { useAnalysis, setAnalysisFetcher } from "../../flow/analysis";
-import { nodesWith } from "../../store/nodeMap";
-import { emptyScene } from "../../store/types";
-import { baseScene, flowOf, transition, withFlows } from "../../flow/testSupport";
-import { resetCodegen, setCodeFetcher, type CodeFetcher, type CodeFile } from "../../dev/codegen";
-import { ReadinessPanel } from "./ReadinessPanel";
-import { ShipPanel } from "./ShipPanel";
-import { CodeWorkbench } from "./CodeWorkbench";
-import { PipelineStepper, goToStep } from "./PipelineStepper";
-import { usePanels } from "../shell/panels";
+import type { Op } from "@/gen/opendesigner/v1/opendesigner_pb";
+import { useScene } from "@/store/store";
+import { useFlowUi } from "@/store/flowUi";
+import { useAnalysis, setAnalysisFetcher } from "@/flow/analysis";
+import { nodesWith } from "@/store/nodeMap";
+import { emptyScene } from "@/store/types";
+import { baseScene, flowOf, transition, withFlows } from "@/flow/testSupport";
+import { resetCodegen, setCodeFetcher, type CodeFetcher, type CodeFile } from "@/dev/codegen";
+import { ReadinessPanel } from "@/ui/dev/ReadinessPanel";
+import { ShipPanel } from "@/ui/dev/ShipPanel";
+import { CodeWorkbench } from "@/ui/dev/CodeWorkbench";
+import { PipelineStepper, goToStep } from "@/ui/dev/PipelineStepper";
+import { usePanels } from "@/ui/shell/panels";
 
 // THE THREE DEVELOP PANELS with a fake RPC: the checklist and its one-click
 // fixes (one gesture = one undo), Ship (the zip and the commands), the code view
 // (loading/error states, file <-> screen, preview) and the stepper.
 
 const downloads: { name: string; bytes: Uint8Array }[] = [];
-vi.mock("../../dev/zip", async (orig) => ({
-  ...(await orig<typeof import("../../dev/zip")>()),
+vi.mock("@/dev/zip", async (orig) => ({
+  ...(await orig<typeof import("@/dev/zip")>()),
   downloadBytes: (name: string, bytes: Uint8Array) => { downloads.push({ name, bytes }); return true; },
 }));
 

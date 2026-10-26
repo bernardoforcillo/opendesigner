@@ -1,5 +1,5 @@
-import type { ClipLite, SceneState } from "../store/types";
-import { CLIP_TRIGGERS, TRACK_PROPS, isValidEasing } from "./engine";
+import type { ClipLite, SceneState } from "@/store/types";
+import { CLIP_TRIGGERS, TRACK_PROPS, isValidEasing } from "@/animation/engine";
 
 // Validation of a clip: EXACT parity with core.validateClip (Go, the authority).
 // Whoever uses it -- applyOp (to reject the op as the server would) and history

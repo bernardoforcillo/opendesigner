@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import type { FontLite } from "../store/types";
-import { resetFontRegistry, syncDocumentFonts } from "./fontRegistry";
+import type { FontLite } from "@/store/types";
+import { resetFontRegistry, syncDocumentFonts } from "@/renderer/fontRegistry";
 
 class FakeFace {
   static all: FakeFace[] = [];

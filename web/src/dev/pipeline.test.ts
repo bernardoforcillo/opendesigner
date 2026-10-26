@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
-import { emptyScene } from "../store/types";
-import { baseScene, flowOf, transition, withFlows } from "../flow/testSupport";
-import { pipelineSteps } from "./pipeline";
+import { emptyScene } from "@/store/types";
+import { baseScene, flowOf, transition, withFlows } from "@/flow/testSupport";
+import { pipelineSteps } from "@/dev/pipeline";
 
 const ids = (s: ReturnType<typeof pipelineSteps>) => s.map((x) => `${x.id}:${x.done ? "ok" : "-"}${x.current ? "*" : ""}`).join(" ");
 

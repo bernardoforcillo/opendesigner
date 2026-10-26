@@ -1,12 +1,12 @@
 import { create, type MessageInitShape } from "@bufbuild/protobuf";
-import { NodeSchema, OpSchema } from "../gen/opendesigner/v1/opendesigner_pb";
-import type { Node, Op } from "../gen/opendesigner/v1/opendesigner_pb";
-import { useScene } from "../store/store";
-import { toPbAnnotation, toPbReady, toPbComment, toPbClip, toPbComponentProperty, toPbComponentSet, toPbCollection, toPbVariable, toPbFont, toPbTextStyleDef, toPbPaintStyleDef, toPbEffectStyleDef, toPbFlow, toPbInstanceOverride, toPbInstance, toPbSubPaths, toPbTextStyle, toPbTransition, settingsToMsg, toPbObjectStyleDef, toPbLayer } from "../store/types";
-import { pageToPb } from "../store/masters";
-import type { DocSettingsLite, PageLite } from "../store/types";
-import type { AnnotationLite, ReadyLite, CommentLite, ClipLite, CollectionLite, ComponentPropertyLite, ComponentSetLite, FontLite, TextStyleDefLite, PaintStyleDefLite, EffectStyleDefLite, VariableLite, FlowLite, InstanceLite, InstanceOverrideLite, SubPathLite, TextStyleLite, TransitionLite, LayerLite, ObjectStyleLite } from "../store/types";
-import type { MaskPath } from "../store/maskPaths";
+import { NodeSchema, OpSchema } from "@/gen/opendesigner/v1/opendesigner_pb";
+import type { Node, Op } from "@/gen/opendesigner/v1/opendesigner_pb";
+import { useScene } from "@/store/store";
+import { toPbAnnotation, toPbReady, toPbComment, toPbClip, toPbComponentProperty, toPbComponentSet, toPbCollection, toPbVariable, toPbFont, toPbTextStyleDef, toPbPaintStyleDef, toPbEffectStyleDef, toPbFlow, toPbInstanceOverride, toPbInstance, toPbSubPaths, toPbTextStyle, toPbTransition, settingsToMsg, toPbObjectStyleDef, toPbLayer } from "@/store/types";
+import { pageToPb } from "@/store/masters";
+import type { DocSettingsLite, PageLite } from "@/store/types";
+import type { AnnotationLite, ReadyLite, CommentLite, ClipLite, CollectionLite, ComponentPropertyLite, ComponentSetLite, FontLite, TextStyleDefLite, PaintStyleDefLite, EffectStyleDefLite, VariableLite, FlowLite, InstanceLite, InstanceOverrideLite, SubPathLite, TextStyleLite, TransitionLite, LayerLite, ObjectStyleLite } from "@/store/types";
+import type { MaskPath } from "@/store/maskPaths";
 
 // Centralized construction of Ops: every tool goes through here, so opId and docId
 // are stamped in a single place (in M0 the logic was duplicated inside

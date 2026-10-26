@@ -1,15 +1,15 @@
 import { describe, it, expect } from "vitest";
 import { create } from "@bufbuild/protobuf";
-import { NodeSchema, OpSchema } from "../gen/opendesigner/v1/opendesigner_pb";
-import { applyOp } from "./applyOp";
-import { emptyScene } from "./types";
-import type { AnchorLite, SubPathLite } from "./types";
+import { NodeSchema, OpSchema } from "@/gen/opendesigner/v1/opendesigner_pb";
+import { applyOp } from "@/store/applyOp";
+import { emptyScene } from "@/store/types";
+import type { AnchorLite, SubPathLite } from "@/store/types";
 import {
   anchorPoint, inHandlePoint, outHandlePoint,
   hasInHandle, hasOutHandle, vectorBounds, normalizeVector, resizeVector,
   flattenSubpath, distanceToPolyline, pointInRingsEvenOdd, subpathFills, hitVectorGeometry,
   hasAnyAnchor,
-} from "./vectorGeometry";
+} from "@/store/vectorGeometry";
 
 // The TWO SPACES rule, which the proto (on `Anchor`) states and this file
 // pins down: anchors LOCAL to the node, handles RELATIVE to the anchor. Renderer,

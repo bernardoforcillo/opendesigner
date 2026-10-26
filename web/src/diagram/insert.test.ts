@@ -1,10 +1,10 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { create } from "@bufbuild/protobuf";
 import { Code, ConnectError } from "@connectrpc/connect";
-import { NodeSchema, RenderDiagramResponseSchema } from "../gen/opendesigner/v1/opendesigner_pb";
-import { useScene } from "../store/store";
-import { emptyScene } from "../store/types";
-import { DiagramError, insertDiagram, renderDiagram, selectedDiagram, META_KIND, META_SOURCE } from "./insert";
+import { NodeSchema, RenderDiagramResponseSchema } from "@/gen/opendesigner/v1/opendesigner_pb";
+import { useScene } from "@/store/store";
+import { emptyScene } from "@/store/types";
+import { DiagramError, insertDiagram, renderDiagram, selectedDiagram, META_KIND, META_SOURCE } from "@/diagram/insert";
 
 // A response as the server would give it: group root + two children.
 function response(source = "graph TD\nA-->B") {

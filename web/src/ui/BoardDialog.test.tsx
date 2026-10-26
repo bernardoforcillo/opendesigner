@@ -3,12 +3,12 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 import { Code, ConnectError } from "@connectrpc/connect";
 
 const client = vi.hoisted(() => ({ renderBoard: vi.fn() }));
-vi.mock("../rpc/client", () => ({ docClient: client }));
+vi.mock("@/rpc/client", () => ({ docClient: client }));
 const insert = vi.hoisted(() => ({ insertDiagram: vi.fn() }));
-vi.mock("../diagram/insert", () => insert);
-vi.mock("../tools/svgImport", () => ({ viewportCenter: () => ({ x: 100, y: 200 }) }));
+vi.mock("@/diagram/insert", () => insert);
+vi.mock("@/tools/svgImport", () => ({ viewportCenter: () => ({ x: 100, y: 200 }) }));
 
-import { BoardDialog } from "./BoardDialog";
+import { BoardDialog } from "@/ui/BoardDialog";
 
 afterEach(() => { cleanup(); vi.clearAllMocks(); });
 
