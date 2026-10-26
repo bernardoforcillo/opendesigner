@@ -117,6 +117,8 @@ export function PageBar({ compact = false }: { compact?: boolean } = {}) {
   // The list popover is CONTROLLED: it must be closed by hand after choosing a
   // page or starting a rename (the rename lives in the bar).
   const [open, setOpen] = useState(false);
+  const [setupOpen, setSetupOpen] = useState(false);
+  const facing = useScene((st) => st.scene?.settings?.facingPages === true);
 
   // Without a document there is no page to show: the bar disappears
   // entirely instead of drawing itself empty (same fallback as LayersPanel with a
@@ -126,9 +128,7 @@ export function PageBar({ compact = false }: { compact?: boolean } = {}) {
   const current = pages.find((p) => p.id === currentPageId) ?? pages[0];
   const pageLabel = (name: string) => (name.trim() !== "" ? name : "Unnamed page");
 
-  const [setupOpen, setSetupOpen] = useState(false);
   const masters = pages.filter((p) => p.isMaster);
-  const facing = useScene((st) => st.scene?.settings?.facingPages === true);
   const normal = pages.filter((p) => !p.isMaster);
 
   function createPage() {
