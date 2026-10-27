@@ -5,18 +5,21 @@ tmp_dir = "tmp"
 [build]
   args_bin = ["serve"]
   bin = "./tmp/main"
-  cmd = "go build -o ./tmp/main ./cmd/opendesigner"
+  # The binary embeds web/dist, so build the frontend first. Vite empties dist/,
+  # which deletes the tracked .gitkeep: restore it so the tree stays clean.
+  cmd = "pnpm --dir web build && git checkout -- web/dist/.gitkeep && go build -o ./tmp/main ./cmd/opendesigner"
   delay = 500
   entrypoint = ["./tmp/main"]
-  exclude_dir = ["assets", "tmp", "vendor", "testdata", "web", "docs"]
+  exclude_dir = ["assets", "tmp", "vendor", "testdata", "docs", "web/dist", "web/node_modules"]
   exclude_file = []
-  exclude_regex = ["_test.go"]
+  exclude_regex = ["_test.go", "\\.test\\.tsx?$"]
   exclude_unchanged = false
   follow_symlink = false
   full_bin = ""
   ignore_dangerous_root_dir = false
-  include_dir = ["cmd", "internal"]
-  include_ext = ["go"]
+  # web/src too: the binary embeds the built frontend, so a web edit needs a rebuild.
+  include_dir = ["cmd", "internal", "web/src"]
+  include_ext = ["go", "ts", "tsx", "css", "html"]
   include_file = []
   kill_delay = "500ms"
   log = "build-errors.log"
