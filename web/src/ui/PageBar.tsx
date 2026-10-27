@@ -191,10 +191,9 @@ export function PageBar({ compact = false }: { compact?: boolean } = {}) {
   }
 
   return (
-    <div
-      role="group"
+    <fieldset
       aria-label="Pages"
-      className={compact ? "flex w-[112px] shrink-0 items-center" : "flex h-10 shrink-0 items-center gap-1 border-b border-line px-2"}
+      className={compact ? "flex w-28 shrink-0 items-center" : "flex h-10 shrink-0 items-center gap-1 border-b border-line px-2"}
     >
       {current && renamingId === current.id ? (
         <PageRenameField
@@ -205,22 +204,11 @@ export function PageBar({ compact = false }: { compact?: boolean } = {}) {
         />
       ) : (
         <DialogTrigger isOpen={open} onOpenChange={setOpen}>
-          {/* The double click sits on the WRAPPER and not on the Button: react-aria-
-              components does not forward onDoubleClick to the <button>, but the event
-              bubbles up to it anyway. A single click opens the list; a
-              double click opens the rename of the current page. */}
-          <div
-            className="min-w-0 flex-1"
-            onDoubleClick={() => {
-              if (!current) return;
-              setOpen(false);
-              setRenamingId(current.id);
-            }}
-          >
+          <div className="min-w-0 flex-1">
             <Button
               className={
                 "flex h-7 w-full min-w-0 items-center gap-1.5 rounded-md px-2 text-left text-[13px] font-medium text-fg " +
-                "outline-none transition-colors hover:bg-surface-3 focus-visible:shadow-[var(--ring)] data-[pressed]:bg-surface-3"
+                "outline-none transition-colors hover:bg-surface-3 focus-visible:shadow-(--ring) data-pressed:bg-surface-3"
               }
             >
               <Icon name="page" size={14} className="shrink-0 text-fg-subtle" />
@@ -251,7 +239,7 @@ export function PageBar({ compact = false }: { compact?: boolean } = {}) {
                         }}
                         className={[
                           "flex h-7 min-w-0 flex-1 items-center gap-2 rounded-md px-2 text-left text-[13px] outline-none",
-                          "data-[focus-visible]:shadow-[var(--ring)]",
+                          "data-focus-visible:shadow-(--ring)",
                           active ? "bg-accent-soft font-medium text-accent" : "text-fg hover:bg-surface-3",
                         ].join(" ")}
                       >
@@ -344,7 +332,7 @@ export function PageBar({ compact = false }: { compact?: boolean } = {}) {
                   <Button
                     onPress={() => toggleMaster(current.id)}
                     isDisabled={!current.isMaster && regularPages(pages, current.id).length === 0}
-                    className="flex h-7 w-full items-center gap-2 rounded-md px-2 text-left text-[13px] text-fg-muted outline-none hover:bg-surface-3 hover:text-fg data-[disabled]:opacity-50 data-[focus-visible]:shadow-[var(--ring)]"
+                    className="flex h-7 w-full items-center gap-2 rounded-md px-2 text-left text-[13px] text-fg-muted outline-none hover:bg-surface-3 hover:text-fg data-disabled:opacity-50 data-focus-visible:shadow-(--ring)"
                   >
                     {current.isMaster ? "Convert to a normal page" : "Convert to a master"}
                   </Button>
@@ -353,21 +341,21 @@ export function PageBar({ compact = false }: { compact?: boolean } = {}) {
               <div className="border-t border-line p-1">
                 <Button
                   onPress={createPage}
-                  className="flex h-7 w-full items-center gap-2 rounded-md px-2 text-left text-[13px] text-fg-muted outline-none hover:bg-surface-3 hover:text-fg data-[focus-visible]:shadow-[var(--ring)]"
+                  className="flex h-7 w-full items-center gap-2 rounded-md px-2 text-left text-[13px] text-fg-muted outline-none hover:bg-surface-3 hover:text-fg data-focus-visible:shadow-(--ring)"
                 >
                   <Icon name="plus" size={13} />
                   Add a page
                 </Button>
                 <Button
                   onPress={() => { setOpen(false); setSetupOpen(true); }}
-                  className="flex h-7 w-full items-center gap-2 rounded-md px-2 text-left text-[13px] text-fg-muted outline-none hover:bg-surface-3 hover:text-fg data-[focus-visible]:shadow-[var(--ring)]"
+                  className="flex h-7 w-full items-center gap-2 rounded-md px-2 text-left text-[13px] text-fg-muted outline-none hover:bg-surface-3 hover:text-fg data-focus-visible:shadow-(--ring)"
                 >
                   <Icon name="page" size={13} />
                   Page setup…
                 </Button>
                 <Button
                   onPress={createMaster}
-                  className="flex h-7 w-full items-center gap-2 rounded-md px-2 text-left text-[13px] text-fg-muted outline-none hover:bg-surface-3 hover:text-fg data-[focus-visible]:shadow-[var(--ring)]"
+                  className="flex h-7 w-full items-center gap-2 rounded-md px-2 text-left text-[13px] text-fg-muted outline-none hover:bg-surface-3 hover:text-fg data-focus-visible:shadow-(--ring)"
                 >
                   <Icon name="plus" size={13} />
                   Add a master page
@@ -389,6 +377,6 @@ export function PageBar({ compact = false }: { compact?: boolean } = {}) {
           onPress={() => deletePage(currentPageId)}
         />
       )}
-    </div>
+    </fieldset>
   );
 }
