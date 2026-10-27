@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { useScene } from "../store/store";
-import { emptyScene, type NodeLite } from "../store/types";
-import { attachClipboardShortcuts, clipboardMemory, pasteClipboard, serializeNodes } from "./clipboard";
+import { useScene } from "@/store/store";
+import { emptyScene, type NodeLite } from "@/store/types";
+import { attachClipboardShortcuts, clipboardMemory, pasteClipboard, serializeNodes } from "@/tools/clipboard";
 
 // Pasting SVG text from the clipboard. (Pasting opendesigner nodes is in
 // clipboard.test.ts and does not change: here we only verify the new branch and that it

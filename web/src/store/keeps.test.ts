@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { keepBreak } from "./keeps";
-import type { ResolvedParagraph } from "./types";
+import { keepBreak } from "@/store/keeps";
+import type { ResolvedParagraph } from "@/store/types";
 
 const base: ResolvedParagraph = { style: { fontFamily: "", fontSize: 16, fontWeight: "", lineHeight: 0, align: "left" }, spaceBefore: 0, spaceAfter: 0, indentFirst: 0, indentLeft: 0 };
 const para = (over: Partial<ResolvedParagraph> = {}): ResolvedParagraph => ({ ...base, ...over });

@@ -1,13 +1,13 @@
 import { create as createStore } from "zustand";
 import { create } from "@bufbuild/protobuf";
-import { OpSchema } from "../gen/opendesigner/v1/opendesigner_pb";
-import type { Op } from "../gen/opendesigner/v1/opendesigner_pb";
-import { applyOp } from "./applyOp";
-import { invertOp } from "./history";
-import { recordFinal, recordPreview } from "../animation/recordHook";
-import { isReachableFrom, subtreeOf } from "./tree";
-import type { PageLite, SceneState } from "./types";
-import type { PenPreview } from "./vectorGeometry";
+import { OpSchema } from "@/gen/opendesigner/v1/opendesigner_pb";
+import type { Op } from "@/gen/opendesigner/v1/opendesigner_pb";
+import { applyOp } from "@/store/applyOp";
+import { invertOp } from "@/store/history";
+import { recordFinal, recordPreview } from "@/animation/recordHook";
+import { isReachableFrom, subtreeOf } from "@/store/tree";
+import type { PageLite, SceneState } from "@/store/types";
+import type { PenPreview } from "@/store/vectorGeometry";
 
 /** The node tool's state: the selected anchor (subpath, index). */
 export interface NodeEdit { sel: { sub: number; index: number } | null }
@@ -18,10 +18,10 @@ export interface WidthEdit { sel: number | null }
 
 /** The Link tool's rubber band: the box it starts from, the pointer (world), and the node under it. */
 export interface LinkPreview { from: { x: number; y: number; width: number; height: number }; x: number; y: number; targetId: string | null }
-import type { Camera } from "../canvas/camera";
-import type { Bounds } from "../canvas/geometry";
-import type { SnapGuide } from "../selection/snap";
-import { headOf, isThreaded } from "./threads";
+import type { Camera } from "@/canvas/camera";
+import type { Bounds } from "@/canvas/geometry";
+import type { SnapGuide } from "@/selection/snap";
+import { headOf, isThreaded } from "@/store/threads";
 
 // The minimum the store asks of the transport: "send this op" (and apply it
 // optimistically). SyncClient satisfies it structurally; tests can pass

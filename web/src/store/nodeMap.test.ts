@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { NodeMap } from "./nodeMap";
-import type { NodeLite } from "./types";
+import { NodeMap } from "@/store/nodeMap";
+import type { NodeLite } from "@/store/types";
 
 const n = (id: string, x = 0): NodeLite => ({
   id, parentId: "p", orderKey: "a", name: id, visible: true, opacity: 1, x, y: 0, width: 1, height: 1, rotation: 0,

@@ -1,14 +1,14 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { baseScene } from "../flow/testSupport";
-import { useScene } from "../store/store";
-import type { ClipLite, SceneState } from "../store/types";
-import { makeSetPropsOp } from "../tools/ops";
-import { recordFinal, recordPreview, propChangesOfOps, setRecordHook } from "./recordHook";
+import { baseScene } from "@/flow/testSupport";
+import { useScene } from "@/store/store";
+import type { ClipLite, SceneState } from "@/store/types";
+import { makeSetPropsOp } from "@/tools/ops";
+import { recordFinal, recordPreview, propChangesOfOps, setRecordHook } from "@/animation/recordHook";
 import {
   addPropertyTracks, commitClip, createClip, duplicateClipOp, removeClip, useTimeline,
-} from "./timelineStore";
-import { isPosing, posedScene } from "./posedScene";
-import { isValidClip } from "./validate";
+} from "@/animation/timelineStore";
+import { isPosing, posedScene } from "@/animation/posedScene";
+import { isValidClip } from "@/animation/validate";
 
 const clip = (over: Partial<ClipLite> = {}): ClipLite => ({
   id: "k", name: "k", duration: 1000, trigger: "enter", delay: 0, repeat: 0, yoyo: false, targetId: "A",

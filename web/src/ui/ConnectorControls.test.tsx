@@ -1,12 +1,12 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it } from "vitest";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import type { Op } from "../gen/opendesigner/v1/opendesigner_pb";
-import { useScene } from "../store/store";
-import { nodesOf } from "../store/nodeMap";
-import { emptyScene } from "../store/types";
-import type { NodeLite } from "../store/types";
-import { ConnectorControls } from "./ConnectorControls";
+import type { Op } from "@/gen/opendesigner/v1/opendesigner_pb";
+import { useScene } from "@/store/store";
+import { nodesOf } from "@/store/nodeMap";
+import { emptyScene } from "@/store/types";
+import type { NodeLite } from "@/store/types";
+import { ConnectorControls } from "@/ui/ConnectorControls";
 
 afterEach(cleanup);
 

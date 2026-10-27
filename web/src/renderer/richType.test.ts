@@ -1,10 +1,10 @@
 import { describe, it, expect } from "vitest";
-import { BULLET, hscaleOf, layoutRich, layoutText, piecesOfSegment, placeTextLines, styledMeasure, textPaintBounds, type MeasureFor } from "./text";
-import { flattenStyle, overlay, resolveRich } from "../store/richText";
-import { isValidTextStyleDef } from "../store/typography";
-import { toPbTextStyle, toTextStyleLite, emptyScene } from "../store/types";
-import type { NodeLite, ResolvedParagraph, TextLite, TextStyleDefLite, TextStyleLite } from "../store/types";
-import { TextStyleDefSchema, TextStyleKind } from "../gen/opendesigner/v1/opendesigner_pb";
+import { BULLET, hscaleOf, layoutRich, layoutText, piecesOfSegment, placeTextLines, styledMeasure, textPaintBounds, type MeasureFor } from "@/renderer/text";
+import { flattenStyle, overlay, resolveRich } from "@/store/richText";
+import { isValidTextStyleDef } from "@/store/typography";
+import { toPbTextStyle, toTextStyleLite, emptyScene } from "@/store/types";
+import type { NodeLite, ResolvedParagraph, TextLite, TextStyleDefLite, TextStyleLite } from "@/store/types";
+import { TextStyleDefSchema, TextStyleKind } from "@/gen/opendesigner/v1/opendesigner_pb";
 import { create } from "@bufbuild/protobuf";
 
 // 10 units per character at size 10 (width scales with the size), like richLayout.test.ts.

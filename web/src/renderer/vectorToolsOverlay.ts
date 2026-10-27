@@ -1,8 +1,8 @@
-import { type Camera, worldToScreen } from "../canvas/camera";
-import type { SceneState } from "../store/types";
-import type { BuilderPreview } from "../store/store";
-import { widthHandles } from "../vector/widthEdit";
-import { themeColors, withAlpha } from "./themeColors";
+import { type Camera, worldToScreen } from "@/canvas/camera";
+import type { SceneState } from "@/store/types";
+import type { BuilderPreview } from "@/store/store";
+import { widthHandles } from "@/vector/widthEdit";
+import { themeColors, withAlpha } from "@/renderer/themeColors";
 
 // The overlays of the two vector tools of docs/vector.md: the Variable width tool's handles and the Shape
 // builder's tinted regions. Drawn above everything else while the tool is active; geometry is read from

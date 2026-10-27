@@ -1,5 +1,5 @@
-import { makeShapeTool } from "./shapeTool";
-import type { Tool } from "./types";
+import { makeShapeTool } from "@/tools/shapeTool";
+import type { Tool } from "@/tools/types";
 
 // Default size when the gesture is a plain click rather than a drag.
 export const DEFAULT_ELLIPSE_WIDTH = 100;

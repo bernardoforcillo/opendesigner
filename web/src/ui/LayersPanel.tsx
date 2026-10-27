@@ -1,15 +1,15 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Button, GridList, GridListItem, ListLayout, Virtualizer } from "react-aria-components";
-import { EmptyState, Icon, IconButton, cls, type IconName } from "./ds";
+import { EmptyState, Icon, IconButton, cls, type IconName } from "@/ui/ds";
 import type { Selection } from "react-aria-components";
-import { useScene } from "../store/store";
-import { orderKeyBetween } from "../store/orderKey";
-import { ancestorsOf, childIndexOf, childrenOf, isAncestorOf, subtreeOf, topmostOf } from "../store/tree";
-import { sceneIndexOf } from "../renderer/sceneIndex";
-import { makeDeleteOp, makeReparentOp, makeSetPropsOp } from "../tools/ops";
-import { canWrite, useAccess } from "../rpc/access";
-import { openContextMenu } from "./contextMenuItems";
-import type { NodeLite, SceneState } from "../store/types";
+import { useScene } from "@/store/store";
+import { orderKeyBetween } from "@/store/orderKey";
+import { ancestorsOf, childIndexOf, childrenOf, isAncestorOf, subtreeOf, topmostOf } from "@/store/tree";
+import { sceneIndexOf } from "@/renderer/sceneIndex";
+import { makeDeleteOp, makeReparentOp, makeSetPropsOp } from "@/tools/ops";
+import { canWrite, useAccess } from "@/rpc/access";
+import { openContextMenu } from "@/ui/contextMenuItems";
+import type { NodeLite, SceneState } from "@/store/types";
 
 // LAYERS PANEL — TREE of the current page, with selection, visibility,
 // deletion, rename and drag to reorder/reparent (Task 7/8 + nesting

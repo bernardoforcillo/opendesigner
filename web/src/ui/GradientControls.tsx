@@ -1,16 +1,16 @@
 import type { ReactNode } from "react";
 import { useRef, useState } from "react";
-import { useScene } from "../store/store";
-import { uploadAsset } from "../rpc/assets";
-import type { FillLite } from "../store/types";
-import type { Op } from "../gen/opendesigner/v1/opendesigner_pb";
-import { CHECKER, SegButtons } from "./ds/props-controls";
-import { ColorField } from "./fields/ColorField";
-import { NumberField } from "./fields/NumberField";
+import { useScene } from "@/store/store";
+import { uploadAsset } from "@/rpc/assets";
+import type { FillLite } from "@/store/types";
+import type { Op } from "@/gen/opendesigner/v1/opendesigner_pb";
+import { CHECKER, SegButtons } from "@/ui/ds/props-controls";
+import { ColorField } from "@/ui/fields/ColorField";
+import { NumberField } from "@/ui/fields/NumberField";
 import {
   addGradientStopOps, imagePaintOps, fillKindOf, type PaintTarget, fillKindOps, gradientAngleOf, gradientAngleOps, gradientStopOps,
   gradientStopPositionOps, removeGradientStopOps, type FillKind, meshPointOps, meshSizeOps,
-} from "./gradientOps";
+} from "@/ui/gradientOps";
 
 const KINDS: { value: FillKind; label: string }[] = [
   { value: "solid", label: "Solid" },

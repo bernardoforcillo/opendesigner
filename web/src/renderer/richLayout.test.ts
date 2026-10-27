@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
-import { layoutRich, placeTextLines, textPaintBounds, decorationBars, type MeasureFor } from "./text";
-import { resolveRich } from "../store/richText";
-import { emptyScene, type NodeLite, type ResolvedParagraph, type TextLite, type TextStyleDefLite, type TextStyleLite } from "../store/types";
+import { layoutRich, placeTextLines, textPaintBounds, decorationBars, type MeasureFor } from "@/renderer/text";
+import { resolveRich } from "@/store/richText";
+import { emptyScene, type NodeLite, type ResolvedParagraph, type TextLite, type TextStyleDefLite, type TextStyleLite } from "@/store/types";
 
 // 10 units per character at size 10; width scales with the font size so a bigger piece measures more.
 const mf: MeasureFor = (st) => (s) => s.length * (st.fontSize || 16) * (st.fontWeight === "700" ? 1 : 0.5);
@@ -134,7 +134,7 @@ describe("decorationBars", () => {
   });
 });
 
-import { trackedMeasure, trackedOffsets } from "./text";
+import { trackedMeasure, trackedOffsets } from "@/renderer/text";
 
 describe("letter spacing", () => {
   const base5 = (s: string) => s.length * 5;

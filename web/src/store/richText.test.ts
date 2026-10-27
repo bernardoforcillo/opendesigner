@@ -1,12 +1,12 @@
 import { describe, it, expect } from "vitest";
 import { create } from "@bufbuild/protobuf";
-import { OpSchema, TextStyleKind } from "../gen/opendesigner/v1/opendesigner_pb";
-import type { Op } from "../gen/opendesigner/v1/opendesigner_pb";
-import { applyOp } from "./applyOp";
-import { invertOp } from "./history";
-import { clampRich, isValidRich, paragraphCount, reconcileRich, richFields } from "./richText";
-import { resolveScene } from "./variables";
-import { emptyScene, toPbTextStyle, toPbTextStyleDef, type NodeLite, type SceneState, type TextLite, type TextStyleDefLite } from "./types";
+import { OpSchema, TextStyleKind } from "@/gen/opendesigner/v1/opendesigner_pb";
+import type { Op } from "@/gen/opendesigner/v1/opendesigner_pb";
+import { applyOp } from "@/store/applyOp";
+import { invertOp } from "@/store/history";
+import { clampRich, isValidRich, paragraphCount, reconcileRich, richFields } from "@/store/richText";
+import { resolveScene } from "@/store/variables";
+import { emptyScene, toPbTextStyle, toPbTextStyleDef, type NodeLite, type SceneState, type TextLite, type TextStyleDefLite } from "@/store/types";
 
 const STYLE = { fontFamily: "", fontSize: 12, fontWeight: "", lineHeight: 0, align: "left" as const };
 const def = (over: Partial<TextStyleDefLite> & { id: string }): TextStyleDefLite => ({ name: over.id, style: { ...STYLE, fontSize: 0 }, ...over });

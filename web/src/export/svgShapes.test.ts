@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { nodesToSvg } from "./svg";
-import type { NodeLite } from "../store/types";
+import { nodesToSvg } from "@/export/svg";
+import type { NodeLite } from "@/store/types";
 
 const measure = (s: string) => s.length * 10;
 const FULL = { x: 0, y: 0, width: 200, height: 200 };

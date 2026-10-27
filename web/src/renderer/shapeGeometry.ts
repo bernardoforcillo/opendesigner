@@ -1,4 +1,4 @@
-import type { NodeLite } from "../store/types";
+import type { NodeLite } from "@/store/types";
 
 // THE OUTLINES OF THE PARAMETRIC SHAPES (docs/shapes.md): polygon, star, ellipse arc / ring, and a rectangle
 // with corner smoothing or independent radii. One implementation of the geometry, as plain path commands

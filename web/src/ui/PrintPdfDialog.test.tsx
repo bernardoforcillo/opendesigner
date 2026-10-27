@@ -1,12 +1,12 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent, act, cleanup } from "@testing-library/react";
-import { PrintPdfDialog } from "./PrintPdfDialog";
-import { useScene } from "../store/store";
-import { emptyScene } from "../store/types";
+import { PrintPdfDialog } from "@/ui/PrintPdfDialog";
+import { useScene } from "@/store/store";
+import { emptyScene } from "@/store/types";
 
 const run = vi.fn(async () => true);
 const pack = vi.fn(async () => true);
-vi.mock("../export/exportScene", () => ({ runDocumentExport: (...a: unknown[]) => (run as unknown as (...x: unknown[]) => unknown)(...a), runPackage: (...a: unknown[]) => (pack as unknown as (...x: unknown[]) => unknown)(...a) }));
+vi.mock("@/export/exportScene", () => ({ runDocumentExport: (...a: unknown[]) => (run as unknown as (...x: unknown[]) => unknown)(...a), runPackage: (...a: unknown[]) => (pack as unknown as (...x: unknown[]) => unknown)(...a) }));
 
 beforeEach(() => {
   cleanup();

@@ -1,13 +1,13 @@
-import { useScene } from "../store/store";
-import type { NodeLite, WidthPointLite } from "../store/types";
-import { hitTest } from "../renderer/canvasRenderer";
-import { PEN_ANCHOR_GRAB_PX } from "../renderer/overlayRenderer";
-import { editable } from "../vector/editOps";
+import { useScene } from "@/store/store";
+import type { NodeLite, WidthPointLite } from "@/store/types";
+import { hitTest } from "@/renderer/canvasRenderer";
+import { PEN_ANCHOR_GRAB_PX } from "@/renderer/overlayRenderer";
+import { editable } from "@/vector/editOps";
 import {
   dragWidth, insertWidthPoint, locateOnPath, pickWidthHandle, profileOf, removeWidthPoint, sampleAt, setWidthProfileOps,
   widthHandles, widthStrokeOf,
-} from "../vector/widthEdit";
-import type { Tool } from "./types";
+} from "@/vector/widthEdit";
+import type { Tool } from "@/tools/types";
 
 // THE VARIABLE WIDTH TOOL (W): edits the width profile of the selected vector's stroke (docs/vector.md).
 // A click on the path adds a width point there (the stroke keeps its shape); dragging one of a point's two

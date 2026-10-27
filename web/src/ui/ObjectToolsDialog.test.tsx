@@ -1,13 +1,13 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { render, screen, fireEvent, act, cleanup } from "@testing-library/react";
 import { create } from "@bufbuild/protobuf";
-import { ObjectToolsDialog } from "./ObjectToolsDialog";
-import { NodeSchema } from "../gen/opendesigner/v1/opendesigner_pb";
-import type { Op } from "../gen/opendesigner/v1/opendesigner_pb";
-import { useScene } from "../store/store";
-import { emptyScene, toPbFills } from "../store/types";
-import { orderKeyBetween } from "../store/orderKey";
-import { makeCreateNodeOp } from "../tools/ops";
+import { ObjectToolsDialog } from "@/ui/ObjectToolsDialog";
+import { NodeSchema } from "@/gen/opendesigner/v1/opendesigner_pb";
+import type { Op } from "@/gen/opendesigner/v1/opendesigner_pb";
+import { useScene } from "@/store/store";
+import { emptyScene, toPbFills } from "@/store/types";
+import { orderKeyBetween } from "@/store/orderKey";
+import { makeCreateNodeOp } from "@/tools/ops";
 
 const rect = (id: string, x: number, key: string) => makeCreateNodeOp(create(NodeSchema, { id, parentId: "page1", orderKey: key, name: id, visible: true, opacity: 1, x, y: 0, width: 40, height: 20, fills: toPbFills([{ r: 1, g: 0, b: 0, a: 1 }]), shape: { case: "rect", value: {} } }));
 

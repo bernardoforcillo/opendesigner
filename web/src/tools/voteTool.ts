@@ -1,6 +1,6 @@
-import { useFacilitation } from "../store/facilitation";
-import { linkableAt } from "./linkTool";
-import type { Tool } from "./types";
+import { useFacilitation } from "@/store/facilitation";
+import { linkableAt } from "@/tools/linkTool";
+import type { Tool } from "@/tools/types";
 
 // "VOTE" (Y, in the Board). A click puts one of your dots on the thing under the pointer; Alt-click
 // takes one back. Dots are ephemeral and public (store/facilitation.ts), not part of the document.

@@ -1,8 +1,8 @@
 import { describe, it, expect, vi } from "vitest";
 import type { CanvasKit } from "canvaskit-wasm";
-import { FONT_WEIGHTS, FontBook, cssWeight, firstFamily, nearestWeight } from "./canvaskit";
-import type { FontLite } from "../../store/types";
-import { skMatrix } from "./ckRenderer";
+import { FONT_WEIGHTS, FontBook, cssWeight, firstFamily, nearestWeight } from "@/renderer/ck/canvaskit";
+import type { FontLite } from "@/store/types";
+import { skMatrix } from "@/renderer/ck/ckRenderer";
 
 describe("nearestWeight", () => {
   it.each([

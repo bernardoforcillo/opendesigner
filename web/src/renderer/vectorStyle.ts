@@ -1,4 +1,4 @@
-import type { NodeLite } from "../store/types";
+import type { NodeLite } from "@/store/types";
 
 // THE EXTRA STYLE OF VECTOR NODES (SVG import).
 //

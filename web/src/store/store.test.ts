@@ -1,10 +1,10 @@
-import { nodesOf } from "./nodeMap";
+import { nodesOf } from "@/store/nodeMap";
 import { describe, it, expect, beforeEach } from "vitest";
 import { create } from "@bufbuild/protobuf";
-import { OpSchema, NodeSchema } from "../gen/opendesigner/v1/opendesigner_pb";
-import { useScene } from "./store";
-import { emptyScene } from "./types";
-import type { NodeLite, SceneState } from "./types";
+import { OpSchema, NodeSchema } from "@/gen/opendesigner/v1/opendesigner_pb";
+import { useScene } from "@/store/store";
+import { emptyScene } from "@/store/types";
+import type { NodeLite, SceneState } from "@/store/types";
 
 function createRectOp(id: string) {
   const node = create(NodeSchema, {

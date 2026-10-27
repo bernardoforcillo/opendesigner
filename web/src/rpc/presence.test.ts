@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { create } from "@bufbuild/protobuf";
-import { PresenceEventSchema } from "../gen/opendesigner/v1/opendesigner_pb";
-import { usePresence } from "../store/presence";
+import { PresenceEventSchema } from "@/gen/opendesigner/v1/opendesigner_pb";
+import { usePresence } from "@/store/presence";
 
 // A stream controllable by hand: the test decides when events arrive.
 function makeStream(signal?: AbortSignal) {
@@ -28,11 +28,11 @@ function makeStream(signal?: AbortSignal) {
 
 const watchPresence = vi.fn();
 const updatePresence = vi.fn(async (_req: unknown) => ({}));
-vi.mock("./client", () => ({
+vi.mock("@/rpc/client", () => ({
   docClient: { watchPresence: (...a: unknown[]) => watchPresence(...a), updatePresence: (req: unknown) => updatePresence(req) },
 }));
 
-import { PresenceClient } from "./presence";
+import { PresenceClient } from "@/rpc/presence";
 
 const ready = () => create(PresenceEventSchema, {});
 const joined = (id: string) =>

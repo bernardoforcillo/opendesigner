@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { docIdFromHash, legacyRedirect, normalizeDocId, parseJoinLink, pathForDoc, relativeTime, sortRecent } from "./route";
+import { docIdFromHash, legacyRedirect, normalizeDocId, parseJoinLink, pathForDoc, relativeTime, sortRecent } from "@/home/route";
 
 const ID = "0f8b1c3e-5a52-4c7d-9a1e-2b3c4d5e6f70";
 

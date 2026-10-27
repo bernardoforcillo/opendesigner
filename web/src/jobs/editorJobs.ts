@@ -1,7 +1,7 @@
-import { runDocumentExport, runExport, runPackage, runPreflight, type DocumentExportDeps } from "../export/exportScene";
-import type { PrintPdfOptions } from "../export/printPdf";
-import { useScene } from "../store/store";
-import { runCommand } from "./commands";
+import { runDocumentExport, runExport, runPackage, runPreflight, type DocumentExportDeps } from "@/export/exportScene";
+import type { PrintPdfOptions } from "@/export/printPdf";
+import { useScene } from "@/store/store";
+import { runCommand } from "@/jobs/commands";
 
 // EDITOR JOBS: the outputs an agent asks for over MCP that only the editor can make, because they need the text
 // layout and the fonts it has (PDF, EPUB, PNG, SVG, the print package, the full preflight). The server hands a job

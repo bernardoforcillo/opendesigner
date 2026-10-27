@@ -1,5 +1,5 @@
-import { assetUrl } from "../rpc/assets";
-import type { FontLite } from "../store/types";
+import { assetUrl } from "@/rpc/assets";
+import type { FontLite } from "@/store/types";
 
 // THE DOCUMENT'S FONTS IN THE BROWSER. Each FontFace of the document becomes a CSS
 // FontFace added to `document.fonts`, so a text style whose family names it draws

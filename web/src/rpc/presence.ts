@@ -1,5 +1,5 @@
-import { docClient } from "./client";
-import { usePresence } from "../store/presence";
+import { docClient } from "@/rpc/client";
+import { usePresence } from "@/store/presence";
 
 // What this client says about itself to the others. All ephemeral: cursor (in
 // WORLD coordinates, so everyone sees it at the right spot with their own camera),

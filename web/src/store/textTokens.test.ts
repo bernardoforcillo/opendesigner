@@ -1,8 +1,8 @@
 import { describe, it, expect } from "vitest";
-import { deriveMasters } from "./masters";
-import { resolveScene } from "./variables";
-import { deriveTextTokens, headingsOf, indexEntries, rewriteTokens, runningHeads, substituteVariables, superscript, tokensOf } from "./textTokens";
-import { emptyScene, type NodeLite, type PageLite, type SceneState, type TextStyleDefLite, type TextStyleLite } from "./types";
+import { deriveMasters } from "@/store/masters";
+import { resolveScene } from "@/store/variables";
+import { deriveTextTokens, headingsOf, indexEntries, rewriteTokens, runningHeads, substituteVariables, superscript, tokensOf } from "@/store/textTokens";
+import { emptyScene, type NodeLite, type PageLite, type SceneState, type TextStyleDefLite, type TextStyleLite } from "@/store/types";
 
 const STYLE: TextStyleLite = { fontFamily: "", fontSize: 10, fontWeight: "", lineHeight: 1.2, align: "left" };
 const text = (id: string, parentId: string, content: string, over: Partial<NodeLite> = {}, paragraphStyles?: string[]): NodeLite => ({

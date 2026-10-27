@@ -1,10 +1,10 @@
-import type { Op } from "../gen/opendesigner/v1/opendesigner_pb";
-import { detachInstance, pageOf, resetInstance, swapInstance, swapSize } from "../store/instanceOps";
-import { effectiveComponentId } from "../store/components";
-import { useScene } from "../store/store";
-import { topmostOf } from "../store/tree";
-import { toPbNode, type SceneState } from "../store/types";
-import { makeCreateNodeOp, makeDeleteOp, makeSetInstanceOp, makeSetInstanceOverrideOp, makeSetPropsOp, uuid } from "./ops";
+import type { Op } from "@/gen/opendesigner/v1/opendesigner_pb";
+import { detachInstance, pageOf, resetInstance, swapInstance, swapSize } from "@/store/instanceOps";
+import { effectiveComponentId } from "@/store/components";
+import { useScene } from "@/store/store";
+import { topmostOf } from "@/store/tree";
+import { toPbNode, type SceneState } from "@/store/types";
+import { makeCreateNodeOp, makeDeleteOp, makeSetInstanceOp, makeSetInstanceOverrideOp, makeSetPropsOp, uuid } from "@/tools/ops";
 
 // The editor's instance commands: swap the component an instance points to, reset its
 // overrides (all, or one master node), detach it into plain nodes and go to its main

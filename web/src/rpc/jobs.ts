@@ -1,5 +1,5 @@
-import { docClient } from "./client";
-import { executeJob } from "../jobs/editorJobs";
+import { docClient } from "@/rpc/client";
+import { executeJob } from "@/jobs/editorJobs";
 
 const RETRY_BASE_MS = 1_000;
 const RETRY_MAX_MS = 10_000;

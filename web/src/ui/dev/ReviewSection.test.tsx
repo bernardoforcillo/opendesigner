@@ -1,13 +1,13 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { useScene } from "../../store/store";
-import { nodesOf } from "../../store/nodeMap";
-import { emptyScene } from "../../store/types";
+import { useScene } from "@/store/store";
+import { nodesOf } from "@/store/nodeMap";
+import { emptyScene } from "@/store/types";
 
 const client = vi.hoisted(() => ({ reviewDesign: vi.fn() }));
-vi.mock("../../rpc/client", () => ({ docClient: client }));
+vi.mock("@/rpc/client", () => ({ docClient: client }));
 
-import { ReviewSection } from "./ReviewSection";
+import { ReviewSection } from "@/ui/dev/ReviewSection";
 
 beforeEach(() => {
   useScene.setState({ selection: [] });

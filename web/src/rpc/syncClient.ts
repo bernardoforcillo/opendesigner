@@ -1,8 +1,8 @@
 import { Code, ConnectError } from "@connectrpc/connect";
-import type { Op } from "../gen/opendesigner/v1/opendesigner_pb";
-import { docClient } from "./client";
-import { useScene } from "../store/store";
-import { fromDocument } from "../store/types";
+import type { Op } from "@/gen/opendesigner/v1/opendesigner_pb";
+import { docClient } from "@/rpc/client";
+import { useScene } from "@/store/store";
+import { fromDocument } from "@/store/types";
 
 // DEADLINE of a single SubmitOp. createConnectTransport has none by
 // default (rpc/client.ts) and with the serialized outbox a fetch that NEVER

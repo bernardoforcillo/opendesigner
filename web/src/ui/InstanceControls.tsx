@@ -1,9 +1,9 @@
 import type { ReactNode } from "react";
-import { useScene } from "../store/store";
-import { effectiveComponentId } from "../store/components";
-import { cls, Section } from "./ds";
-import { chooseVariantOps, chosenOption, setPropertyValueOps, swapChoices } from "./componentOps";
-import { propertyValue } from "../store/components";
+import { useScene } from "@/store/store";
+import { effectiveComponentId } from "@/store/components";
+import { cls, Section } from "@/ui/ds";
+import { chooseVariantOps, chosenOption, setPropertyValueOps, swapChoices } from "@/ui/componentOps";
+import { propertyValue } from "@/store/components";
 
 // THE VARIANT AND PROPERTY CONTROLS of a selected component INSTANCE: one select per
 // axis of the component's set (switching variant swaps the master the instance shows)

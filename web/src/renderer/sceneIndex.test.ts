@@ -1,14 +1,14 @@
-import { nodesFromEntries } from "../store/nodeMap";
+import { nodesFromEntries } from "@/store/nodeMap";
 import { describe, it, expect } from "vitest";
 import { create } from "@bufbuild/protobuf";
-import { OpSchema, NodeSchema } from "../gen/opendesigner/v1/opendesigner_pb";
-import type { Op } from "../gen/opendesigner/v1/opendesigner_pb";
-import { applyOp } from "../store/applyOp";
-import { recordDelta } from "../store/sceneDelta";
-import { emptyScene } from "../store/types";
-import type { NodeLite, SceneState } from "../store/types";
-import { makeCreateNodeOp, makeDeleteOp, makeReparentOp, makeSetPropsOp } from "../tools/ops";
-import { buildIndex, sceneIndexOf } from "./sceneIndex";
+import { OpSchema, NodeSchema } from "@/gen/opendesigner/v1/opendesigner_pb";
+import type { Op } from "@/gen/opendesigner/v1/opendesigner_pb";
+import { applyOp } from "@/store/applyOp";
+import { recordDelta } from "@/store/sceneDelta";
+import { emptyScene } from "@/store/types";
+import type { NodeLite, SceneState } from "@/store/types";
+import { makeCreateNodeOp, makeDeleteOp, makeReparentOp, makeSetPropsOp } from "@/tools/ops";
+import { buildIndex, sceneIndexOf } from "@/renderer/sceneIndex";
 
 function node(id: string, parentId: string, key: string, over: Partial<NodeLite> = {}): NodeLite {
   return {

@@ -1,10 +1,10 @@
-import type { Op } from "../gen/opendesigner/v1/opendesigner_pb";
-import { makeSetPropsOp } from "../tools/ops";
-import { toPbFills, toPbStrokes } from "../store/types";
-import type { FillLite, GradientLite, MeshLite, NodeLite } from "../store/types";
-import { defaultMesh, meshAverage, resizeMesh } from "../renderer/mesh";
-import { MAX_MESH_SIDE, MIN_MESH_SIDE } from "../store/paints";
-import type { RgbLite } from "./fields/ColorField";
+import type { Op } from "@/gen/opendesigner/v1/opendesigner_pb";
+import { makeSetPropsOp } from "@/tools/ops";
+import { toPbFills, toPbStrokes } from "@/store/types";
+import type { FillLite, GradientLite, MeshLite, NodeLite } from "@/store/types";
+import { defaultMesh, meshAverage, resizeMesh } from "@/renderer/mesh";
+import { MAX_MESH_SIDE, MIN_MESH_SIDE } from "@/store/paints";
+import type { RgbLite } from "@/ui/fields/ColorField";
 
 // The gradient panel's ops. Like fillOps in the panel, they touch ONLY the
 // node's first tint: a node with several fills does not lose the others.

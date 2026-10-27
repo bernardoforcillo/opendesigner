@@ -1,6 +1,6 @@
-import type { Op } from "../gen/opendesigner/v1/opendesigner_pb";
-import type { LayerLite, SceneState } from "../store/types";
-import { makeDeleteLayerOp, makeSetLayerOp, makeSetPropsOp, uuid } from "./ops";
+import type { Op } from "@/gen/opendesigner/v1/opendesigner_pb";
+import type { LayerLite, SceneState } from "@/store/types";
+import { makeDeleteLayerOp, makeSetLayerOp, makeSetPropsOp, uuid } from "@/tools/ops";
 
 // LAYERS as ops (store/graphics.ts). Layers span all pages: put nodes on one, then hide or lock it for everything at once.
 

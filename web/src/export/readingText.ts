@@ -1,6 +1,6 @@
-import { flattenStyle } from "../store/richText";
-import { textNodesInReadingOrder } from "../store/textTokens";
-import type { SceneState } from "../store/types";
+import { flattenStyle } from "@/store/richText";
+import { textNodesInReadingOrder } from "@/store/textTokens";
+import type { SceneState } from "@/store/types";
 
 // The TEXT of a page in reading order, as structure: what a screen reader gets in an accessible EPUB (fixed layout) next to the page's
 // picture. Pass the RESOLVED scene (cross-references and page numbers already written into the text).

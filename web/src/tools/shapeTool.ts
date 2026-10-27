@@ -1,10 +1,10 @@
 import { create, type MessageInitShape } from "@bufbuild/protobuf";
-import { NodeSchema } from "../gen/opendesigner/v1/opendesigner_pb";
-import { normalizeRect } from "../canvas/geometry";
-import { nextOrderKey } from "../store/orderKey";
-import { useScene } from "../store/store";
-import { makeCreateNodeOp, uuid } from "./ops";
-import type { Tool, ToolContext, ToolId } from "./types";
+import { NodeSchema } from "@/gen/opendesigner/v1/opendesigner_pb";
+import { normalizeRect } from "@/canvas/geometry";
+import { nextOrderKey } from "@/store/orderKey";
+import { useScene } from "@/store/store";
+import { makeCreateNodeOp, uuid } from "@/tools/ops";
+import type { Tool, ToolContext, ToolId } from "@/tools/types";
 
 // Under this threshold (SCREEN px, hence independent of zoom) a drag is
 // considered a click: without a threshold, at high zoom a half-pixel jitter

@@ -1,12 +1,12 @@
 import "@testing-library/jest-dom/vitest";
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { act, render, screen, fireEvent, cleanup, within } from "@testing-library/react";
-import { PrototypePlayer } from "./PrototypePlayer";
-import { useScene } from "../store/store";
-import { useFlowUi } from "../store/flowUi";
-import { baseScene, flowOf, transition, withFlows } from "../flow/testSupport";
-import type { SceneState } from "../store/types";
-import * as renderer from "../renderer/canvasRenderer";
+import { PrototypePlayer } from "@/ui/PrototypePlayer";
+import { useScene } from "@/store/store";
+import { useFlowUi } from "@/store/flowUi";
+import { baseScene, flowOf, transition, withFlows } from "@/flow/testSupport";
+import type { SceneState } from "@/store/types";
+import * as renderer from "@/renderer/canvasRenderer";
 
 // jsdom has no 2D canvas: the real drawing (drawScene) is spied on, and what is
 // tested here is the prototype's VIEW -- what is clickable, where it leads, what is

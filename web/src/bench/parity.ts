@@ -1,7 +1,7 @@
-import { drawScene } from "../renderer/canvasRenderer";
-import { CanvasKitRenderer } from "../renderer/ck/ckRenderer";
-import { FontBook, loadCanvasKit } from "../renderer/ck/canvaskit";
-import { makeGallery } from "./gallery";
+import { drawScene } from "@/renderer/canvasRenderer";
+import { CanvasKitRenderer } from "@/renderer/ck/ckRenderer";
+import { FontBook, loadCanvasKit } from "@/renderer/ck/canvaskit";
+import { makeGallery } from "@/bench/gallery";
 
 const images = {
   get: (_doc: string, hash: string) =>

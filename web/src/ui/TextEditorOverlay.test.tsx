@@ -5,20 +5,20 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { render, screen, fireEvent, cleanup, act } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { create } from "@bufbuild/protobuf";
-import { OpSchema } from "../gen/opendesigner/v1/opendesigner_pb";
-import type { Op } from "../gen/opendesigner/v1/opendesigner_pb";
-import { TextEditorOverlay } from "./TextEditorOverlay";
-import { App } from "./App";
-import { useScene } from "../store/store";
-import { emptyScene } from "../store/types";
-import type { NodeLite } from "../store/types";
+import { OpSchema } from "@/gen/opendesigner/v1/opendesigner_pb";
+import type { Op } from "@/gen/opendesigner/v1/opendesigner_pb";
+import { TextEditorOverlay } from "@/ui/TextEditorOverlay";
+import { App } from "@/ui/App";
+import { useScene } from "@/store/store";
+import { emptyScene } from "@/store/types";
+import type { NodeLite } from "@/store/types";
 
 // App talks to the network at bootstrap (createDocument + SyncClient): it is only needed
 // in the undo/redo guard test, and there an inert transport is enough.
-vi.mock("../rpc/client", () => ({
+vi.mock("@/rpc/client", () => ({
   docClient: { createDocument: vi.fn(async () => ({ id: "doc-1" })) },
 }));
-vi.mock("../rpc/syncClient", () => ({
+vi.mock("@/rpc/syncClient", () => ({
   SyncClient: class {
     async start() {}
     stop() {}

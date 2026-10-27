@@ -1,4 +1,4 @@
-import type { EffectLite, NodeLite } from "../store/types";
+import type { EffectLite, NodeLite } from "@/store/types";
 
 // THE TYPE-AND-EFFECTS EFFECTS (docs/effects.md): progressive blur, noise, texture and
 // glass. Pure helpers shared by the 2D canvas, the CanvasKit renderer and the SVG export:

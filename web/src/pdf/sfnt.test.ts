@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { coversText, sfntKind, unicodeCmap } from "./sfnt";
-import { loadFixtureFonts } from "./testFonts";
+import { coversText, sfntKind, unicodeCmap } from "@/pdf/sfnt";
+import { loadFixtureFonts } from "@/pdf/testFonts";
 
 describe("sfnt", () => {
   it("recognises sfnt files by magic bytes only", () => {

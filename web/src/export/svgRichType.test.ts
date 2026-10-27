@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { nodesToSvg } from "./svg";
-import type { NodeLite, TextStyleLite } from "../store/types";
+import { nodesToSvg } from "@/export/svg";
+import type { NodeLite, TextStyleLite } from "@/store/types";
 
 const FULL = { x: 0, y: 0, width: 400, height: 200 };
 // 10 units per character at size 10, scaled by the size.

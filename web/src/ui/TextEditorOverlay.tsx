@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
-import { useScene } from "../store/store";
-import { worldToScreen } from "../canvas/camera";
-import { applyTransform, worldTransformOf } from "../canvas/transform";
-import { makeSetTextOp, trimEmpty } from "../tools/ops";
-import { cssColor } from "../renderer/canvasRenderer";
+import { useScene } from "@/store/store";
+import { worldToScreen } from "@/canvas/camera";
+import { applyTransform, worldTransformOf } from "@/canvas/transform";
+import { makeSetTextOp, trimEmpty } from "@/tools/ops";
+import { cssColor } from "@/renderer/canvasRenderer";
 import {
   DEFAULT_FONT_FAMILY,
   DEFAULT_FONT_WEIGHT,
@@ -11,11 +11,11 @@ import {
   cssVariationSettings,
   fontSizeOf,
   lineHeightOf,
-} from "../renderer/text";
-import type { NodeLite, TextRunLite } from "../store/types";
-import { applyParagraphRange, applyRun, paragraphsTouched, reconcileRich } from "../store/richText";
-import { isThreaded } from "../store/threads";
-import { cls } from "./ds";
+} from "@/renderer/text";
+import type { NodeLite, TextRunLite } from "@/store/types";
+import { applyParagraphRange, applyRun, paragraphsTouched, reconcileRich } from "@/store/richText";
+import { isThreaded } from "@/store/threads";
+import { cls } from "@/ui/ds";
 
 // TEXT EDITING — a DOM <textarea> overlaid on the node.
 //

@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { nodesToSvg } from "./svg";
-import type { NodeLite, TextStyleLite } from "../store/types";
+import { nodesToSvg } from "@/export/svg";
+import type { NodeLite, TextStyleLite } from "@/store/types";
 
 // FAKE and deterministic measure: 10 units per character. It is the only way to
 // test the generator as a pure function -- measuring glyphs for real

@@ -1,9 +1,9 @@
-import { useScene } from "../store/store";
-import type { Op } from "../gen/opendesigner/v1/opendesigner_pb";
-import type { ArrowHeadLite } from "../store/types";
-import { Section } from "./ds";
-import { NumberField } from "./fields/NumberField";
-import { arcOps, arrowheadOps, cornerRadiiOps, cornerSmoothingOps, polygonSidesOps, starOps, strokeSidesOps } from "./shapeOps";
+import { useScene } from "@/store/store";
+import type { Op } from "@/gen/opendesigner/v1/opendesigner_pb";
+import type { ArrowHeadLite } from "@/store/types";
+import { Section } from "@/ui/ds";
+import { NumberField } from "@/ui/fields/NumberField";
+import { arcOps, arrowheadOps, cornerRadiiOps, cornerSmoothingOps, polygonSidesOps, starOps, strokeSidesOps } from "@/ui/shapeOps";
 
 const lookup = (id: string) => useScene.getState().scene?.nodes.at(id);
 type Run = (build: (ids: readonly string[]) => Op[]) => void;

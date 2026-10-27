@@ -1,6 +1,6 @@
-import { type Transform, compose, localTransformOf, translation } from "../canvas/transform";
-import { effectiveComponentId, effectiveOverrides } from "./components";
-import type { InstanceOverrideLite, NodeLite, SceneState } from "./types";
+import { type Transform, compose, localTransformOf, translation } from "@/canvas/transform";
+import { effectiveComponentId, effectiveOverrides } from "@/store/components";
+import type { InstanceOverrideLite, NodeLite, SceneState } from "@/store/types";
 
 // INSTANCES: the VIRTUAL subtree of a component, and how to descend into it.
 //

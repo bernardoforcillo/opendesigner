@@ -1,20 +1,20 @@
-import type { EffectLite, FillLite, GradientLite, NodeLite } from "../store/types";
-import { gradientBitmap } from "../renderer/gradientBitmap";
-import { commandsToD, outlineCommands } from "../renderer/shapeGeometry";
-import type { PathCmd } from "../renderer/shapeGeometry";
-import { strokeHeads } from "../renderer/arrowheads";
-import { sideBandRects } from "../renderer/strokeSides";
-import { variableStrokeCommands } from "../vector/widthProfile";
-import { brushStrokeCommands } from "../vector/brush";
-import type { Bounds } from "../canvas/geometry";
-import { firstBlur, firstShadow, resolvedFill } from "../renderer/canvasRenderer";
-import { cssFeatureSettings, cssVariationSettings, fontFamilyOf, fontFeaturesOf, fontSizeOf, fontWeightOf, hscaleOf, paragraphDecorations, piecesOfSegment, placeTextLines } from "../renderer/text";
-import type { MeasureText } from "../renderer/text";
-import { hasRealStroke, vectorStyleOf } from "../renderer/vectorStyle";
-import { subPathsToD } from "../svg/pathData";
-import { meshBitmap } from "../renderer/mesh";
-import { encodePng, pngDataUri } from "./rawPng";
-import { FX_TILE, overlayEffects, overlayTile, progressiveBlur, tileUnit, withExpandedGlass } from "../renderer/effectsFx";
+import type { EffectLite, FillLite, GradientLite, NodeLite } from "@/store/types";
+import { gradientBitmap } from "@/renderer/gradientBitmap";
+import { commandsToD, outlineCommands } from "@/renderer/shapeGeometry";
+import type { PathCmd } from "@/renderer/shapeGeometry";
+import { strokeHeads } from "@/renderer/arrowheads";
+import { sideBandRects } from "@/renderer/strokeSides";
+import { variableStrokeCommands } from "@/vector/widthProfile";
+import { brushStrokeCommands } from "@/vector/brush";
+import type { Bounds } from "@/canvas/geometry";
+import { firstBlur, firstShadow, resolvedFill } from "@/renderer/canvasRenderer";
+import { cssFeatureSettings, cssVariationSettings, fontFamilyOf, fontFeaturesOf, fontSizeOf, fontWeightOf, hscaleOf, paragraphDecorations, piecesOfSegment, placeTextLines } from "@/renderer/text";
+import type { MeasureText } from "@/renderer/text";
+import { hasRealStroke, vectorStyleOf } from "@/renderer/vectorStyle";
+import { subPathsToD } from "@/svg/pathData";
+import { meshBitmap } from "@/renderer/mesh";
+import { encodePng, pngDataUri } from "@/export/rawPng";
+import { FX_TILE, overlayEffects, overlayTile, progressiveBlur, tileUnit, withExpandedGlass } from "@/renderer/effectsFx";
 
 // SVG EXPORT — markup from the NODES.
 //

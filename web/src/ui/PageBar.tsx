@@ -1,14 +1,14 @@
 import { Fragment, useEffect, useRef, useState } from "react";
 import { Dialog, DialogTrigger, Popover } from "react-aria-components";
-import { Button, Icon, IconButton, cls } from "./ds";
-import { useScene } from "../store/store";
-import { makeCreatePageWithMasterOp, makeDeletePageOp, makeRenamePageOp, makeUpdatePageOp, uuid } from "../tools/ops";
-import { masterFieldsValid, regularPages } from "../store/masters";
-import { PageSetupDialog } from "./PageSetupDialog";
-import { setupOf } from "../store/docSettings";
-import { detachMasterOps } from "../tools/pageOps";
-import type { PageLite } from "../store/types";
-import type { Op } from "../gen/opendesigner/v1/opendesigner_pb";
+import { Button, Icon, IconButton, cls } from "@/ui/ds";
+import { useScene } from "@/store/store";
+import { makeCreatePageWithMasterOp, makeDeletePageOp, makeRenamePageOp, makeUpdatePageOp, uuid } from "@/tools/ops";
+import { masterFieldsValid, regularPages } from "@/store/masters";
+import { PageSetupDialog } from "@/ui/PageSetupDialog";
+import { setupOf } from "@/store/docSettings";
+import { detachMasterOps } from "@/tools/pageOps";
+import type { PageLite } from "@/store/types";
+import type { Op } from "@/gen/opendesigner/v1/opendesigner_pb";
 
 // PAGE SELECTOR (nesting track, client part). The canvas shows ONE
 // page at a time (canvasRenderer.ts::rootsOf reads currentPageId); this
@@ -117,6 +117,8 @@ export function PageBar({ compact = false }: { compact?: boolean } = {}) {
   // The list popover is CONTROLLED: it must be closed by hand after choosing a
   // page or starting a rename (the rename lives in the bar).
   const [open, setOpen] = useState(false);
+  const [setupOpen, setSetupOpen] = useState(false);
+  const facing = useScene((st) => st.scene?.settings?.facingPages === true);
 
   // Without a document there is no page to show: the bar disappears
   // entirely instead of drawing itself empty (same fallback as LayersPanel with a
@@ -126,9 +128,7 @@ export function PageBar({ compact = false }: { compact?: boolean } = {}) {
   const current = pages.find((p) => p.id === currentPageId) ?? pages[0];
   const pageLabel = (name: string) => (name.trim() !== "" ? name : "Unnamed page");
 
-  const [setupOpen, setSetupOpen] = useState(false);
   const masters = pages.filter((p) => p.isMaster);
-  const facing = useScene((st) => st.scene?.settings?.facingPages === true);
   const normal = pages.filter((p) => !p.isMaster);
 
   function createPage() {

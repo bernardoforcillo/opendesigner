@@ -1,20 +1,20 @@
 import { memo, useEffect, useMemo, useRef, useState } from "react";
 import { Button as RacButton, Radio, RadioGroup, ToggleButton } from "react-aria-components";
-import { useScene } from "../../store/store";
-import { useFlowAnalysis } from "../../flow/analysis";
-import { screenOf } from "../../flow/screens";
+import { useScene } from "@/store/store";
+import { useFlowAnalysis } from "@/flow/analysis";
+import { screenOf } from "@/flow/screens";
 import {
   fileForNode, groupFiles, isBinaryPath, nodeIdOfFile, refreshCode, textOf, useCodeExport, useCodegen,
   type CodeFile, type CodeTarget,
-} from "../../dev/codegen";
-import { highlight, langOf, type TokenKind } from "../../dev/highlight";
-import { PREVIEW_MSG, previewDoc, resolvePreviewHref } from "../../dev/preview";
-import { Badge, Button, EmptyState, Icon } from "../ds";
-import { SEGMENT, SEGMENTED_TRACK } from "../ds/flow-parts";
-import { DevIcon } from "../ds/dev-parts";
-import { CopyButton } from "./CopyButton";
-import { PipelineStepper } from "./PipelineStepper";
-import { selectScreen, useReadiness } from "./useReadiness";
+} from "@/dev/codegen";
+import { highlight, langOf, type TokenKind } from "@/dev/highlight";
+import { PREVIEW_MSG, previewDoc, resolvePreviewHref } from "@/dev/preview";
+import { Badge, Button, EmptyState, Icon } from "@/ui/ds";
+import { SEGMENT, SEGMENTED_TRACK } from "@/ui/ds/flow-parts";
+import { DevIcon } from "@/ui/ds/dev-parts";
+import { CopyButton } from "@/ui/dev/CopyButton";
+import { PipelineStepper } from "@/ui/dev/PipelineStepper";
+import { selectScreen, useReadiness } from "@/ui/dev/useReadiness";
 
 // THE CODE VIEW (center of Develop): tree of generated files, read-only
 // code with highlighting, and -- on request -- a preview of the same

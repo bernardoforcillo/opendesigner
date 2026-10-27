@@ -1,4 +1,4 @@
-import type { NumberStyle, PageLite } from "./types";
+import type { NumberStyle, PageLite } from "@/store/types";
 
 // PAGE NUMBERS. The regular pages (not masters) are numbered in document order, 1, 2, 3...; a page that
 // starts a SECTION restarts the count at `numberStart` (default 1) in `numberStyle` (arabic when absent,

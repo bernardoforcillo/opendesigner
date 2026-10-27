@@ -1,9 +1,9 @@
-import { worldTransformOf } from "../canvas/transform";
-import type { Op } from "../gen/opendesigner/v1/opendesigner_pb";
-import { makeSetTextOp } from "../tools/ops";
-import { nextOf } from "./threads";
-import { reconcileRich } from "./richText";
-import type { NodeLite, SceneState, TextLite } from "./types";
+import { worldTransformOf } from "@/canvas/transform";
+import type { Op } from "@/gen/opendesigner/v1/opendesigner_pb";
+import { makeSetTextOp } from "@/tools/ops";
+import { nextOf } from "@/store/threads";
+import { reconcileRich } from "@/store/richText";
+import type { NodeLite, SceneState, TextLite } from "@/store/types";
 
 // FIND AND CHANGE over the text of the whole document: every text node of every page (master pages too),
 // in reading order. Plain text, whole word and regular expressions, with or without case. A change is made

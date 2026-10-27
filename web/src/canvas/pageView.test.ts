@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { PageCameras, fitPage } from "./pageView";
-import { nodesOf } from "../store/nodeMap";
-import { emptyScene } from "../store/types";
-import type { NodeLite } from "../store/types";
+import { PageCameras, fitPage } from "@/canvas/pageView";
+import { nodesOf } from "@/store/nodeMap";
+import { emptyScene } from "@/store/types";
+import type { NodeLite } from "@/store/types";
 
 const rect = (id: string, parentId: string, x: number, y: number, w: number, h: number): NodeLite => ({
   id, parentId, orderKey: id, name: id, visible: true, opacity: 1, x, y, width: w, height: h, rotation: 0,

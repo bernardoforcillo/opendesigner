@@ -1,11 +1,11 @@
-import { useScene } from "../store/store";
-import { nextOrderKey } from "../store/orderKey";
-import { META_NEXT, chainsOf, headOf, isThreaded, nextOf, threadOps, unlinkOps } from "../store/threads";
-import { toPbNode, type NodeLite } from "../store/types";
-import { withMeta } from "../flow/meta";
-import { makeCreateNodeOp, makeSetPropsOp, uuid } from "../tools/ops";
-import { resolveScene } from "../store/variables";
-import { Button } from "./ds";
+import { useScene } from "@/store/store";
+import { nextOrderKey } from "@/store/orderKey";
+import { META_NEXT, chainsOf, headOf, isThreaded, nextOf, threadOps, unlinkOps } from "@/store/threads";
+import { toPbNode, type NodeLite } from "@/store/types";
+import { withMeta } from "@/flow/meta";
+import { makeCreateNodeOp, makeSetPropsOp, uuid } from "@/tools/ops";
+import { resolveScene } from "@/store/variables";
+import { Button } from "@/ui/ds";
 
 // THREADED TEXT FRAMES in the properties panel's Text section (see store/threads.ts).
 //

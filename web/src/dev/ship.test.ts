@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
-import { AGENT_TOOLS, projectZip, shipCommands, shipScript, shq, zipName } from "./ship";
-import { PREVIEW_MSG, previewDoc, resolvePreviewHref } from "./preview";
-import type { CodeFile } from "./codegen";
+import { AGENT_TOOLS, projectZip, shipCommands, shipScript, shq, zipName } from "@/dev/ship";
+import { PREVIEW_MSG, previewDoc, resolvePreviewHref } from "@/dev/preview";
+import type { CodeFile } from "@/dev/codegen";
 
 const enc = (s: string) => new TextEncoder().encode(s);
 const file = (path: string, text: string): CodeFile => ({ path, bytes: enc(text) });

@@ -1,12 +1,12 @@
-import type { Op } from "../gen/opendesigner/v1/opendesigner_pb";
-import type { Bounds } from "../canvas/geometry";
-import { contentWorldBounds } from "../store/groups";
-import { hasLayout, participates } from "../store/layout";
-import { orderKeyBetween } from "../store/orderKey";
-import { childrenOf, isAncestorOf } from "../store/tree";
-import type { NodeLite, SceneState } from "../store/types";
-import { applyTransform, invertTransform, worldTransformOf } from "../canvas/transform";
-import { makeReparentOp, makeSetPropsOp } from "./ops";
+import type { Op } from "@/gen/opendesigner/v1/opendesigner_pb";
+import type { Bounds } from "@/canvas/geometry";
+import { contentWorldBounds } from "@/store/groups";
+import { hasLayout, participates } from "@/store/layout";
+import { orderKeyBetween } from "@/store/orderKey";
+import { childrenOf, isAncestorOf } from "@/store/tree";
+import type { NodeLite, SceneState } from "@/store/types";
+import { applyTransform, invertTransform, worldTransformOf } from "@/canvas/transform";
+import { makeReparentOp, makeSetPropsOp } from "@/tools/ops";
 
 // DRAG REORDERING in frames with auto layout.
 //

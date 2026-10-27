@@ -1,11 +1,11 @@
-import { nodesOf } from "../store/nodeMap";
+import { nodesOf } from "@/store/nodeMap";
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import { createEllipseTool, DEFAULT_ELLIPSE_HEIGHT, DEFAULT_ELLIPSE_WIDTH } from "./ellipseTool";
-import type { ToolContext } from "./types";
-import type { Op } from "../gen/opendesigner/v1/opendesigner_pb";
-import { useScene } from "../store/store";
-import { emptyScene } from "../store/types";
-import type { NodeLite } from "../store/types";
+import { createEllipseTool, DEFAULT_ELLIPSE_HEIGHT, DEFAULT_ELLIPSE_WIDTH } from "@/tools/ellipseTool";
+import type { ToolContext } from "@/tools/types";
+import type { Op } from "@/gen/opendesigner/v1/opendesigner_pb";
+import { useScene } from "@/store/store";
+import { emptyScene } from "@/store/types";
+import type { NodeLite } from "@/store/types";
 
 function node(id: string, orderKey: string): NodeLite {
   return { id, parentId: "page1", orderKey, name: id, visible: true, opacity: 1,

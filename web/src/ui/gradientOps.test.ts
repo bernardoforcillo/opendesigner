@@ -1,11 +1,11 @@
-import { nodesOf } from "../store/nodeMap";
+import { nodesOf } from "@/store/nodeMap";
 import { describe, it, expect } from "vitest";
-import { applyOp } from "../store/applyOp";
-import { emptyScene } from "../store/types";
-import type { NodeLite, SceneState } from "../store/types";
+import { applyOp } from "@/store/applyOp";
+import { emptyScene } from "@/store/types";
+import type { NodeLite, SceneState } from "@/store/types";
 import {
   fillKindOf, fillKindOps, gradientAngleOf, gradientAngleOps, gradientStopOps, imagePaintOps, addGradientStopOps, removeGradientStopOps, gradientStopPositionOps, meshPointOps, meshSizeOps,
-} from "./gradientOps";
+} from "@/ui/gradientOps";
 
 function sceneWith(over: Partial<NodeLite> = {}): SceneState {
   const n: NodeLite = {

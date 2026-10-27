@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import { useScene } from "../store/store";
-import { emptyScene, type NodeLite } from "../store/types";
-import { STACK_OFFSET, attachImageDrop, dropImages, type ImageDropDeps } from "./imageDrop";
+import { useScene } from "@/store/store";
+import { emptyScene, type NodeLite } from "@/store/types";
+import { STACK_OFFSET, attachImageDrop, dropImages, type ImageDropDeps } from "@/tools/imageDrop";
 
 // Dropping an SVG file onto the canvas: editable nodes, not a raster image.
 // (The rest of the drop -- PNG/JPEG/GIF/WebP -- is in imageDrop.test.ts.)

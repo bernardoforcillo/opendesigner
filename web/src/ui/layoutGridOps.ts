@@ -1,8 +1,8 @@
-import type { Op } from "../gen/opendesigner/v1/opendesigner_pb";
-import { makeSetPropsOp } from "../tools/ops";
-import { toPbLayoutGrids } from "../store/types";
-import type { LayoutGridLite, NodeLite } from "../store/types";
-import type { NodeLookup } from "./gradientOps";
+import type { Op } from "@/gen/opendesigner/v1/opendesigner_pb";
+import { makeSetPropsOp } from "@/tools/ops";
+import { toPbLayoutGrids } from "@/store/types";
+import type { LayoutGridLite, NodeLite } from "@/store/types";
+import type { NodeLookup } from "@/ui/gradientOps";
 
 // The ops of the layout grid panel. The mask path replaces the whole list, so every op
 // rebuilds it from the frame's current one; only frames take grids.

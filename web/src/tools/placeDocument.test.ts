@@ -1,12 +1,12 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import type { Op } from "../gen/opendesigner/v1/opendesigner_pb";
-import { applyOp } from "../store/applyOp";
-import { emptyScene } from "../store/types";
-import { headingsOf } from "../store/textTokens";
-import { parseDocx, parseRtf, parseXlsx, placeTableOps, placeTextOps, PlaceError } from "./placeDocument";
-import { readTable } from "./tableOps";
+import type { Op } from "@/gen/opendesigner/v1/opendesigner_pb";
+import { applyOp } from "@/store/applyOp";
+import { emptyScene } from "@/store/types";
+import { headingsOf } from "@/store/textTokens";
+import { parseDocx, parseRtf, parseXlsx, placeTableOps, placeTextOps, PlaceError } from "@/tools/placeDocument";
+import { readTable } from "@/tools/tableOps";
 
 const fx = (n: string) => new Uint8Array(readFileSync(join(process.cwd(), "src/tools/__fixtures__", n)));
 

@@ -1,7 +1,7 @@
-import type { ComponentProperty as PbProperty, ComponentSet as PbSet, OptionRename, SetComponentDef } from "../gen/opendesigner/v1/opendesigner_pb";
-import { ComponentPropertyType } from "../gen/opendesigner/v1/opendesigner_pb";
-import type { ComponentLite, ComponentPropertyLite, ComponentSetLite, InstanceLite, InstanceOverrideLite, NodeLite, SceneState } from "./types";
-import type { NodeMap } from "./nodeMap";
+import type { ComponentProperty as PbProperty, ComponentSet as PbSet, OptionRename, SetComponentDef } from "@/gen/opendesigner/v1/opendesigner_pb";
+import { ComponentPropertyType } from "@/gen/opendesigner/v1/opendesigner_pb";
+import type { ComponentLite, ComponentPropertyLite, ComponentSetLite, InstanceLite, InstanceOverrideLite, NodeLite, SceneState } from "@/store/types";
+import type { NodeMap } from "@/store/nodeMap";
 
 // COMPONENT VARIANTS AND PROPERTIES -- the TypeScript twin of
 // internal/core/components.go. Go is the authority; every rule here repeats one

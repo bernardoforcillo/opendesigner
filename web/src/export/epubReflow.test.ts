@@ -1,8 +1,8 @@
 import { describe, it, expect } from "vitest";
 import { inflateRawSync } from "node:zlib";
-import { buildReflowEpub } from "./epubReflow";
-import { emptyScene } from "../store/types";
-import type { NodeLite, SceneState } from "../store/types";
+import { buildReflowEpub } from "@/export/epubReflow";
+import { emptyScene } from "@/store/types";
+import type { NodeLite, SceneState } from "@/store/types";
 
 const style = { fontFamily: "", fontSize: 16, fontWeight: "", lineHeight: 0, align: "left" as const };
 const text = (id: string, y: number, content: string, over: Partial<NodeLite> = {}, page = "page1"): NodeLite => ({

@@ -1,13 +1,13 @@
 import { describe, expect, it } from "vitest";
 import { create } from "@bufbuild/protobuf";
-import { OpSchema } from "../gen/opendesigner/v1/opendesigner_pb";
-import type { Op } from "../gen/opendesigner/v1/opendesigner_pb";
-import { applyOp } from "./applyOp";
-import { invertOp } from "./history";
-import { cmykField, deriveLayers, objectStyleChain, printedRgb, resolveObjectStyleNode, styleFromNode, swatchCmyk, tintCmyk, tintRgb } from "./graphics";
-import { resolveScene } from "./variables";
-import { hitTest } from "../renderer/canvasRenderer";
-import { emptyScene, type NodeLite, type SceneState } from "./types";
+import { OpSchema } from "@/gen/opendesigner/v1/opendesigner_pb";
+import type { Op } from "@/gen/opendesigner/v1/opendesigner_pb";
+import { applyOp } from "@/store/applyOp";
+import { invertOp } from "@/store/history";
+import { cmykField, deriveLayers, objectStyleChain, printedRgb, resolveObjectStyleNode, styleFromNode, swatchCmyk, tintCmyk, tintRgb } from "@/store/graphics";
+import { resolveScene } from "@/store/variables";
+import { hitTest } from "@/renderer/canvasRenderer";
+import { emptyScene, type NodeLite, type SceneState } from "@/store/types";
 
 const op = (kind: Op["kind"]): Op => create(OpSchema, { opId: "o", docId: "d", kind });
 const rect = (id: string, over: Partial<NodeLite> = {}): NodeLite => ({

@@ -3,14 +3,14 @@ import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { create } from "@bufbuild/protobuf";
 import { Code, ConnectError } from "@connectrpc/connect";
-import { NodeSchema, RenderDiagramResponseSchema } from "../gen/opendesigner/v1/opendesigner_pb";
-import { useScene } from "../store/store";
-import { emptyScene } from "../store/types";
+import { NodeSchema, RenderDiagramResponseSchema } from "@/gen/opendesigner/v1/opendesigner_pb";
+import { useScene } from "@/store/store";
+import { emptyScene } from "@/store/types";
 
 const renderDiagramRpc = vi.fn();
-vi.mock("../rpc/client", () => ({ docClient: { renderDiagram: (...a: unknown[]) => renderDiagramRpc(...a) } }));
+vi.mock("@/rpc/client", () => ({ docClient: { renderDiagram: (...a: unknown[]) => renderDiagramRpc(...a) } }));
 
-import { DiagramDialog } from "./DiagramDialog";
+import { DiagramDialog } from "@/ui/DiagramDialog";
 
 const reply = (source: string) => {
   const root = create(NodeSchema, {

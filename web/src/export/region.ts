@@ -1,9 +1,9 @@
-import { NodeMap } from "../store/nodeMap";
-import type { NodeLite, SceneState } from "../store/types";
-import { type Bounds, boundsOfNode, unionBounds } from "../canvas/geometry";
-import { sortedVisible } from "../renderer/canvasRenderer";
-import { isPaintable } from "../renderer/shapes";
-import { textPaintBounds, type MeasureText } from "../renderer/text";
+import { NodeMap } from "@/store/nodeMap";
+import type { NodeLite, SceneState } from "@/store/types";
+import { type Bounds, boundsOfNode, unionBounds } from "@/canvas/geometry";
+import { sortedVisible } from "@/renderer/canvasRenderer";
+import { isPaintable } from "@/renderer/shapes";
+import { textPaintBounds, type MeasureText } from "@/renderer/text";
 
 // WHAT IS EXPORTED, AND WHERE IT SITS.
 //

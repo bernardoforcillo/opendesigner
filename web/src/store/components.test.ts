@@ -1,12 +1,12 @@
 import { describe, it, expect } from "vitest";
 import { create, type MessageInitShape } from "@bufbuild/protobuf";
-import { ComponentPropertyType, NodeSchema, OpSchema } from "../gen/opendesigner/v1/opendesigner_pb";
-import type { Op } from "../gen/opendesigner/v1/opendesigner_pb";
-import { applyOp } from "./applyOp";
-import { effectiveComponentId, effectiveOverrides } from "./components";
-import { invertOp } from "./history";
-import { instanceOverrideMap, resolveInstance } from "./instances";
-import { emptyScene, type SceneState } from "./types";
+import { ComponentPropertyType, NodeSchema, OpSchema } from "@/gen/opendesigner/v1/opendesigner_pb";
+import type { Op } from "@/gen/opendesigner/v1/opendesigner_pb";
+import { applyOp } from "@/store/applyOp";
+import { effectiveComponentId, effectiveOverrides } from "@/store/components";
+import { invertOp } from "@/store/history";
+import { instanceOverrideMap, resolveInstance } from "@/store/instances";
+import { emptyScene, type SceneState } from "@/store/types";
 
 type Kind = MessageInitShape<typeof OpSchema>["kind"];
 const op = (kind: Kind): Op => create(OpSchema, { opId: crypto.randomUUID(), docId: "d", kind });

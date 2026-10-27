@@ -6,7 +6,7 @@ import {
   retryDelay,
   RETRY_BASE_MS,
   RETRY_MAX_MS,
-} from "./imageCache";
+} from "@/renderer/imageCache";
 
 const HASH = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
 const OTHER = "fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210";

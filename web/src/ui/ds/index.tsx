@@ -1,9 +1,9 @@
 import { useState, type ReactNode } from "react";
 import { Button as RacButton, Tooltip, TooltipTrigger, type ButtonProps } from "react-aria-components";
-import { Icon, type IconName } from "./Icon";
-import { useT } from "../../i18n";
+import { Icon, type IconName } from "@/ui/ds/Icon";
+import { useT } from "@/i18n";
 
-export { Icon, type IconName } from "./Icon";
+export { Icon, type IconName } from "@/ui/ds/Icon";
 
 // DESIGN SYSTEM PRIMITIVES.
 //

@@ -1,4 +1,4 @@
-import type { BrushLite, BrushTipLite, StrokeLite } from "../store/types";
+import type { BrushLite, BrushTipLite, StrokeLite } from "@/store/types";
 
 // The DATA half of brushes (docs/vector.md): the built-in presets and how far a brush reaches. Free of
 // geometry, so canvas/geometry.ts can import it without a cycle. The sampling and drawing live in

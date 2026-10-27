@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { screenToWorld, worldToScreen, zoomAt, panBy, MIN_ZOOM, MAX_ZOOM } from "./camera";
+import { screenToWorld, worldToScreen, zoomAt, panBy, MIN_ZOOM, MAX_ZOOM } from "@/canvas/camera";
 
 const cam = { x: 100, y: 50, zoom: 2 };
 

@@ -1,8 +1,8 @@
-import { pinAt, pinsOf, placement } from "../comments/pins";
-import { hitTest } from "../renderer/canvasRenderer";
-import { useCommentsUi } from "../store/commentsUi";
-import { useScene } from "../store/store";
-import type { Tool } from "./types";
+import { pinAt, pinsOf, placement } from "@/comments/pins";
+import { hitTest } from "@/renderer/canvasRenderer";
+import { useCommentsUi } from "@/store/commentsUi";
+import { useScene } from "@/store/store";
+import type { Tool } from "@/tools/types";
 
 // COMMENT TOOL: a click on a pin opens its thread; a click anywhere else drops a new pin
 // (attached to the node under the pointer, or free on the page) and asks for its text in

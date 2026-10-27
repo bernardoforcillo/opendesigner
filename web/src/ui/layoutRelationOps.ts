@@ -1,7 +1,7 @@
-import type { Op } from "../gen/opendesigner/v1/opendesigner_pb";
-import { Constraint, LayoutSizing } from "../gen/opendesigner/v1/opendesigner_pb";
-import { makeSetPropsOp } from "../tools/ops";
-import type { ConstraintLite, NodeLite, SceneState } from "../store/types";
+import type { Op } from "@/gen/opendesigner/v1/opendesigner_pb";
+import { Constraint, LayoutSizing } from "@/gen/opendesigner/v1/opendesigner_pb";
+import { makeSetPropsOp } from "@/tools/ops";
+import type { ConstraintLite, NodeLite, SceneState } from "@/store/types";
 
 // The ops of the CONSTRAINTS and SIZING controls: how a node follows its parent frame
 // when that frame is resized (constraints), and how an auto layout parent sizes it

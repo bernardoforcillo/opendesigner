@@ -1,9 +1,9 @@
 import { useState } from "react";
 import { Dialog, Modal, ModalOverlay } from "react-aria-components";
-import { insertDiagram } from "../diagram/insert";
-import { BOARD_OBJECTS, BoardError, renderBoard, STICKY_COLORS, type BoardKind } from "../board/board";
-import { viewportCenter } from "../tools/svgImport";
-import { cls } from "./ds";
+import { insertDiagram } from "@/diagram/insert";
+import { BOARD_OBJECTS, BoardError, renderBoard, STICKY_COLORS, type BoardKind } from "@/board/board";
+import { viewportCenter } from "@/tools/svgImport";
+import { cls } from "@/ui/ds";
 
 // WHITEBOARD OBJECTS (document menu → Whiteboard…): a sticky note, a table, a kanban board, a
 // mind map, or a starting template, dropped at the center of the view as a group of plain

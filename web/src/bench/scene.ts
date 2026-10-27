@@ -1,6 +1,6 @@
-import { NodeMap } from "../store/nodeMap";
-import { emptyScene } from "../store/types";
-import type { NodeLite, SceneState } from "../store/types";
+import { NodeMap } from "@/store/nodeMap";
+import { emptyScene } from "@/store/types";
+import type { NodeLite, SceneState } from "@/store/types";
 
 // A synthetic but realistic document: a grid of "screens" (clipping
 // frames), each with about twenty children among rectangles, ellipses and texts,

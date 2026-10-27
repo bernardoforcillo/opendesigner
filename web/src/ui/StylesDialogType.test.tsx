@@ -1,10 +1,10 @@
 import "@testing-library/jest-dom/vitest";
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { render, screen, fireEvent, cleanup } from "@testing-library/react";
-import type { Op } from "../gen/opendesigner/v1/opendesigner_pb";
-import { StylesDialog } from "./StylesDialog";
-import { useScene } from "../store/store";
-import { emptyScene, type TextStyleDefLite } from "../store/types";
+import type { Op } from "@/gen/opendesigner/v1/opendesigner_pb";
+import { StylesDialog } from "@/ui/StylesDialog";
+import { useScene } from "@/store/store";
+import { emptyScene, type TextStyleDefLite } from "@/store/types";
 
 class FakeSync {
   submit(op: Op) {

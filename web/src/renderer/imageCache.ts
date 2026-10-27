@@ -1,4 +1,4 @@
-import { assetUrl } from "../rpc/assets";
+import { assetUrl } from "@/rpc/assets";
 
 // THE CACHE OF DECODED IMAGES.
 //

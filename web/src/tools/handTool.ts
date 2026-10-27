@@ -1,5 +1,5 @@
-import { panBy } from "../canvas/camera";
-import type { Tool } from "./types";
+import { panBy } from "@/canvas/camera";
+import type { Tool } from "@/tools/types";
 
 // Pure pan: touches ONLY the camera, never the document. No op is emitted,
 // so a pan does not enter undo and does not go over the network.

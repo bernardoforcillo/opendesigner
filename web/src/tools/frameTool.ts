@@ -1,5 +1,5 @@
-import { makeShapeTool } from "./shapeTool";
-import type { Tool } from "./types";
+import { makeShapeTool } from "@/tools/shapeTool";
+import type { Tool } from "@/tools/types";
 
 export const DEFAULT_FRAME_WIDTH = 300;
 export const DEFAULT_FRAME_HEIGHT = 200;

@@ -1,5 +1,5 @@
-import { useScene } from "../store/store";
-import { wrapInFrameOps } from "./grouping";
+import { useScene } from "@/store/store";
+import { wrapInFrameOps } from "@/tools/grouping";
 
 /**
  * Wraps the current selection in a frame, with or without auto layout, as ONE

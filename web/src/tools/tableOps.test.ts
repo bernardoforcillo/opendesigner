@@ -1,8 +1,8 @@
 import { describe, it, expect } from "vitest";
-import { applyOp } from "../store/applyOp";
-import { emptyScene, type SceneState } from "../store/types";
-import { childrenOf } from "../store/tree";
-import { addColumnOps, addRowOps, cellOf, createTableOps, deleteColumnOps, deleteRowOps, readTable, resizeTableOps, tableIdOf } from "./tableOps";
+import { applyOp } from "@/store/applyOp";
+import { emptyScene, type SceneState } from "@/store/types";
+import { childrenOf } from "@/store/tree";
+import { addColumnOps, addRowOps, cellOf, createTableOps, deleteColumnOps, deleteRowOps, readTable, resizeTableOps, tableIdOf } from "@/tools/tableOps";
 
 const run = (s: SceneState, ops: { length: number }[] | ReturnType<typeof addRowOps>) => (ops as ReturnType<typeof addRowOps>).reduce(applyOp, s);
 

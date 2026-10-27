@@ -1,7 +1,7 @@
-import { cjkSplit } from "./cjk";
-import type { NodeLite, TextAlignLite, TextLite, TextStyleLite } from "../store/types";
-import { hyphenPoints } from "./hyphenate";
-import type { Bounds } from "../canvas/geometry";
+import { cjkSplit } from "@/renderer/cjk";
+import type { NodeLite, TextAlignLite, TextLite, TextStyleLite } from "@/store/types";
+import { hyphenPoints } from "@/renderer/hyphenate";
+import type { Bounds } from "@/canvas/geometry";
 
 // The text defaults live HERE and nowhere else. The model keeps
 // the zeros (an absent style becomes an all-zero style, see

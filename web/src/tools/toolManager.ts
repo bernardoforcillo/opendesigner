@@ -1,6 +1,6 @@
-import { zoomAt } from "../canvas/camera";
-import { handTool } from "./handTool";
-import type { Tool, ToolContext } from "./types";
+import { zoomAt } from "@/canvas/camera";
+import { handTool } from "@/tools/handTool";
+import type { Tool, ToolContext } from "@/tools/types";
 
 // client -> CANVAS px (CSS). It is the only place that subtracts the canvas origin;
 // from there on you always go through canvas/camera.ts to get to the world.

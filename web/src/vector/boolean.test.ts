@@ -1,10 +1,10 @@
 import { describe, it, expect } from "vitest";
-import { nodesOf } from "../store/nodeMap";
-import { applyOp } from "../store/applyOp";
-import { emptyScene } from "../store/types";
-import type { NodeLite, SceneState, SubPathLite } from "../store/types";
-import { vectorBounds } from "../store/vectorGeometry";
-import { booleanOps, type BooleanOp } from "./boolean";
+import { nodesOf } from "@/store/nodeMap";
+import { applyOp } from "@/store/applyOp";
+import { emptyScene } from "@/store/types";
+import type { NodeLite, SceneState, SubPathLite } from "@/store/types";
+import { vectorBounds } from "@/store/vectorGeometry";
+import { booleanOps, type BooleanOp } from "@/vector/boolean";
 
 function rect(id: string, x: number, y: number, w: number, h: number, over: Partial<NodeLite> = {}): NodeLite {
   return {

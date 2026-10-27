@@ -1,18 +1,18 @@
 import { create } from "@bufbuild/protobuf";
-import { NodeSchema } from "../gen/opendesigner/v1/opendesigner_pb";
-import { normalizeRect } from "../canvas/geometry";
-import { nextOrderKey } from "../store/orderKey";
-import { useScene } from "../store/store";
-import { toPbTextStyle } from "../store/types";
-import type { TextStyleLite } from "../store/types";
+import { NodeSchema } from "@/gen/opendesigner/v1/opendesigner_pb";
+import { normalizeRect } from "@/canvas/geometry";
+import { nextOrderKey } from "@/store/orderKey";
+import { useScene } from "@/store/store";
+import { toPbTextStyle } from "@/store/types";
+import type { TextStyleLite } from "@/store/types";
 import {
   DEFAULT_FONT_FAMILY,
   DEFAULT_FONT_SIZE,
   DEFAULT_FONT_WEIGHT,
   DEFAULT_LINE_HEIGHT,
-} from "../renderer/text";
-import { makeCreateNodeOp, uuid } from "./ops";
-import type { Tool, ToolContext } from "./types";
+} from "@/renderer/text";
+import { makeCreateNodeOp, uuid } from "@/tools/ops";
+import type { Tool, ToolContext } from "@/tools/types";
 
 // Same threshold as shapeTool.ts (SCREEN px, independent of zoom): below it,
 // a drag is a click.

@@ -1,4 +1,4 @@
-import type { SceneState } from "./types";
+import type { SceneState } from "@/store/types";
 
 // Fractional index for the draw order / layers panel order.
 //

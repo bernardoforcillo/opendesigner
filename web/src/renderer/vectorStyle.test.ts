@@ -1,8 +1,8 @@
 import { describe, it, expect, vi } from "vitest";
-import { drawScene } from "./canvasRenderer";
-import { hasRealStroke, vectorStyleOf } from "./vectorStyle";
-import type { Camera } from "../canvas/camera";
-import { emptyScene, type NodeLite } from "../store/types";
+import { drawScene } from "@/renderer/canvasRenderer";
+import { hasRealStroke, vectorStyleOf } from "@/renderer/vectorStyle";
+import type { Camera } from "@/canvas/camera";
+import { emptyScene, type NodeLite } from "@/store/types";
 
 // The extra style of vector nodes (SVG import): caps/joins/dashing and
 // fill rule in `meta`, real stroke from `strokes`.

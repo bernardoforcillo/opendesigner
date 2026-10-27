@@ -1,9 +1,9 @@
 import { useState } from "react";
 import { Dialog, Modal, ModalOverlay } from "react-aria-components";
-import { useScene } from "../store/store";
-import { OBJECT_STYLE_PROPS, type ObjectStyleProp } from "../store/types";
-import { applyObjectStyleOps, createObjectStyleOps, deleteObjectStyleOps, redefineObjectStyleOps, updateObjectStyleOps, stylable } from "../tools/objectStyles";
-import { Button, cls } from "./ds";
+import { useScene } from "@/store/store";
+import { OBJECT_STYLE_PROPS, type ObjectStyleProp } from "@/store/types";
+import { applyObjectStyleOps, createObjectStyleOps, deleteObjectStyleOps, redefineObjectStyleOps, updateObjectStyleOps, stylable } from "@/tools/objectStyles";
+import { Button, cls } from "@/ui/ds";
 
 // OBJECT STYLES (document menu): shared looks for shapes. A style sets some of fill, stroke, effects, opacity, corner
 // radius and blend mode; everything that applies it takes those, and redefining the style updates them all. The

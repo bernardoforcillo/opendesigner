@@ -10,7 +10,7 @@
 //   sampleTrack(track, t)       -> number       value of a track
 // with easingFn(spec) giving the curve of a single segment.
 
-import type { ClipLite, TrackLite } from "../store/types";
+import type { ClipLite, TrackLite } from "@/store/types";
 
 // The closed sets of the model: repeated in Go (core.TrackProps/ClipTriggers).
 export const TRACK_PROPS = ["opacity", "x", "y", "scale", "rotation", "draw"] as const;

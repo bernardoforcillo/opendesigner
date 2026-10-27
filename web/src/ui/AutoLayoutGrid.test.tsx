@@ -2,11 +2,11 @@ import "@testing-library/jest-dom/vitest";
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { render, screen, cleanup, fireEvent } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import type { Op } from "../gen/opendesigner/v1/opendesigner_pb";
-import { useScene } from "../store/store";
-import { emptyScene, type NodeLite } from "../store/types";
-import { AutoLayoutControls } from "./AutoLayoutControls";
-import { LayoutRelationControls } from "./LayoutRelationControls";
+import type { Op } from "@/gen/opendesigner/v1/opendesigner_pb";
+import { useScene } from "@/store/store";
+import { emptyScene, type NodeLite } from "@/store/types";
+import { AutoLayoutControls } from "@/ui/AutoLayoutControls";
+import { LayoutRelationControls } from "@/ui/LayoutRelationControls";
 
 class FakeSync {
   submit(op: Op) {

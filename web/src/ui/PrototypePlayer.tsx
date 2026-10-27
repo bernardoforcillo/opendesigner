@@ -1,26 +1,26 @@
-import { resolveScene } from "../store/variables";
+import { resolveScene } from "@/store/variables";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Button as RacButton } from "react-aria-components";
-import { useScene } from "../store/store";
-import { resolveFlow, useFlowUi } from "../store/flowUi";
-import { worldBoundsOfNode } from "../canvas/transform";
-import type { Bounds } from "../canvas/geometry";
-import { drawScene, resizeCanvasToDisplaySize } from "../renderer/canvasRenderer";
-import { imageCache } from "../renderer/imageCache";
-import { sceneForScreen, PROTO_PAGE_ID } from "../flow/protoScene";
-import { useProtoAnimation } from "./protoAnim";
-import { animOf, layersAt, progressOf, smartScene, type TransitionAnim } from "../flow/transitionAnim";
-import { screenName } from "../flow/screens";
-import { Badge, Icon, IconButton } from "./ds";
-import { AnyIcon, FlowIcon, FlowIconButton } from "./ds/flow-parts";
-import { DeviceBody, DeviceOverlay } from "./DeviceChrome";
-import { makeSetDocSettingsOp } from "../tools/ops";
-import { DEVICES, deviceById, deviceGeometry, type DeviceId } from "../flow/devices";
-import "./ds/flow-stage.css";
+import { useScene } from "@/store/store";
+import { resolveFlow, useFlowUi } from "@/store/flowUi";
+import { worldBoundsOfNode } from "@/canvas/transform";
+import type { Bounds } from "@/canvas/geometry";
+import { drawScene, resizeCanvasToDisplaySize } from "@/renderer/canvasRenderer";
+import { imageCache } from "@/renderer/imageCache";
+import { sceneForScreen, PROTO_PAGE_ID } from "@/flow/protoScene";
+import { useProtoAnimation } from "@/ui/protoAnim";
+import { animOf, layersAt, progressOf, smartScene, type TransitionAnim } from "@/flow/transitionAnim";
+import { screenName } from "@/flow/screens";
+import { Badge, Icon, IconButton } from "@/ui/ds";
+import { AnyIcon, FlowIcon, FlowIconButton } from "@/ui/ds/flow-parts";
+import { DeviceBody, DeviceOverlay } from "@/ui/DeviceChrome";
+import { makeSetDocSettingsOp } from "@/tools/ops";
+import { DEVICES, deviceById, deviceGeometry, type DeviceId } from "@/flow/devices";
+import "@/ui/ds/flow-stage.css";
 import {
   back, backTo, canGoBack, follow, optionsFrom, startState, trail, varEntries,
   type Option, type ProtoState,
-} from "../flow/prototype";
+} from "@/flow/prototype";
 
 // THE PLAYABLE PROTOTYPE ("Present"). A full-screen overlay that shows the
 // flow's current screen -- the document's real frame, drawn by the usual

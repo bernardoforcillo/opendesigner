@@ -1,10 +1,10 @@
 import polygonClipping from "polygon-clipping";
 import type { MultiPolygon, Pair, Ring } from "polygon-clipping";
-import { flattenSubpath, subpathFills } from "../store/vectorGeometry";
-import type { PointLite } from "../store/vectorGeometry";
-import type { AnchorLite, SubPathLite } from "../store/types";
-import { BEZIER_TOLERANCE, booleanRegion } from "./regions";
-import { strokePolyline } from "./outlineStroke";
+import { flattenSubpath, subpathFills } from "@/store/vectorGeometry";
+import type { PointLite } from "@/store/vectorGeometry";
+import type { AnchorLite, SubPathLite } from "@/store/types";
+import { BEZIER_TOLERANCE, booleanRegion } from "@/vector/regions";
+import { strokePolyline } from "@/vector/outlineStroke";
 
 // PATH EDITING, as pure functions over subpaths in the node's LOCAL space (the anchors' own
 // coordinates, handles relative to their anchor). The tools and panels decide WHAT to edit; here is

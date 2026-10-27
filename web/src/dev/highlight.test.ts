@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { highlight, langOf, type Lang, type TokenKind } from "./highlight";
+import { highlight, langOf, type Lang, type TokenKind } from "@/dev/highlight";
 
 const flat = (lines: ReturnType<typeof highlight>) => lines.map((l) => l.map((t) => t.s).join("")).join("\n");
 const kinds = (code: string, lang: Lang, k: TokenKind) =>

@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { nodesToSvg } from "./svg";
-import type { NodeLite, SubPathLite } from "../store/types";
+import { nodesToSvg } from "@/export/svg";
+import type { NodeLite, SubPathLite } from "@/store/types";
 
 // The SVG export of VECTOR nodes (they used to come out as a gray rectangle) and of the
 // strokes of rect/ellipse/vector.

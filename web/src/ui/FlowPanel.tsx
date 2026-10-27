@@ -1,23 +1,23 @@
 import { useMemo } from "react";
 import { Button as RacButton } from "react-aria-components";
-import type { FlowIssue, FlowPath, FlowReport } from "../gen/opendesigner/v1/opendesigner_pb";
-import { useScene } from "../store/store";
-import { resolveFlow, sortedFlows, useFlowUi } from "../store/flowUi";
-import { descendantsOf } from "../store/tree";
-import { TRANSITION_ANIMATIONS, type FlowLite, type SceneState, type TransitionLite } from "../store/types";
-import { useAnalysis, useFlowAnalysis, countByKind } from "../flow/analysis";
-import { cameraToFit, isFullyVisible } from "../flow/camera";
+import type { FlowIssue, FlowPath, FlowReport } from "@/gen/opendesigner/v1/opendesigner_pb";
+import { useScene } from "@/store/store";
+import { resolveFlow, sortedFlows, useFlowUi } from "@/store/flowUi";
+import { descendantsOf } from "@/store/tree";
+import { TRANSITION_ANIMATIONS, type FlowLite, type SceneState, type TransitionLite } from "@/store/types";
+import { useAnalysis, useFlowAnalysis, countByKind } from "@/flow/analysis";
+import { cameraToFit, isFullyVisible } from "@/flow/camera";
 import {
   createFlowOp, deleteFlowOp, deleteTransitionOp, editTransitionAnimationOp, editTransitionOp, joinChainOps, leaveChainOps, moveInChainOps,
   renameFlowOp, setStartOp, submit,
-} from "../flow/commands";
-import { chainOf } from "../flow/prototype";
-import { flowLayout } from "../flow/layout";
-import { isScreenNode, screenName, screenOf } from "../flow/screens";
-import { worldBoundsOfNode } from "../canvas/transform";
-import { CommitField } from "./fields/CommitField";
-import { Badge, Button, EmptyState, Icon, IconButton, Section, cls } from "./ds";
-import { Field, FlowIcon, SwitchRow } from "./ds/flow-parts";
+} from "@/flow/commands";
+import { chainOf } from "@/flow/prototype";
+import { flowLayout } from "@/flow/layout";
+import { isScreenNode, screenName, screenOf } from "@/flow/screens";
+import { worldBoundsOfNode } from "@/canvas/transform";
+import { CommitField } from "@/ui/fields/CommitField";
+import { Badge, Button, EmptyState, Icon, IconButton, Section, cls } from "@/ui/ds";
+import { Field, FlowIcon, SwitchRow } from "@/ui/ds/flow-parts";
 
 // THE FLOWS PANEL (replaces the layers on the left in Flows mode).
 // From the top: the document's flows, the current flow's transitions with

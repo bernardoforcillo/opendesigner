@@ -1,4 +1,4 @@
-import type { NodeLite, SceneState } from "./types";
+import type { NodeLite, SceneState } from "@/store/types";
 
 // TRAVERSAL OF THE DOCUMENT AS A TREE.
 //

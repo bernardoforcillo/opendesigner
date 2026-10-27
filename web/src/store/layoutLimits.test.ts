@@ -1,10 +1,10 @@
 import { describe, it, expect } from "vitest";
 import { create, type MessageInitShape } from "@bufbuild/protobuf";
-import { Constraint, LayoutAlign, LayoutDirection, LayoutPositioning, LayoutSizing, NodeSchema, OpSchema } from "../gen/opendesigner/v1/opendesigner_pb";
-import type { Op } from "../gen/opendesigner/v1/opendesigner_pb";
-import { applyOp } from "./applyOp";
-import { invertOp } from "./history";
-import { emptyScene, type SceneState } from "./types";
+import { Constraint, LayoutAlign, LayoutDirection, LayoutPositioning, LayoutSizing, NodeSchema, OpSchema } from "@/gen/opendesigner/v1/opendesigner_pb";
+import type { Op } from "@/gen/opendesigner/v1/opendesigner_pb";
+import { applyOp } from "@/store/applyOp";
+import { invertOp } from "@/store/history";
+import { emptyScene, type SceneState } from "@/store/types";
 
 // Size limits and absolute children of an auto layout frame (the Go twin is
 // internal/core/layout_limits_test.go; testdata/golden/layout_limits.json runs both).

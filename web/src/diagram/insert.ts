@@ -1,10 +1,10 @@
 import { create } from "@bufbuild/protobuf";
 import { Code, ConnectError } from "@connectrpc/connect";
-import { NodeSchema, OpSchema } from "../gen/opendesigner/v1/opendesigner_pb";
-import type { Node, Op, RenderDiagramResponse } from "../gen/opendesigner/v1/opendesigner_pb";
-import { nextOrderKey } from "../store/orderKey";
-import { useScene } from "../store/store";
-import { docClient } from "../rpc/client";
+import { NodeSchema, OpSchema } from "@/gen/opendesigner/v1/opendesigner_pb";
+import type { Node, Op, RenderDiagramResponse } from "@/gen/opendesigner/v1/opendesigner_pb";
+import { nextOrderKey } from "@/store/orderKey";
+import { useScene } from "@/store/store";
+import { docClient } from "@/rpc/client";
 
 // DIAGRAMS IN THE EDITOR.
 //

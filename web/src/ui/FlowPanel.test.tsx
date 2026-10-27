@@ -2,14 +2,14 @@ import "@testing-library/jest-dom/vitest";
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { act, render, screen, fireEvent, cleanup, within, waitFor } from "@testing-library/react";
 import { create, type MessageInitShape } from "@bufbuild/protobuf";
-import { FlowReportSchema } from "../gen/opendesigner/v1/opendesigner_pb";
-import type { FlowReport, Op } from "../gen/opendesigner/v1/opendesigner_pb";
-import { FlowPanel } from "./FlowPanel";
-import { useScene } from "../store/store";
-import { useFlowUi } from "../store/flowUi";
-import { setAnalysisFetcher, useAnalysis } from "../flow/analysis";
-import { baseScene, flowOf, transition, withFlows } from "../flow/testSupport";
-import type { SceneState } from "../store/types";
+import { FlowReportSchema } from "@/gen/opendesigner/v1/opendesigner_pb";
+import type { FlowReport, Op } from "@/gen/opendesigner/v1/opendesigner_pb";
+import { FlowPanel } from "@/ui/FlowPanel";
+import { useScene } from "@/store/store";
+import { useFlowUi } from "@/store/flowUi";
+import { setAnalysisFetcher, useAnalysis } from "@/flow/analysis";
+import { baseScene, flowOf, transition, withFlows } from "@/flow/testSupport";
+import type { SceneState } from "@/store/types";
 
 // SyncClient double: records the ops on the wire and ECHOES them (like a server that
 // accepts), to count "one op per action".

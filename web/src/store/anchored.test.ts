@@ -1,10 +1,10 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { layoutRich, type MeasureFor } from "../renderer/text";
-import { applyOp } from "./applyOp";
-import { anchorOps, anchorRef, anchorsOf, releaseAnchorOps } from "./anchored";
-import { resolveScene } from "./variables";
-import { setThreadMeasure } from "./threads";
-import { emptyScene, type NodeLite, type SceneState, type TextStyleLite } from "./types";
+import { layoutRich, type MeasureFor } from "@/renderer/text";
+import { applyOp } from "@/store/applyOp";
+import { anchorOps, anchorRef, anchorsOf, releaseAnchorOps } from "@/store/anchored";
+import { resolveScene } from "@/store/variables";
+import { setThreadMeasure } from "@/store/threads";
+import { emptyScene, type NodeLite, type SceneState, type TextStyleLite } from "@/store/types";
 
 const STYLE: TextStyleLite = { fontFamily: "", fontSize: 10, fontWeight: "", lineHeight: 1, align: "left" };
 const node = (over: Partial<NodeLite> & { id: string }): NodeLite => ({

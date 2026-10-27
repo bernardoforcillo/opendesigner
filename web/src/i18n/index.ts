@@ -1,13 +1,13 @@
 import { create } from "zustand";
-import { firstSupported, interpolate, matchLanguage, pick, type LanguageCode, type Message, type Vars } from "./core";
-import { en, type MessageKey } from "./locales/en";
-import { es } from "./locales/es";
-import { fr } from "./locales/fr";
-import { de } from "./locales/de";
-import { it } from "./locales/it";
-import { ptBR } from "./locales/pt-BR";
-import { ja } from "./locales/ja";
-import { zhHans } from "./locales/zh-Hans";
+import { firstSupported, interpolate, matchLanguage, pick, type LanguageCode, type Message, type Vars } from "@/i18n/core";
+import { en, type MessageKey } from "@/i18n/locales/en";
+import { es } from "@/i18n/locales/es";
+import { fr } from "@/i18n/locales/fr";
+import { de } from "@/i18n/locales/de";
+import { it } from "@/i18n/locales/it";
+import { ptBR } from "@/i18n/locales/pt-BR";
+import { ja } from "@/i18n/locales/ja";
+import { zhHans } from "@/i18n/locales/zh-Hans";
 
 export type { LanguageCode, MessageKey, Vars };
 

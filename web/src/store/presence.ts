@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import type { PresenceEvent } from "../gen/opendesigner/v1/opendesigner_pb";
+import type { PresenceEvent } from "@/gen/opendesigner/v1/opendesigner_pb";
 
 // Who else is looking at the document. It is VIEW state, like camera and
 // selection: not document, does not go through ops and does not enter undo. For

@@ -1,13 +1,13 @@
-import { useScene } from "../store/store";
-import type { Op } from "../gen/opendesigner/v1/opendesigner_pb";
-import type { LayoutAlignLite } from "../store/types";
-import { wrapSelectionInFrame } from "../tools/wrapFrame";
-import { cls, IconButton, Section } from "./ds";
-import { SegButtons, type SegOption } from "./ds/props-controls";
-import { NumberField } from "./fields/NumberField";
-import { autoLayoutOps } from "./autoLayoutOps";
-import { withTrackAdded, withTrackChanged, type GridAxis } from "./gridTrackOps";
-import type { AutoLayoutLite } from "../store/types";
+import { useScene } from "@/store/store";
+import type { Op } from "@/gen/opendesigner/v1/opendesigner_pb";
+import type { LayoutAlignLite } from "@/store/types";
+import { wrapSelectionInFrame } from "@/tools/wrapFrame";
+import { cls, IconButton, Section } from "@/ui/ds";
+import { SegButtons, type SegOption } from "@/ui/ds/props-controls";
+import { NumberField } from "@/ui/fields/NumberField";
+import { autoLayoutOps } from "@/ui/autoLayoutOps";
+import { withTrackAdded, withTrackChanged, type GridAxis } from "@/ui/gridTrackOps";
+import type { AutoLayoutLite } from "@/store/types";
 
 const lookup = (id: string) => useScene.getState().scene?.nodes.at(id);
 

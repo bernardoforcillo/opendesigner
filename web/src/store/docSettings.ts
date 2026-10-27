@@ -1,7 +1,7 @@
-import type { BookMsg, DocSettingsLite, DocSettingsMsg, GuideLite, PageLite, SceneState, Vertical } from "./types";
-import type { Bounds } from "../canvas/geometry";
-import { DEVICES } from "../flow/devices";
-import { settingsOf } from "./types";
+import type { BookMsg, DocSettingsLite, DocSettingsMsg, GuideLite, PageLite, SceneState, Vertical } from "@/store/types";
+import type { Bounds } from "@/canvas/geometry";
+import { DEVICES } from "@/flow/devices";
+import { settingsOf } from "@/store/types";
 
 // DOCUMENT SETTINGS and PAGE SETUP -- the twin of internal/core/docsettings.go (Go is the authority).
 //

@@ -1,7 +1,7 @@
-import type { Op } from "../gen/opendesigner/v1/opendesigner_pb";
-import { LayoutPositioning } from "../gen/opendesigner/v1/opendesigner_pb";
-import { makeSetPropsOp } from "../tools/ops";
-import type { NodeLite, SceneState } from "../store/types";
+import type { Op } from "@/gen/opendesigner/v1/opendesigner_pb";
+import { LayoutPositioning } from "@/gen/opendesigner/v1/opendesigner_pb";
+import { makeSetPropsOp } from "@/tools/ops";
+import type { NodeLite, SceneState } from "@/store/types";
 
 // The ops of the SIZE LIMITS (min/max width and height, clamped by the auto layout engine)
 // and of ABSOLUTE positioning (a child that leaves its auto layout parent's flow). Pure: they

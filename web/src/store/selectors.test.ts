@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
-import { layersInDrawOrder, selectionSummary, MIXED } from "./selectors";
-import { emptyScene } from "./types";
-import type { SceneState, NodeLite } from "./types";
+import { layersInDrawOrder, selectionSummary, MIXED } from "@/store/selectors";
+import { emptyScene } from "@/store/types";
+import type { SceneState, NodeLite } from "@/store/types";
 
 function node(over: Partial<NodeLite> & { id: string; orderKey: string }): NodeLite {
   return {

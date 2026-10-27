@@ -1,12 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { Op } from "../gen/opendesigner/v1/opendesigner_pb";
-import { useScene } from "../store/store";
-import { nodesOf } from "../store/nodeMap";
-import { emptyScene } from "../store/types";
-import type { NodeLite } from "../store/types";
-import { PluginError, PluginSession } from "./api";
-import { EXAMPLE_PLUGIN, parsePlugin } from "./manifest";
-import { runPlugin, type Frame } from "./run";
+import type { Op } from "@/gen/opendesigner/v1/opendesigner_pb";
+import { useScene } from "@/store/store";
+import { nodesOf } from "@/store/nodeMap";
+import { emptyScene } from "@/store/types";
+import type { NodeLite } from "@/store/types";
+import { PluginError, PluginSession } from "@/plugins/api";
+import { EXAMPLE_PLUGIN, parsePlugin } from "@/plugins/manifest";
+import { runPlugin, type Frame } from "@/plugins/run";
 
 const sync = { submit(op: Op) { useScene.getState().applyPending(op); useScene.getState().apply(op); } };
 const rect = (id: string, key: string, x: number): NodeLite => ({

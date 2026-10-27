@@ -1,9 +1,9 @@
 import { useState } from "react";
 import { Dialog, Modal, ModalOverlay } from "react-aria-components";
-import { useScene } from "../store/store";
-import { changeObjectsOps, clipWithShapeOps, exportSnippet, findObjects, fitOps, gapOps, placeSnippetOps, qrOps, releaseClipOps, stepRepeatOps, type FitMode } from "../tools/objectTools";
-import { QR_LEVELS, type QrLevel } from "../tools/qrcode";
-import { Button, cls } from "./ds";
+import { useScene } from "@/store/store";
+import { changeObjectsOps, clipWithShapeOps, exportSnippet, findObjects, fitOps, gapOps, placeSnippetOps, qrOps, releaseClipOps, stepRepeatOps, type FitMode } from "@/tools/objectTools";
+import { QR_LEVELS, type QrLevel } from "@/tools/qrcode";
+import { Button, cls } from "@/ui/ds";
 
 // OBJECT TOOLS (object menu): Step and Repeat, the Gap tool, frame fitting, clipping paths, QR codes, find/change on objects and
 // snippets. They work on the selection; every action is one undo step and says what it did (or why it could not) in the status line.

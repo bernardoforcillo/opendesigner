@@ -1,7 +1,7 @@
-import { parseColor } from "../svg/color";
-import { uuid } from "../tools/ops";
-import { variableValueIn } from "../store/variables";
-import type { CollectionLite, FillLite, SceneState, VariableLite } from "../store/types";
+import { parseColor } from "@/svg/color";
+import { uuid } from "@/tools/ops";
+import { variableValueIn } from "@/store/variables";
+import type { CollectionLite, FillLite, SceneState, VariableLite } from "@/store/types";
 
 // DESIGN TOKENS in and out. The variables of the document leave as
 //  - a W3C Design Tokens (DTCG) JSON file -- one top-level group per collection, a nested

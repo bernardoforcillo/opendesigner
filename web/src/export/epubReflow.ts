@@ -1,9 +1,9 @@
-import type { NodeLite, SceneState, TextStyleLite } from "../store/types";
-import { flattenStyle, type FlatStyle } from "../store/richText";
-import { destinationsOf, textNodesInReadingOrder, tokensOf, visibleText } from "../store/textTokens";
-import { pageNumbers } from "../store/pageNumbers";
-import { zipStore, type ZipEntry } from "./zip";
-import { accessibilityMeta, opfMetadata, xmlEscape, type EpubMeta } from "./epub";
+import type { NodeLite, SceneState, TextStyleLite } from "@/store/types";
+import { flattenStyle, type FlatStyle } from "@/store/richText";
+import { destinationsOf, textNodesInReadingOrder, tokensOf, visibleText } from "@/store/textTokens";
+import { pageNumbers } from "@/store/pageNumbers";
+import { zipStore, type ZipEntry } from "@/export/zip";
+import { accessibilityMeta, opfMetadata, xmlEscape, type EpubMeta } from "@/export/epub";
 
 // EPUB 3, REFLOWABLE: the document's stories in reading order as real text -- headings, paragraphs,
 // character styling, footnotes as notes, images -- with the paragraph and character styles turned into

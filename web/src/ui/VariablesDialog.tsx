@@ -1,15 +1,15 @@
 import { useRef, useState } from "react";
 import { Dialog, Modal, ModalOverlay } from "react-aria-components";
-import { useScene } from "../store/store";
-import type { CollectionLite, FillLite, VariableLite, VariableTypeLite } from "../store/types";
-import { makeDeleteCollectionOp, makeDeleteVariableOp, makeSetCollectionOp, makeSetVariableOp } from "../tools/ops";
-import { downloadBlob } from "../export/exportScene";
-import { colorToHex, fromDtcg, toCssVariables, toDtcg } from "../tokens/tokens";
-import { Button, cls, EmptyState } from "./ds";
-import { ColorField } from "./fields/ColorField";
-import { NumberField } from "./fields/NumberField";
-import { aliasCandidates, newCollection, newVariable, removeModeOps, setVariableOps, withAlias, withMode, withoutAlias, withValue } from "./variableOps";
-import { variableValueIn } from "../store/variables";
+import { useScene } from "@/store/store";
+import type { CollectionLite, FillLite, VariableLite, VariableTypeLite } from "@/store/types";
+import { makeDeleteCollectionOp, makeDeleteVariableOp, makeSetCollectionOp, makeSetVariableOp } from "@/tools/ops";
+import { downloadBlob } from "@/export/exportScene";
+import { colorToHex, fromDtcg, toCssVariables, toDtcg } from "@/tokens/tokens";
+import { Button, cls, EmptyState } from "@/ui/ds";
+import { ColorField } from "@/ui/fields/ColorField";
+import { NumberField } from "@/ui/fields/NumberField";
+import { aliasCandidates, newCollection, newVariable, removeModeOps, setVariableOps, withAlias, withMode, withoutAlias, withValue } from "@/ui/variableOps";
+import { variableValueIn } from "@/store/variables";
 
 // THE VARIABLES DIALOG (document menu → Variables): create and edit collections,
 // their modes and the variables with one value per mode. Binding a property to a

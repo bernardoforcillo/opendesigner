@@ -1,8 +1,8 @@
 import { describe, it, expect } from "vitest";
-import type { ClipLite } from "../store/types";
-import { baseScene, child } from "../flow/testSupport";
-import { nodesWith } from "../store/nodeMap";
-import { isValidClip } from "./validate";
+import type { ClipLite } from "@/store/types";
+import { baseScene, child } from "@/flow/testSupport";
+import { nodesWith } from "@/store/nodeMap";
+import { isValidClip } from "@/animation/validate";
 
 const SCENE = baseScene();
 const valid = (c: ClipLite) => isValidClip(SCENE, c);
@@ -10,7 +10,7 @@ import {
   SNAP_MS, addKeyframe, addPropertyTrack, addTrack, clipsForSelection, defaultTargetId, deleteKeyframes, dragDelta,
   duplicateKeyframes, formatClock, formatTime, isInside, moveKeyframes, propsFor, recordChanges, removeTrack, rulerStep,
   rulerTicks, snapTime, unwrapDegrees, updateKeyframe, valueAt, withDuration, type KeyRef,
-} from "./timelineLogic";
+} from "@/animation/timelineLogic";
 
 const clip = (over: Partial<ClipLite> = {}): ClipLite => ({
   id: "k", name: "k", duration: 1000, trigger: "enter", delay: 0, repeat: 0, yoyo: false, targetId: "A",

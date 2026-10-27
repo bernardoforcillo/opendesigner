@@ -1,11 +1,11 @@
 import { describe, it, expect } from "vitest";
 import { create, type MessageInitShape } from "@bufbuild/protobuf";
-import { GridTrackKind, LayoutAlign, LayoutMode, LayoutSizing, NodeSchema, OpSchema } from "../gen/opendesigner/v1/opendesigner_pb";
-import type { Op } from "../gen/opendesigner/v1/opendesigner_pb";
-import { applyOp } from "./applyOp";
-import { invertOp } from "./history";
-import { isValidGridCell, isValidGridLayout } from "./layoutGrid";
-import { emptyScene, type SceneState } from "./types";
+import { GridTrackKind, LayoutAlign, LayoutMode, LayoutSizing, NodeSchema, OpSchema } from "@/gen/opendesigner/v1/opendesigner_pb";
+import type { Op } from "@/gen/opendesigner/v1/opendesigner_pb";
+import { applyOp } from "@/store/applyOp";
+import { invertOp } from "@/store/history";
+import { isValidGridCell, isValidGridLayout } from "@/store/layoutGrid";
+import { emptyScene, type SceneState } from "@/store/types";
 
 // GRID mode and groups as auto layout children (the Go twin is internal/core/layout_grid_test.go;
 // testdata/golden/layout_grid.json and layout_group.json run both on the same numbers).

@@ -1,13 +1,13 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { useScene } from "../store/store";
-import { emptyScene } from "../store/types";
-import type { Op } from "../gen/opendesigner/v1/opendesigner_pb";
+import { useScene } from "@/store/store";
+import { emptyScene } from "@/store/types";
+import type { Op } from "@/gen/opendesigner/v1/opendesigner_pb";
 
 const downloads = vi.hoisted(() => ({ saved: [] as { blob: Blob; name: string }[] }));
-vi.mock("../export/exportScene", () => ({ downloadBlob: (blob: Blob, name: string) => { downloads.saved.push({ blob, name }); } }));
+vi.mock("@/export/exportScene", () => ({ downloadBlob: (blob: Blob, name: string) => { downloads.saved.push({ blob, name }); } }));
 
-import { VariablesDialog } from "./VariablesDialog";
+import { VariablesDialog } from "@/ui/VariablesDialog";
 
 const sync = {
   submit(op: Op) {

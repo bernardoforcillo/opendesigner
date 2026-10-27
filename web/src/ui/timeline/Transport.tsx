@@ -1,11 +1,11 @@
 import { Button as RacButton } from "react-aria-components";
-import { cls } from "../ds";
-import { AnimIcon, AnimIconButton } from "../ds/anim-parts";
-import { SPEEDS, useTimeline } from "../../animation/timelineStore";
-import { formatClock } from "../../animation/timelineLogic";
-import type { ClipLite } from "../../store/types";
-import { ClipSettingsButton } from "./ClipSettings";
-import { AddPropertyMenu, PresetMenu } from "./menus";
+import { cls } from "@/ui/ds";
+import { AnimIcon, AnimIconButton } from "@/ui/ds/anim-parts";
+import { SPEEDS, useTimeline } from "@/animation/timelineStore";
+import { formatClock } from "@/animation/timelineLogic";
+import type { ClipLite } from "@/store/types";
+import { ClipSettingsButton } from "@/ui/timeline/ClipSettings";
+import { AddPropertyMenu, PresetMenu } from "@/ui/timeline/menus";
 
 // THE TRANSPORT: play/pause, stop, loop, speed, the current time, Record,
 // the two actions that bring a layer into an animation (+ Property, Preset) and the

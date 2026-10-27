@@ -1,9 +1,9 @@
-import type { Op } from "../gen/opendesigner/v1/opendesigner_pb";
-import { makeSetPropsOp } from "../tools/ops";
-import { toPbBlend, toPbEffects } from "../store/types";
-import type { BlendModeLite, EffectLite, NodeLite } from "../store/types";
-import type { RgbLite } from "./fields/ColorField";
-import type { NodeLookup } from "./gradientOps";
+import type { Op } from "@/gen/opendesigner/v1/opendesigner_pb";
+import { makeSetPropsOp } from "@/tools/ops";
+import { toPbBlend, toPbEffects } from "@/store/types";
+import type { BlendModeLite, EffectLite, NodeLite } from "@/store/types";
+import type { RgbLite } from "@/ui/fields/ColorField";
+import type { NodeLookup } from "@/ui/gradientOps";
 
 // The Effects panel's ops. Like the renderer, the panel governs a node's FIRST
 // shadow and FIRST blur, and leaves the other effects of the

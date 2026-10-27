@@ -1,10 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { act, cleanup, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { interpolate, matchLanguage, pick, placeholders, type Message } from "./core";
+import { interpolate, matchLanguage, pick, placeholders, type Message } from "@/i18n/core";
 import { CATALOGS, LANGUAGES, detectLanguage, translate, useLanguage, useT } from ".";
-import { en } from "./locales/en";
-import { LanguageSelect } from "./LanguageSelect";
+import { en } from "@/i18n/locales/en";
+import { LanguageSelect } from "@/i18n/LanguageSelect";
 
 const CODES = LANGUAGES.map((l) => l.code);
 const KEYS = Object.keys(en);

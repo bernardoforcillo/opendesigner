@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { activeToken, canComment, canWrite, captureLinkToken, setActiveDoc, shareUrl, storeToken, storedToken, tokenFor } from "./access";
-import { assetUrl, uploadAsset } from "./assets";
+import { activeToken, canComment, canWrite, captureLinkToken, setActiveDoc, shareUrl, storeToken, storedToken, tokenFor } from "@/rpc/access";
+import { assetUrl, uploadAsset } from "@/rpc/assets";
 
 beforeEach(() => { localStorage.clear(); setActiveDoc(""); });
 afterEach(() => vi.restoreAllMocks());

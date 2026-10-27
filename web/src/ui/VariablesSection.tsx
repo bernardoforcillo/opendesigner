@@ -1,7 +1,7 @@
-import { useScene } from "../store/store";
-import type { NodeLite, SceneState, VariableTypeLite } from "../store/types";
-import { cls, Section } from "./ds";
-import { MIXED, bindingOps, boundVariable, modeOps, pinnedMode, variablesOfType } from "./variableOps";
+import { useScene } from "@/store/store";
+import type { NodeLite, SceneState, VariableTypeLite } from "@/store/types";
+import { cls, Section } from "@/ui/ds";
+import { MIXED, bindingOps, boundVariable, modeOps, pinnedMode, variablesOfType } from "@/ui/variableOps";
 
 // THE VARIABLES SECTION of the properties panel: binds a property of the
 // selection to a variable (design token) and pins a collection to a mode.

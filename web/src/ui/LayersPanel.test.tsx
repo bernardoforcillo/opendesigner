@@ -4,12 +4,12 @@ import "@testing-library/jest-dom/vitest";
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { render, screen, within, cleanup, act, fireEvent } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import type { Op } from "../gen/opendesigner/v1/opendesigner_pb";
-import { LayersPanel, layerDisplayName, reorderKey, visibleRows } from "./LayersPanel";
-import { useScene } from "../store/store";
-import { emptyScene } from "../store/types";
-import { layersInDrawOrder } from "../store/selectors";
-import type { NodeLite, PageLite } from "../store/types";
+import type { Op } from "@/gen/opendesigner/v1/opendesigner_pb";
+import { LayersPanel, layerDisplayName, reorderKey, visibleRows } from "@/ui/LayersPanel";
+import { useScene } from "@/store/store";
+import { emptyScene } from "@/store/types";
+import { layersInDrawOrder } from "@/store/selectors";
+import type { NodeLite, PageLite } from "@/store/types";
 
 // SyncClient double: records the ops that end up ON THE WIRE and models a
 // server that accepts and ECHOES at once (applyPending + apply), as in the other

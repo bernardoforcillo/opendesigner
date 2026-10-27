@@ -10,7 +10,7 @@
 // mount by hand. The asset path therefore sits entirely behind
 // internal/server/assets.go.
 
-import { tokenFor } from "./access";
+import { tokenFor } from "@/rpc/access";
 
 // The prefix is /assets-api/ and NOT /assets/: `opendesigner serve` serves the compiled
 // frontend from the root, and Vite writes its own bundles in dist/assets/. The

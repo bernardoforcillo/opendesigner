@@ -1,9 +1,9 @@
-import { useScene } from "../store/store";
-import type { Op } from "../gen/opendesigner/v1/opendesigner_pb";
-import type { BrushLite, BrushTipLite } from "../store/types";
-import { BRUSH_PRESETS, BRUSH_TIPS, brushPresetName } from "../vector/brushSpec";
-import { brushStrokeOf, setBrushOps } from "../vector/brushEdit";
-import { NumberField } from "./fields/NumberField";
+import { useScene } from "@/store/store";
+import type { Op } from "@/gen/opendesigner/v1/opendesigner_pb";
+import type { BrushLite, BrushTipLite } from "@/store/types";
+import { BRUSH_PRESETS, BRUSH_TIPS, brushPresetName } from "@/vector/brushSpec";
+import { brushStrokeOf, setBrushOps } from "@/vector/brushEdit";
+import { NumberField } from "@/ui/fields/NumberField";
 
 const lookup = (id: string) => useScene.getState().scene?.nodes.at(id);
 type Run = (build: (ids: readonly string[]) => Op[]) => void;

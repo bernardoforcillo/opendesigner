@@ -1,8 +1,8 @@
-import { deleteTransitionOp, submit } from "../flow/commands";
-import { flowLayout, hitArrow, LABEL_HIT, type Arrow } from "../flow/layout";
-import { resolveFlow, useFlowUi } from "../store/flowUi";
-import { useScene } from "../store/store";
-import type { Tool, ToolContext } from "./types";
+import { deleteTransitionOp, submit } from "@/flow/commands";
+import { flowLayout, hitArrow, LABEL_HIT, type Arrow } from "@/flow/layout";
+import { resolveFlow, useFlowUi } from "@/store/flowUi";
+import { useScene } from "@/store/store";
+import type { Tool, ToolContext } from "@/tools/types";
 
 // ARROW SELECTION. In Flows mode a click on the canvas FIRST looks for an
 // arrow (or its pill) under the pointer: if there is one, it selects it; otherwise

@@ -1,8 +1,8 @@
 import { describe, it, expect, beforeEach } from "vitest";
-import { executeJob } from "./editorJobs";
-import { useScene } from "../store/store";
-import { emptyScene } from "../store/types";
-import type { NodeLite } from "../store/types";
+import { executeJob } from "@/jobs/editorJobs";
+import { useScene } from "@/store/store";
+import { emptyScene } from "@/store/types";
+import type { NodeLite } from "@/store/types";
 
 const node = (over: Partial<NodeLite> & { id: string }): NodeLite => ({
   parentId: "page1", orderKey: "a1", name: over.id, visible: true, opacity: 1, x: 0, y: 0, width: 100, height: 50, rotation: 0,

@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { useScene } from "../store/store";
-import { emptyScene } from "../store/types";
+import { useScene } from "@/store/store";
+import { emptyScene } from "@/store/types";
 
 const versions = [{ id: "v2", name: "Second", createdAt: 1700000100n, seq: 5n }, { id: "v1", name: "First", createdAt: 1700000000n, seq: 2n }];
 const client = vi.hoisted(() => ({
@@ -13,11 +13,11 @@ const client = vi.hoisted(() => ({
   reviewMerge: vi.fn(),
   mergeBranch: vi.fn(),
 }));
-vi.mock("../rpc/client", () => ({ docClient: client }));
+vi.mock("@/rpc/client", () => ({ docClient: client }));
 const navigate = vi.fn();
-vi.mock("../home/nav", () => ({ useAppNavigate: () => navigate }));
+vi.mock("@/home/nav", () => ({ useAppNavigate: () => navigate }));
 
-import { VersionsDialog } from "./VersionsDialog";
+import { VersionsDialog } from "@/ui/VersionsDialog";
 
 beforeEach(() => {
   client.listVersions.mockResolvedValue({ versions });

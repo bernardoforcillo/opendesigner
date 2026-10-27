@@ -1,13 +1,13 @@
 import "@testing-library/jest-dom/vitest";
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import type { Op } from "../../gen/opendesigner/v1/opendesigner_pb";
-import { useScene } from "../../store/store";
-import { useFlowUi } from "../../store/flowUi";
-import { baseScene } from "../../flow/testSupport";
-import { setCompareFetcher, type Comparison } from "../../dev/devStatus";
-import { DevStatusSection } from "./DevStatusSection";
-import { ReadyListSection } from "./ReadyListSection";
+import type { Op } from "@/gen/opendesigner/v1/opendesigner_pb";
+import { useScene } from "@/store/store";
+import { useFlowUi } from "@/store/flowUi";
+import { baseScene } from "@/flow/testSupport";
+import { setCompareFetcher, type Comparison } from "@/dev/devStatus";
+import { DevStatusSection } from "@/ui/dev/DevStatusSection";
+import { ReadyListSection } from "@/ui/dev/ReadyListSection";
 
 // DEV STATUS: marking a frame ready for dev, annotating layers, Compare changes and the ready list,
 // against a fake server (ops are applied locally, the comparison is injected).

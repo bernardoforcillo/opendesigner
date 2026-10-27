@@ -1,6 +1,6 @@
-import type { DocSettingsLite, NodeLite, PageLite, TextStyleDefLite } from "../store/types";
-import { DocBuilder, hexFill, type BuiltTemplate, type IdGen } from "./builder";
-import { META_NEXT } from "../store/threads";
+import type { DocSettingsLite, NodeLite, PageLite, TextStyleDefLite } from "@/store/types";
+import { DocBuilder, hexFill, type BuiltTemplate, type IdGen } from "@/templates/builder";
+import { META_NEXT } from "@/store/threads";
 
 // THE PUBLISHING TEMPLATES: a book, a magazine and a report. Each one is a real document: sized sheets
 // with margins, columns and bleed, a master page with the running head and the page number, paragraph and

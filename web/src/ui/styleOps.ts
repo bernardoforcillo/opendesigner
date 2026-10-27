@@ -1,8 +1,8 @@
-import type { Op } from "../gen/opendesigner/v1/opendesigner_pb";
-import { makeDeleteEffectStyleDefOp, makeDeletePaintStyleDefOp, makeSetEffectStyleDefOp, makeSetPaintStyleDefOp, makeSetPropsOp, uuid } from "../tools/ops";
-import { toPbEffects, toPbFills, toPbStrokes } from "../store/types";
-import type { NodeLite, SceneState } from "../store/types";
-import type { NodeLookup } from "./gradientOps";
+import type { Op } from "@/gen/opendesigner/v1/opendesigner_pb";
+import { makeDeleteEffectStyleDefOp, makeDeletePaintStyleDefOp, makeSetEffectStyleDefOp, makeSetPaintStyleDefOp, makeSetPropsOp, uuid } from "@/tools/ops";
+import { toPbEffects, toPbFills, toPbStrokes } from "@/store/types";
+import type { NodeLite, SceneState } from "@/store/types";
+import type { NodeLookup } from "@/ui/gradientOps";
 
 // The panel's ops for SHARED PAINT AND EFFECT STYLES (docs/shapes.md; the text-style flow's twin). A style is
 // a named list of paints (used by fills or strokes) or of effects; a node that names one draws with it and

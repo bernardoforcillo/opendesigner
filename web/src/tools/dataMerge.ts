@@ -1,8 +1,8 @@
-import type { Op } from "../gen/opendesigner/v1/opendesigner_pb";
-import { META_NEXT } from "../store/threads";
-import { childrenOf, subtreeOf } from "../store/tree";
-import { toPbNode, type NodeLite, type SceneState } from "../store/types";
-import { makeCreateNodeOp, makeCreatePageWithMasterOp, makeMovePageOp, uuid } from "./ops";
+import type { Op } from "@/gen/opendesigner/v1/opendesigner_pb";
+import { META_NEXT } from "@/store/threads";
+import { childrenOf, subtreeOf } from "@/store/tree";
+import { toPbNode, type NodeLite, type SceneState } from "@/store/types";
+import { makeCreateNodeOp, makeCreatePageWithMasterOp, makeMovePageOp, uuid } from "@/tools/ops";
 
 // DATA MERGE: a page laid out once with `{{Field}}` placeholders in its text becomes one page per record
 // of a CSV/TSV table. The template page stays; the merged pages follow it, each a copy of the template

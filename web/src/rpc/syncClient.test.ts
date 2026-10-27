@@ -1,8 +1,8 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { Code, ConnectError } from "@connectrpc/connect";
 import { create } from "@bufbuild/protobuf";
-import { DocumentSchema, NodeSchema, OpSchema, ServerMsgSchema } from "../gen/opendesigner/v1/opendesigner_pb";
-import type { Node as PbNode, Op, ServerMsg } from "../gen/opendesigner/v1/opendesigner_pb";
+import { DocumentSchema, NodeSchema, OpSchema, ServerMsgSchema } from "@/gen/opendesigner/v1/opendesigner_pb";
+import type { Node as PbNode, Op, ServerMsg } from "@/gen/opendesigner/v1/opendesigner_pb";
 
 // Double of the Connect transport: SyncClient imports `docClient` from ./client, and
 // that is the only point where it touches the network. vi.hoisted because the factory of
@@ -12,10 +12,10 @@ const rpc = vi.hoisted(() => ({
   submitOp: vi.fn(),
   subscribe: vi.fn(),
 }));
-vi.mock("./client", () => ({ docClient: rpc }));
+vi.mock("@/rpc/client", () => ({ docClient: rpc }));
 
-import { MAX_OUTBOX, SyncClient } from "./syncClient";
-import { useScene } from "../store/store";
+import { MAX_OUTBOX, SyncClient } from "@/rpc/syncClient";
+import { useScene } from "@/store/store";
 
 const CLIENT = "client-A";
 const OTHER = "client-B";

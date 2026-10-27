@@ -4,13 +4,13 @@ import { create } from "@bufbuild/protobuf";
 import {
   BranchRequestSchema, CreateVersionRequestSchema, DeleteVersionRequestSchema, GetBranchOriginRequestSchema, ListVersionsRequestSchema,
   MergeBranchRequestSchema, ReviewMergeRequestSchema,
-} from "../gen/opendesigner/v1/opendesigner_pb";
-import type { GetBranchOriginResponse, ReviewMergeResponse, VersionInfo } from "../gen/opendesigner/v1/opendesigner_pb";
-import { docClient } from "../rpc/client";
-import { useScene } from "../store/store";
-import { useAppNavigate } from "../home/nav";
-import { pathForDoc } from "../home/route";
-import { Button, cls, EmptyState } from "./ds";
+} from "@/gen/opendesigner/v1/opendesigner_pb";
+import type { GetBranchOriginResponse, ReviewMergeResponse, VersionInfo } from "@/gen/opendesigner/v1/opendesigner_pb";
+import { docClient } from "@/rpc/client";
+import { useScene } from "@/store/store";
+import { useAppNavigate } from "@/home/nav";
+import { pathForDoc } from "@/home/route";
+import { Button, cls, EmptyState } from "@/ui/ds";
 
 // THE VERSIONS DIALOG (document menu → Versions…): named, frozen copies of the document.
 // A version is never edited; "Open as copy" branches it into a NEW document (with the

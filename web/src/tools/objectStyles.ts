@@ -1,7 +1,7 @@
-import type { Op } from "../gen/opendesigner/v1/opendesigner_pb";
-import { isValidObjectStyleId, styleFromNode } from "../store/graphics";
-import { OBJECT_STYLE_PROPS, type NodeLite, type ObjectStyleLite, type ObjectStyleProp, type SceneState } from "../store/types";
-import { makeDeleteObjectStyleDefOp, makeSetObjectStyleDefOp, makeSetPropsOp, uuid } from "./ops";
+import type { Op } from "@/gen/opendesigner/v1/opendesigner_pb";
+import { isValidObjectStyleId, styleFromNode } from "@/store/graphics";
+import { OBJECT_STYLE_PROPS, type NodeLite, type ObjectStyleLite, type ObjectStyleProp, type SceneState } from "@/store/types";
+import { makeDeleteObjectStyleDefOp, makeSetObjectStyleDefOp, makeSetPropsOp, uuid } from "@/tools/ops";
 
 // OBJECT STYLES as ops (store/graphics.ts): a named look for shapes that can be applied to many and redefined once.
 

@@ -1,9 +1,9 @@
-import { useScene } from "../store/store";
-import type { NodeLite, SceneState } from "../store/types";
-import { hitTest } from "../renderer/canvasRenderer";
-import { builderFaces, builderSources, faceContains, facesAlong, shapeBuilderOps } from "../vector/shapeBuilder";
-import type { BuilderMode, Face } from "../vector/shapeBuilder";
-import type { Tool } from "./types";
+import { useScene } from "@/store/store";
+import type { NodeLite, SceneState } from "@/store/types";
+import { hitTest } from "@/renderer/canvasRenderer";
+import { builderFaces, builderSources, faceContains, facesAlong, shapeBuilderOps } from "@/vector/shapeBuilder";
+import type { BuilderMode, Face } from "@/vector/shapeBuilder";
+import type { Tool } from "@/tools/types";
 
 // THE SHAPE BUILDER TOOL (M): with two or more overlapping shapes selected, click a region to take it as
 // a shape of its own, or drag across several to merge them into one; Alt removes the regions instead.

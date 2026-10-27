@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { create } from "zustand";
-import { Icon } from "../ds";
-import { useScene } from "../../store/store";
-import { docClient } from "../../rpc/client";
+import { Icon } from "@/ui/ds";
+import { useScene } from "@/store/store";
+import { docClient } from "@/rpc/client";
 
 /**
  * Renames the open document: first on the server (which makes it durable), then

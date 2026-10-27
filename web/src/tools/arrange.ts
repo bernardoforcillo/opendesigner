@@ -1,9 +1,9 @@
-import type { Op } from "../gen/opendesigner/v1/opendesigner_pb";
-import { orderKeyBetween } from "../store/orderKey";
-import { useScene } from "../store/store";
-import { childrenOf, topmostOf } from "../store/tree";
-import type { SceneState } from "../store/types";
-import { makeSetPropsOp } from "./ops";
+import type { Op } from "@/gen/opendesigner/v1/opendesigner_pb";
+import { orderKeyBetween } from "@/store/orderKey";
+import { useScene } from "@/store/store";
+import { childrenOf, topmostOf } from "@/store/tree";
+import type { SceneState } from "@/store/types";
+import { makeSetPropsOp } from "@/tools/ops";
 
 // ARRANGE: bring the selection forward / backward one step, or to the front / back, among its
 // siblings. The draw order IS the order key (ascending = background to foreground), so every move

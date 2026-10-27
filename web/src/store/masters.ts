@@ -1,9 +1,9 @@
-import { isValidPageSetup } from "./docSettings";
-import { isRightPage, pageNumbers } from "./pageNumbers";
-import { runningHeads, substituteVariables } from "./textTokens";
-import { recordDelta } from "./sceneDelta";
-import { childrenOf, subtreeOf } from "./tree";
-import { toPageLite, type GuideLite, type NodeLite, type PageLite, type SceneState } from "./types";
+import { isValidPageSetup } from "@/store/docSettings";
+import { isRightPage, pageNumbers } from "@/store/pageNumbers";
+import { runningHeads, substituteVariables } from "@/store/textTokens";
+import { recordDelta } from "@/store/sceneDelta";
+import { childrenOf, subtreeOf } from "@/store/tree";
+import { toPageLite, type GuideLite, type NodeLite, type PageLite, type SceneState } from "@/store/types";
 
 // MASTER PAGES. A master is a page flagged `isMaster`: a template. Every page that applies it
 // (`masterId`) draws the master's nodes BEHIND its own, and the page number token "<#>" in a master's

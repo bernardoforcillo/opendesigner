@@ -1,11 +1,11 @@
 import { useEffect, useState } from "react";
 import { create } from "@bufbuild/protobuf";
-import { CompareReadyRequestSchema, type Op } from "../gen/opendesigner/v1/opendesigner_pb";
-import { docClient } from "../rpc/client";
-import { useScene } from "../store/store";
-import type { SceneState } from "../store/types";
-import { readyOfScene } from "../store/devMode";
-import { makeClearReadyForDevOp, makeDeleteAnnotationOp, makeSetAnnotationOp, makeSetReadyForDevOp, uuid } from "../tools/ops";
+import { CompareReadyRequestSchema, type Op } from "@/gen/opendesigner/v1/opendesigner_pb";
+import { docClient } from "@/rpc/client";
+import { useScene } from "@/store/store";
+import type { SceneState } from "@/store/types";
+import { readyOfScene } from "@/store/devMode";
+import { makeClearReadyForDevOp, makeDeleteAnnotationOp, makeSetAnnotationOp, makeSetReadyForDevOp, uuid } from "@/tools/ops";
 
 // DEV STATUS: what Develop adds on top of a frame -- "ready for dev", the annotations a designer
 // leaves for the developer, and "Compare changes" (the frame now against its state when it was

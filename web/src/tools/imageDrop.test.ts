@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import { useScene } from "../store/store";
-import { emptyScene, type NodeLite } from "../store/types";
+import { useScene } from "@/store/store";
+import { emptyScene, type NodeLite } from "@/store/types";
 import {
   MAX_DROP_SIZE,
   STACK_OFFSET,
@@ -8,7 +8,7 @@ import {
   dropImages,
   imageFilesOf,
   type ImageDropDeps,
-} from "./imageDrop";
+} from "@/tools/imageDrop";
 
 const HASH = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
 const HASH2 = "fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210";

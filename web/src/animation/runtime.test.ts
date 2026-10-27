@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
-import { baseScene } from "../flow/testSupport";
-import type { ClipLite, SceneState } from "../store/types";
-import { asPlayed, autoClipsForScreen, clipsUnder, pointerClipsForScreen, sampleRuns, startRuns } from "./runtime";
+import { baseScene } from "@/flow/testSupport";
+import type { ClipLite, SceneState } from "@/store/types";
+import { asPlayed, autoClipsForScreen, clipsUnder, pointerClipsForScreen, sampleRuns, startRuns } from "@/animation/runtime";
 
 const clip = (id: string, over: Partial<ClipLite> = {}): ClipLite => ({
   id, name: id, duration: 1000, trigger: "enter", delay: 0, repeat: 0, yoyo: false, targetId: "A",

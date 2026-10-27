@@ -1,4 +1,4 @@
-import { type PdfFile } from "./pdfFile";
+import { type PdfFile } from "@/pdf/write/pdfFile";
 
 // IMAGES IN A PDF. JPEGs go in untouched (DCTDecode: no re-encoding, no quality loss, and CMYK
 // JPEGs stay CMYK). PNGs without transparency or interlacing go in as their own Flate data with a

@@ -1,10 +1,10 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import { pickArrow, withFlowArrows } from "./flowSelect";
-import type { Tool, ToolContext } from "./types";
-import type { Op } from "../gen/opendesigner/v1/opendesigner_pb";
-import { useScene } from "../store/store";
-import { useFlowUi } from "../store/flowUi";
-import { baseScene, flowOf, transition, withFlows } from "../flow/testSupport";
+import { pickArrow, withFlowArrows } from "@/tools/flowSelect";
+import type { Tool, ToolContext } from "@/tools/types";
+import type { Op } from "@/gen/opendesigner/v1/opendesigner_pb";
+import { useScene } from "@/store/store";
+import { useFlowUi } from "@/store/flowUi";
+import { baseScene, flowOf, transition, withFlows } from "@/flow/testSupport";
 
 class FakeSync {
   sent: Op[] = [];

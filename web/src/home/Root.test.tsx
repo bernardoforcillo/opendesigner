@@ -4,11 +4,11 @@ import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import { createMemoryHistory, type RouterHistory } from "@tanstack/react-router";
 import type { ReactNode } from "react";
 import { ConnectError, Code } from "@connectrpc/connect";
-import { Root, documentTitleFor } from "./Root";
-import { useScene } from "../store/store";
-import { useFlowUi } from "../store/flowUi";
-import { useRenderer } from "../store/rendererChoice";
-import { emptyScene } from "../store/types";
+import { Root, documentTitleFor } from "@/home/Root";
+import { useScene } from "@/store/store";
+import { useFlowUi } from "@/store/flowUi";
+import { useRenderer } from "@/store/rendererChoice";
+import { emptyScene } from "@/store/types";
 
 const ID = "0f8b1c3e-5a52-4c7d-9a1e-2b3c4d5e6f70";
 const ID2 = "1a2b3c4d-5e6f-4a1b-8c2d-3e4f5a6b7c80";
@@ -135,18 +135,18 @@ describe("Root", () => {
 
 // The editor that cannot find the document: the card with the exit to the Home.
 describe("nonexistent document", () => {
-  afterEach(() => { cleanup(); vi.resetModules(); vi.doUnmock("../rpc/syncClient"); });
+  afterEach(() => { cleanup(); vi.resetModules(); vi.doUnmock("@/rpc/syncClient"); });
 
   it("the bootstrap NotFound error shows 'Document not found' and Back to Home goes to Home", async () => {
     vi.resetModules();
-    vi.doMock("../rpc/syncClient", () => ({
+    vi.doMock("@/rpc/syncClient", () => ({
       SyncClient: class {
         async start() { throw new ConnectError("document not found", Code.NotFound); }
         stop() {}
       },
     }));
-    vi.doMock("../rpc/client", () => ({ docClient: {} }));
-    const { Root: FreshRoot } = await import("./Root");
+    vi.doMock("@/rpc/client", () => ({ docClient: {} }));
+    const { Root: FreshRoot } = await import("@/home/Root");
     const history = createMemoryHistory({ initialEntries: [`/doc/${ID}`] });
     render(<FreshRoot history={history} />);
     const alert = await screen.findByRole("alert");

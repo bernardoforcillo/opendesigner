@@ -18,9 +18,9 @@ import {
   worldBoundsOfNode,
   worldToLocal,
   worldTransformOf,
-} from "./transform";
-import { emptyScene } from "../store/types";
-import type { NodeLite, SceneState } from "../store/types";
+} from "@/canvas/transform";
+import { emptyScene } from "@/store/types";
+import type { NodeLite, SceneState } from "@/store/types";
 
 // Reference box: 100x50 at the origin, so CENTER (50, 25) -- the only
 // point around which this module rotates (see the comment in transform.ts).

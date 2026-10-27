@@ -1,17 +1,17 @@
 import { useRef } from "react";
-import { Button, EmptyState } from "../ds";
-import { AnimIcon, AnimIconButton } from "../ds/anim-parts";
-import { useScene } from "../../store/store";
-import type { ClipLite } from "../../store/types";
+import { Button, EmptyState } from "@/ui/ds";
+import { AnimIcon, AnimIconButton } from "@/ui/ds/anim-parts";
+import { useScene } from "@/store/store";
+import type { ClipLite } from "@/store/types";
 import {
   MAX_HEIGHT, MIN_HEIGHT, commitClip, createClip, useTimeline,
-} from "../../animation/timelineStore";
-import { deleteKeyframes, duplicateKeyframes, moveKeyframes, SNAP_MS } from "../../animation/timelineLogic";
-import { isTextField } from "../../tools/toolManager";
-import { ClipList } from "./ClipList";
-import { KeyframeInspector } from "./KeyframeInspector";
-import { TrackArea } from "./TrackArea";
-import { Transport } from "./Transport";
+} from "@/animation/timelineStore";
+import { deleteKeyframes, duplicateKeyframes, moveKeyframes, SNAP_MS } from "@/animation/timelineLogic";
+import { isTextField } from "@/tools/toolManager";
+import { ClipList } from "@/ui/timeline/ClipList";
+import { KeyframeInspector } from "@/ui/timeline/KeyframeInspector";
+import { TrackArea } from "@/ui/timeline/TrackArea";
+import { Transport } from "@/ui/timeline/Transport";
 
 // THE TIMELINE PANEL, below the canvas (Design). The shell costs nothing when
 // closed: it does not mount the body, so it does not sample, listen or redraw.

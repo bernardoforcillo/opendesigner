@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { parseColor } from "./color";
+import { parseColor } from "@/svg/color";
 
 const c255 = (c: ReturnType<typeof parseColor>) => c && [Math.round(c.r * 255), Math.round(c.g * 255), Math.round(c.b * 255), Math.round(c.a * 1000) / 1000];
 

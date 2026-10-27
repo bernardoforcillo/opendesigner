@@ -1,14 +1,14 @@
 import { create } from "@bufbuild/protobuf";
-import { NodeSchema } from "../gen/opendesigner/v1/opendesigner_pb";
-import type { Op } from "../gen/opendesigner/v1/opendesigner_pb";
-import { localToWorld, worldToLocal } from "../canvas/transform";
-import { contentWorldBounds, isGroup } from "../store/groups";
-import { unionBounds } from "../canvas/geometry";
-import { orderKeyBetween } from "../store/orderKey";
-import { childrenOf, documentOrder, topmostOf } from "../store/tree";
-import type { AutoLayoutLite, NodeLite, SceneState } from "../store/types";
-import { toPbAutoLayout } from "../store/types";
-import { makeCreateNodeOp, makeDeleteOp, makeReparentOp, makeSetPropsOp, uuid } from "./ops";
+import { NodeSchema } from "@/gen/opendesigner/v1/opendesigner_pb";
+import type { Op } from "@/gen/opendesigner/v1/opendesigner_pb";
+import { localToWorld, worldToLocal } from "@/canvas/transform";
+import { contentWorldBounds, isGroup } from "@/store/groups";
+import { unionBounds } from "@/canvas/geometry";
+import { orderKeyBetween } from "@/store/orderKey";
+import { childrenOf, documentOrder, topmostOf } from "@/store/tree";
+import type { AutoLayoutLite, NodeLite, SceneState } from "@/store/types";
+import { toPbAutoLayout } from "@/store/types";
+import { makeCreateNodeOp, makeDeleteOp, makeReparentOp, makeSetPropsOp, uuid } from "@/tools/ops";
 
 // GROUP (Ctrl+G) and UNGROUP (Ctrl+Shift+G) as OP LISTS, without touching
 // the store: the caller passes them to a single endGesture, and therefore

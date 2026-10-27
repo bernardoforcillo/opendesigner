@@ -8,9 +8,9 @@ import {
   snapTargets,
   spacingSnap,
   worldThreshold,
-} from "./snap";
-import { emptyScene } from "../store/types";
-import type { NodeLite, SceneState } from "../store/types";
+} from "@/selection/snap";
+import { emptyScene } from "@/store/types";
+import type { NodeLite, SceneState } from "@/store/types";
 
 function node(over: Partial<NodeLite> & { id: string }): NodeLite {
   return {

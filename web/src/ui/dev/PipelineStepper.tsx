@@ -1,11 +1,11 @@
 import { Button as RacButton, Tooltip, TooltipTrigger } from "react-aria-components";
-import { useScene } from "../../store/store";
-import { useFlowUi } from "../../store/flowUi";
-import { usePanels } from "../shell/panels";
-import { hasPresented } from "../../dev/presented";
-import { pipelineSteps, type PipelineStep, type StepId } from "../../dev/pipeline";
-import { Icon } from "../ds";
-import { useReadiness } from "./useReadiness";
+import { useScene } from "@/store/store";
+import { useFlowUi } from "@/store/flowUi";
+import { usePanels } from "@/ui/shell/panels";
+import { hasPresented } from "@/dev/presented";
+import { pipelineSteps, type PipelineStep, type StepId } from "@/dev/pipeline";
+import { Icon } from "@/ui/ds";
+import { useReadiness } from "@/ui/dev/useReadiness";
 
 // The pipeline STEPPER: Draw · Connect · Try · Ship.
 //

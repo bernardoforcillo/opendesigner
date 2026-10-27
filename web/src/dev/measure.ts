@@ -1,5 +1,5 @@
-import { worldAabbOfNode } from "../canvas/geometry";
-import type { SceneState } from "../store/types";
+import { worldAabbOfNode } from "@/canvas/geometry";
+import type { SceneState } from "@/store/types";
 
 // MEASUREMENTS for Develop (the redlines): where a node sits in its parent and how far it is from the
 // nearest sibling on each side. Pure, in world units, read from the scene; the panel only prints it.

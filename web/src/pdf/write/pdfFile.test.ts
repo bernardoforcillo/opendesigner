@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { PdfFile, adler32, num, pdfDate, pdfName, pdfText, storedZlib } from "./pdfFile";
+import { PdfFile, adler32, num, pdfDate, pdfName, pdfText, storedZlib } from "@/pdf/write/pdfFile";
 
 describe("pdf primitives", () => {
   it("numbers have no exponent and no trailing zeros", () => {

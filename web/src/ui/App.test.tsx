@@ -4,22 +4,22 @@
 import "@testing-library/jest-dom/vitest";
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { render, screen, fireEvent, cleanup, within, waitFor } from "@testing-library/react";
-import { App, TOOLS, TOOL_LABELS, toolsForMode } from "./App";
-import { textTool } from "../tools/textTool";
-import { penTool } from "../tools/penTool";
-import { frameTool } from "../tools/frameTool";
-import { selectTool } from "../tools/selectTool";
-import { useScene } from "../store/store";
-import { emptyScene } from "../store/types";
-import * as overlayRenderer from "../renderer/overlayRenderer";
+import { App, TOOLS, TOOL_LABELS, toolsForMode } from "@/ui/App";
+import { textTool } from "@/tools/textTool";
+import { penTool } from "@/tools/penTool";
+import { frameTool } from "@/tools/frameTool";
+import { selectTool } from "@/tools/selectTool";
+import { useScene } from "@/store/store";
+import { emptyScene } from "@/store/types";
+import * as overlayRenderer from "@/renderer/overlayRenderer";
 
 // App's bootstrap talks to the network (createDocument + SyncClient): here
 // only the toolbar is needed, so the transport is an inert double. Without it, every
 // test would open a fetch towards a server that does not exist.
-vi.mock("../rpc/client", () => ({
+vi.mock("@/rpc/client", () => ({
   docClient: { createDocument: vi.fn(async () => ({ id: "doc-1" })) },
 }));
-vi.mock("../rpc/syncClient", () => ({
+vi.mock("@/rpc/syncClient", () => ({
   SyncClient: class {
     async start() {}
     stop() {}
@@ -319,7 +319,7 @@ describe("export", () => {
   });
 });
 
-import { docIdFromHash } from "./App";
+import { docIdFromHash } from "@/ui/App";
 
 describe("docIdFromHash", () => {
   const id = "123e4567-e89b-42d3-a456-426614174000";

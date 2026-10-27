@@ -1,6 +1,6 @@
-import { useFlowUi } from "../../store/flowUi";
-import { useTimeline } from "../../animation/timelineStore";
-import { isTextField } from "../../tools/toolManager";
+import { useFlowUi } from "@/store/flowUi";
+import { useTimeline } from "@/animation/timelineStore";
+import { isTextField } from "@/tools/toolManager";
 
 // M opens/closes the timeline. On the window like the other single-key
 // shortcuts (the canvas is not focusable), never inside a text field, never with a

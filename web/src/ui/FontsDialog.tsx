@@ -1,10 +1,10 @@
 import { useState } from "react";
 import { Dialog, Modal, ModalOverlay } from "react-aria-components";
-import { uploadAsset } from "../rpc/assets";
-import { useScene } from "../store/store";
-import { makeDeleteFontOp } from "../tools/ops";
-import { Button, cls, EmptyState } from "./ds";
-import { addFontOp, guessFontFromFilename } from "./typographyOps";
+import { uploadAsset } from "@/rpc/assets";
+import { useScene } from "@/store/store";
+import { makeDeleteFontOp } from "@/tools/ops";
+import { Button, cls, EmptyState } from "@/ui/ds";
+import { addFontOp, guessFontFromFilename } from "@/ui/typographyOps";
 
 // THE FONTS DIALOG (document menu → Fonts…): upload a TTF/OTF/WOFF/WOFF2 file and
 // say which family, weight and style it is; the text styles that name that family

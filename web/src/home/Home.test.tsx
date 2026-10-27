@@ -1,8 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { Home, type HomeClient } from "./Home";
-import { TEMPLATES } from "../templates/catalog";
+import { Home, type HomeClient } from "@/home/Home";
+import { TEMPLATES } from "@/templates/catalog";
 
 const tpl = (id: string) => TEMPLATES.find((t) => t.id === id)!;
 

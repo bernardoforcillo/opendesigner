@@ -1,15 +1,15 @@
 import { useState } from "react";
-import { useScene } from "../../store/store";
-import { measureNode, type Measurement } from "../../dev/measure";
-import { refreshCode, useCodegen, type CodeTarget } from "../../dev/codegen";
-import { AGENT_PROMPT, AGENT_TOOLS, projectZip, shipCommands, shipScript, zipName } from "../../dev/ship";
-import { downloadBytes } from "../../dev/zip";
-import { SHIPPED_EVENT } from "../../home/docPrefs";
-import { Badge, Button, EmptyState, cls } from "../ds";
-import { DevIcon } from "../ds/dev-parts";
-import { CopyButton } from "./CopyButton";
-import { DevStatusSection } from "./DevStatusSection";
-import { useReadiness } from "./useReadiness";
+import { useScene } from "@/store/store";
+import { measureNode, type Measurement } from "@/dev/measure";
+import { refreshCode, useCodegen, type CodeTarget } from "@/dev/codegen";
+import { AGENT_PROMPT, AGENT_TOOLS, projectZip, shipCommands, shipScript, zipName } from "@/dev/ship";
+import { downloadBytes } from "@/dev/zip";
+import { SHIPPED_EVENT } from "@/home/docPrefs";
+import { Badge, Button, EmptyState, cls } from "@/ui/ds";
+import { DevIcon } from "@/ui/ds/dev-parts";
+import { CopyButton } from "@/ui/dev/CopyButton";
+import { DevStatusSection } from "@/ui/dev/DevStatusSection";
+import { useReadiness } from "@/ui/dev/useReadiness";
 
 // "SHIP" (right column of Develop): the last mile. A button that downloads
 // the project zip, the commands to run and verify it (copyable one by

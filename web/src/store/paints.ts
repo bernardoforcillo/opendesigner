@@ -1,5 +1,5 @@
-import { ImageScaleMode } from "../gen/opendesigner/v1/opendesigner_pb";
-import type { Paint, Stroke } from "../gen/opendesigner/v1/opendesigner_pb";
+import { ImageScaleMode } from "@/gen/opendesigner/v1/opendesigner_pb";
+import type { Paint, Stroke } from "@/gen/opendesigner/v1/opendesigner_pb";
 
 // Parity with core.validateNodePaints: a mesh paint has a grid of the right size with one color per point; an image paint needs a 64-hex asset hash and a known
 // scale mode. (The file itself may arrive later; a missing one draws as a placeholder.)

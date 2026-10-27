@@ -1,8 +1,8 @@
 import { describe, it, expect } from "vitest";
-import { hasErrors, preflightReport, preflightScene } from "./preflight";
-import { emptyScene } from "../store/types";
-import type { NodeLite, SceneState } from "../store/types";
-import type { PdfReport } from "../pdf/write/pdfDocument";
+import { hasErrors, preflightReport, preflightScene } from "@/export/preflight";
+import { emptyScene } from "@/store/types";
+import type { NodeLite, SceneState } from "@/store/types";
+import type { PdfReport } from "@/pdf/write/pdfDocument";
 
 const text = (id: string, family: string, content = "x", over: Partial<NodeLite> = {}): NodeLite => ({
   id, parentId: "page1", orderKey: "a", name: id, visible: true, opacity: 1, x: 0, y: 0, width: 100, height: 20, rotation: 0,

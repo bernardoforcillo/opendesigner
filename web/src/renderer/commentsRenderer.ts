@@ -1,7 +1,7 @@
-import type { Camera } from "../canvas/camera";
-import { worldToScreen } from "../canvas/camera";
-import type { Pin } from "../comments/pins";
-import { themeColors } from "./themeColors";
+import type { Camera } from "@/canvas/camera";
+import { worldToScreen } from "@/canvas/camera";
+import type { Pin } from "@/comments/pins";
+import { themeColors } from "@/renderer/themeColors";
 
 // THE COMMENT PINS on the overlay: a numbered bubble whose tip is the commented point.
 // Editor-only, never exported. Sizes are screen px and do not scale with the zoom.

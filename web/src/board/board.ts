@@ -1,6 +1,6 @@
 import { Code, ConnectError } from "@connectrpc/connect";
-import type { RenderBoardResponse } from "../gen/opendesigner/v1/opendesigner_pb";
-import { docClient } from "../rpc/client";
+import type { RenderBoardResponse } from "@/gen/opendesigner/v1/opendesigner_pb";
+import { docClient } from "@/rpc/client";
 
 // WHITEBOARD OBJECTS IN THE EDITOR. The drawing is the server's (internal/board), the same
 // function the create_board_object MCP tool uses; the nodes it returns go in through

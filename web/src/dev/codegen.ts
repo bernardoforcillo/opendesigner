@@ -1,7 +1,7 @@
 import { useEffect } from "react";
 import { create } from "zustand";
-import { docClient } from "../rpc/client";
-import { useScene } from "../store/store";
+import { docClient } from "@/rpc/client";
+import { useScene } from "@/store/store";
 
 // THE GENERATED CODE, client side: asks the server for `ExportCode` (the same
 // implementation as CLI and MCP, internal/codegen) and keeps the last result in

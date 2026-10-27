@@ -1,9 +1,9 @@
 import { describe, expect, it, beforeEach } from "vitest";
-import { emptyScene } from "../store/types";
-import type { SceneState } from "../store/types";
-import { baseScene, withFlows, flowOf, transition } from "../flow/testSupport";
-import { checklistSteps, isChecklistComplete, onboardingMode, screenNodes } from "./checklist";
-import { loadDocPrefs, saveDocPrefs } from "./docPrefs";
+import { emptyScene } from "@/store/types";
+import type { SceneState } from "@/store/types";
+import { baseScene, withFlows, flowOf, transition } from "@/flow/testSupport";
+import { checklistSteps, isChecklistComplete, onboardingMode, screenNodes } from "@/home/checklist";
+import { loadDocPrefs, saveDocPrefs } from "@/home/docPrefs";
 
 const NO_FLAGS = { presented: false, shipped: false };
 const done = (steps: ReturnType<typeof checklistSteps>) => steps.filter((s) => s.done).map((s) => s.id);

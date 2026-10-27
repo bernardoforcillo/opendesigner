@@ -1,8 +1,8 @@
 import { it, expect } from "vitest";
-import { applyOp } from "../store/applyOp";
-import { emptyScene } from "../store/types";
-import { sceneIndexOf } from "../renderer/sceneIndex";
-import { templateById, templateOps } from "../templates/catalog";
+import { applyOp } from "@/store/applyOp";
+import { emptyScene } from "@/store/types";
+import { sceneIndexOf } from "@/renderer/sceneIndex";
+import { templateById, templateOps } from "@/templates/catalog";
 
 it("incremental extent == fresh extent", () => {
   let n = 0;

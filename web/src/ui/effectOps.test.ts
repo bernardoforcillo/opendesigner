@@ -1,12 +1,12 @@
-import { nodesOf } from "../store/nodeMap";
+import { nodesOf } from "@/store/nodeMap";
 import { describe, it, expect } from "vitest";
-import { applyOp } from "../store/applyOp";
-import { emptyScene } from "../store/types";
-import type { EffectLite, NodeLite, SceneState } from "../store/types";
+import { applyOp } from "@/store/applyOp";
+import { emptyScene } from "@/store/types";
+import type { EffectLite, NodeLite, SceneState } from "@/store/types";
 import {
   DEFAULT_SHADOW, addShadowOps, backgroundBlurOps, blendModeOps, blurOf, blurOps, editShadowOps, removeEffectOps, shadowOf,
   shadowOps, shadowsOf,
-} from "./effectOps";
+} from "@/ui/effectOps";
 
 function sceneWith(effects?: EffectLite[]): SceneState {
   const n: NodeLite = {

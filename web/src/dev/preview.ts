@@ -1,5 +1,5 @@
-import type { CodeFile } from "./codegen";
-import { textOf } from "./codegen";
+import type { CodeFile } from "@/dev/codegen";
+import { textOf } from "@/dev/codegen";
 
 // THE PREVIEW: the generated screen (html target) inside a sandboxed
 // `srcdoc` iframe, next to the code. An HTML file of the html target is SELF-CONTAINED (CSS

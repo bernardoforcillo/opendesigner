@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { nodesToSvg } from "./svg";
-import type { NodeLite, TextStyleLite } from "../store/types";
+import { nodesToSvg } from "@/export/svg";
+import type { NodeLite, TextStyleLite } from "@/store/types";
 
 // 10 units per character, as in svg.test.ts.
 const measure = (s: string) => s.length * 10;

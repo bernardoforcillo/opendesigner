@@ -2,11 +2,11 @@ import "@testing-library/jest-dom/vitest";
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { render, screen, cleanup } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import type { Op } from "../gen/opendesigner/v1/opendesigner_pb";
-import { ComponentsPanel } from "./ComponentsPanel";
-import { useScene } from "../store/store";
-import { emptyScene } from "../store/types";
-import type { NodeLite } from "../store/types";
+import type { Op } from "@/gen/opendesigner/v1/opendesigner_pb";
+import { ComponentsPanel } from "@/ui/ComponentsPanel";
+import { useScene } from "@/store/store";
+import { emptyScene } from "@/store/types";
+import type { NodeLite } from "@/store/types";
 
 // SyncClient double: records the ops ON THE WIRE and models a server that accepts
 // and ECHOES at once (applyPending + apply), like the other panel tests.

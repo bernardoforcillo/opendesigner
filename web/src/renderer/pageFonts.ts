@@ -1,7 +1,7 @@
-import type { SceneState } from "../store/types";
-import { sceneIndexOf } from "./sceneIndex";
-import { rootsOf } from "./canvasRenderer";
-import { firstFamily } from "./ck/canvaskit";
+import type { SceneState } from "@/store/types";
+import { sceneIndexOf } from "@/renderer/sceneIndex";
+import { rootsOf } from "@/renderer/canvasRenderer";
+import { firstFamily } from "@/renderer/ck/canvaskit";
 
 // WHICH UPLOADED FONTS A PAGE NEEDS. A document keeps all its fonts, but only the page on screen
 // has to download them: the renderers ask this for the families used by the current page's text and

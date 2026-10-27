@@ -1,5 +1,5 @@
-import type { Message } from "../core";
-import type { MessageKey } from "./en";
+import type { Message } from "@/i18n/core";
+import type { MessageKey } from "@/i18n/locales/en";
 
 // German, formal address (Sie). MACHINE DRAFT: waiting for a native speaker's review (docs/localization.md).
 export const de: Record<MessageKey, Message> = {

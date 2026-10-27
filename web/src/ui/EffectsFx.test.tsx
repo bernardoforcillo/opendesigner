@@ -1,11 +1,11 @@
 import "@testing-library/jest-dom/vitest";
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { render, screen, cleanup, fireEvent } from "@testing-library/react";
-import type { Op } from "../gen/opendesigner/v1/opendesigner_pb";
-import { useScene } from "../store/store";
-import { emptyScene, type EffectLite, type NodeLite } from "../store/types";
-import { EffectsFxControls } from "./EffectsFxControls";
-import { RAMP_DIRECTIONS, glassOps, noiseOps, progressiveOps, progressiveTargetOps, rampDirectionOf, textureOps } from "./effectFxOps";
+import type { Op } from "@/gen/opendesigner/v1/opendesigner_pb";
+import { useScene } from "@/store/store";
+import { emptyScene, type EffectLite, type NodeLite } from "@/store/types";
+import { EffectsFxControls } from "@/ui/EffectsFxControls";
+import { RAMP_DIRECTIONS, glassOps, noiseOps, progressiveOps, progressiveTargetOps, rampDirectionOf, textureOps } from "@/ui/effectFxOps";
 
 class FakeSync {
   submit(op: Op) {

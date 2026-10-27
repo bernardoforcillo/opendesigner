@@ -11,11 +11,11 @@ import {
   rotateMarkerPositions,
   PEN_ANCHOR_SIZE,
   PEN_ANCHOR_GRAB_PX,
-} from "./overlayRenderer";
-import { emptyScene } from "../store/types";
-import type { AnchorLite, NodeLite } from "../store/types";
-import type { PenPreview } from "../store/vectorGeometry";
-import type { Camera } from "../canvas/camera";
+} from "@/renderer/overlayRenderer";
+import { emptyScene } from "@/store/types";
+import type { AnchorLite, NodeLite } from "@/store/types";
+import type { PenPreview } from "@/store/vectorGeometry";
+import type { Camera } from "@/canvas/camera";
 
 function rect(id: string, x: number, y: number, w = 50, h = 50): NodeLite {
   return {

@@ -1,9 +1,9 @@
 import { describe, it, expect } from "vitest";
-import { layoutRich, type MeasureFor } from "../renderer/text";
-import { deriveWrap, wrapOps, wrapRectsOf } from "./wrap";
-import { resolveScene } from "./variables";
-import { applyOp } from "./applyOp";
-import { emptyScene, type NodeLite, type SceneState, type TextStyleLite } from "./types";
+import { layoutRich, type MeasureFor } from "@/renderer/text";
+import { deriveWrap, wrapOps, wrapRectsOf } from "@/store/wrap";
+import { resolveScene } from "@/store/variables";
+import { applyOp } from "@/store/applyOp";
+import { emptyScene, type NodeLite, type SceneState, type TextStyleLite } from "@/store/types";
 
 const mf: MeasureFor = (st) => (s) => s.length * (st.fontSize || 16) * 0.5;
 const base: TextStyleLite = { fontFamily: "", fontSize: 10, fontWeight: "", lineHeight: 1, align: "left" };

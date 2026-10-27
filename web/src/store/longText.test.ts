@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { deriveTextTokens, destinationsOf, editorialNotes, endnoteEntries, headingsOf, hideConditions, indexEntries, tokensOf, visibleText } from "./textTokens";
-import { emptyScene, type NodeLite, type PageLite, type SceneState, type TextStyleDefLite, type TextStyleLite } from "./types";
+import { deriveTextTokens, destinationsOf, editorialNotes, endnoteEntries, headingsOf, hideConditions, indexEntries, tokensOf, visibleText } from "@/store/textTokens";
+import { emptyScene, type NodeLite, type PageLite, type SceneState, type TextStyleDefLite, type TextStyleLite } from "@/store/types";
 
 const STYLE: TextStyleLite = { fontFamily: "", fontSize: 10, fontWeight: "", lineHeight: 1.2, align: "left" };
 const text = (id: string, parentId: string, content: string, over: Partial<NodeLite> = {}, extra: Partial<NonNullable<NodeLite["text"]>> = {}): NodeLite => ({

@@ -1,9 +1,9 @@
-import type { NodeEditor } from "./nodeMap";
-import type { Op } from "../gen/opendesigner/v1/opendesigner_pb";
-import { childrenOf, subtreeOf } from "./tree";
-import type { NodeLite, SceneState } from "./types";
-import { isLayoutKey, resolveNode } from "./variables";
-import { groupBox, layoutGrid, type Box } from "./layoutGrid";
+import type { NodeEditor } from "@/store/nodeMap";
+import type { Op } from "@/gen/opendesigner/v1/opendesigner_pb";
+import { childrenOf, subtreeOf } from "@/store/tree";
+import type { NodeLite, SceneState } from "@/store/types";
+import { isLayoutKey, resolveNode } from "@/store/variables";
+import { groupBox, layoutGrid, type Box } from "@/store/layoutGrid";
 
 // AUTO LAYOUT -- the TypeScript half of internal/core/layout.go, which is
 // the AUTHORITY. This copy exists only because the client applies ops

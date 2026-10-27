@@ -1,11 +1,11 @@
 import { describe, it, expect } from "vitest";
 import { writeFileSync } from "node:fs";
-import { applyOp } from "../store/applyOp";
-import { emptyScene, toPbNode, type NodeLite, type SceneState } from "../store/types";
-import { makeCreateNodeOp, makeUpdatePageOp } from "../tools/ops";
-import { orderKeyBetween } from "../store/orderKey";
-import { zipStore } from "./zip";
-import { buildIdml, idmlOps, parseIdml, IdmlError } from "./idml";
+import { applyOp } from "@/store/applyOp";
+import { emptyScene, toPbNode, type NodeLite, type SceneState } from "@/store/types";
+import { makeCreateNodeOp, makeUpdatePageOp } from "@/tools/ops";
+import { orderKeyBetween } from "@/store/orderKey";
+import { zipStore } from "@/export/zip";
+import { buildIdml, idmlOps, parseIdml, IdmlError } from "@/export/idml";
 
 const base = (over: Partial<NodeLite>): NodeLite => ({ id: "x", parentId: "page1", orderKey: orderKeyBetween(null, null), name: "n", visible: true, opacity: 1, x: 10, y: 20, width: 100, height: 50, rotation: 0, fills: [{ r: 1, g: 0, b: 0, a: 1 }], strokes: [], kind: "rect", cornerRadius: 0, clipsContent: false, ...over });
 

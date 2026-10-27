@@ -1,10 +1,10 @@
 import { describe, it, expect, beforeEach } from "vitest";
-import { groupOps, ungroupOps } from "./grouping";
-import { applyOp } from "../store/applyOp";
-import { useScene } from "../store/store";
-import { worldBoundsOfNode } from "../canvas/transform";
-import { emptyScene, type NodeLite, type SceneState } from "../store/types";
-import type { Op } from "../gen/opendesigner/v1/opendesigner_pb";
+import { groupOps, ungroupOps } from "@/tools/grouping";
+import { applyOp } from "@/store/applyOp";
+import { useScene } from "@/store/store";
+import { worldBoundsOfNode } from "@/canvas/transform";
+import { emptyScene, type NodeLite, type SceneState } from "@/store/types";
+import type { Op } from "@/gen/opendesigner/v1/opendesigner_pb";
 
 function node(id: string, parentId: string, x: number, y: number, orderKey: string, extra: Partial<NodeLite> = {}): NodeLite {
   return {

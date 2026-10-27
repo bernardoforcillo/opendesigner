@@ -1,5 +1,5 @@
-import type { Message } from "../core";
-import type { MessageKey } from "./en";
+import type { Message } from "@/i18n/core";
+import type { MessageKey } from "@/i18n/locales/en";
 
 // French. MACHINE DRAFT: waiting for a native speaker's review (docs/localization.md).
 // A no-break space ( ) goes before : ; ? ! and inside « ».

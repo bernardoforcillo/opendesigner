@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useState } from "react";
 import { Dialog, Modal, ModalOverlay } from "react-aria-components";
-import type { AccessLink, GetAccessResponse } from "../gen/opendesigner/v1/opendesigner_pb";
-import { docClient } from "../rpc/client";
-import { setActiveDoc, shareUrl, storeToken, useAccess, type Role } from "../rpc/access";
-import { useScene } from "../store/store";
-import { Button, cls } from "./ds";
+import type { AccessLink, GetAccessResponse } from "@/gen/opendesigner/v1/opendesigner_pb";
+import { docClient } from "@/rpc/client";
+import { setActiveDoc, shareUrl, storeToken, useAccess, type Role } from "@/rpc/access";
+import { useScene } from "@/store/store";
+import { Button, cls } from "@/ui/ds";
 
 // SHARE (document menu → Share…). A document is open to anyone on the network until it is protected;
 // then it is reached only through links, each with a role (view, comment, edit, owner). A link is

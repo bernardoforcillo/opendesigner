@@ -1,11 +1,11 @@
-import { useScene } from "../store/store";
-import type { FillLite, NodeLite } from "../store/types";
-import { Button, cls, Section } from "./ds";
-import { CHECKER } from "./ds/props-controls";
+import { useScene } from "@/store/store";
+import type { FillLite, NodeLite } from "@/store/types";
+import { Button, cls, Section } from "@/ui/ds";
+import { CHECKER } from "@/ui/ds/props-controls";
 import {
   applyEffectStyleOps, applyPaintStyleOps, createEffectStyleOps, createPaintStyleOps, deleteEffectStyleOps, deletePaintStyleOps,
   paintStyleIdOf, type PaintTarget,
-} from "./styleOps";
+} from "@/ui/styleOps";
 
 // SHARED PAINT AND EFFECT STYLES in the properties panel (docs/shapes.md): pick a style from the document's list,
 // make a new one from what the node has, detach (the node keeps what was drawn) or delete. A node that uses a

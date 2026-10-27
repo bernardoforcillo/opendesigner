@@ -2,9 +2,9 @@ import { describe, it, expect } from "vitest";
 import { readdirSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { fromJson } from "@bufbuild/protobuf";
-import { OpSchema, DocumentSchema } from "../gen/opendesigner/v1/opendesigner_pb";
-import { applyOp } from "./applyOp";
-import { emptyScene, fromDocument } from "./types";
+import { OpSchema, DocumentSchema } from "@/gen/opendesigner/v1/opendesigner_pb";
+import { applyOp } from "@/store/applyOp";
+import { emptyScene, fromDocument } from "@/store/types";
 
 // Runs every fixture under testdata/golden/ as its own test, so adding a new
 // fixture file is enough to exercise it -- no runner edits.

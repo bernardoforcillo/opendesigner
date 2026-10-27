@@ -1,9 +1,9 @@
 import { describe, it, expect } from "vitest";
-import { nodesOf } from "../store/nodeMap";
-import { applyOp } from "../store/applyOp";
-import { emptyScene } from "../store/types";
-import type { NodeLite, SceneState } from "../store/types";
-import { addGridOps, editGridOps, removeGridOps } from "./layoutGridOps";
+import { nodesOf } from "@/store/nodeMap";
+import { applyOp } from "@/store/applyOp";
+import { emptyScene } from "@/store/types";
+import type { NodeLite, SceneState } from "@/store/types";
+import { addGridOps, editGridOps, removeGridOps } from "@/ui/layoutGridOps";
 
 const scene = (over: Partial<NodeLite> = {}): SceneState => ({
   ...emptyScene("d", "t"),

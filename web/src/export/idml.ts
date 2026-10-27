@@ -1,13 +1,13 @@
-import { localToWorld } from "../canvas/transform";
-import { anchorPoint, inHandlePoint, outHandlePoint } from "../store/vectorGeometry";
-import { childrenOf } from "../store/tree";
-import { orderKeyBetween } from "../store/orderKey";
-import { toPbNode, type AnchorLite, FillLite, NodeLite, SceneState, SubPathLite, TextStyleLite } from "../store/types";
-import type { Op } from "../gen/opendesigner/v1/opendesigner_pb";
-import { makeCreateNodeOp, makeCreatePageWithMasterOp, uuid } from "../tools/ops";
-import { openZip, readZipText } from "./zipRead";
-import { xmlEscape } from "./epub";
-import { zipStore, type ZipEntry } from "./zip";
+import { localToWorld } from "@/canvas/transform";
+import { anchorPoint, inHandlePoint, outHandlePoint } from "@/store/vectorGeometry";
+import { childrenOf } from "@/store/tree";
+import { orderKeyBetween } from "@/store/orderKey";
+import { toPbNode, type AnchorLite, FillLite, NodeLite, SceneState, SubPathLite, TextStyleLite } from "@/store/types";
+import type { Op } from "@/gen/opendesigner/v1/opendesigner_pb";
+import { makeCreateNodeOp, makeCreatePageWithMasterOp, uuid } from "@/tools/ops";
+import { openZip, readZipText } from "@/export/zipRead";
+import { xmlEscape } from "@/export/epub";
+import { zipStore, type ZipEntry } from "@/export/zip";
 
 // IDML (InDesign Markup Language), the open interchange format of InDesign. EXPORT writes one spread per page with rectangles,
 // ellipses, vectors and text frames (the story with its font, size, bold/italic and colour per frame), RGB swatches, and a

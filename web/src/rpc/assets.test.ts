@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { ASSET_PREFIX, assetUrl, isAssetHash, uploadAsset, uploadErrorMessage } from "./assets";
+import { ASSET_PREFIX, assetUrl, isAssetHash, uploadAsset, uploadErrorMessage } from "@/rpc/assets";
 
 const HASH = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
 

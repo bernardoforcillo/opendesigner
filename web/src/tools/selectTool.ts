@@ -1,5 +1,5 @@
-import { hitTest, nodesIntersecting } from "../renderer/canvasRenderer";
-import { normalizeRect, boundsOfNode, type Bounds } from "../canvas/geometry";
+import { hitTest, nodesIntersecting } from "@/renderer/canvasRenderer";
+import { normalizeRect, boundsOfNode, type Bounds } from "@/canvas/geometry";
 import {
   type Transform,
   invertTransform,
@@ -7,12 +7,12 @@ import {
   mapVector,
   worldBoundsOfNode,
   worldTransformOf,
-} from "../canvas/transform";
-import { worldToScreen } from "../canvas/camera";
-import { angleOf, centerOf, normalizeDegrees, rotateAround, snapDegrees } from "../canvas/transform";
-import { selectionFrame, selectionWorldBounds } from "../renderer/overlayRenderer";
-import { resizeVector } from "../store/vectorGeometry";
-import type { SubPathLite } from "../store/types";
+} from "@/canvas/transform";
+import { worldToScreen } from "@/canvas/camera";
+import { angleOf, centerOf, normalizeDegrees, rotateAround, snapDegrees } from "@/canvas/transform";
+import { selectionFrame, selectionWorldBounds } from "@/renderer/overlayRenderer";
+import { resizeVector } from "@/store/vectorGeometry";
+import type { SubPathLite } from "@/store/types";
 import {
   applyFrameResize,
   applyFrameResizeToNode,
@@ -25,21 +25,21 @@ import {
   type FrameHit,
   type HandleId,
   type SelectionFrame,
-} from "../selection/handles";
-import { roundToGrid, useViewPrefs } from "../store/viewPrefs";
-import { type SnapIndex, prepareSnapTargets, snapBounds, snapMoving, snapTargets, spacingSnap, worldThreshold, type SnapGuide } from "../selection/snap";
-import { useScene } from "../store/store";
-import { enterTargetOf, selectionTargetOf, selectionTargetsOf, transformTargetsOf } from "../store/groups";
-import { subtreeOf, topmostOf } from "../store/tree";
-import { groupOps, ungroupOps } from "./grouping";
-import { creatingId, masterItemAt, overrideMasterItemOps } from "./pageOps";
-import { wrapSelectionInFrame } from "./wrapFrame";
-import { detachSelectedInstances } from "./instanceActions";
-import { computeLayoutDrop, layoutDropOps, reorderableParent, type LayoutDrop } from "./layoutDrop";
-import { makeCreateComponentOp, makeDeleteOp, makeSetPropsOp, makeSetVectorPathOp, uuid } from "./ops";
-import type { SceneState } from "../store/types";
-import type { Op } from "../gen/opendesigner/v1/opendesigner_pb";
-import type { Tool, ToolContext } from "./types";
+} from "@/selection/handles";
+import { roundToGrid, useViewPrefs } from "@/store/viewPrefs";
+import { type SnapIndex, prepareSnapTargets, snapBounds, snapMoving, snapTargets, spacingSnap, worldThreshold, type SnapGuide } from "@/selection/snap";
+import { useScene } from "@/store/store";
+import { enterTargetOf, selectionTargetOf, selectionTargetsOf, transformTargetsOf } from "@/store/groups";
+import { subtreeOf, topmostOf } from "@/store/tree";
+import { groupOps, ungroupOps } from "@/tools/grouping";
+import { creatingId, masterItemAt, overrideMasterItemOps } from "@/tools/pageOps";
+import { wrapSelectionInFrame } from "@/tools/wrapFrame";
+import { detachSelectedInstances } from "@/tools/instanceActions";
+import { computeLayoutDrop, layoutDropOps, reorderableParent, type LayoutDrop } from "@/tools/layoutDrop";
+import { makeCreateComponentOp, makeDeleteOp, makeSetPropsOp, makeSetVectorPathOp, uuid } from "@/tools/ops";
+import type { SceneState } from "@/store/types";
+import type { Op } from "@/gen/opendesigner/v1/opendesigner_pb";
+import type { Tool, ToolContext } from "@/tools/types";
 
 const DEFAULT_CURSOR = "default";
 

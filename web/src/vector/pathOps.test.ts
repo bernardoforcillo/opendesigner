@@ -2,9 +2,9 @@ import { describe, expect, it } from "vitest";
 import {
   cornerAll, deleteAnchor, insertAnchor, isSmooth, joinSubpaths, makeCorner, makeSmooth, moveHandle,
   nearestOnPath, offsetSubpaths, simplifySubpath, smoothAll, toggleClosed,
-} from "./pathOps";
-import { vectorBounds } from "../store/vectorGeometry";
-import type { AnchorLite, SubPathLite } from "../store/types";
+} from "@/vector/pathOps";
+import { vectorBounds } from "@/store/vectorGeometry";
+import type { AnchorLite, SubPathLite } from "@/store/types";
 
 const pt = (x: number, y: number, h: Partial<AnchorLite> = {}): AnchorLite => ({ x, y, inX: 0, inY: 0, outX: 0, outY: 0, ...h });
 const line = (...p: [number, number][]): SubPathLite => ({ anchors: p.map(([x, y]) => pt(x, y)), closed: false });

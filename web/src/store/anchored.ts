@@ -1,13 +1,13 @@
-import { applyTransform, invertTransform, worldTransformOf } from "../canvas/transform";
-import { inlinePositions } from "../renderer/text";
-import type { Op } from "../gen/opendesigner/v1/opendesigner_pb";
-import { makeSetTextOp } from "../tools/ops";
-import { contentWorldBounds } from "./groups";
-import { recordDelta } from "./sceneDelta";
-import { derivedMeasureFor } from "./threads";
-import { anchorTarget, tokensOf } from "./textTokens";
-import { reconcileRich } from "./richText";
-import type { NodeLite, SceneState } from "./types";
+import { applyTransform, invertTransform, worldTransformOf } from "@/canvas/transform";
+import { inlinePositions } from "@/renderer/text";
+import type { Op } from "@/gen/opendesigner/v1/opendesigner_pb";
+import { makeSetTextOp } from "@/tools/ops";
+import { contentWorldBounds } from "@/store/groups";
+import { recordDelta } from "@/store/sceneDelta";
+import { derivedMeasureFor } from "@/store/threads";
+import { anchorTarget, tokensOf } from "@/store/textTokens";
+import { reconcileRich } from "@/store/richText";
+import type { NodeLite, SceneState } from "@/store/types";
 
 // ANCHORED OBJECTS. A marker `[@a1b2c3d4]` in the content of a text (the start of an object's id) ties that object to the
 // place in the text: the text leaves a box in the line, sized like the object and standing on the baseline, and the

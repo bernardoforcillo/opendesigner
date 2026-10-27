@@ -1,4 +1,4 @@
-import { xmlEscape } from "./epub";
+import { xmlEscape } from "@/export/epub";
 
 // HTML (one file): every page as inline SVG, in reading order, on a neutral background. Text stays real text (selectable and
 // searchable), images are embedded, fonts are NOT (the page uses whatever the viewer has). It is the document as it LOOKS, page by

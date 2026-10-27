@@ -2,8 +2,8 @@ import "@testing-library/jest-dom/vitest";
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { render, screen, fireEvent, cleanup } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { CURVE_BOX, EasingEditor } from "./EasingEditor";
-import { toPx } from "../../animation/easingEdit";
+import { CURVE_BOX, EasingEditor } from "@/ui/timeline/EasingEditor";
+import { toPx } from "@/animation/easingEdit";
 
 afterEach(cleanup);
 

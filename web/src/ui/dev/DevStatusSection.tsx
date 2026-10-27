@@ -1,12 +1,12 @@
 import { useMemo, useState } from "react";
-import { useScene } from "../../store/store";
-import { loadNickname } from "../../store/presence";
-import { ANNOTATION_CATEGORIES, annotationsOf, categoryColor, MAX_ANNOTATION_RUNES, MAX_READY_NOTE_RUNES, readyOfScene } from "../../store/devMode";
-import { submit } from "../../flow/commands";
+import { useScene } from "@/store/store";
+import { loadNickname } from "@/store/presence";
+import { ANNOTATION_CATEGORIES, annotationsOf, categoryColor, MAX_ANNOTATION_RUNES, MAX_READY_NOTE_RUNES, readyOfScene } from "@/store/devMode";
+import { submit } from "@/flow/commands";
 import {
   annotateOps, deleteAnnotationOps, devFrameOf, groupChanges, humanProperty, markReadyOps, unmarkOps, useReadyComparison,
-} from "../../dev/devStatus";
-import { Badge, Button, cls } from "../ds";
+} from "@/dev/devStatus";
+import { Badge, Button, cls } from "@/ui/ds";
 
 // "DEV STATUS" (top of Ship, right column of Develop): hand a frame over to development and leave
 // the developer what the picture does not say.

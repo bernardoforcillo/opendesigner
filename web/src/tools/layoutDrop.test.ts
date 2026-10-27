@@ -1,9 +1,9 @@
-import { nodesOf, nodesFromEntries , nodesWith } from "../store/nodeMap";
+import { nodesOf, nodesFromEntries , nodesWith } from "@/store/nodeMap";
 import { describe, it, expect } from "vitest";
-import { applyOp } from "../store/applyOp";
-import { emptyScene } from "../store/types";
-import type { AutoLayoutLite, NodeLite, SceneState } from "../store/types";
-import { computeLayoutDrop, layoutDropOps, reorderableParent } from "./layoutDrop";
+import { applyOp } from "@/store/applyOp";
+import { emptyScene } from "@/store/types";
+import type { AutoLayoutLite, NodeLite, SceneState } from "@/store/types";
+import { computeLayoutDrop, layoutDropOps, reorderableParent } from "@/tools/layoutDrop";
 
 const AL: AutoLayoutLite = {
   direction: "horizontal", spacing: 10, paddingLeft: 0, paddingTop: 0, paddingRight: 0, paddingBottom: 0,

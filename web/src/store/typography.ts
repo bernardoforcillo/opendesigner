@@ -1,7 +1,7 @@
-import { ListKind, TabAlign, TextScript, TextStyleKind } from "../gen/opendesigner/v1/opendesigner_pb";
-import type { FontFace as PbFont, TextStyleDef as PbTextStyleDef } from "../gen/opendesigner/v1/opendesigner_pb";
-import { flattenStyle } from "./richText";
-import type { NodeLite, SceneState } from "./types";
+import { ListKind, TabAlign, TextScript, TextStyleKind } from "@/gen/opendesigner/v1/opendesigner_pb";
+import type { FontFace as PbFont, TextStyleDef as PbTextStyleDef } from "@/gen/opendesigner/v1/opendesigner_pb";
+import { flattenStyle } from "@/store/richText";
+import type { NodeLite, SceneState } from "@/store/types";
 
 // TYPOGRAPHY -- the TypeScript twin of internal/core/typography.go. Go is the
 // authority; every rule here repeats one there, and the golden fixture

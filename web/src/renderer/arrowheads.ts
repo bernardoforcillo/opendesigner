@@ -1,6 +1,6 @@
-import type { ArrowHeadLite, NodeLite } from "../store/types";
-import { anchorPoint, inHandlePoint, outHandlePoint } from "../store/vectorGeometry";
-import type { PathCmd } from "./shapeGeometry";
+import type { ArrowHeadLite, NodeLite } from "@/store/types";
+import { anchorPoint, inHandlePoint, outHandlePoint } from "@/store/vectorGeometry";
+import type { PathCmd } from "@/renderer/shapeGeometry";
 
 // ARROWHEADS at the ends of an open path (docs/shapes.md). The head's TIP sits on the path's end point and
 // the body extends back along the path, so it never overhangs the node's box (a bounds-neutral decoration);

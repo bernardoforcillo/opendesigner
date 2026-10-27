@@ -1,8 +1,8 @@
 import { describe, it, expect } from "vitest";
 import {
   SPRING_BEZIER, clipTimeline, cubicBezier, easingFn, isValidEasing, parseCubicBezier, sampleClip, sampleTrack, springEasing,
-} from "./engine";
-import type { ClipLite, KeyframeLite } from "../store/types";
+} from "@/animation/engine";
+import type { ClipLite, KeyframeLite } from "@/store/types";
 
 const kf = (time: number, value: number, easing = ""): KeyframeLite => ({ time, value, easing });
 const near = (a: number, b: number, eps = 1e-6) => expect(Math.abs(a - b)).toBeLessThan(eps);

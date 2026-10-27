@@ -1,6 +1,6 @@
 import type { CanvasKit, Font, Typeface } from "canvaskit-wasm";
-import { assetUrl } from "../../rpc/assets";
-import type { FontLite } from "../../store/types";
+import { assetUrl } from "@/rpc/assets";
+import type { FontLite } from "@/store/types";
 
 // LOADING OF CANVASKIT AND THE FONTS.
 //

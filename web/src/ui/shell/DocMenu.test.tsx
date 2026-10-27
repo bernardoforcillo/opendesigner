@@ -5,13 +5,13 @@ import userEvent from "@testing-library/user-event";
 
 const renameDocument = vi.fn(async (_r: { docId: string; name: string }) => ({}));
 const navigate = vi.fn();
-vi.mock("../../home/nav", () => ({ useAppNavigate: () => navigate }));
-vi.mock("../../rpc/client", () => ({ docClient: { renameDocument: (r: { docId: string; name: string }) => renameDocument(r) } }));
+vi.mock("@/home/nav", () => ({ useAppNavigate: () => navigate }));
+vi.mock("@/rpc/client", () => ({ docClient: { renameDocument: (r: { docId: string; name: string }) => renameDocument(r) } }));
 
-import { DocMenu, renameOpenDocument } from "./DocMenu";
-import { DocName, useDocNameEditing } from "./DocName";
-import { useScene } from "../../store/store";
-import { emptyScene } from "../../store/types";
+import { DocMenu, renameOpenDocument } from "@/ui/shell/DocMenu";
+import { DocName, useDocNameEditing } from "@/ui/shell/DocName";
+import { useScene } from "@/store/store";
+import { emptyScene } from "@/store/types";
 
 describe("DocMenu", () => {
   beforeEach(() => {

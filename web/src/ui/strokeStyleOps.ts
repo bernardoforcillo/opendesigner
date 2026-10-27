@@ -1,7 +1,7 @@
-import type { Op } from "../gen/opendesigner/v1/opendesigner_pb";
-import { makeSetPropsOp } from "../tools/ops";
-import { META_CAP, META_DASH, META_DASH_OFFSET, META_JOIN, META_MITER } from "../renderer/vectorStyle";
-import type { NodeLookup } from "./gradientOps";
+import type { Op } from "@/gen/opendesigner/v1/opendesigner_pb";
+import { makeSetPropsOp } from "@/tools/ops";
+import { META_CAP, META_DASH, META_DASH_OFFSET, META_JOIN, META_MITER } from "@/renderer/vectorStyle";
+import type { NodeLookup } from "@/ui/gradientOps";
 
 // The stroke STYLE -- cap, join, miter limit, dash -- lives in the node's meta (the
 // keys the SVG import already writes, see renderer/vectorStyle.ts) and applies to

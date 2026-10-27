@@ -1,20 +1,20 @@
-import type { Variable as PbVariable, VariableCollection as PbCollection } from "../gen/opendesigner/v1/opendesigner_pb";
-import { VariableType } from "../gen/opendesigner/v1/opendesigner_pb";
-import { recordDelta } from "./sceneDelta";
-import { deriveBooleans } from "./booleans";
-import { deriveConnectors } from "./connectors";
-import { deriveMasters } from "./masters";
-import { deriveThreads } from "./threads";
-import { taggedOf } from "./tagged";
-import { resolveTextStyleNode } from "./typography";
-import { resolvePaintStylesNode, usesPaintStyle } from "./paintStyles";
-import { hasRich, resolveRichNode } from "./richText";
-import { deriveTextTokens } from "./textTokens";
-import { deriveWrap } from "./wrap";
-import { deriveLayers, isValidSwatch, resolveObjectStyleNode } from "./graphics";
-import { deriveTextPaths } from "./textPath";
-import { deriveAnchored } from "./anchored";
-import type { CollectionLite, FillLite, NodeLite, SceneState, VariableLite, VariableTypeLite } from "./types";
+import type { Variable as PbVariable, VariableCollection as PbCollection } from "@/gen/opendesigner/v1/opendesigner_pb";
+import { VariableType } from "@/gen/opendesigner/v1/opendesigner_pb";
+import { recordDelta } from "@/store/sceneDelta";
+import { deriveBooleans } from "@/store/booleans";
+import { deriveConnectors } from "@/store/connectors";
+import { deriveMasters } from "@/store/masters";
+import { deriveThreads } from "@/store/threads";
+import { taggedOf } from "@/store/tagged";
+import { resolveTextStyleNode } from "@/store/typography";
+import { resolvePaintStylesNode, usesPaintStyle } from "@/store/paintStyles";
+import { hasRich, resolveRichNode } from "@/store/richText";
+import { deriveTextTokens } from "@/store/textTokens";
+import { deriveWrap } from "@/store/wrap";
+import { deriveLayers, isValidSwatch, resolveObjectStyleNode } from "@/store/graphics";
+import { deriveTextPaths } from "@/store/textPath";
+import { deriveAnchored } from "@/store/anchored";
+import type { CollectionLite, FillLite, NodeLite, SceneState, VariableLite, VariableTypeLite } from "@/store/types";
 
 // VARIABLES (design tokens) -- the TypeScript twin of internal/core/variables.go.
 // Go is the authority; every rule here repeats one there, and the golden

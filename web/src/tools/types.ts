@@ -1,6 +1,6 @@
-import type { SyncClient } from "../rpc/syncClient";
-import type { SceneState } from "../store/types";
-import type { Camera } from "../canvas/camera";
+import type { SyncClient } from "@/rpc/syncClient";
+import type { SceneState } from "@/store/types";
+import type { Camera } from "@/canvas/camera";
 
 export type ToolId = "select" | "connect" | "frame" | "rect" | "ellipse" | "polygon" | "star" | "text" | "pen" | "hand" | "comment" | "sticky" | "link" | "vote" | "node" | "width" | "builder";
 

@@ -1,12 +1,12 @@
-import type { NodeLite, SubPathLite } from "../store/types";
-import { boundsOfNode, inflateBounds, strokeOutsetOfNode } from "../canvas/geometry";
-import { centerOf, worldToLocal, type Point } from "../canvas/transform";
+import type { NodeLite, SubPathLite } from "@/store/types";
+import { boundsOfNode, inflateBounds, strokeOutsetOfNode } from "@/canvas/geometry";
+import { centerOf, worldToLocal, type Point } from "@/canvas/transform";
 import {
   anchorPoint, inHandlePoint, outHandlePoint, subpathFills, hitVectorGeometry,
   hasAnyAnchor,
-} from "../store/vectorGeometry";
-import { lineHeightOf } from "./text";
-import { flattenCommands, hasComputedOutline, outlineCommands, pointInRings, traceCommands } from "./shapeGeometry";
+} from "@/store/vectorGeometry";
+import { lineHeightOf } from "@/renderer/text";
+import { flattenCommands, hasComputedOutline, outlineCommands, pointInRings, traceCommands } from "@/renderer/shapeGeometry";
 
 // The center around which the node ROTATES: the center of its UNROTATED box.
 // A single function, used by the renderer (which applies ctx.rotate around it) and

@@ -1,7 +1,7 @@
-import type { FontLite, TextStyleLite } from "../../store/types";
-import { fontFamilyOf, fontWeightOf } from "../../renderer/text";
-import { sfntKind, sfntTables, unicodeCmap } from "../sfnt";
-import { num, pdfName, type PdfFile } from "./pdfFile";
+import type { FontLite, TextStyleLite } from "@/store/types";
+import { fontFamilyOf, fontWeightOf } from "@/renderer/text";
+import { sfntKind, sfntTables, unicodeCmap } from "@/pdf/sfnt";
+import { num, pdfName, type PdfFile } from "@/pdf/write/pdfFile";
 
 // FONTS IN A PDF. An UPLOADED font (a FontFace asset of the document) is embedded whole as a CID font
 // with Identity-H encoding, so the file draws the same glyphs on any machine; its width table and a

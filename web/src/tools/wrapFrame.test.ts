@@ -1,9 +1,9 @@
-import { nodesFromEntries } from "../store/nodeMap";
+import { nodesFromEntries } from "@/store/nodeMap";
 import { describe, it, expect } from "vitest";
-import { wrapInFrameOps } from "./grouping";
-import { applyOp } from "../store/applyOp";
-import { emptyScene } from "../store/types";
-import type { NodeLite, SceneState } from "../store/types";
+import { wrapInFrameOps } from "@/tools/grouping";
+import { applyOp } from "@/store/applyOp";
+import { emptyScene } from "@/store/types";
+import type { NodeLite, SceneState } from "@/store/types";
 
 function rect(id: string, x: number, y: number, w: number, h: number, key: string, parentId = "page1"): NodeLite {
   return {

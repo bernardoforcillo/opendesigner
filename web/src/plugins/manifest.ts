@@ -8,7 +8,7 @@
 // `wasm`, a WebAssembly module in base64 (plugins/wasm.ts says what it may do). Plugins are stored in the browser
 // (like preferences) and never leave it: they are the person's tools, not part of the document.
 
-import { bytesFromBase64, validateWasm, WasmError } from "./wasm";
+import { bytesFromBase64, validateWasm, WasmError } from "@/plugins/wasm";
 
 export type Permission = "read" | "write";
 

@@ -1,14 +1,14 @@
 import { useEffect, useRef, useState } from "react";
 import { Button as RacButton } from "react-aria-components";
-import { EmptyState, Icon } from "../ds";
-import { AnimIconButton, AnyAnimIcon, nodeKindIcon } from "../ds/anim-parts";
-import { useScene } from "../../store/store";
-import type { ClipLite } from "../../store/types";
-import { commitClip, useTimeline } from "../../animation/timelineStore";
+import { EmptyState, Icon } from "@/ui/ds";
+import { AnimIconButton, AnyAnimIcon, nodeKindIcon } from "@/ui/ds/anim-parts";
+import { useScene } from "@/store/store";
+import type { ClipLite } from "@/store/types";
+import { commitClip, useTimeline } from "@/animation/timelineStore";
 import {
   PROP_LABEL, SNAP_MS, addKeyframe, dragDelta, formatTime, moveKeyframes, removeTrack,
   rulerTicks, sameKey, snapTime, valueAt, type KeyRef,
-} from "../../animation/timelineLogic";
+} from "@/animation/timelineLogic";
 
 // THE TRACK AREA: the ruler, one row per track with its keyframes and the
 // playhead. Everything that is dragged works on a DRAFT in the view store

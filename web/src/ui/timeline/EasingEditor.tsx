@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from "react";
-import { cls } from "../ds";
+import { cls } from "@/ui/ds";
 import {
   EASING_PRESETS, curvePath, dragControl, easingToBezier, nudgeControl, presetIdOf, toPx, type CurveBox,
-} from "../../animation/easingEdit";
-import { EASING_LABELS } from "./labels";
+} from "@/animation/easingEdit";
+import { EASING_LABELS } from "@/ui/timeline/labels";
 
 // THE EASING EDITOR of a keyframe: a menu of ready-made curves and a mini-curve
 // with the Bézier's two control points to drag. Dragging works on a local

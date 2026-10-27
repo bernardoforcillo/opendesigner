@@ -1,8 +1,8 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { applyOp } from "../store/applyOp";
-import { useScene } from "../store/store";
-import { emptyScene, type NodeLite, type SceneState } from "../store/types";
-import { effectivePpi, fitImageOps, imageLinks, ppiStatus, relinkImage } from "./imageLinks";
+import { applyOp } from "@/store/applyOp";
+import { useScene } from "@/store/store";
+import { emptyScene, type NodeLite, type SceneState } from "@/store/types";
+import { effectivePpi, fitImageOps, imageLinks, ppiStatus, relinkImage } from "@/tools/imageLinks";
 
 const image = (id: string, over: Partial<NodeLite> = {}): NodeLite => ({
   id, parentId: "page1", orderKey: "a" + id, name: id, visible: true, opacity: 1, x: 0, y: 0, width: 144, height: 72, rotation: 0,

@@ -1,11 +1,11 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import { drawScene } from "./canvasRenderer";
-import { drawDash, perimeterOf, vectorDrawSubpaths } from "./animDraw";
-import type { Camera } from "../canvas/camera";
-import { baseScene, child } from "../flow/testSupport";
-import { nodesWith } from "../store/nodeMap";
-import { poseScene } from "../animation/pose";
-import type { NodeLite, SceneState } from "../store/types";
+import { drawScene } from "@/renderer/canvasRenderer";
+import { drawDash, perimeterOf, vectorDrawSubpaths } from "@/renderer/animDraw";
+import type { Camera } from "@/canvas/camera";
+import { baseScene, child } from "@/flow/testSupport";
+import { nodesWith } from "@/store/nodeMap";
+import { poseScene } from "@/animation/pose";
+import type { NodeLite, SceneState } from "@/store/types";
 
 // The renderer with a scene DERIVED from playback (animation/pose.ts): scale
 // and the stroke being drawn (transient fields animScale/animDraw), and the off-view

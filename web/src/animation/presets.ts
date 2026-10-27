@@ -1,6 +1,6 @@
-import type { ClipLite, KeyframeLite, NodeLite, SceneState, TrackLite } from "../store/types";
-import { defaultTargetId, uniqueClipName } from "./timelineLogic";
-import { canDraw } from "./pose";
+import type { ClipLite, KeyframeLite, NodeLite, SceneState, TrackLite } from "@/store/types";
+import { defaultTargetId, uniqueClipName } from "@/animation/timelineLogic";
+import { canDraw } from "@/animation/pose";
 
 // THE PRESETS: ready-made clips for a node, in one click ("Animate with a preset").
 //

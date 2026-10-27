@@ -1,9 +1,9 @@
-import { booleanOpOf } from "../vector/regions";
-import { connectorOf } from "../vector/connector";
-import { hasRich } from "./richText";
-import { deltaOf } from "./sceneDelta";
-import type { NodeLite, SceneState } from "./types";
-import { usesPaintStyle } from "./paintStyles";
+import { booleanOpOf } from "@/vector/regions";
+import { connectorOf } from "@/vector/connector";
+import { hasRich } from "@/store/richText";
+import { deltaOf } from "@/store/sceneDelta";
+import type { NodeLite, SceneState } from "@/store/types";
+import { usesPaintStyle } from "@/store/paintStyles";
 
 // WHICH NODES THE DERIVED PASSES CARE ABOUT. Live booleans, connectors and variable bindings are
 // rare, but finding them used to mean scanning every node on every change: 10 ms at 20,000

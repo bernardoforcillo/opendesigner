@@ -1,16 +1,16 @@
-import { nodesOf } from "../store/nodeMap";
+import { nodesOf } from "@/store/nodeMap";
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import { useViewPrefs } from "../store/viewPrefs";
-import { createSelectTool, pickTarget, nodesInMarquee } from "./selectTool";
-import type { ToolContext } from "./types";
-import type { Op } from "../gen/opendesigner/v1/opendesigner_pb";
-import { useScene } from "../store/store";
-import { worldBoundsOfNode } from "../canvas/transform";
-import { emptyScene } from "../store/types";
-import type { NodeLite } from "../store/types";
-import { worldAabbOfNode } from "../canvas/geometry";
-import { selectionFrame } from "../renderer/overlayRenderer";
-import { vectorBounds } from "../store/vectorGeometry";
+import { useViewPrefs } from "@/store/viewPrefs";
+import { createSelectTool, pickTarget, nodesInMarquee } from "@/tools/selectTool";
+import type { ToolContext } from "@/tools/types";
+import type { Op } from "@/gen/opendesigner/v1/opendesigner_pb";
+import { useScene } from "@/store/store";
+import { worldBoundsOfNode } from "@/canvas/transform";
+import { emptyScene } from "@/store/types";
+import type { NodeLite } from "@/store/types";
+import { worldAabbOfNode } from "@/canvas/geometry";
+import { selectionFrame } from "@/renderer/overlayRenderer";
+import { vectorBounds } from "@/store/vectorGeometry";
 
 function node(id: string, x: number, orderKey: string, extra: Partial<NodeLite> = {}): NodeLite {
   return { id, parentId: "page1", orderKey, name: id, visible: true, opacity: 1,

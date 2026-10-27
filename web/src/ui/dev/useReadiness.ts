@@ -1,11 +1,11 @@
 import { useMemo } from "react";
-import { useScene } from "../../store/store";
-import { useAnalysis } from "../../flow/analysis";
-import { useFlowUi } from "../../store/flowUi";
-import { submit } from "../../flow/commands";
-import { screenOf } from "../../flow/screens";
-import { assignRoutesOps, computeReadiness, setStartsOps, type Readiness, type ReadinessFix } from "../../dev/readiness";
-import type { SceneState } from "../../store/types";
+import { useScene } from "@/store/store";
+import { useAnalysis } from "@/flow/analysis";
+import { useFlowUi } from "@/store/flowUi";
+import { submit } from "@/flow/commands";
+import { screenOf } from "@/flow/screens";
+import { assignRoutesOps, computeReadiness, setStartsOps, type Readiness, type ReadinessFix } from "@/dev/readiness";
+import type { SceneState } from "@/store/types";
 
 // The bridge between the app state and the pure checklist (dev/readiness.ts). The three
 // Develop panels (checklist, stepper, Ship) read the SAME computation:

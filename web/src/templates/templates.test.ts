@@ -1,12 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { applyOp } from "../store/applyOp";
-import { emptyScene } from "../store/types";
-import type { NodeLite, SceneState } from "../store/types";
-import { topLevelScreens } from "../flow/screens";
-import { META_KEYS } from "../flow/meta";
-import { TEMPLATES, templateById, templateOps } from "./catalog";
-import type { Template } from "./catalog";
-import { PALETTE, hexFill } from "./builder";
+import { applyOp } from "@/store/applyOp";
+import { emptyScene } from "@/store/types";
+import type { NodeLite, SceneState } from "@/store/types";
+import { topLevelScreens } from "@/flow/screens";
+import { META_KEYS } from "@/flow/meta";
+import { TEMPLATES, templateById, templateOps } from "@/templates/catalog";
+import type { Template } from "@/templates/catalog";
+import { PALETTE, hexFill } from "@/templates/builder";
 
 // A deterministic id generator: the tests do not depend on chance.
 function ids(): () => string {

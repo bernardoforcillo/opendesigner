@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { emptyScene } from "../store/types";
-import { useRenderer } from "../store/rendererChoice";
+import { emptyScene } from "@/store/types";
+import { useRenderer } from "@/store/rendererChoice";
 
 // CanvasKit and its renderer are fake: here the DECISION is tested (which
 // renderer draws, and the CPU fallback), not the drawing, which only runs in a
@@ -10,7 +10,7 @@ const gpuDispose = vi.fn();
 let gpuLost = false;
 let loadFails: Error | null = null;
 
-vi.mock("./ck/canvaskit", () => ({
+vi.mock("@/renderer/ck/canvaskit", () => ({
   loadCanvasKit: async () => {
     if (loadFails) throw loadFails;
     return {};
@@ -21,7 +21,7 @@ vi.mock("./ck/canvaskit", () => ({
     dispose() {}
   },
 }));
-vi.mock("./ck/ckRenderer", () => ({
+vi.mock("@/renderer/ck/ckRenderer", () => ({
   CanvasKitRenderer: class {
     get lost() { return gpuLost; }
     draw(...a: unknown[]) { gpuDraw(...a); }
@@ -30,12 +30,12 @@ vi.mock("./ck/ckRenderer", () => ({
   },
 }));
 const cpuDraw = vi.fn(() => true);
-vi.mock("./layerCache", () => ({
+vi.mock("@/renderer/layerCache", () => ({
   SceneLayerCache: class { draw(...a: unknown[]) { return (cpuDraw as (...x: unknown[]) => boolean)(...a); } },
   SETTLE_MS: 120,
 }));
 
-import { SceneSurface } from "./sceneSurface";
+import { SceneSurface } from "@/renderer/sceneSurface";
 
 function canvases() {
   const clear = vi.fn();

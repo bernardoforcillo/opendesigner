@@ -1,12 +1,12 @@
 import { describe, it, expect } from "vitest";
 import { create, type MessageInitShape } from "@bufbuild/protobuf";
-import { OpSchema, NodeSchema } from "../gen/opendesigner/v1/opendesigner_pb";
-import type { Op } from "../gen/opendesigner/v1/opendesigner_pb";
-import { applyOp, cascadeClips } from "./applyOp";
-import { invertOp } from "./history";
-import { emptyScene, toClipLite, toPbClip } from "./types";
-import type { ClipLite, SceneState } from "./types";
-import { isValidClip } from "../animation/validate";
+import { OpSchema, NodeSchema } from "@/gen/opendesigner/v1/opendesigner_pb";
+import type { Op } from "@/gen/opendesigner/v1/opendesigner_pb";
+import { applyOp, cascadeClips } from "@/store/applyOp";
+import { invertOp } from "@/store/history";
+import { emptyScene, toClipLite, toPbClip } from "@/store/types";
+import type { ClipLite, SceneState } from "@/store/types";
+import { isValidClip } from "@/animation/validate";
 
 const op = (kind: MessageInitShape<typeof OpSchema>["kind"]): Op => create(OpSchema, { opId: crypto.randomUUID(), docId: "d", kind });
 const node = (id: string, parentId = "page1", shape: "rect" | "text" | "vector" | "ellipse" | "frame" = "rect") => op({

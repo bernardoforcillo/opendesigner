@@ -1,9 +1,9 @@
-import { BlendMode, VariableType } from "../gen/opendesigner/v1/opendesigner_pb";
-import type { Layer as PbLayer, ObjectStyleDef as PbObjectStyleDef, Variable as PbVariable } from "../gen/opendesigner/v1/opendesigner_pb";
-import { cmykToRgb, rgbToCmyk, type Cmyk, type Rgb } from "../color/cmyk";
-import { arePaintsValid } from "./paints";
-import { recordDelta } from "./sceneDelta";
-import { OBJECT_STYLE_PROPS, type FillLite, type NodeLite, type ObjectStyleLite, type SceneState, type VariableLite } from "./types";
+import { BlendMode, VariableType } from "@/gen/opendesigner/v1/opendesigner_pb";
+import type { Layer as PbLayer, ObjectStyleDef as PbObjectStyleDef, Variable as PbVariable } from "@/gen/opendesigner/v1/opendesigner_pb";
+import { cmykToRgb, rgbToCmyk, type Cmyk, type Rgb } from "@/color/cmyk";
+import { arePaintsValid } from "@/store/paints";
+import { recordDelta } from "@/store/sceneDelta";
+import { OBJECT_STYLE_PROPS, type FillLite, type NodeLite, type ObjectStyleLite, type SceneState, type VariableLite } from "@/store/types";
 
 // GRAPHICS AND COLOUR -- object styles, layers and swatches. The TypeScript twin of internal/core/graphics.go
 // (Go is the authority; every rule here repeats one there). See docs/graphics-colour.md.
@@ -162,7 +162,7 @@ export function deriveLayers(scene: SceneState): SceneState {
 // The conversions are those of color/cmyk.ts (percent 0..100, the plain device conversion -- no profile). A swatch
 // stores its CMYK as 0..1 channels (proto Cmyk); `swatchCmyk` / `cmykField` go between the two.
 
-export type { Cmyk, Rgb } from "../color/cmyk";
+export type { Cmyk, Rgb } from "@/color/cmyk";
 
 const clamp01 = (v: number) => Math.min(1, Math.max(0, v));
 

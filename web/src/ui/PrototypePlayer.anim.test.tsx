@@ -1,12 +1,12 @@
 import "@testing-library/jest-dom/vitest";
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { render, screen, fireEvent, cleanup, waitFor } from "@testing-library/react";
-import { PrototypePlayer } from "./PrototypePlayer";
-import { useScene } from "../store/store";
-import { useFlowUi } from "../store/flowUi";
-import { baseScene, flowOf, transition, withFlows } from "../flow/testSupport";
-import type { ClipLite, SceneState } from "../store/types";
-import * as renderer from "../renderer/canvasRenderer";
+import { PrototypePlayer } from "@/ui/PrototypePlayer";
+import { useScene } from "@/store/store";
+import { useFlowUi } from "@/store/flowUi";
+import { baseScene, flowOf, transition, withFlows } from "@/flow/testSupport";
+import type { ClipLite, SceneState } from "@/store/types";
+import * as renderer from "@/renderer/canvasRenderer";
 
 // Animations in Present: enter and loop start with the screen, hover and tap
 // on the target, and a finished animation keeps no frame loop running.

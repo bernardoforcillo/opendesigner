@@ -1,12 +1,12 @@
 import { useState } from "react";
 import { Dialog, Modal, ModalOverlay } from "react-aria-components";
-import { useScene } from "../store/store";
-import { editorialNotes } from "../store/textTokens";
-import { makeSetDocSettingsOp, uuid } from "../tools/ops";
-import { applyTableStyleOps, tableIdOf } from "../tools/tableOps";
-import { checkText, type TextIssue } from "../tools/textChecks";
-import type { DocSettingsLite, TableStyleLite, TextConditionLite } from "../store/types";
-import { Button, cls } from "./ds";
+import { useScene } from "@/store/store";
+import { editorialNotes } from "@/store/textTokens";
+import { makeSetDocSettingsOp, uuid } from "@/tools/ops";
+import { applyTableStyleOps, tableIdOf } from "@/tools/tableOps";
+import { checkText, type TextIssue } from "@/tools/textChecks";
+import type { DocSettingsLite, TableStyleLite, TextConditionLite } from "@/store/types";
+import { Button, cls } from "@/ui/ds";
 
 // LONG DOCUMENTS (document menu): the settings that long text needs -- the conditions of conditional text, the table
 // styles -- and the lists of what is hidden in the text: editorial notes, and the typographic slips a proofreader

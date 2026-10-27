@@ -1,5 +1,5 @@
-import { drawScene, type ImageSource } from "../renderer/canvasRenderer";
-import type { ExportRegion } from "./region";
+import { drawScene, type ImageSource } from "@/renderer/canvasRenderer";
+import type { ExportRegion } from "@/export/region";
 
 // PNG EXPORT — an OFFSCREEN canvas, at the chosen scale.
 //

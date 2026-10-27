@@ -1,6 +1,6 @@
 import { useState } from "react";
-import { useScene } from "../store/store";
-import { editable, joinNodesOps, offsetOps, pathToolOps, type PathTool } from "../vector/editOps";
+import { useScene } from "@/store/store";
+import { editable, joinNodesOps, offsetOps, pathToolOps, type PathTool } from "@/vector/editOps";
 
 const BTN = "h-7 flex-1 rounded-md px-2 text-[12px] text-fg-muted outline-none hover:bg-surface-3 hover:text-fg focus-visible:shadow-[var(--ring)]";
 

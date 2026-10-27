@@ -1,0 +1,181 @@
+import type { Op } from "@/gen/opendesigner/v1/opendesigner_pb";
+import { useScene } from "@/store/store";
+import type { FlowLite, NodeLite, SceneState, TransitionLite } from "@/store/types";
+import { makeDeleteFlowOp, makeDeleteTransitionOp, makeSetFlowOp, makeSetPropsOp, makeSetTransitionOp, uuid } from "@/tools/ops";
+import { resolveFlow } from "@/store/flowUi";
+import { withMeta } from "@/flow/meta";
+import { chainOf } from "@/flow/prototype";
+
+// THE FLOW COMMANDS: from the user's intentions to ops. The `...Ops` functions
+// are pure (scene -> ops, testable without the store); `submit` is the only
+// point that touches the store, with the usual rule: ONE gesture = ONE send = ONE
+// undo entry (store.ts::endGesture).
+
+/** Sends the ops as a single undoable gesture. */
+export function submit(ops: Op[]): void {
+  if (ops.length === 0) return;
+  const st = useScene.getState();
+  st.beginGesture();
+  st.endGesture(ops);
+}
+
+/** "Flow 1", "Flow 2"...: the first free number, not the count (a deleted flow frees its own). */
+export function nextFlowName(scene: SceneState): string {
+  const names = new Set(Object.values(scene.flows).map((f) => f.name));
+  for (let i = 1; ; i++) {
+    const n = `Flow ${i}`;
+    if (!names.has(n)) return n;
+  }
+}
+
+export interface ConnectResult {
+  ops: Op[];
+  flowId: string;
+  transitionId: string;
+  /** The flow was created by this gesture (there was none). */
+  createdFlow: boolean;
+}
+
+/**
+ * The ops of "Connect": the fromId -> toId transition in the current flow.
+ *  - no flow: one is born, "Flow N", with the starting screen as the
+ *    entry, IN THE SAME gesture (a single Ctrl+Z undoes everything);
+ *  - flow without an entry screen: the starting screen takes it;
+ *  - the transition's op comes after the flow's (valid reference).
+ */
+export function connectOps(
+  scene: SceneState,
+  currentFlowId: string | null,
+  fromId: string,
+  toId: string,
+  elementId: string,
+): ConnectResult {
+  const ops: Op[] = [];
+  let flow = resolveFlow(scene, currentFlowId);
+  let createdFlow = false;
+  if (!flow) {
+    flow = { id: uuid(), name: nextFlowName(scene), description: "", startId: fromId };
+    createdFlow = true;
+    ops.push(makeSetFlowOp(flow));
+  } else if (flow.startId === "" || !scene.nodes.has(flow.startId)) {
+    ops.push(makeSetFlowOp({ ...flow, startId: fromId }));
+  }
+  const transition: TransitionLite = {
+    id: uuid(),
+    flowId: flow.id,
+    fromId,
+    toId,
+    label: "",
+    trigger: "click",
+    elementId,
+    guard: "",
+    effect: "",
+  };
+  ops.push(makeSetTransitionOp(transition));
+  return { ops, flowId: flow.id, transitionId: transition.id, createdFlow };
+}
+
+export function createFlowOp(scene: SceneState): { op: Op; flow: FlowLite } {
+  const flow: FlowLite = { id: uuid(), name: nextFlowName(scene), description: "", startId: "" };
+  return { op: makeSetFlowOp(flow), flow };
+}
+
+export function renameFlowOp(flow: FlowLite, name: string): Op | null {
+  const n = name.trim();
+  return n === "" || n === flow.name ? null : makeSetFlowOp({ ...flow, name: n });
+}
+
+export function setStartOp(flow: FlowLite, screenId: string): Op | null {
+  return flow.startId === screenId ? null : makeSetFlowOp({ ...flow, startId: screenId });
+}
+
+export function deleteFlowOp(id: string): Op {
+  return makeDeleteFlowOp(id);
+}
+
+/** Edits a field of a transition. null if nothing changes (no empty ops). */
+export function editTransitionOp(
+  t: TransitionLite,
+  field: "label" | "trigger" | "guard" | "effect" | "elementId",
+  value: string,
+): Op | null {
+  if (t[field] === value) return null;
+  return makeSetTransitionOp({ ...t, [field]: value });
+}
+
+/**
+ * Edits the animation of a transition. The empty animation is a cut and carries no timing;
+ * numbers are brought to what the core accepts. null if nothing changes.
+ */
+export function editTransitionAnimationOp(
+  t: TransitionLite,
+  patch: { animation?: string; durationMs?: number; easing?: string; delayMs?: number },
+): Op | null {
+  const next: TransitionLite = { ...t };
+  const set = <K extends "animation" | "durationMs" | "easing" | "delayMs">(k: K, v: TransitionLite[K] | undefined) => {
+    if (v === undefined || v === "" || v === 0) delete next[k]; else next[k] = v;
+  };
+  if (patch.animation !== undefined) set("animation", patch.animation);
+  if (patch.durationMs !== undefined) set("durationMs", Math.min(10000, Math.max(0, Math.round(patch.durationMs))));
+  if (patch.easing !== undefined) set("easing", patch.easing);
+  if (patch.delayMs !== undefined) set("delayMs", Math.min(60000, Math.max(0, Math.round(patch.delayMs))));
+  const same = (["animation", "durationMs", "easing", "delayMs"] as const).every((k) => (next[k] ?? "") === (t[k] ?? ""));
+  return same ? null : makeSetTransitionOp(next);
+}
+
+// --- if / else if / else chains (Transition.order) --------------------------------------
+
+/** `t` with its order set (1..n) or cleared (undefined): the optional field is dropped, never written as 0. */
+function withOrder(t: TransitionLite, order: number | undefined): TransitionLite {
+  const next = { ...t };
+  if (order === undefined) delete next.order; else next.order = order;
+  return next;
+}
+
+/** Rewrites the chain with the transitions in `members` order as 1..n; only the ones that change get an op. */
+function renumberChain(members: TransitionLite[]): Op[] {
+  const ops: Op[] = [];
+  members.forEach((m, i) => {
+    if ((m.order ?? 0) !== i + 1) ops.push(makeSetTransitionOp(withOrder(m, i + 1)));
+  });
+  return ops;
+}
+
+/** Puts `t` at the end of its hotspot's chain (the "else if" / "else" position). Empty if it is already in one. */
+export function joinChainOps(scene: SceneState, t: TransitionLite): Op[] {
+  if (t.order) return [];
+  const peers = chainOf(scene, { ...t, order: 1 }).filter((o) => o.id !== t.id);
+  return renumberChain([...peers, withOrder(t, undefined)]);
+}
+
+/** Takes `t` out of its chain (it becomes an independent branch); the others are numbered 1..n again. */
+export function leaveChainOps(scene: SceneState, t: TransitionLite): Op[] {
+  if (!t.order) return [];
+  const rest = chainOf(scene, t).filter((o) => o.id !== t.id);
+  return [makeSetTransitionOp(withOrder(t, undefined)), ...renumberChain(rest)];
+}
+
+/** Moves `t` one place earlier (-1) or later (+1) in its chain. Empty at either end or outside a chain. */
+export function moveInChainOps(scene: SceneState, t: TransitionLite, dir: -1 | 1): Op[] {
+  const chain = chainOf(scene, t);
+  const at = chain.findIndex((o) => o.id === t.id);
+  const to = at + dir;
+  if (at < 0 || to < 0 || to >= chain.length) return [];
+  const next = [...chain];
+  [next[at], next[to]] = [next[to], next[at]];
+  return renumberChain(next);
+}
+
+export function deleteTransitionOp(id: string): Op {
+  return makeDeleteTransitionOp(id);
+}
+
+/** Writes a key of a node's metadata (read-modify-write: the "meta" mask replaces the map). */
+export function setMetaOp(node: NodeLite, key: string, value: string): Op | null {
+  const next = withMeta(node, key, value);
+  const prev = node.meta ?? {};
+  const same =
+    Object.keys(next).length === Object.keys(prev).length && Object.keys(next).every((k) => prev[k] === next[k]);
+  if (same) return null;
+  return makeSetPropsOp(node.id, { meta: next }, ["meta"]);
+}

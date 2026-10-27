@@ -1,9 +1,9 @@
 import { describe, it, expect } from "vitest";
-import { loadFixtureFonts } from "../testFonts";
-import { sfntKind } from "../sfnt";
-import { PdfFonts, readFontMetrics, standardFontName, toUnicodeCMap } from "./pdfFonts";
-import { buildPdf } from "./pdfDocument";
-import type { NodeLite, TextStyleLite } from "../../store/types";
+import { loadFixtureFonts } from "@/pdf/testFonts";
+import { sfntKind } from "@/pdf/sfnt";
+import { PdfFonts, readFontMetrics, standardFontName, toUnicodeCMap } from "@/pdf/write/pdfFonts";
+import { buildPdf } from "@/pdf/write/pdfDocument";
+import type { NodeLite, TextStyleLite } from "@/store/types";
 
 const style = (over: Partial<TextStyleLite> = {}): TextStyleLite => ({ fontFamily: "Helvetica", fontSize: 16, fontWeight: "400", lineHeight: 1.2, align: "left", ...over });
 

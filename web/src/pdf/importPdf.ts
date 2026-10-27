@@ -1,15 +1,15 @@
 import { create } from "@bufbuild/protobuf";
-import { NodeSchema } from "../gen/opendesigner/v1/opendesigner_pb";
-import type { Op } from "../gen/opendesigner/v1/opendesigner_pb";
-import { useScene } from "../store/store";
-import { nextOrderKey } from "../store/orderKey";
-import { uploadAsset, type AssetRef } from "../rpc/assets";
-import { makeCreateNodeOp, makeCreatePageOp, uuid } from "../tools/ops";
-import { importSvg } from "../svg/importSvg";
-import { describeFont, pdfPageToSvg } from "./pdfToSvg";
-import { coversText, sfntKind } from "./sfnt";
-import { makeSetFontOp, makeSetTextStyleDefOp } from "../tools/ops";
-import { toTextStyleLite, type TextStyleLite } from "../store/types";
+import { NodeSchema } from "@/gen/opendesigner/v1/opendesigner_pb";
+import type { Op } from "@/gen/opendesigner/v1/opendesigner_pb";
+import { useScene } from "@/store/store";
+import { nextOrderKey } from "@/store/orderKey";
+import { uploadAsset, type AssetRef } from "@/rpc/assets";
+import { makeCreateNodeOp, makeCreatePageOp, uuid } from "@/tools/ops";
+import { importSvg } from "@/svg/importSvg";
+import { describeFont, pdfPageToSvg } from "@/pdf/pdfToSvg";
+import { coversText, sfntKind } from "@/pdf/sfnt";
+import { makeSetFontOp, makeSetTextStyleDefOp } from "@/tools/ops";
+import { toTextStyleLite, type TextStyleLite } from "@/store/types";
 
 // IMPORTING A PDF (document menu → Import PDF…).
 //

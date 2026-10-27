@@ -1,10 +1,10 @@
 import { useState } from "react";
 import { Dialog, Modal, ModalOverlay } from "react-aria-components";
-import { useScene } from "../store/store";
-import { MAX_TABLE_SIDE, createTableOps } from "../tools/tableOps";
-import { viewportCenter } from "../tools/svgImport";
-import { Button } from "./ds";
-import { NumberField } from "./fields/NumberField";
+import { useScene } from "@/store/store";
+import { MAX_TABLE_SIDE, createTableOps } from "@/tools/tableOps";
+import { viewportCenter } from "@/tools/svgImport";
+import { Button } from "@/ui/ds";
+import { NumberField } from "@/ui/fields/NumberField";
 
 // INSERT TABLE (document menu): rows x columns of equal cells on the page on screen, at the centre of the
 // view, with the first rows as a header. A table is a group of rectangles and texts (tools/tableOps.ts); its

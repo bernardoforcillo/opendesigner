@@ -1,6 +1,6 @@
-import type { Op } from "../gen/opendesigner/v1/opendesigner_pb";
-import { useScene } from "../store/store";
-import { nextOrderKey, orderKeyBetween } from "../store/orderKey";
+import type { Op } from "@/gen/opendesigner/v1/opendesigner_pb";
+import { useScene } from "@/store/store";
+import { nextOrderKey, orderKeyBetween } from "@/store/orderKey";
 import {
   toPbNode,
   toTextStyleLite,
@@ -14,11 +14,11 @@ import {
   type TextAlignLite,
   type TextLite,
   type TextStyleLite,
-} from "../store/types";
-import { isValidFontFeatures } from "../store/typography";
-import { makeCreateNodeOp, uuid } from "./ops";
-import { isTextField } from "./toolManager";
-import { importSvgAt, looksLikeSvg, viewportCenter } from "./svgImport";
+} from "@/store/types";
+import { isValidFontFeatures } from "@/store/typography";
+import { makeCreateNodeOp, uuid } from "@/tools/ops";
+import { isTextField } from "@/tools/toolManager";
+import { importSvgAt, looksLikeSvg, viewportCenter } from "@/tools/svgImport";
 
 // COPY / PASTE / DUPLICATE (track 3, task 1).
 //

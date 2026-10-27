@@ -1,9 +1,9 @@
 import { createConnectTransport } from "@connectrpc/connect-web";
 import { createClient } from "@connectrpc/connect";
-import { DocumentService } from "../gen/opendesigner/v1/opendesigner_pb";
+import { DocumentService } from "@/gen/opendesigner/v1/opendesigner_pb";
 
 import type { Interceptor } from "@connectrpc/connect";
-import { activeToken } from "./access";
+import { activeToken } from "@/rpc/access";
 
 // Every request carries the link token of the document the editor is on (see rpc/access.ts); with
 // none it carries nothing and an unprotected document works as it always did.

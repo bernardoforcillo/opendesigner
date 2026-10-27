@@ -1,11 +1,11 @@
-import type { Op } from "../gen/opendesigner/v1/opendesigner_pb";
-import type { FlowLite, NodeLite, SceneState } from "../store/types";
-import { sortedFlows } from "../store/flowUi";
-import { sceneIndexOf } from "../renderer/sceneIndex";
-import { META_KEYS, kindOf, statusOf, withMeta, type Status } from "../flow/meta";
-import { screenName } from "../flow/screens";
-import { setStartOp } from "../flow/commands";
-import { makeSetPropsOp } from "../tools/ops";
+import type { Op } from "@/gen/opendesigner/v1/opendesigner_pb";
+import type { FlowLite, NodeLite, SceneState } from "@/store/types";
+import { sortedFlows } from "@/store/flowUi";
+import { sceneIndexOf } from "@/renderer/sceneIndex";
+import { META_KEYS, kindOf, statusOf, withMeta, type Status } from "@/flow/meta";
+import { screenName } from "@/flow/screens";
+import { setStartOp } from "@/flow/commands";
+import { makeSetPropsOp } from "@/tools/ops";
 
 // DELIVERY "READINESS": a pass/fail list that says whether the document is
 // ready to become code. It is PURE (scene + report -> checklist): no

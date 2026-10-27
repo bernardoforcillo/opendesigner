@@ -1,22 +1,22 @@
 import { create, type MessageInitShape } from "@bufbuild/protobuf";
-import { NodeSchema, OpSchema } from "../gen/opendesigner/v1/opendesigner_pb";
-import type { Node, Op } from "../gen/opendesigner/v1/opendesigner_pb";
-import { applyTransform, compose, rotateAround, type Transform } from "../canvas/transform";
-import { orderKeyBetween } from "../store/orderKey";
+import { NodeSchema, OpSchema } from "@/gen/opendesigner/v1/opendesigner_pb";
+import type { Node, Op } from "@/gen/opendesigner/v1/opendesigner_pb";
+import { applyTransform, compose, rotateAround, type Transform } from "@/canvas/transform";
+import { orderKeyBetween } from "@/store/orderKey";
 import {
   toPbFills, toPbStrokes, toPbSubPaths, toPbTextStyle,
   type FillLite, type GradientLite, type StrokeLite, type SubPathLite, type TextStyleLite,
-} from "../store/types";
-import { vectorBounds } from "../store/vectorGeometry";
+} from "@/store/types";
+import { vectorBounds } from "@/store/vectorGeometry";
 import {
   META_CAP, META_DASH, META_DASH_OFFSET, META_FILL_RULE, META_JOIN, META_MITER, META_NO_HAIRLINE,
-} from "../renderer/vectorStyle";
-import { parseColor, type Rgba } from "./color";
-import { cmdsToSubPaths, parsePathData, transformCmds, type PathCmd } from "./pathData";
-import { computeStyle, declaredProps, parseCss, type CssRule, type Decl, type Props } from "./styles";
+} from "@/renderer/vectorStyle";
+import { parseColor, type Rgba } from "@/svg/color";
+import { cmdsToSubPaths, parsePathData, transformCmds, type PathCmd } from "@/svg/pathData";
+import { computeStyle, declaredProps, parseCss, type CssRule, type Decl, type Props } from "@/svg/styles";
 import {
   isTranslationM, lengthScaleOf, parseTransform, similarityOf, translateM,
-} from "./transform";
+} from "@/svg/transform";
 
 // SVG IMPORT -> EDITABLE NODES.
 //

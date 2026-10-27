@@ -1,6 +1,6 @@
-import type { Camera } from "./camera";
-import { worldBoundsOfNode } from "./transform";
-import type { SceneState } from "../store/types";
+import type { Camera } from "@/canvas/camera";
+import { worldBoundsOfNode } from "@/canvas/transform";
+import type { SceneState } from "@/store/types";
 
 // WHERE THE VIEW IS ON EACH PAGE. The camera is one number set, but a page is a different place:
 // arriving on one with the other page's camera would show empty canvas (or the wrong part). Each

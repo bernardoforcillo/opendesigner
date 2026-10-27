@@ -1,14 +1,14 @@
-import { useScene } from "../store/store";
-import type { Op } from "../gen/opendesigner/v1/opendesigner_pb";
-import { BLEND_MODES, type BlendModeLite } from "../store/types";
-import { cls, IconButton, Section } from "./ds";
-import { EffectsFxControls } from "./EffectsFxControls";
-import { ColorField } from "./fields/ColorField";
-import { NumberField } from "./fields/NumberField";
+import { useScene } from "@/store/store";
+import type { Op } from "@/gen/opendesigner/v1/opendesigner_pb";
+import { BLEND_MODES, type BlendModeLite } from "@/store/types";
+import { cls, IconButton, Section } from "@/ui/ds";
+import { EffectsFxControls } from "@/ui/EffectsFxControls";
+import { ColorField } from "@/ui/fields/ColorField";
+import { NumberField } from "@/ui/fields/NumberField";
 import {
   addShadowOps, backgroundBlurOf, backgroundBlurOps, blendModeOps, blurOf, blurOps, editShadowOps, removeEffectOps,
   shadowsOf,
-} from "./effectOps";
+} from "@/ui/effectOps";
 
 const lookup = (id: string) => useScene.getState().scene?.nodes.at(id);
 

@@ -1,11 +1,11 @@
-import type { SceneState } from "../store/types";
-import { type Camera, worldToScreen } from "../canvas/camera";
-import { type Bounds, unionBounds, worldBoundsToScreen } from "../canvas/geometry";
-import { contentWorldBounds, isGroup } from "../store/groups";
-import { isInstance } from "../store/instances";
-import { applyTransform, worldBoundsOfNode, worldTransformOf } from "../canvas/transform";
-import { gridBands, gridLines } from "../store/layoutGrids";
-import type { SnapGuide } from "../selection/snap";
+import type { SceneState } from "@/store/types";
+import { type Camera, worldToScreen } from "@/canvas/camera";
+import { type Bounds, unionBounds, worldBoundsToScreen } from "@/canvas/geometry";
+import { contentWorldBounds, isGroup } from "@/store/groups";
+import { isInstance } from "@/store/instances";
+import { applyTransform, worldBoundsOfNode, worldTransformOf } from "@/canvas/transform";
+import { gridBands, gridLines } from "@/store/layoutGrids";
+import type { SnapGuide } from "@/selection/snap";
 import {
   CORNER_IDS,
   HANDLE_SIZE,
@@ -14,19 +14,19 @@ import {
   ROTATE_MARKER_RADIUS,
   rotateMarkerPositions,
   type SelectionFrame,
-} from "../selection/handles";
+} from "@/selection/handles";
 import {
   anchorPoint,
   hasInHandle,
   hasOutHandle,
   inHandlePoint,
   outHandlePoint,
-} from "../store/vectorGeometry";
-import type { PenPreview, PointLite } from "../store/vectorGeometry";
-import { themeColors, withAlpha } from "./themeColors";
-import { META_NEXT, nextOf } from "../store/threads";
-import { baselineLines, pageColumns, pageTextArea } from "../store/docSettings";
-import type { DocSettingsLite, GuideLite, PageLite } from "../store/types";
+} from "@/store/vectorGeometry";
+import type { PenPreview, PointLite } from "@/store/vectorGeometry";
+import { themeColors, withAlpha } from "@/renderer/themeColors";
+import { META_NEXT, nextOf } from "@/store/threads";
+import { baselineLines, pageColumns, pageTextArea } from "@/store/docSettings";
+import type { DocSettingsLite, GuideLite, PageLite } from "@/store/types";
 
 // The handles' geometry (positions, hit-test, resize) is ONE only and lives
 // in selection/handles.ts: here we only draw. Re-exported because the
@@ -34,8 +34,8 @@ import type { DocSettingsLite, GuideLite, PageLite } from "../store/types";
 export {
   HANDLE_SIZE, handlePositions, ROTATE_MARKER_OFFSET, ROTATE_MARKER_RADIUS, rotateMarkerPositions,
   type HandleId, type SelectionFrame,
-} from "../selection/handles";
-export { worldBoundsToScreen } from "../canvas/geometry";
+} from "@/selection/handles";
+export { worldBoundsToScreen } from "@/canvas/geometry";
 
 const DEG_TO_RAD = Math.PI / 180;
 const TAU = Math.PI * 2;

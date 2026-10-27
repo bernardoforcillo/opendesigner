@@ -1,11 +1,11 @@
-import { worldAabbOfNode, type Bounds } from "../canvas/geometry";
-import { worldTransformOf } from "../canvas/transform";
-import { withMeta } from "../flow/meta";
-import { makeSetPropsOp } from "../tools/ops";
-import type { Op } from "../gen/opendesigner/v1/opendesigner_pb";
-import { resolveRich } from "./richText";
-import { recordDelta } from "./sceneDelta";
-import type { NodeLite, SceneState } from "./types";
+import { worldAabbOfNode, type Bounds } from "@/canvas/geometry";
+import { worldTransformOf } from "@/canvas/transform";
+import { withMeta } from "@/flow/meta";
+import { makeSetPropsOp } from "@/tools/ops";
+import type { Op } from "@/gen/opendesigner/v1/opendesigner_pb";
+import { resolveRich } from "@/store/richText";
+import { recordDelta } from "@/store/sceneDelta";
+import type { NodeLite, SceneState } from "@/store/types";
 
 // TEXT WRAP. An object with `meta["wrap.mode"] = "box"` pushes the text of the frames BELOW it out of its way:
 // the lines of a text node that sits under the object (same parent, lower in the stacking order) are

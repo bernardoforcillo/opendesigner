@@ -1,11 +1,11 @@
 import { Label, Radio, RadioGroup } from "react-aria-components";
-import { useScene } from "../store/store";
-import { FLOW_KINDS, FLOW_KIND_LABELS, META_KEYS, STATUSES, STATUS_LABELS, kindOf, metaValue, statusOf, type FlowKind, type Status } from "../flow/meta";
-import { setMetaOp, submit } from "../flow/commands";
-import { layerDisplayName } from "./LayersPanel";
-import { CommitField } from "./fields/CommitField";
-import { Section, cls } from "./ds";
-import { Field, FlowIcon, type FlowIconName } from "./ds/flow-parts";
+import { useScene } from "@/store/store";
+import { FLOW_KINDS, FLOW_KIND_LABELS, META_KEYS, STATUSES, STATUS_LABELS, kindOf, metaValue, statusOf, type FlowKind, type Status } from "@/flow/meta";
+import { setMetaOp, submit } from "@/flow/commands";
+import { layerDisplayName } from "@/ui/LayersPanel";
+import { CommitField } from "@/ui/fields/CommitField";
+import { Section, cls } from "@/ui/ds";
+import { Field, FlowIcon, type FlowIconName } from "@/ui/ds/flow-parts";
 
 // THE SCREEN METADATA EDITOR (Flows mode, right column). It writes
 // Node.meta: type in the flow, code route and component, test id and text,

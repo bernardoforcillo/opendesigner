@@ -1,9 +1,9 @@
-import { nodesOf } from "../store/nodeMap";
+import { nodesOf } from "@/store/nodeMap";
 import { describe, it, expect, vi } from "vitest";
-import { drawPeers } from "./peersRenderer";
-import { emptyScene } from "../store/types";
-import type { NodeLite, SceneState } from "../store/types";
-import { newPeer, type Peers, type PeerLite } from "../store/presence";
+import { drawPeers } from "@/renderer/peersRenderer";
+import { emptyScene } from "@/store/types";
+import type { NodeLite, SceneState } from "@/store/types";
+import { newPeer, type Peers, type PeerLite } from "@/store/presence";
 
 const cam = { x: 0, y: 0, zoom: 1 };
 

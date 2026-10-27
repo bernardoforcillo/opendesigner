@@ -1,10 +1,10 @@
-import type { Op } from "../gen/opendesigner/v1/opendesigner_pb";
-import { orderKeyBetween } from "../store/orderKey";
-import { toPbNode } from "../store/types";
-import type { DocSettingsLite, FillLite, FlowLite, NodeLite, PageLite, StrokeLite, TextStyleDefLite, TextStyleLite, TransitionLite } from "../store/types";
-import { makeCreateNodeOp, makeCreatePageWithMasterOp, makeSetDocSettingsOp, makeSetFlowOp, makeSetTextStyleDefOp, makeSetTransitionOp, makeUpdatePageOp } from "../tools/ops";
-import { META_KEYS } from "../flow/meta";
-import type { FlowKind } from "../flow/meta";
+import type { Op } from "@/gen/opendesigner/v1/opendesigner_pb";
+import { orderKeyBetween } from "@/store/orderKey";
+import { toPbNode } from "@/store/types";
+import type { DocSettingsLite, FillLite, FlowLite, NodeLite, PageLite, StrokeLite, TextStyleDefLite, TextStyleLite, TransitionLite } from "@/store/types";
+import { makeCreateNodeOp, makeCreatePageWithMasterOp, makeSetDocSettingsOp, makeSetFlowOp, makeSetTextStyleDefOp, makeSetTransitionOp, makeUpdatePageOp } from "@/tools/ops";
+import { META_KEYS } from "@/flow/meta";
+import type { FlowKind } from "@/flow/meta";
 
 // THE TEMPLATE MINI-LANGUAGE. A template is a function that draws
 // screens with a few primitives (title, field, button, card...) and produces a

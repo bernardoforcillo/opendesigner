@@ -1,16 +1,16 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { useScene } from "../store/store";
-import { emptyScene } from "../store/types";
+import { useScene } from "@/store/store";
+import { emptyScene } from "@/store/types";
 
 const client = vi.hoisted(() => ({
   getAccess: vi.fn(), enableAccess: vi.fn(), disableAccess: vi.fn(), createShareLink: vi.fn(), revokeShareLink: vi.fn(),
 }));
-vi.mock("../rpc/client", () => ({ docClient: client }));
+vi.mock("@/rpc/client", () => ({ docClient: client }));
 
-import { ShareDialog } from "./ShareDialog";
-import { storedToken } from "../rpc/access";
+import { ShareDialog } from "@/ui/ShareDialog";
+import { storedToken } from "@/rpc/access";
 
 const link = (id: string, role: string, label: string) => ({ id, role, label, createdAt: 1700000000n });
 

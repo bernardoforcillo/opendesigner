@@ -1,4 +1,4 @@
-import type { ResolvedParagraph } from "./types";
+import type { ResolvedParagraph } from "@/store/types";
 
 // KEEPS: where a threaded story breaks from one frame to the next, the paragraph styles may ask for
 // the break to be moved so that

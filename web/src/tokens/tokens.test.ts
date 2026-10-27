@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
-import { emptyScene } from "../store/types";
-import type { SceneState } from "../store/types";
-import { colorToHex, fromDtcg, toCssVariables, toDtcg } from "./tokens";
+import { emptyScene } from "@/store/types";
+import type { SceneState } from "@/store/types";
+import { colorToHex, fromDtcg, toCssVariables, toDtcg } from "@/tokens/tokens";
 
 const scene = (): SceneState => ({
   ...emptyScene("d", "t"),

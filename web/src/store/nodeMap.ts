@@ -1,4 +1,4 @@
-import type { NodeLite } from "./types";
+import type { NodeLite } from "@/store/types";
 
 // PERSISTENT MAP id -> value (used for the scene nodes and for the extents
 // of the scene index).

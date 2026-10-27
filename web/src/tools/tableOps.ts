@@ -1,10 +1,10 @@
-import type { Op } from "../gen/opendesigner/v1/opendesigner_pb";
-import { orderKeyBetween } from "../store/orderKey";
-import { childrenOf } from "../store/tree";
-import { toPbNode, type NodeLite, type SceneState, type TableStyleLite, type TextStyleLite } from "../store/types";
-import { applyObjectStyleOps } from "./objectStyles";
-import { applyStyleOps } from "../ui/typographyOps";
-import { makeCreateNodeOp, makeDeleteOp, makeSetPropsOp, uuid } from "./ops";
+import type { Op } from "@/gen/opendesigner/v1/opendesigner_pb";
+import { orderKeyBetween } from "@/store/orderKey";
+import { childrenOf } from "@/store/tree";
+import { toPbNode, type NodeLite, type SceneState, type TableStyleLite, type TextStyleLite } from "@/store/types";
+import { applyObjectStyleOps } from "@/tools/objectStyles";
+import { applyStyleOps } from "@/ui/typographyOps";
+import { makeCreateNodeOp, makeDeleteOp, makeSetPropsOp, uuid } from "@/tools/ops";
 
 // TABLES. A table is a GROUP of cells -- no new kind of node: each cell is a rectangle (the box, fill and
 // borders) with a text over it (the content), both tagged with their row and column. The group's meta

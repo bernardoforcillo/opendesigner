@@ -1,8 +1,8 @@
-import type { AnimInfo, ClipLite, NodeLite, SceneState } from "../store/types";
-import { recordDelta } from "../store/sceneDelta";
-import { contentWorldBounds } from "../store/groups";
-import { applyTransform, invertTransform, worldTransformOf } from "../canvas/transform";
-import { sampleClip, type NodeAnim } from "./engine";
+import type { AnimInfo, ClipLite, NodeLite, SceneState } from "@/store/types";
+import { recordDelta } from "@/store/sceneDelta";
+import { contentWorldBounds } from "@/store/groups";
+import { applyTransform, invertTransform, worldTransformOf } from "@/canvas/transform";
+import { sampleClip, type NodeAnim } from "@/animation/engine";
 
 // THE POSED SCENE.
 //

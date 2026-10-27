@@ -1,8 +1,8 @@
-import { worldTransformOf } from "../canvas/transform";
-import { flattenStyle } from "./richText";
-import { pageNumbers } from "./pageNumbers";
-import { recordDelta } from "./sceneDelta";
-import type { NodeLite, PageLite, SceneState, TextLite, TextRunLite } from "./types";
+import { worldTransformOf } from "@/canvas/transform";
+import { flattenStyle } from "@/store/richText";
+import { pageNumbers } from "@/store/pageNumbers";
+import { recordDelta } from "@/store/sceneDelta";
+import type { NodeLite, PageLite, SceneState, TextLite, TextRunLite } from "@/store/types";
 
 // TOKENS IN TEXT. Four kinds of markers live in the content of a text and are turned into something
 // else when it is drawn -- the document keeps the markers:

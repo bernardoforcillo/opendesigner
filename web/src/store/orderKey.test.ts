@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
-import { nextOrderKey, orderKeyBetween } from "./orderKey";
-import { emptyScene } from "./types";
-import type { SceneState, NodeLite } from "./types";
+import { nextOrderKey, orderKeyBetween } from "@/store/orderKey";
+import { emptyScene } from "@/store/types";
+import type { SceneState, NodeLite } from "@/store/types";
 
 function sceneWith(keys: string[]): SceneState {
   const s = emptyScene("d", "n");

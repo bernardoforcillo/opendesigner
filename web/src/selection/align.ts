@@ -1,8 +1,8 @@
-import { type Bounds, unionBounds, worldAabbOfNode } from "../canvas/geometry";
-import { useScene } from "../store/store";
-import { makeSetPropsOp } from "../tools/ops";
-import type { SceneState } from "../store/types";
-import type { Op } from "../gen/opendesigner/v1/opendesigner_pb";
+import { type Bounds, unionBounds, worldAabbOfNode } from "@/canvas/geometry";
+import { useScene } from "@/store/store";
+import { makeSetPropsOp } from "@/tools/ops";
+import type { SceneState } from "@/store/types";
+import type { Op } from "@/gen/opendesigner/v1/opendesigner_pb";
 
 // ALIGNMENT AND DISTRIBUTION.
 //

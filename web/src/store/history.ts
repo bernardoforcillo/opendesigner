@@ -1,19 +1,19 @@
 import { create } from "@bufbuild/protobuf";
-import { OpSchema } from "../gen/opendesigner/v1/opendesigner_pb";
-import type { Node as PbNode, Op } from "../gen/opendesigner/v1/opendesigner_pb";
-import type { NodeLite, VariableLite } from "./types";
-import { toPbNode, toPbFlow, toPbClip, toClipLite, toPbTransition, toPbCollection, toPbVariable, toPbFont, toPbTextStyleDef, toPbPaintStyleDef, toPbEffectStyleDef, toPbComponentProperty, toPbComponentSet, toPbTextStyle, toPbSubPaths, toPbInstanceOverride, toPbInstance, type SceneState, settingsToMsg, toPbObjectStyleDef, toPbLayer } from "./types";
-import { isValidClip } from "../animation/validate";
-import { applyOp } from "./applyOp";
-import { isValidCollection, isValidVariable, withAliases } from "./variables";
-import { isValidFont, isValidTextStyleDef } from "./typography";
-import { isValidEffectStyleDef, isValidPaintStyleDef } from "./paintStyles";
-import { isValidLayer, isValidObjectStyle } from "./graphics";
-import { assignmentValid, isValidComponentDef, isValidComponentSet, isValidInstanceProps, makeRenamer, renameChoice, reverseRenames } from "./components";
-import { childrenOf, isAncestorOf, parentExists, subtreeOf } from "./tree";
-import { isValidInstanceBody } from "./instanceOps";
-import { deletePageAllowed, masterFieldsValid, pageOf, pageToPb, updatePageAllowed } from "./masters";
-import { isValidDocSettings, isValidPageSetup } from "./docSettings";
+import { OpSchema } from "@/gen/opendesigner/v1/opendesigner_pb";
+import type { Node as PbNode, Op } from "@/gen/opendesigner/v1/opendesigner_pb";
+import type { NodeLite, VariableLite } from "@/store/types";
+import { toPbNode, toPbFlow, toPbClip, toClipLite, toPbTransition, toPbCollection, toPbVariable, toPbFont, toPbTextStyleDef, toPbPaintStyleDef, toPbEffectStyleDef, toPbComponentProperty, toPbComponentSet, toPbTextStyle, toPbSubPaths, toPbInstanceOverride, toPbInstance, type SceneState, settingsToMsg, toPbObjectStyleDef, toPbLayer } from "@/store/types";
+import { isValidClip } from "@/animation/validate";
+import { applyOp } from "@/store/applyOp";
+import { isValidCollection, isValidVariable, withAliases } from "@/store/variables";
+import { isValidFont, isValidTextStyleDef } from "@/store/typography";
+import { isValidEffectStyleDef, isValidPaintStyleDef } from "@/store/paintStyles";
+import { isValidLayer, isValidObjectStyle } from "@/store/graphics";
+import { assignmentValid, isValidComponentDef, isValidComponentSet, isValidInstanceProps, makeRenamer, renameChoice, reverseRenames } from "@/store/components";
+import { childrenOf, isAncestorOf, parentExists, subtreeOf } from "@/store/tree";
+import { isValidInstanceBody } from "@/store/instanceOps";
+import { deletePageAllowed, masterFieldsValid, pageOf, pageToPb, updatePageAllowed } from "@/store/masters";
+import { isValidDocSettings, isValidPageSetup } from "@/store/docSettings";
 
 // Undo primitives: given the state BEFORE an op, the op that undoes it.
 //

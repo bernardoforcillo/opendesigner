@@ -1,11 +1,11 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import { connectTool, createConnectTool } from "./connectTool";
-import type { ToolContext } from "./types";
-import type { Op } from "../gen/opendesigner/v1/opendesigner_pb";
-import { useScene } from "../store/store";
-import { useFlowUi } from "../store/flowUi";
-import { baseScene, flowOf, transition, withFlows } from "../flow/testSupport";
-import type { SceneState } from "../store/types";
+import { connectTool, createConnectTool } from "@/tools/connectTool";
+import type { ToolContext } from "@/tools/types";
+import type { Op } from "@/gen/opendesigner/v1/opendesigner_pb";
+import { useScene } from "@/store/store";
+import { useFlowUi } from "@/store/flowUi";
+import { baseScene, flowOf, transition, withFlows } from "@/flow/testSupport";
+import type { SceneState } from "@/store/types";
 
 class FakeSync {
   sent: Op[] = [];

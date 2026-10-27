@@ -1,4 +1,4 @@
-import { executeWasm } from "./wasm";
+import { executeWasm } from "@/plugins/wasm";
 
 // The Worker a WebAssembly plugin runs in (wasmRun.ts starts it, and terminates it when time is up).
 // It receives {bytes, input} once and answers {output} or {error}. It has no editor to call: the

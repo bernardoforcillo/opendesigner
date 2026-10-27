@@ -1,8 +1,8 @@
 import { describe, it, expect } from "vitest";
 import { create } from "@bufbuild/protobuf";
-import { PaintSchema } from "../gen/opendesigner/v1/opendesigner_pb";
-import { toPbFills, toNodeLite, type FillLite } from "./types";
-import { NodeSchema } from "../gen/opendesigner/v1/opendesigner_pb";
+import { PaintSchema } from "@/gen/opendesigner/v1/opendesigner_pb";
+import { toPbFills, toNodeLite, type FillLite } from "@/store/types";
+import { NodeSchema } from "@/gen/opendesigner/v1/opendesigner_pb";
 
 const linear: FillLite = {
   r: 1, g: 0, b: 0, a: 1,

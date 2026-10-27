@@ -6,12 +6,12 @@ import {
   PEN_CLICK_SLOP_PX,
   PEN_FILL,
   type PenState,
-} from "./penTool";
-import type { ToolContext } from "./types";
-import type { Node as PbNode, Op } from "../gen/opendesigner/v1/opendesigner_pb";
-import { useScene } from "../store/store";
-import { emptyScene } from "../store/types";
-import type { AnchorLite } from "../store/types";
+} from "@/tools/penTool";
+import type { ToolContext } from "@/tools/types";
+import type { Node as PbNode, Op } from "@/gen/opendesigner/v1/opendesigner_pb";
+import { useScene } from "@/store/store";
+import { emptyScene } from "@/store/types";
+import type { AnchorLite } from "@/store/types";
 
 // --- doubles ----------------------------------------------------------------
 

@@ -1,9 +1,9 @@
 import { useState } from "react";
 import { Dialog, Modal, ModalOverlay } from "react-aria-components";
-import { EXAMPLE_PLUGIN, loadPlugins, parsePlugin, savePlugins, type Plugin } from "../plugins/manifest";
-import { runPlugin } from "../plugins/run";
-import { exampleWasmPlugin } from "../plugins/wasmExample";
-import { Button, cls, EmptyState } from "./ds";
+import { EXAMPLE_PLUGIN, loadPlugins, parsePlugin, savePlugins, type Plugin } from "@/plugins/manifest";
+import { runPlugin } from "@/plugins/run";
+import { exampleWasmPlugin } from "@/plugins/wasmExample";
+import { Button, cls, EmptyState } from "@/ui/ds";
 
 // PLUGINS (document menu → Plugins…): small scripts that edit the document through a narrow API, run in
 // a sandbox with no network. They are installed in THIS browser (a JSON file or pasted text), shown

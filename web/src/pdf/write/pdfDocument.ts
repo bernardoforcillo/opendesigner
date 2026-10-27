@@ -1,11 +1,11 @@
-import type { FontLite, NodeLite, SceneState } from "../../store/types";
-import type { Bounds } from "../../canvas/geometry";
-import type { MeasureText } from "../../renderer/text";
-import { PdfColors } from "./pdfColor";
-import { PdfFonts } from "./pdfFonts";
-import { effectivePpi, type PreparedImage } from "./pdfImages";
-import { PdfFile, num, pdfDate, pdfName, pdfText } from "./pdfFile";
-import { PT, renderPage } from "./pdfPage";
+import type { FontLite, NodeLite, SceneState } from "@/store/types";
+import type { Bounds } from "@/canvas/geometry";
+import type { MeasureText } from "@/renderer/text";
+import { PdfColors } from "@/pdf/write/pdfColor";
+import { PdfFonts } from "@/pdf/write/pdfFonts";
+import { effectivePpi, type PreparedImage } from "@/pdf/write/pdfImages";
+import { PdfFile, num, pdfDate, pdfName, pdfText } from "@/pdf/write/pdfFile";
+import { PT, renderPage } from "@/pdf/write/pdfPage";
 
 // THE DOCUMENT: pages with their boxes, print marks, the outline (bookmarks), link annotations, the
 // Info dictionary and, for print, the PDF/X identification and an output intent.

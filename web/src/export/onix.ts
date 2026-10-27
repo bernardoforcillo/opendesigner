@@ -1,4 +1,4 @@
-import type { BookLite } from "../store/types";
+import type { BookLite } from "@/store/types";
 
 // ONIX FOR BOOKS 3.1 / 3.0 (reference tag names): the book trade's standard message for describing a title to
 // retailers and distributors. One message with one <Product> built from the document's book record

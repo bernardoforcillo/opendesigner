@@ -1,7 +1,7 @@
-import type { Op } from "../gen/opendesigner/v1/opendesigner_pb";
-import { bindingType, resolveNode, variableValueIn } from "../store/variables";
-import type { CollectionLite, FillLite, NodeLite, SceneState, VariableLite, VariableTypeLite } from "../store/types";
-import { makeSetCollectionOp, makeSetPropsOp, makeSetVariableOp, uuid } from "../tools/ops";
+import type { Op } from "@/gen/opendesigner/v1/opendesigner_pb";
+import { bindingType, resolveNode, variableValueIn } from "@/store/variables";
+import type { CollectionLite, FillLite, NodeLite, SceneState, VariableLite, VariableTypeLite } from "@/store/types";
+import { makeSetCollectionOp, makeSetPropsOp, makeSetVariableOp, uuid } from "@/tools/ops";
 
 // The pure half of the variables UI: it reads a scene and BUILDS ops, it never
 // submits. The components (VariablesSection, VariablesDialog) call these and hand

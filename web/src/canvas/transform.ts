@@ -1,6 +1,6 @@
-import type { NodeLite, SceneState } from "../store/types";
-import { ancestorsOf } from "../store/tree";
-import { type Bounds, boundsOfNode } from "./geometry";
+import type { NodeLite, SceneState } from "@/store/types";
+import { ancestorsOf } from "@/store/tree";
+import { type Bounds, boundsOfNode } from "@/canvas/geometry";
 
 // ROTATION — THE CONVENTION, IN ONE PLACE ONLY.
 //

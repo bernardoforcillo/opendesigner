@@ -1,13 +1,13 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { useScene } from "../store/store";
-import { useCommentsUi } from "../store/commentsUi";
-import { nodesOf } from "../store/nodeMap";
-import { emptyScene } from "../store/types";
-import type { Op } from "../gen/opendesigner/v1/opendesigner_pb";
-import { CommentsPanel } from "./CommentsPanel";
-import { createCommentTool } from "../tools/commentTool";
-import type { ToolContext } from "../tools/types";
+import { useScene } from "@/store/store";
+import { useCommentsUi } from "@/store/commentsUi";
+import { nodesOf } from "@/store/nodeMap";
+import { emptyScene } from "@/store/types";
+import type { Op } from "@/gen/opendesigner/v1/opendesigner_pb";
+import { CommentsPanel } from "@/ui/CommentsPanel";
+import { createCommentTool } from "@/tools/commentTool";
+import type { ToolContext } from "@/tools/types";
 
 const sync = {
   submit(op: Op) {

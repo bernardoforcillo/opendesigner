@@ -1,14 +1,14 @@
 import { create } from "@bufbuild/protobuf";
-import { NodeSchema } from "../gen/opendesigner/v1/opendesigner_pb";
-import { nextOrderKey } from "../store/orderKey";
-import { useScene } from "../store/store";
-import { normalizeVector } from "../store/vectorGeometry";
-import type { PenPreview, PointLite } from "../store/vectorGeometry";
-import { toPbFills, toPbSubPaths } from "../store/types";
-import type { AnchorLite, FillLite } from "../store/types";
-import { PEN_ANCHOR_GRAB_PX } from "../renderer/overlayRenderer";
-import { makeCreateNodeOp, uuid } from "./ops";
-import type { Tool, ToolContext } from "./types";
+import { NodeSchema } from "@/gen/opendesigner/v1/opendesigner_pb";
+import { nextOrderKey } from "@/store/orderKey";
+import { useScene } from "@/store/store";
+import { normalizeVector } from "@/store/vectorGeometry";
+import type { PenPreview, PointLite } from "@/store/vectorGeometry";
+import { toPbFills, toPbSubPaths } from "@/store/types";
+import type { AnchorLite, FillLite } from "@/store/types";
+import { PEN_ANCHOR_GRAB_PX } from "@/renderer/overlayRenderer";
+import { makeCreateNodeOp, uuid } from "@/tools/ops";
+import type { Tool, ToolContext } from "@/tools/types";
 
 // THE PEN TOOL.
 //

@@ -12,14 +12,14 @@ import {
 } from "@tanstack/react-router";
 import { NuqsAdapter } from "nuqs/adapters/tanstack-router";
 import { parseAsBoolean, parseAsString, parseAsStringLiteral, useQueryState } from "nuqs";
-import { App } from "../ui/App";
-import { useScene } from "../store/store";
-import { useFlowUi } from "../store/flowUi";
-import { useRenderer } from "../store/rendererChoice";
-import { Home } from "./Home";
-import { DocIdContext } from "./DocIdContext";
-import { legacyRedirect, normalizeDocId } from "./route";
-import { documentTitleFor } from "./title";
+import { App } from "@/ui/App";
+import { useScene } from "@/store/store";
+import { useFlowUi } from "@/store/flowUi";
+import { useRenderer } from "@/store/rendererChoice";
+import { Home } from "@/home/Home";
+import { DocIdContext } from "@/home/DocIdContext";
+import { legacyRedirect, normalizeDocId } from "@/home/route";
+import { documentTitleFor } from "@/home/title";
 
 // THE APP ROUTER (TanStack Router, path history) + the query-string state
 // (nuqs). The routes are described in route.ts; the shared links are

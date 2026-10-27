@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import { resolveFlow, sortedFlows, useFlowUi } from "./flowUi";
-import { baseScene, flowOf, withFlows } from "../flow/testSupport";
-import { useScene } from "./store";
+import { resolveFlow, sortedFlows, useFlowUi } from "@/store/flowUi";
+import { baseScene, flowOf, withFlows } from "@/flow/testSupport";
+import { useScene } from "@/store/store";
 
 beforeEach(() => {
   useFlowUi.setState({

@@ -1,10 +1,10 @@
 import { describe, it, expect } from "vitest";
-import { applyOp } from "../store/applyOp";
-import { nodesOf } from "../store/nodeMap";
-import { emptyScene } from "../store/types";
-import type { NodeLite, SceneState } from "../store/types";
-import { autoLayoutOps } from "./autoLayoutOps";
-import { cellOf, cellOps, withTrackAdded, withTrackChanged } from "./gridTrackOps";
+import { applyOp } from "@/store/applyOp";
+import { nodesOf } from "@/store/nodeMap";
+import { emptyScene } from "@/store/types";
+import type { NodeLite, SceneState } from "@/store/types";
+import { autoLayoutOps } from "@/ui/autoLayoutOps";
+import { cellOf, cellOps, withTrackAdded, withTrackChanged } from "@/ui/gridTrackOps";
 
 function scene(autoLayout?: NodeLite["autoLayout"]): SceneState {
   const frame: NodeLite = {

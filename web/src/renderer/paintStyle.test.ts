@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
-import { paintStyle } from "./canvasRenderer";
-import type { FillLite, NodeLite } from "../store/types";
+import { paintStyle } from "@/renderer/canvasRenderer";
+import type { FillLite, NodeLite } from "@/store/types";
 
 const node = { x: 100, y: 50, width: 200, height: 100 } as NodeLite;
 const grad = (kind: "linear" | "radial", over: Partial<NonNullable<FillLite["gradient"]>> = {}): FillLite => ({

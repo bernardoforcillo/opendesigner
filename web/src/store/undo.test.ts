@@ -1,12 +1,12 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { create } from "@bufbuild/protobuf";
-import { NodeSchema, OpSchema } from "../gen/opendesigner/v1/opendesigner_pb";
-import type { Op } from "../gen/opendesigner/v1/opendesigner_pb";
-import { useScene } from "./store";
-import { parentExists } from "./tree";
-import { emptyScene } from "./types";
-import { vectorBounds } from "./vectorGeometry";
-import type { BoxLite } from "./vectorGeometry";
+import { NodeSchema, OpSchema } from "@/gen/opendesigner/v1/opendesigner_pb";
+import type { Op } from "@/gen/opendesigner/v1/opendesigner_pb";
+import { useScene } from "@/store/store";
+import { parentExists } from "@/store/tree";
+import { emptyScene } from "@/store/types";
+import { vectorBounds } from "@/store/vectorGeometry";
+import type { BoxLite } from "@/store/vectorGeometry";
 
 // Double of SyncClient (see rpc/syncClient.ts): records the ops that end up
 // ON THE WIRE and models a server that accepts and ECHOES immediately -- applyPending (op

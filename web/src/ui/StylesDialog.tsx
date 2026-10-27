@@ -1,12 +1,12 @@
 import { useState } from "react";
 import { Dialog, Modal, ModalOverlay } from "react-aria-components";
-import { useScene } from "../store/store";
-import { makeDeleteTextStyleDefOp, makeSetTextStyleDefOp, uuid } from "../tools/ops";
-import type { NestedStyleLite, NumberStyle, TabStopLite, TextStyleDefLite, TextStyleLite } from "../store/types";
-import { Button, cls } from "./ds";
-import { NumberField } from "./fields/NumberField";
-import { familyChoices } from "./typographyOps";
-import { isValidFontFeatures } from "../store/typography";
+import { useScene } from "@/store/store";
+import { makeDeleteTextStyleDefOp, makeSetTextStyleDefOp, uuid } from "@/tools/ops";
+import type { NestedStyleLite, NumberStyle, TabStopLite, TextStyleDefLite, TextStyleLite } from "@/store/types";
+import { Button, cls } from "@/ui/ds";
+import { NumberField } from "@/ui/fields/NumberField";
+import { familyChoices } from "@/ui/typographyOps";
+import { isValidFontFeatures } from "@/store/typography";
 
 // THE STYLES DIALOG (document menu → Styles…): create and edit PARAGRAPH styles (the look of whole
 // paragraphs: font, size, spacing, indents, alignment, based-on and next style) and CHARACTER styles (a

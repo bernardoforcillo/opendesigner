@@ -1,11 +1,11 @@
-import type { Op } from "../gen/opendesigner/v1/opendesigner_pb";
-import { openZip, readZipText } from "../export/zipRead";
-import { applyOp } from "../store/applyOp";
-import { orderKeyBetween } from "../store/orderKey";
-import { childrenOf } from "../store/tree";
-import { toPbNode, type NodeLite, type SceneState, type TextStyleDefLite, type TextStyleLite } from "../store/types";
-import { makeCreateNodeOp, makeSetTextOp, makeSetTextStyleDefOp, uuid } from "./ops";
-import { createTableOps, readTable } from "./tableOps";
+import type { Op } from "@/gen/opendesigner/v1/opendesigner_pb";
+import { openZip, readZipText } from "@/export/zipRead";
+import { applyOp } from "@/store/applyOp";
+import { orderKeyBetween } from "@/store/orderKey";
+import { childrenOf } from "@/store/tree";
+import { toPbNode, type NodeLite, type SceneState, type TextStyleDefLite, type TextStyleLite } from "@/store/types";
+import { makeCreateNodeOp, makeSetTextOp, makeSetTextStyleDefOp, uuid } from "@/tools/ops";
+import { createTableOps, readTable } from "@/tools/tableOps";
 
 // PLACE WORD, RTF AND EXCEL. A Word or RTF file becomes ONE text frame whose paragraphs carry styles (headings get an outline level, so
 // the table of contents sees them) and whose bold/italic runs carry character styles. An Excel sheet becomes a table. What is NOT

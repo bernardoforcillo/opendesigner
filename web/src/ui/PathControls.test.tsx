@@ -1,12 +1,12 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import type { Op } from "../gen/opendesigner/v1/opendesigner_pb";
-import { useScene } from "../store/store";
-import { nodesOf } from "../store/nodeMap";
-import { emptyScene } from "../store/types";
-import type { AnchorLite, NodeLite, SubPathLite } from "../store/types";
-import { PathControls } from "./PathControls";
+import type { Op } from "@/gen/opendesigner/v1/opendesigner_pb";
+import { useScene } from "@/store/store";
+import { nodesOf } from "@/store/nodeMap";
+import { emptyScene } from "@/store/types";
+import type { AnchorLite, NodeLite, SubPathLite } from "@/store/types";
+import { PathControls } from "@/ui/PathControls";
 
 afterEach(cleanup);
 const sync = { submit(op: Op) { useScene.getState().applyPending(op); useScene.getState().apply(op); } };

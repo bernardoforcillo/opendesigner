@@ -1,16 +1,16 @@
 import polygonClipping from "polygon-clipping";
 import type { MultiPolygon, Pair, Polygon, Ring } from "polygon-clipping";
 import { create } from "@bufbuild/protobuf";
-import { NodeSchema } from "../gen/opendesigner/v1/opendesigner_pb";
-import type { Op } from "../gen/opendesigner/v1/opendesigner_pb";
-import { IDENTITY, applyTransform, invertTransform, worldTransformOf } from "../canvas/transform";
-import { orderKeyBetween } from "../store/orderKey";
-import { childrenOf, documentOrder, topmostOf } from "../store/tree";
-import { normalizeVector } from "../store/vectorGeometry";
-import type { NodeLite, SceneState } from "../store/types";
-import { toPbEffects, toPbFills, toPbStrokes, toPbSubPaths } from "../store/types";
-import { makeCreateNodeOp, makeDeleteOp, uuid } from "../tools/ops";
-import { booleanRegion, isBooleanSource, regionOfNode } from "./boolean";
+import { NodeSchema } from "@/gen/opendesigner/v1/opendesigner_pb";
+import type { Op } from "@/gen/opendesigner/v1/opendesigner_pb";
+import { IDENTITY, applyTransform, invertTransform, worldTransformOf } from "@/canvas/transform";
+import { orderKeyBetween } from "@/store/orderKey";
+import { childrenOf, documentOrder, topmostOf } from "@/store/tree";
+import { normalizeVector } from "@/store/vectorGeometry";
+import type { NodeLite, SceneState } from "@/store/types";
+import { toPbEffects, toPbFills, toPbStrokes, toPbSubPaths } from "@/store/types";
+import { makeCreateNodeOp, makeDeleteOp, uuid } from "@/tools/ops";
+import { booleanRegion, isBooleanSource, regionOfNode } from "@/vector/boolean";
 
 // THE SHAPE BUILDER (docs/vector.md): the regions of overlapping shapes, and what a click or a drag across
 // them makes. The selected shapes are cut along each other's outlines into FACES -- the disjoint pieces of

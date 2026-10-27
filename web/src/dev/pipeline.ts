@@ -1,5 +1,5 @@
-import type { SceneState } from "../store/types";
-import type { EditorMode } from "../store/flowUi";
+import type { SceneState } from "@/store/types";
+import type { EditorMode } from "@/store/flowUi";
 
 // THE PIPELINE: Draw · Connect · Try · Ship. Four steps, each
 // "done" or not, DEDUCED from the document -- nobody ticks them by hand, so they cannot

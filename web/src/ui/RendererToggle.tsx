@@ -1,5 +1,5 @@
-import { useRenderer } from "../store/rendererChoice";
-import { Icon } from "./ds";
+import { useRenderer } from "@/store/rendererChoice";
+import { Icon } from "@/ui/ds";
 
 /**
  * Chooses the scene's renderer: CPU (Canvas 2D) or GPU (CanvasKit on WebGL).

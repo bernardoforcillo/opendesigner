@@ -1,7 +1,7 @@
 import "@testing-library/jest-dom/vitest";
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { render, screen, cleanup, fireEvent } from "@testing-library/react";
-import { ExportSection } from "./ExportSection";
+import { ExportSection } from "@/ui/ExportSection";
 
 // The same real click sequence used in ExportButton.test.tsx (now removed):
 // react-aria's usePress mistakes for "virtual" a PointerEvent without

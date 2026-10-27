@@ -1,4 +1,4 @@
-import type { GradientLite } from "../store/types";
+import type { GradientLite } from "@/store/types";
 
 // ANGULAR and DIAMOND gradients, rasterized. The 2D canvas and CanvasKit have a native conic/sweep
 // gradient, but a diamond (bands of constant |dx|+|dy|) has no native form anywhere, and an SVG file

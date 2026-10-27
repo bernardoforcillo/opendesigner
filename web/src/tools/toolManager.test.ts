@@ -1,8 +1,8 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import { attachTools, eventToCanvasPoint, wheelZoomFactor } from "./toolManager";
-import type { Tool, ToolContext, ToolId } from "./types";
-import type { Camera } from "../canvas/camera";
-import { screenToWorld } from "../canvas/camera";
+import { attachTools, eventToCanvasPoint, wheelZoomFactor } from "@/tools/toolManager";
+import type { Tool, ToolContext, ToolId } from "@/tools/types";
+import type { Camera } from "@/canvas/camera";
+import { screenToWorld } from "@/canvas/camera";
 
 // --- DOM doubles ----------------------------------------------------------
 // Tests run in Node without jsdom (like the rest of the project): these

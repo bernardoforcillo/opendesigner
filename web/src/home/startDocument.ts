@@ -1,6 +1,6 @@
-import type { Op } from "../gen/opendesigner/v1/opendesigner_pb";
-import { templateOps } from "../templates/catalog";
-import type { Template } from "../templates/catalog";
+import type { Op } from "@/gen/opendesigner/v1/opendesigner_pb";
+import { templateOps } from "@/templates/catalog";
+import type { Template } from "@/templates/catalog";
 
 // CREATING A DOCUMENT FROM A TEMPLATE, from the Home: creates the document on the server,
 // reads the id of its first page and sends it the template's Ops ONE AFTER
