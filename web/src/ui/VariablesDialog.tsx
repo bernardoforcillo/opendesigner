@@ -1,4 +1,5 @@
 import { useRef, useState } from "react";
+import { useT } from "@/i18n";
 import { Dialog, Modal, ModalOverlay } from "react-aria-components";
 import { useScene } from "@/store/store";
 import type { CollectionLite, FillLite, VariableLite, VariableTypeLite } from "@/store/types";
@@ -27,6 +28,7 @@ function run(ops: Ops) {
 }
 
 export function VariablesDialog({ isOpen, onOpenChange }: { isOpen: boolean; onOpenChange: (open: boolean) => void }) {
+  const { t } = useT();
   const scene = useScene((s) => s.scene);
   const [picked, setPicked] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -51,42 +53,43 @@ export function VariablesDialog({ isOpen, onOpenChange }: { isOpen: boolean; onO
     const base = scene.name.trim() || "tokens";
     downloadBlob(new Blob([text], { type: kind === "json" ? "application/json" : "text/css" }), `${base}.tokens.${kind}`);
   };
+  const tr = t;
   const importFile = async (file: File | undefined) => {
     const cur = useScene.getState().scene;
     if (!file || !cur) return;
     try {
       const t = fromDtcg(await file.text(), cur);
-      if (t.collections.length === 0) { setNotice(t.skipped.length ? `nothing to import (${t.skipped.length} unreadable)` : "no tokens found in that file"); return; }
+      if (t.collections.length === 0) { setNotice(t.skipped.length ? `nothing to import (${t.skipped.length} unreadable)` : tr("no tokens found in that file")); return; }
       run([...t.collections.map(makeSetCollectionOp), ...t.variables.map(makeSetVariableOp)]);
       setPicked(t.collections[0].id);
       setNotice(`imported ${t.variables.length} variable${t.variables.length === 1 ? "" : "s"} in ${t.collections.length} collection${t.collections.length === 1 ? "" : "s"}` + (t.skipped.length ? `; skipped ${t.skipped.length}` : ""));
     } catch (e) {
-      setNotice(e instanceof Error ? `could not import: ${e.message}` : "could not import that file");
+      setNotice(e instanceof Error ? `could not import: ${e.message}` : tr("could not import that file"));
     }
   };
 
   return (
     <ModalOverlay isDismissable isOpen={isOpen} onOpenChange={onOpenChange} className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
       <Modal className="max-h-[85vh] w-full max-w-[720px] overflow-auto rounded-xl bg-raised p-4 text-[13px] text-fg shadow-pop">
-        <Dialog aria-label="Variables" className="flex flex-col gap-3 outline-none">
+        <Dialog aria-label={t("Variables")} className="flex flex-col gap-3 outline-none">
           <div className="flex items-center gap-2">
-            <h2 className="text-[14px] font-semibold">Variables</h2>
+            <h2 className="text-[14px] font-semibold">{t("Variables")}</h2>
             <div className="ml-auto flex items-center gap-2">
               {collections.length > 0 && (
-                <select aria-label="Collection" className={`${cls.select} w-44`} value={col?.id ?? ""} onChange={(e) => setPicked(e.target.value)}>
+                <select aria-label={t("Collection")} className={`${cls.select} w-44`} value={col?.id ?? ""} onChange={(e) => setPicked(e.target.value)}>
                   {collections.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
                 </select>
               )}
-              <Button icon="plus" onPress={addCollection}>New collection</Button>
+              <Button icon="plus" onPress={addCollection}>{t("New collection")}</Button>
             </div>
           </div>
 
           {!col ? (
             <EmptyState
               icon="plus"
-              title="No variables yet"
-              hint="A collection groups variables that share the same modes, like Light and Dark."
-              action={<Button variant="primary" onPress={addCollection}>New collection</Button>}
+              title={t("No variables yet")}
+              hint={t("A collection groups variables that share the same modes, like Light and Dark.")}
+              action={<Button variant="primary" onPress={addCollection}>{t("New collection")}</Button>}
             />
           ) : (
             <CollectionEditor col={col} vars={vars} onDeleted={() => setPicked(null)} />
@@ -94,12 +97,12 @@ export function VariablesDialog({ isOpen, onOpenChange }: { isOpen: boolean; onO
 
           {notice && <p role="status" className="text-fg-subtle">{notice}</p>}
           <div className="flex items-center gap-2 border-t border-line pt-3">
-            <input ref={fileInput} type="file" accept=".json,application/json" aria-label="Tokens file" className="hidden"
+            <input ref={fileInput} type="file" accept=".json,application/json" aria-label={t("Tokens file")} className="hidden"
               onChange={(e) => { void importFile(e.target.files?.[0]); e.target.value = ""; }} />
-            <Button onPress={() => fileInput.current?.click()}>Import tokens…</Button>
-            <Button isDisabled={collections.length === 0} onPress={() => exportAs("json")}>Export JSON</Button>
-            <Button isDisabled={collections.length === 0} onPress={() => exportAs("css")}>Export CSS</Button>
-            <Button variant="primary" className="ml-auto" onPress={() => onOpenChange(false)}>Done</Button>
+            <Button onPress={() => fileInput.current?.click()}>{t("Import tokens…")}</Button>
+            <Button isDisabled={collections.length === 0} onPress={() => exportAs("json")}>{t("Export JSON")}</Button>
+            <Button isDisabled={collections.length === 0} onPress={() => exportAs("css")}>{t("Export CSS")}</Button>
+            <Button variant="primary" className="ml-auto" onPress={() => onOpenChange(false)}>{t("Done")}</Button>
           </div>
         </Dialog>
       </Modal>
@@ -108,6 +111,7 @@ export function VariablesDialog({ isOpen, onOpenChange }: { isOpen: boolean; onO
 }
 
 function CollectionEditor({ col, vars, onDeleted }: { col: CollectionLite; vars: VariableLite[]; onDeleted: () => void }) {
+  const { t } = useT();
   const rename = (name: string) => { if (name.trim() !== "" && name !== col.name) run([makeSetCollectionOp({ ...col, name: name.trim() })]); };
   const renameMode = (id: string, name: string) => {
     if (name.trim() === "" || col.modes.find((m) => m.id === id)?.name === name) return;
@@ -119,44 +123,45 @@ function CollectionEditor({ col, vars, onDeleted }: { col: CollectionLite; vars:
   return (
     <div className="flex flex-col gap-2">
       <div className="flex items-center gap-2">
-        <input key={col.id + col.name} aria-label="Collection name" className={`${cls.input} max-w-60`} defaultValue={col.name}
+        <input key={col.id + col.name} aria-label={t("Collection name")} className={`${cls.input} max-w-60`} defaultValue={col.name}
           onBlur={(e) => rename(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") e.currentTarget.blur(); }} />
-        <Button icon="plus" onPress={() => run([makeSetCollectionOp(withMode(col))])}>Add mode</Button>
+        <Button icon="plus" onPress={() => run([makeSetCollectionOp(withMode(col))])}>{t("Add mode")}</Button>
         <Button variant="danger" className="ml-auto" onPress={() => { run([makeDeleteCollectionOp(col.id)]); onDeleted(); }}>
-          Delete collection
+          {t("Delete collection")}
         </Button>
       </div>
 
-      <div role="table" aria-label="Variables" className="grid gap-x-2 gap-y-1" style={{ gridTemplateColumns: cols }}>
+      <div role="table" aria-label={t("Variables")} className="grid gap-x-2 gap-y-1" style={{ gridTemplateColumns: cols }}>
         <div role="row" className="contents">
-          <span role="columnheader" className={cls.label}>Name</span>
+          <span role="columnheader" className={cls.label}>{t("Name")}</span>
           {col.modes.map((m) => (
             <span role="columnheader" key={m.id} className="flex items-center gap-1">
-              <input key={m.id + m.name} aria-label={`Mode name ${m.name}`} className={`${cls.input} h-6 text-[12px] font-medium`} defaultValue={m.name}
+              <input key={m.id + m.name} aria-label={t("Mode name {name}", { name: m.name })} className={`${cls.input} h-6 text-[12px] font-medium`} defaultValue={m.name}
                 onBlur={(e) => renameMode(m.id, e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") e.currentTarget.blur(); }} />
               {col.modes.length > 1 && (
-                <button type="button" aria-label={`Remove mode ${m.name}`} className="text-fg-subtle hover:text-danger"
+                <button type="button" aria-label={t("Remove mode {name}", { name: m.name })} className="text-fg-subtle hover:text-danger"
                   onClick={() => run(removeModeOps(col, m.id))}>×</button>
               )}
             </span>
           ))}
-          <span role="columnheader" className={cls.label}>Alias of</span>
+          <span role="columnheader" className={cls.label}>{t("Alias of")}</span>
           <span />
         </div>
         {vars.map((v) => <VariableRow key={v.id} v={v} col={col} />)}
       </div>
 
       <div className="flex gap-2">
-        <Button icon="plus" onPress={() => addVariable("color")}>Color</Button>
-        <Button icon="plus" onPress={() => addVariable("number")}>Number</Button>
-        <Button icon="plus" onPress={() => addVariable("string")}>String</Button>
-        <Button icon="plus" onPress={() => addVariable("boolean")}>Boolean</Button>
+        <Button icon="plus" onPress={() => addVariable("color")}>{t("Color")}</Button>
+        <Button icon="plus" onPress={() => addVariable("number")}>{t("Number")}</Button>
+        <Button icon="plus" onPress={() => addVariable("string")}>{t("String")}</Button>
+        <Button icon="plus" onPress={() => addVariable("boolean")}>{t("Boolean")}</Button>
       </div>
     </div>
   );
 }
 
 function VariableRow({ v, col }: { v: VariableLite; col: CollectionLite }) {
+  const { t } = useT();
   const scene = useScene((s) => s.scene);
   const rename = (name: string) => { if (name.trim() !== "" && name !== v.name) run(setVariableOps({ ...v, name: name.trim() })); };
   const targets = scene ? aliasCandidates(scene, v) : [];
@@ -166,7 +171,7 @@ function VariableRow({ v, col }: { v: VariableLite; col: CollectionLite }) {
   };
   return (
     <div role="row" className="contents">
-      <input key={v.id + v.name} aria-label={`Variable name ${v.name}`} className={cls.input} defaultValue={v.name}
+      <input key={v.id + v.name} aria-label={t("Variable name {name}", { name: v.name })} className={cls.input} defaultValue={v.name}
         onBlur={(e) => rename(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") e.currentTarget.blur(); }} />
       {col.modes.map((m) => {
         // A mode with no value of its own shows the default mode's, which is what it resolves to.
@@ -193,13 +198,13 @@ function VariableRow({ v, col }: { v: VariableLite; col: CollectionLite }) {
           </div>
         );
       })}
-      <select aria-label={`Alias of ${v.name}`} className={cls.select} value={v.aliasOf ?? ""} onChange={(e) => setAlias(e.target.value)}>
-        <option value="">None</option>
-        {targets.map((t) => (
-          <option key={t.id} value={t.id}>{scene?.collections[t.collectionId]?.name ?? "?"} / {t.name}</option>
+      <select aria-label={t("Alias of {name}", { name: v.name })} className={cls.select} value={v.aliasOf ?? ""} onChange={(e) => setAlias(e.target.value)}>
+        <option value="">{t("None")}</option>
+        {targets.map((tg) => (
+          <option key={tg.id} value={tg.id}>{scene?.collections[tg.collectionId]?.name ?? "?"} / {tg.name}</option>
         ))}
       </select>
-      <button type="button" aria-label={`Delete variable ${v.name}`} className="text-fg-subtle hover:text-danger"
+      <button type="button" aria-label={t("Delete variable {name}", { name: v.name })} className="text-fg-subtle hover:text-danger"
         onClick={() => run([makeDeleteVariableOp(v.id)])}>×</button>
     </div>
   );
