@@ -92,7 +92,7 @@ func TestDiagramToolsEndToEnd(t *testing.T) {
 
 	// errors: no change
 	before := len(doc.Nodes)
-	if _, err := s.CreateDiagram(ctx, odmcp.CreateDiagramInput{Source: "erDiagram\nA ||--o{ B : x"}); err == nil || !strings.Contains(err.Error(), "is not supported") {
+	if _, err := s.CreateDiagram(ctx, odmcp.CreateDiagramInput{Source: "gantt\ntitle x"}); err == nil || !strings.Contains(err.Error(), "is not supported") {
 		t.Errorf("unsupported type: %v", err)
 	}
 	if _, err := s.UpdateDiagram(ctx, odmcp.UpdateDiagramInput{Id: up.NodeId, Source: "graph TD\nA -->"}); err == nil {
