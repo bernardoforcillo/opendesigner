@@ -183,7 +183,7 @@ Output (docs/output.md)
 - [x] Persistent data structures for the scene (`store/nodeMap.ts`: a persistent 256-bucket map, an edit copies the touched buckets; the server's `core.ApplyShared` is copy-on-write; docs/performance.md)
 
 ## 5. Differentiators
-- [ ] MCP AI agent: consistency reviews, variants, token usage
+- [x] MCP AI agent: `review_consistency` and `token_usage` tools, prompts `consistency_review`, `design_variants`, `token_cleanup`; see docs/mcp.md
 - [x] Design review: text contrast (WCAG), tap targets and token consistency, as a Develop panel and the `review_design` MCP tool; see docs/handoff.md
 - [ ] Generate screens from text or screenshot using the document's own components and tokens
 - [ ] Design, code and flow tests in one pipeline (prototype -> codegen -> Playwright)
