@@ -5,7 +5,9 @@ import { IconButton } from "@/ui/ds";
 import { zoomAt } from "@/canvas/camera";
 import { pageNumbers } from "@/store/pageNumbers";
 import { facingPartner, fitSpreadCamera, useSpreadView } from "@/store/spread";
-import { hasErrors, preflightScene } from "@/export/preflight";
+import { hasErrors } from "@/export/preflight";
+import { showDockTab } from "@/store/dock";
+import { usePreflight } from "@/ui/shell/preflightIssues";
 
 // THE STATUS BAR (Publishing workspace): zoom, the page navigator and the preflight verdict, along the
 // bottom of the window where a page-layout app keeps them.
@@ -26,7 +28,7 @@ export function StatusBar() {
   const pages = useMemo(() => (scene?.pages ?? []).filter((p) => !p.isMaster), [scene?.pages]);
   const numbers = useMemo(() => pageNumbers(scene?.pages ?? []), [scene?.pages]);
   const at = Math.max(0, pages.findIndex((p) => p.id === (currentPageId ?? pages[0]?.id)));
-  const issues = useMemo(() => (scene ? preflightScene(scene) : []), [scene]);
+  const issues = usePreflight();
   const errors = issues.filter((i) => i.severity === "error").length;
   const warnings = issues.filter((i) => i.severity === "warning").length;
 
@@ -91,10 +93,16 @@ export function StatusBar() {
       >
         <span title={facing ? "Show facing pages side by side" : "Turn on Facing pages in Page setup to see spreads"}>Spread</span>
       </ToggleButton>
-      <span className="ml-auto flex items-center gap-1.5" title={issues.map((i) => i.message).join("\n")}>
+      <button
+        type="button"
+        aria-label="Preflight"
+        onClick={() => showDockTab("preflight")}
+        title="Open Preflight"
+        className="ml-auto flex items-center gap-1.5 rounded px-1.5 outline-none hover:bg-surface-3 focus-visible:shadow-[var(--ring)]"
+      >
         <span className={`h-2 w-2 rounded-full ${dot}`} aria-hidden="true" />
-        <span aria-label="Preflight" className={hasErrors(issues) ? "text-danger" : "text-fg-muted"}>{verdict}</span>
-      </span>
+        <span className={hasErrors(issues) ? "text-danger" : "text-fg-muted"}>{verdict}</span>
+      </button>
     </div>
   );
 }

@@ -7,6 +7,9 @@ import { ToolDock } from "@/ui/shell/ToolDock";
 import { ControlPanel } from "@/ui/shell/ControlPanel";
 import { facingPartner, partnerSheet, pointOnFacingPage, useSpreadView } from "@/store/spread";
 import { StatusBar } from "@/ui/shell/StatusBar";
+import { StylesPanel } from "@/ui/shell/StylesPanel";
+import { PreflightPanel } from "@/ui/shell/PreflightPanel";
+import { useDock, type DockTab } from "@/store/dock";
 import { ISLAND_CLS, TopBar } from "@/ui/shell/TopBar";
 import { usePanels } from "@/ui/shell/panels";
 import { SyncClient } from "@/rpc/syncClient";
@@ -199,7 +202,8 @@ export function App() {
   // opens the left panel if it was closed.
   const [leftTab, setLeftTab] = useState("layers");
   // The Publishing workspace has no left panel: its dock (Properties, Pages, Layers, Comments) is on the right.
-  const [dockTab, setDockTab] = useState("properties");
+  const dockTab = useDock((d) => d.tab);
+  const setDockTab = useDock((d) => d.setTab);
   const reveal = useCommentsUi((c) => c.revealRequested);
   useEffect(() => {
     if (reveal === 0) return;
@@ -860,25 +864,28 @@ export function App() {
         {mode === "design" && !publishing && <TimelinePanel />}
         </div>
         {publishing ? (
-          <aside aria-label="Dock" className={`${rightOpen ? "flex" : "hidden"} w-72 shrink-0 flex-col overflow-hidden ${ISLAND_CLS}`}>
-            <Tabs className="flex min-h-0 flex-1 flex-col" selectedKey={dockTab} onSelectionChange={(k) => setDockTab(String(k))}>
-              <TabList aria-label="Dock" className="flex shrink-0 gap-0.5 border-b border-line px-1.5 pt-1">
-                {([["properties", "Properties"], ["pages", "Pages"], ["layers", "Layers"], ["comments", "Comments"]] as const).map(([id, label]) => (
+          <aside aria-label="Dock" className={`${rightOpen ? "flex" : "hidden"} w-80 shrink-0 flex-col overflow-hidden ${ISLAND_CLS}`}>
+            <Tabs className="flex min-h-0 flex-1 flex-col" selectedKey={dockTab} onSelectionChange={(k) => setDockTab(String(k) as DockTab)}>
+              <TabList aria-label="Dock" className="flex shrink-0 gap-0 border-b border-line px-1 pt-1">
+                {([["properties", "Properties"], ["pages", "Pages"], ["layers", "Layers"], ["styles", "Styles"], ["preflight", "Preflight"], ["comments", "Comments"]] as const).map(([id, label]) => (
                   <Tab
                     key={id}
                     id={id}
+                    aria-label={label}
                     className={({ isSelected }) =>
-                      `flex h-9 cursor-default items-center border-b-2 px-2 text-[13px] font-medium outline-none focus-visible:shadow-[var(--ring)] ` +
+                      `flex h-9 cursor-default items-center border-b-2 px-1.5 text-[12px] font-medium outline-none focus-visible:shadow-[var(--ring)] ` +
                       (isSelected ? "border-accent text-fg" : "border-transparent text-fg-subtle hover:text-fg")
                     }
                   >
-                    {label}
+                    {id === "comments" ? <Icon name="comment" size={14} /> : label}
                   </Tab>
                 ))}
               </TabList>
               <TabPanel id="properties" className="min-h-0 flex-1 overflow-y-auto outline-none"><PropertiesPanel /></TabPanel>
               <TabPanel id="pages" className="min-h-0 flex-1 overflow-hidden outline-none"><PagesPanel /></TabPanel>
               <TabPanel id="layers" className="min-h-0 flex-1 overflow-hidden outline-none"><LayersPanel /></TabPanel>
+              <TabPanel id="styles" className="min-h-0 flex-1 overflow-hidden outline-none"><StylesPanel /></TabPanel>
+              <TabPanel id="preflight" className="min-h-0 flex-1 overflow-hidden outline-none"><PreflightPanel /></TabPanel>
               <TabPanel id="comments" className="min-h-0 flex-1 overflow-hidden outline-none"><CommentsPanel /></TabPanel>
             </Tabs>
           </aside>
