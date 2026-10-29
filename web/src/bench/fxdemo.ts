@@ -106,7 +106,7 @@ function build(CASES: Case[]): { scene: SceneState; anim: (t: number) => ReturnT
 }
 
 // @ts-expect-error exposed to Playwright
-window.runFx = async (zoom = 1, t = 500, set = 0) => {
+window.runFx = async (zoom = 1, t = 500, set = 0, pan = 0) => {
   const CASES = SETS[set] ?? SET1;
   const CK = await loadCanvasKit();
   const fonts = new FontBook(CK);
@@ -119,6 +119,9 @@ window.runFx = async (zoom = 1, t = 500, set = 0) => {
   const warn = console.warn;
   console.warn = (...a: unknown[]) => { errors.push(a.join(" ")); warn(...a); };
   r.draw(posed, { x: 0, y: 0, zoom }, "page1");
+  // pan > 0: draw the SAME scene again with the camera moved, which is what the renderer's frame reuse is for
+  let exact = true;
+  if (pan !== 0) exact = r.draw(posed, { x: pan, y: 0, zoom }, "page1");
   const copy = document.createElement("canvas");
   copy.width = cgl.width; copy.height = cgl.height;
   const c = copy.getContext("2d")!;
@@ -126,7 +129,7 @@ window.runFx = async (zoom = 1, t = 500, set = 0) => {
   c.drawImage(cgl, 0, 0);
   // labels
   c.fillStyle = "#fff"; c.font = "12px sans-serif";
-  CASES.forEach(([label], i) => c.fillText(label, (40 + (i % 4) * 290) * zoom, (40 + Math.floor(i / 4) * 170 - 6) * zoom));
+  CASES.forEach(([label], i) => c.fillText(label, (40 + (i % 4) * 290) * zoom + pan, (40 + Math.floor(i / 4) * 170 - 6) * zoom));
   r.dispose();
-  return { png: copy.toDataURL("image/png"), errors };
+  return { png: copy.toDataURL("image/png"), errors, exact };
 };
