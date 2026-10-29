@@ -109,7 +109,10 @@ export function useProtoAnimation(
       const all = [...runs.current, ...hovering.current.values()];
       if (all.length === 0) return derived;
       const { anim } = sampleRuns(all, now());
-      return anim.size === 0 ? derived : poseScene(derived, anim);
+      if (anim.size === 0) return derived;
+      const t = now();
+      const first = all[0];
+      return poseScene(derived, anim, { t: Math.max(0, t - first.startedAt), at: (dt) => sampleRuns(all, t + dt).anim });
     },
     // `tick` is not read: but a new `pose` tells the drawing that there is a new frame.
     // eslint-disable-next-line react-hooks/exhaustive-deps

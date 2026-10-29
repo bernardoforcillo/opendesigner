@@ -34,6 +34,19 @@ export interface FxOverlay {
   blend: "srcatop" | "dstin";
 }
 
+/** How a time effect combines the node's poses at other moments (see animation/pose.ts and renderer/ck). */
+export type FxTimeMode = "plus" | "screen" | "lighten" | "darken" | "over" | "difference";
+
+export interface FxTime {
+  /**
+   * The poses to draw, in drawing order. `dt` is the offset in ms from the current time (0 is the node as it is now,
+   * negative the past); `weight` its opacity. The node is posed again from the clip(s) at each of those times, so
+   * this needs no stored frames and works the same when scrubbing, playing or exporting.
+   */
+  samples: { dt: number; weight: number }[];
+  mode: FxTimeMode;
+}
+
 export interface FxKernel {
   sksl: string;
   /** box (x, y, w, h) is prepended by the renderer; these fill `uniform float p[12]`. */
@@ -52,6 +65,11 @@ export interface FxDef {
    * distortions, convolutions, mosaics and keyers need. Several kernels chain, each reading the previous one.
    */
   kernel?: (v: FxValues) => FxKernel;
+  /**
+   * A TIME effect: draws the node as it is at other moments (echo, motion blur, posterize time...). `t` is the
+   * current time in ms. Resolved by animation/pose.ts, which re-samples the clip; the renderer only combines them.
+   */
+  time?: (v: FxValues, t: number) => FxTime;
   /** No pixels at all: the effect only carries values for expressions (EffectCraft's Expression Controls). */
   carrier?: true;
   /** How far beyond the node's box the effect paints (world units). */

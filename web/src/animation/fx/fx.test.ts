@@ -26,7 +26,7 @@ describe("the catalog", () => {
   it("gives every parameter a sane range and a default inside it", () => {
     for (const d of FX_LIBRARY) {
       expect(d.params.length, d.id).toBeGreaterThan(0);
-      expect([d.filter, d.overlay, d.kernel, d.carrier].filter(Boolean).length, `${d.id}: exactly one kind`).toBe(1);
+      expect([d.filter, d.overlay, d.kernel, d.time, d.carrier].filter(Boolean).length, `${d.id}: exactly one kind`).toBe(1);
       for (const p of d.params) {
         expect(p.min, `${d.id}.${p.id}`).toBeLessThan(p.max);
         expect(p.default).toBeGreaterThanOrEqual(p.min);
@@ -152,7 +152,7 @@ describe("drawing every effect with CanvasKit", () => {
   };
   const at = (px: Uint8Array, x: number, y: number) => Array.from(px.slice((y * 64 + x) * 4, (y * 64 + x) * 4 + 4));
 
-  it.each(FX_LIBRARY.map((d) => d.id))("%s draws with defaults and at the extremes", (id) => {
+  it.each(FX_LIBRARY.filter((d) => !d.time).map((d) => d.id))("%s draws with defaults and at the extremes", (id) => {
     const d = fxDef(id)!;
     expect(draw({ [id]: {} }).length).toBe(64 * 64 * 4);
     expect(draw({ [id]: Object.fromEntries(d.params.map((p) => [p.id, p.min])) }).length).toBe(64 * 64 * 4);

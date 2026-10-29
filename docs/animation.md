@@ -227,7 +227,7 @@ track names it; parameters without a track keep their default. Values are finite
 clamps them to the parameter's range.
 
 - `web/src/animation/fx/catalog.ts`: all 307 EffectCraft effects (id, name, category), generated from its `docs/effects.md`.
-- `web/src/animation/fx/library.ts` + `kernels*.ts`: the 126 that are drawn, with EffectCraft's parameter names, ranges and
+- `web/src/animation/fx/library.ts` + `kernels*.ts`: the 133 that are drawn, with EffectCraft's parameter names, ranges and
   defaults where it has them. Each is one of four kinds:
   - **filter**: a CanvasKit image/colour filter over the node's pixels (blur, colour matrices, minimax, glow, offset);
   - **overlay**: an SkSL shader drawn over the node inside its layer (grain, fills, gradients, patterns, generators), or a
@@ -237,6 +237,13 @@ clamps them to the parameter's range.
     result; several kernels chain, each reading the previous one. This is what distortions (wave, ripple, bulge, twirl,
     polar, mirror, tiles, kaleidoscope, corner pin, transform), radial/cross/channel/lens/smart blurs, sharpen, edges,
     emboss, posterize, mosaic, scatter, colour-by-hue effects, keyers, drop shadow, bevel and light rays are;
+  - **time** (`fx/timeFx.ts`): the node drawn as it is at other moments: Echo, CC Wide Time, Pixel Motion Blur, CC Force
+    Motion Blur, Posterize Time, Timewarp, Time Difference. The "frame history" is not stored pixels: clips are pure
+    functions of time, so `pose.ts` poses the node again at `now + dt` (`TimeSource.at`, from the playhead in the editor and
+    from the running clips in Present), which is exact, free to keep and the same when scrubbing or playing backwards.
+    The renderer (`ckRenderer.ts::drawEchoes`) draws each pose as a weighted layer inside an isolated layer, combined with
+    the effect's mode (add, screen, max, min, over, difference). Limits: the node's own pixels only (its children are drawn
+    once, as now), the first time effect on a node wins, and Time Displacement (many frames read per pixel) is not done.
   - **carrier**: no pixels, only values for expressions (EffectCraft's Expression Controls, Grow Bounds).
 - `fx/kit.ts` has the SkSL helpers (`kern`, `over`, noise, hsv, `ring` taps). Every shader is compiled and drawn against the real
   CanvasKit by `fx/fx.test.ts`.
@@ -244,8 +251,8 @@ clamps them to the parameter's range.
   Order: kernels first (innermost), then the node's own effects and the animated image filters, then overlays.
 - Editor: **+ Effect** in the transport adds an effect (its first parameter as a track); **+ Property** then lists the other
   parameters of the effects the node already has.
-- Not drawn (181 of 307, still listed in the catalog so nothing is silently missing): effects that need another layer or
-  a camera (3D, depth, mattes from other layers), audio, time (they need past frames), particle/physics simulation, painting
+- Not drawn (174 of 307, still listed in the catalog so nothing is silently missing): effects that need another layer or
+  a camera (3D, depth, mattes from other layers), audio, Time Displacement, particle/physics simulation, painting
   and tracking, whole-image statistics (auto levels, equalize), colour management (OCIO, LUTs), spherical video, and the rest
   of the Distort/Stylize family that needs meshes or user-drawn masks.
 - Code export (HTML/React) and the 2D canvas renderer ignore effect tracks (the exporter warns).

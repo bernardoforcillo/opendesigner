@@ -2,7 +2,7 @@ import type {
   Canvas, CanvasKit, Font, GrDirectContext, Image as SkImage, ImageFilter, Paint, Path, RuntimeEffect, Shader, Surface,
 } from "canvaskit-wasm";
 import type { Camera } from "@/canvas/camera";
-import { type Bounds, boundsIntersect, boundsOfNode, inflateBounds, strokeOutsetOfNode } from "@/canvas/geometry";
+import { type Bounds, boundsIntersect, boundsOfNode, inflateBounds, strokeOutsetOfNode, unionBounds } from "@/canvas/geometry";
 import { type Transform, localTransformOf } from "@/canvas/transform";
 import { instanceDescentLocal, instanceOverrideMap, resolveInstance } from "@/store/instances";
 import type { EffectLite, FillLite, GradientLite, InstanceOverrideLite, MeshLite, NodeLite, SceneState, StrokeLite, TextStyleLite } from "@/store/types";
@@ -249,8 +249,33 @@ export class CanvasKitRenderer {
 
   // --- the node --------------------------------------------------------------
 
+  // A node with a time effect (animation/fx/timeFx.ts): the node posed at several moments, each drawn as a layer
+  // with its weight, combined inside an isolated layer so they blend with each other and not with the backdrop.
+  private drawEchoes(sk: Canvas, n: NodeLite, echo: NonNullable<NodeLite["animEcho"]>, overrides: ReadonlyMap<string, InstanceOverrideLite> | null): void {
+    const CK = this.CK;
+    const BM = CK.BlendMode;
+    const mode = { plus: BM.Plus, screen: BM.Screen, lighten: BM.Lighten, darken: BM.Darken, over: BM.SrcOver, difference: BM.Difference }[echo.mode];
+    const reach = n.kind === "text" ? null : unionBounds(echo.samples.map(({ node }) =>
+      inflateBounds(boundsOfNode(node), Math.hypot(node.width, node.height) * 0.5 * (node.animScale ?? 1) + effectsOutset(node) + strokeOutsetOfNode(node) + 2)));
+    sk.saveLayer(undefined, reach ? CK.XYWHRect(reach.x, reach.y, reach.width, reach.height) : null);
+    echo.samples.forEach(({ node, weight }, i) => {
+      const lp = new CK.Paint();
+      lp.setAlphaf(Math.min(1, Math.max(0, weight)));
+      lp.setBlendMode(i === 0 ? BM.SrcOver : mode);
+      sk.saveLayer(lp, reach ? CK.XYWHRect(reach.x, reach.y, reach.width, reach.height) : null);
+      lp.delete();
+      this.drawNode(sk, node, overrides);
+      sk.restore();
+    });
+    sk.restore();
+  }
+
   private drawNode(sk: Canvas, n: NodeLite, overrides: ReadonlyMap<string, InstanceOverrideLite> | null): void {
     if (n.kind === "group" || n.kind === "instance") return;
+    if (n.animEcho) {
+      this.drawEchoes(sk, n, n.animEcho, overrides);
+      return;
+    }
     const f = this.frame as Frame;
     const eff = withExpandedGlass(withOverride(n, overrides?.get(n.id)));
     if (inkIsBox(eff) && (eff.width <= 0 || eff.height <= 0)) return;

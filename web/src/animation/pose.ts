@@ -4,6 +4,7 @@ import { contentWorldBounds } from "@/store/groups";
 import { applyTransform, invertTransform, worldTransformOf } from "@/canvas/transform";
 import { sampleClip, type NodeAnim } from "@/animation/engine";
 import type { NodeFx } from "@/animation/fx/props";
+import { fxDef, resolveFx } from "@/animation/fx/library";
 
 // THE POSED SCENE.
 //
@@ -73,32 +74,73 @@ function groupPivot(base: SceneState, n: NodeLite, a: NodeAnim): { x: number; y:
  * (same identity: no extra redraw, no index to rebuild) if nothing
  * changes -- an empty clip, values equal to the base ones, vanished nodes.
  */
-export function poseScene(base: SceneState, anim: ReadonlyMap<string, NodeAnim>): SceneState {
+/** Where the time effects find the other moments: `t` is the current time (ms), `at(dt)` the sampled state at t + dt. */
+export interface TimeSource {
+  t: number;
+  at: (dt: number) => ReadonlyMap<string, NodeAnim>;
+}
+
+// The node with the animated values applied, or null if nothing changes. `scaled`/`draw` report what the scene needs to know.
+function patchNode(base: SceneState, n: NodeLite, a: NodeAnim): { next: NodeLite | null; scaled: boolean; drawing: boolean } {
+  let next: NodeLite | null = null;
+  let scaled = false, drawing = false;
+  const patch = () => (next ??= { ...n });
+  if (a.opacity !== undefined && a.opacity !== n.opacity) patch().opacity = a.opacity;
+  if (a.x !== undefined && a.x !== n.x) patch().x = a.x;
+  if (a.y !== undefined && a.y !== n.y) patch().y = a.y;
+  if (a.rotation !== undefined && a.rotation !== n.rotation) patch().rotation = a.rotation;
+  if (a.scale !== undefined && a.scale !== 1) {
+    const p = patch();
+    p.animScale = a.scale;
+    if (n.kind === "group") p.animPivot = groupPivot(base, n, a);
+    scaled = true;
+  }
+  if (a.fx) patch().animFx = mergeFx(n.animFx, a.fx);
+  if (a.draw !== undefined && canDraw(n)) {
+    patch().animDraw = a.draw;
+    // at 1 the path is whole: the GPU renderer draws it normally, no CPU fallback
+    if (a.draw < 1) drawing = true;
+  }
+  return { next, scaled, drawing };
+}
+
+// The node's time effect (the first one in the track order), resolved at the current values.
+function timeEffectOf(a: NodeAnim, t: number) {
+  if (!a.fx) return null;
+  for (const [id, given] of Object.entries(a.fx)) {
+    const def = fxDef(id);
+    if (def?.time) return def.time(resolveFx(def, given), t);
+  }
+  return null;
+}
+
+export function poseScene(base: SceneState, anim: ReadonlyMap<string, NodeAnim>, time?: TimeSource): SceneState {
   if (anim.size === 0) return base;
   let edit: ReturnType<SceneState["nodes"]["edit"]> | null = null;
   const changed: string[] = [];
   const scaled = new Set<string>();
   let hasDraw = false;
+  const sampled = new Map<number, ReadonlyMap<string, NodeAnim>>();
   for (const [id, a] of anim) {
     const n = base.nodes.get(id);
     if (!n) continue;
-    let next: NodeLite | null = null;
-    const patch = () => (next ??= { ...n });
-    if (a.opacity !== undefined && a.opacity !== n.opacity) patch().opacity = a.opacity;
-    if (a.x !== undefined && a.x !== n.x) patch().x = a.x;
-    if (a.y !== undefined && a.y !== n.y) patch().y = a.y;
-    if (a.rotation !== undefined && a.rotation !== n.rotation) patch().rotation = a.rotation;
-    if (a.scale !== undefined && a.scale !== 1) {
-      const p = patch();
-      p.animScale = a.scale;
-      if (n.kind === "group") p.animPivot = groupPivot(base, n, a);
-      scaled.add(id);
-    }
-    if (a.fx) patch().animFx = mergeFx(n.animFx, a.fx);
-    if (a.draw !== undefined && canDraw(n)) {
-      patch().animDraw = a.draw;
-      // at 1 the path is whole: the GPU renderer draws it normally, no CPU fallback
-      if (a.draw < 1) hasDraw = true;
+    const r = patchNode(base, n, a);
+    let next = r.next;
+    if (r.scaled) scaled.add(id);
+    if (r.drawing) hasDraw = true;
+    // Time effects: the node posed at the other moments (never for a group, which draws nothing itself).
+    const te = time && n.kind !== "group" ? timeEffectOf(a, time.t) : null;
+    if (te && time) {
+      const nowNode = next ?? n;
+      const samples = te.samples.map(({ dt, weight }) => {
+        if (dt === 0) return { node: nowNode, weight };
+        let m = sampled.get(dt);
+        if (!m) sampled.set(dt, (m = time.at(dt)));
+        const sa = m.get(id);
+        const posed = sa ? patchNode(base, n, sa).next : null;
+        return { node: posed ?? n, weight };
+      });
+      next = { ...nowNode, animEcho: { mode: te.mode, samples } };
     }
     if (next) {
       edit ??= base.nodes.edit();
