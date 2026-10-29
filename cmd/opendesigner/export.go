@@ -42,6 +42,7 @@ func runExport(args []string, stdout, stderr io.Writer) int {
 	target := fs.String("target", "react", "react, html, swiftui, compose or leptos")
 	out := fs.String("out", "export", "output directory")
 	flowID := fs.String("flow", "", "flow id (default: all)")
+	cssVars := fs.Bool("css-vars", false, "html: bound properties read CSS custom properties, defined once per variable mode")
 	force := fs.Bool("force", false, "allow a non-empty output directory")
 	if err := fs.Parse(args); err != nil {
 		return 2
@@ -68,7 +69,7 @@ func runExport(args []string, stdout, stderr io.Writer) int {
 		return 2
 	}
 
-	res, err := codegen.Generate(doc, codegen.Options{Target: codegen.Target(*target), FlowID: *flowID}, assets)
+	res, err := codegen.Generate(doc, codegen.Options{Target: codegen.Target(*target), FlowID: *flowID, CSSVariables: *cssVars}, assets)
 	if err != nil {
 		fmt.Fprintln(stderr, "error:", err)
 		return 2

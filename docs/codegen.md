@@ -165,6 +165,14 @@ so both targets get explicit cells. `Grid` shares spare room between fr columns 
 and cells spanning fixed or fr tracks, are approximated (warnings). Compose honours all of it. Children out of
 the flow (absolute) sit over the grid.
 
+**CSS custom properties per variable mode (html).** By default the export writes the value of each node's active mode as a
+literal. With `opendesigner export -target html -css-vars` (`Options.CSSVariables`) a property bound to a variable keeps that
+value as a fallback and reads a custom property -- `background-color: var(--theme-color-surface, #0f0)` -- and the stylesheet
+defines it once per mode: the collection's first mode on `:root`, then `[data-mode-theme="dark"]{...}` for every mode. Setting
+that attribute on `<html>` (or any element) switches the page's mode without regenerating; a subtree pinned to a mode in the
+document carries the attribute itself. Bound today: a fill's colour (shapes and text), opacity, corner radius and font size;
+spacing and padding stay literal (their CSS is a shorthand), and the other targets ignore the option. `internal/codegen/tokens.go`.
+
 **Not exported** (reported as warnings and in the generated README): animation clips, blend modes,
 background blur, inner shadows, wrapping auto layout, vector gradient fills and gradient text (first stop
 used), outside / centred strokes in Compose (drawn inside), text strokes. Custom fonts are named but not bundled.

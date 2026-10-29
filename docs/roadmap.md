@@ -34,7 +34,7 @@ Legend: [x] done · [ ] to do
 - [ ] Shared libraries across documents
 - [x] Variables / design tokens with modes: color and number variables in collections with modes, bound to fills, strokes, opacity, rotation, radius and stroke width, pinned per subtree; editor dialog and panel, MCP tools, resolved in canvas/export/code, see docs/variables.md
 - [x] Variables: string (text content) and boolean (visibility) variables, spacing / padding bindings that the auto layout engine reads per mode (density), aliases; see docs/variables.md
-- [ ] Variables: CSS custom properties per mode in the exported code
+- [x] Variables: CSS custom properties per mode in the exported code (html target, `-css-vars`: `var(--collection-name, fallback)` plus a `:root` and a `[data-mode-...]` rule per mode; docs/codegen.md)
 - [x] Typography: uploaded fonts (TTF/OTF/WOFF/WOFF2 as content-addressed assets, drawn by the 2D and GPU renderers and exported as @font-face), shared text styles, italic; multi-line text and wrapping were already there; see docs/typography.md
 - [x] Type extras: text case (upper, lower, title, small caps), super/subscript, bulleted and numbered lists with indent, OpenType feature string, vertical alignment and inset in text boxes (canvas, CanvasKit, SVG, CSS, panel, MCP); see docs/typography.md
 - [x] Horizontal text scale (a percentage on every text style: layout, canvas, CanvasKit, SVG, CSS, panel, MCP); see docs/typography.md

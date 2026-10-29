@@ -64,6 +64,9 @@ type Options struct {
 	Target Target
 	// FlowID limits the wiring (and the tests) to one flow; empty = all.
 	FlowID string
+	// CSSVariables (html only): properties bound to a variable read a CSS custom property, and the stylesheet defines
+	// it once per mode (tokens.go). Off: the value of the active mode is written as a literal.
+	CSSVariables bool
 }
 
 // AssetSource provides the bytes of the document's images by hash. It may be
@@ -119,6 +122,7 @@ func Generate(doc *opendesignerv1.Document, opts Options, assets AssetSource) (*
 	switch opts.Target {
 	case TargetHTML:
 		b.fileDir, b.urlPrefix = "assets/", "assets/"
+		b.tokensOn = opts.CSSVariables
 	case TargetSwiftUI, TargetCompose:
 		// Moved into the platform's resource layout by the native renderer.
 		b.fileDir, b.urlPrefix = nativeAssetDir, ""
@@ -134,7 +138,7 @@ func Generate(doc *opendesignerv1.Document, opts Options, assets AssetSource) (*
 
 	switch opts.Target {
 	case TargetHTML:
-		renderHTML(d, screens, opts, files, fontCSS)
+		renderHTML(d, screens, opts, files, fontCSS+b.tokenCSS())
 	case TargetSwiftUI:
 		renderSwiftUI(d, b, screens, opts, files, &out.Warnings)
 	case TargetCompose:
