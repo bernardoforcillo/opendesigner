@@ -4,6 +4,8 @@ import { Code, ConnectError } from "@connectrpc/connect";
 import { Tab, TabList, TabPanel, Tabs } from "react-aria-components";
 import { Banner, Icon } from "@/ui/ds";
 import { ToolDock } from "@/ui/shell/ToolDock";
+import { ControlPanel } from "@/ui/shell/ControlPanel";
+import { StatusBar } from "@/ui/shell/StatusBar";
 import { ISLAND_CLS, TopBar } from "@/ui/shell/TopBar";
 import { usePanels } from "@/ui/shell/panels";
 import { SyncClient } from "@/rpc/syncClient";
@@ -195,10 +197,13 @@ export function App() {
   // The left panel's tab. The comment tool brings Comments to the front (revealRequested), and
   // opens the left panel if it was closed.
   const [leftTab, setLeftTab] = useState("layers");
+  // The Publishing workspace has no left panel: its dock (Properties, Pages, Layers, Comments) is on the right.
+  const [dockTab, setDockTab] = useState("properties");
   const reveal = useCommentsUi((c) => c.revealRequested);
   useEffect(() => {
     if (reveal === 0) return;
     setLeftTab("comments");
+    setDockTab("comments");
     if (!usePanels.getState().left) usePanels.getState().toggle("left");
   }, [reveal]);
   const nicknameRef = useRef(nickname);
@@ -635,6 +640,10 @@ export function App() {
   // A document of a vertical only has its modes (a book has no flows): if the one on screen is not
   // among them -- the document was just opened, or its vertical changed -- go to the vertical's first.
   const vertical = useScene((s) => verticalOf(s.scene));
+  // THE PUBLISHING WORKSPACE: a page-layout shell -- tool rail on the left, a Control panel under the
+  // document bar, a tabbed dock on the right and a status bar -- in place of the design editor's floating
+  // tool dock and left panel. Same document, same canvas; only the chrome differs.
+  const publishing = vertical === "publishing" && mode === "design";
   useEffect(() => {
     const wanted = modeFor(vertical, useFlowUi.getState().mode);
     if (wanted !== useFlowUi.getState().mode) useFlowUi.getState().setMode(wanted);
@@ -721,8 +730,10 @@ export function App() {
           resizes on its own: resizeCanvasToDisplaySize reads clientWidth on
           every frame and eventToCanvasPoint starts from getBoundingClientRect).
           Each column is an island (ISLAND_CLS) set apart from the others by the gap. */}
+      {publishing && <ControlPanel />}
       <div className="flex min-h-0 flex-1 gap-px">
-        {mode === "dev" ? (
+        {publishing && <ToolDock variant="rail" tools={toolsForMode(mode, role)} toolId={toolId} onChoose={chooseTool} mode={mode} />}
+        {publishing ? null : mode === "dev" ? (
           <aside aria-label="Readiness" className={`${leftOpen ? "flex" : "hidden"} w-72 shrink-0 flex-col overflow-hidden ${ISLAND_CLS}`}>
             <ReadinessPanel />
           </aside>
@@ -825,10 +836,34 @@ export function App() {
               drawing loop use it) and sits BELOW the dock (z-20). */}
           {mode === "dev" && <CodeWorkbench />}
           {mode === "board" && <FacilitationBar myId={CLIENT_ID} />}
-          <ToolDock tools={toolsForMode(mode, role)} toolId={toolId} onChoose={chooseTool} mode={mode} />
+          {!publishing && <ToolDock tools={toolsForMode(mode, role)} toolId={toolId} onChoose={chooseTool} mode={mode} />}
         </div>
-        {mode === "design" && <TimelinePanel />}
+        {mode === "design" && !publishing && <TimelinePanel />}
         </div>
+        {publishing ? (
+          <aside aria-label="Dock" className={`${rightOpen ? "flex" : "hidden"} w-72 shrink-0 flex-col overflow-hidden ${ISLAND_CLS}`}>
+            <Tabs className="flex min-h-0 flex-1 flex-col" selectedKey={dockTab} onSelectionChange={(k) => setDockTab(String(k))}>
+              <TabList aria-label="Dock" className="flex shrink-0 gap-0.5 border-b border-line px-1.5 pt-1">
+                {([["properties", "Properties"], ["pages", "Pages"], ["layers", "Layers"], ["comments", "Comments"]] as const).map(([id, label]) => (
+                  <Tab
+                    key={id}
+                    id={id}
+                    className={({ isSelected }) =>
+                      `flex h-9 cursor-default items-center border-b-2 px-2 text-[13px] font-medium outline-none focus-visible:shadow-[var(--ring)] ` +
+                      (isSelected ? "border-accent text-fg" : "border-transparent text-fg-subtle hover:text-fg")
+                    }
+                  >
+                    {label}
+                  </Tab>
+                ))}
+              </TabList>
+              <TabPanel id="properties" className="min-h-0 flex-1 overflow-y-auto outline-none"><PropertiesPanel /></TabPanel>
+              <TabPanel id="pages" className="min-h-0 flex-1 overflow-hidden outline-none"><PagesPanel /></TabPanel>
+              <TabPanel id="layers" className="min-h-0 flex-1 overflow-hidden outline-none"><LayersPanel /></TabPanel>
+              <TabPanel id="comments" className="min-h-0 flex-1 overflow-hidden outline-none"><CommentsPanel /></TabPanel>
+            </Tabs>
+          </aside>
+        ) : (
         <aside aria-label={mode === "dev" ? "Ship" : "Properties"} className={`${rightOpen ? "block" : "hidden"} ${mode === "dev" ? "w-72" : "w-64"} shrink-0 overflow-hidden ${ISLAND_CLS}`}>
           {mode === "dev" ? (
             <ShipPanel />
@@ -844,7 +879,9 @@ export function App() {
             <PropertiesPanel />
           )}
         </aside>
+        )}
       </div>
+      {publishing && <StatusBar />}
       {presenting && <PrototypePlayer onClose={() => useFlowUi.getState().setPresenting(false)} />}
     </div>
   );

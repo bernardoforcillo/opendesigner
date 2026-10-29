@@ -27,6 +27,17 @@ A publication is built from the features of the publishing track:
 - **Pages panel** (left panel, Publishing only): every page as a thumbnail, numbered the way `<#>` counts (masters are not pages), with its master; click to open, add a page or a master, open the setup.
 - **Output.** *Export all pages as PDF…* and *as EPUB* export each page as **its sheet** (a sized page is exported as the sheet, not as the bounding box of its content; an empty sheet is still a page). *Export PDF for print (with bleed)…* adds each page's bleed around the sheet. EPUB is fixed-layout: one page per sheet, at its size. A page export of the page on screen is the sheet too.
 
+### The Publishing workspace
+
+A publication opens in a page-layout shell instead of the design editor's: the same document and canvas, different chrome (`web/src/ui/shell/`).
+
+- **Tool rail** (left): the tools as a vertical column (`ToolDock variant="rail"`), history at the bottom; shape tools and shortcuts are unchanged.
+- **Control panel** (under the document bar, `ControlPanel.tsx`): X, Y, W, H and rotation of the selection, always in place (disabled when nothing is selected). It writes the same ops as the Properties panel, so a typed value or a label drag is one undo step.
+- **Dock** (right): Properties, Pages, Layers and Comments as tabs (there is no left panel).
+- **Status bar** (bottom, `StatusBar.tsx`): zoom, the page navigator (regular pages, numbered as `<#>` counts them) and the preflight verdict (`export/preflight.ts`: errors, warnings or "No errors").
+
+Design and Design × Development keep the floating tool dock, the left panel and the timeline.
+
 ### The templates
 
 Each publishing template is a real document, not a picture: sized sheets with margins, columns and bleed, a master (running head, page number), paragraph and character styles, a baseline grid, and body text that flows through linked frames from page to page.
