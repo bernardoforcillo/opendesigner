@@ -60,9 +60,9 @@ type Body = string;
 /** An effect that reads the node's pixels: `half4 main(float2 xy)` with `S(point)` sampling the node. */
 export function kern(
   id: string, params: readonly FxParam[], body: Body,
-  opts: { outset?: (v: FxValues) => number; uniforms?: (v: FxValues) => number[] } = {},
+  opts: { outset?: (v: FxValues) => number; uniforms?: (v: FxValues) => number[]; head?: string } = {},
 ): FxDef {
-  const sksl = `${KHEAD}half4 main(float2 xy) {\n${body}\n}`;
+  const sksl = `${KHEAD}${opts.head ?? ""}\nhalf4 main(float2 xy) {\n${body}\n}`;
   return {
     id, params, outset: opts.outset,
     kernel: (v) => ({ sksl, uniforms: pad(opts.uniforms ? opts.uniforms(v) : params.map((q) => v[q.id])) }),
@@ -89,3 +89,6 @@ export const wipeBody = (body: Body): Body => `${body}\n  return half4(half(clam
 
 /** An effect that only carries values (EffectCraft's Expression Controls). */
 export const carrier = (id: string, params: readonly FxParam[], outset?: (v: FxValues) => number): FxDef => ({ id, params, carrier: true, outset });
+
+/** A time effect (see timeFx.ts). */
+export const time = (id: string, params: readonly FxParam[], t: NonNullable<FxDef["time"]>): FxDef => ({ id, params, time: t });

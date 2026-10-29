@@ -563,7 +563,25 @@ const BASE_FX: readonly FxDef[] = [
   },
 ];
 
-export const FX_LIBRARY: readonly FxDef[] = [...BASE_FX, ...KERNEL_FX];
+// Effects EffectCraft keeps under another id with the same behaviour (legacy versions, VR variants of 2D effects).
+const ALL = [...BASE_FX, ...KERNEL_FX];
+const ALIASES: [alias: string, of: string][] = [
+  ["ec.obsolete.gaussianlegacy", "ec.blur.gaussian"], ["ec.noise.medianlegacy", "ec.noise.median"],
+  ["ec.vr.blur", "ec.blur.gaussian"], ["ec.vr.sharpen", "ec.blur.sharpen"], ["ec.vr.glow", "ec.stylize.glow"],
+  ["ec.vr.denoise", "ec.blur.smart"], ["ec.noise.removegrain", "ec.blur.smart"], ["ec.vr.fractalnoise", "ec.noise.fractal"],
+  ["ec.vr.colorgradients", "ec.generate.gradientramp"], ["ec.blur.camerashakedeblur", "ec.blur.unsharp"],
+  ["ec.obsolete.lightning", "ec.generate.advancedlightning"], ["ec.key.spill", "ec.key.advancedspill"],
+  ["ec.matte.mattechoker", "ec.matte.simplechoker"], ["ec.transition.ccimagewipe", "ec.transition.gradientwipe"],
+  ["ec.distort.ccripplepulse", "ec.distort.ripple"], ["ec.distort.ccpowerpin", "ec.distort.cornerpin"],
+  ["ec.sim.ccscatterize", "ec.stylize.scatter"], ["ec.stylize.ccrepetile", "ec.stylize.motiontile"],
+];
+export const FX_LIBRARY: readonly FxDef[] = [
+  ...ALL,
+  ...ALIASES.flatMap(([id, of]) => {
+    const src = ALL.find((d) => d.id === of);
+    return src ? [{ ...src, id }] : [];
+  }),
+];
 
 const BY_ID = new Map<string, FxDef>(FX_LIBRARY.map((d) => [d.id, d]));
 

@@ -209,4 +209,24 @@ describe("drawing every effect with CanvasKit", () => {
     const keyed = draw({ "ec.key.linearcolor": { hue: 10, saturation: 75, value: 80, tolerance: 40, softness: 5, keep: 0 } });
     expect(at(keyed, 32, 32)[3]).toBeLessThan(255);
   });
+
+  it("identity settings leave the node alone (CDL, colour space, curves, grade, hue shift of 0)", () => {
+    const base = at(draw({}), 32, 32);
+    const near = (a: number[], b: number[], what = "") => a.forEach((v, i) => expect(Math.abs(v - b[i]), `${what} ${a} vs ${b}`).toBeLessThanOrEqual(2));
+    near(at(draw({ "ec.color.ociocdl": {} }), 32, 32), base, "ec.color.ociocdl");
+    near(at(draw({ "ec.color.ociocolorspace": { from: 0, to: 0 } }), 32, 32), base, "ec.color.ociocolorspace");
+    near(at(draw({ "ec.color.ociocolorspace": { from: 2, to: 2 } }), 32, 32), base, "ec.color.ociocolorspace");
+    near(at(draw({ "ec.color.curves": {} }), 32, 32), base, "ec.color.curves");
+    near(at(draw({ "ec.color.lumetri": {} }), 32, 32), base, "ec.color.lumetri");
+    near(at(draw({ "ec.color.levelsic": {} }), 32, 32), base, "ec.color.levelsic");
+    near(at(draw({ "ec.utility.colorprofileconverter": { from: 0, to: 0 } }), 32, 32), base, "ec.utility.colorprofileconverter");
+  });
+
+  it("colour space round trip and keyers behave", () => {
+    // sRGB -> linear darkens a mid colour
+    expect(at(draw({ "ec.utility.colorprofileconverter": { from: 0, to: 1 } }), 32, 32)[0]).toBeLessThan(at(draw({}), 32, 32)[0]);
+    // a luma key that keys out darker than 255 removes the (mid-luma) square; one that keys out brighter keeps it
+    expect(at(draw({ "ec.key.luma": { type: 1, threshold: 255, tolerance: 0, feather: 0 } }), 32, 32)[3]).toBe(0);
+    expect(at(draw({ "ec.key.luma": { type: 0, threshold: 255, tolerance: 0, feather: 0 } }), 32, 32)[3]).toBe(255);
+  });
 });

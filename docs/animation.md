@@ -227,7 +227,7 @@ track names it; parameters without a track keep their default. Values are finite
 clamps them to the parameter's range.
 
 - `web/src/animation/fx/catalog.ts`: all 307 EffectCraft effects (id, name, category), generated from its `docs/effects.md`.
-- `web/src/animation/fx/library.ts` + `kernels*.ts`: the 134 that are drawn, with EffectCraft's parameter names, ranges and
+- `web/src/animation/fx/library.ts` + `kernels*.ts`: the 219 that are drawn, with EffectCraft's parameter names, ranges and
   defaults where it has them. Each is one of four kinds:
   - **filter**: a CanvasKit image/colour filter over the node's pixels (blur, colour matrices, minimax, glow, offset);
   - **overlay**: an SkSL shader drawn over the node inside its layer (grain, fills, gradients, patterns, generators), or a
@@ -253,10 +253,14 @@ clamps them to the parameter's range.
   Order: kernels first (innermost), then the node's own effects and the animated image filters, then overlays.
 - Editor: **+ Effect** in the transport adds an effect (its first parameter as a track); **+ Property** then lists the other
   parameters of the effects the node already has.
-- Not drawn (173 of 307, still listed in the catalog so nothing is silently missing): effects that need another layer or
-  a camera (3D, depth, mattes from other layers), audio, particle/physics simulation, painting
-  and tracking, whole-image statistics (auto levels, equalize), colour management (OCIO, LUTs), spherical video, and the rest
-  of the Distort/Stylize family that needs meshes or user-drawn masks.
+- Not drawn (88 of 307, still listed in the catalog so nothing is silently missing): audio (no audio engine here),
+  3D channels and depth, anything driven by other layers, masks or tracked data (set/combine matte effects, Roto Brush,
+  Warp Stabilizer, face and camera tracking, paint/write-on/stroke), particle and physics simulation (Particle Playground,
+  Card Dance, Shatter, Foam...), mesh warps (Liquify, Puppet, Mesh Warp), OCIO files/looks/displays and LUTs, whole-image
+  statistics (Auto Color/Levels/Contrast, Equalize), text generators (Numbers, Timecode), Match/Remove Grain, Inner/Outer Key
+  and Key Cleaner. Some drawn effects are simplified: Selective Color and Lumetri cover the basic controls, OCIO Color Space
+  covers sRGB, linear Rec.709, ACEScg, Rec.2020 and Display P3, the matte refinements work on the node's own alpha, and a
+  few legacy effects reuse the behaviour of their modern counterpart (`ALIASES` in `fx/library.ts`).
 - Code export (HTML/React) and the 2D canvas renderer ignore effect tracks (the exporter warns).
 
 ## Limits (for now)
