@@ -227,7 +227,7 @@ track names it; parameters without a track keep their default. Values are finite
 clamps them to the parameter's range.
 
 - `web/src/animation/fx/catalog.ts`: all 307 EffectCraft effects (id, name, category), generated from its `docs/effects.md`.
-- `web/src/animation/fx/library.ts` + `kernels*.ts`: the 302 that are drawn or played, with EffectCraft's parameter names, ranges and
+- `web/src/animation/fx/library.ts` + `kernels*.ts`: the 303 that are drawn or played, with EffectCraft's parameter names, ranges and
   defaults where it has them. Each is one of four kinds:
   - **filter**: a CanvasKit image/colour filter over the node's pixels (blur, colour matrices, minimax, glow, offset);
   - **overlay**: an SkSL shader drawn over the node inside its layer (grain, fills, gradients, patterns, generators), or a
@@ -295,9 +295,8 @@ clamps them to the parameter's range.
   Order: kernels first (innermost), then the node's own effects and the animated image filters, then overlays.
 - Editor: **+ Effect** in the transport adds an effect (its first parameter as a track); **+ Property** then lists the other
   parameters of the effects the node already has.
-- Not drawn (5 of 307, still listed in the catalog so nothing is silently missing), and why:
-  - **tracking and camera data**: 3D Camera Tracker, Warp Stabilizer, Face Track Points, Face Measurements;
-  - **recorded strokes**: Paint.
+- Not drawn (4 of 307, still listed in the catalog so nothing is silently missing), and why:
+  - **tracking and camera data**: 3D Camera Tracker, Warp Stabilizer, Face Track Points, Face Measurements.
   Where EffectCraft's version needs data this editor does not have, the ones that are drawn work on the node's own pixels
   instead: the 3D-channel effects take the node's luminance as depth and its colours as IDs, Stroke/Vegas/Stylize follow the
   node's alpha edge, Paint Bucket fills the colours that match the one at a point. The shatter, card, particle, hair, mercury,
@@ -312,6 +311,12 @@ clamps them to the parameter's range.
   tetrahedrally; the inverse direction inverts a 1D table by search and a cube by Newton's method on the CPU (cached). Until the
   file has arrived, or if it cannot be read, the node is drawn without the effect. Limits: 8-bit tables (no HDR range),
   cubes up to 65³, no `.csp`/`.spi1d`/`.look` files and no OCIO config (looks are files, not names).
+- **Paint**: adding it opens a pad where the strokes are drawn with the pointer (brush colour and size, Undo, Clear). The strokes
+  are the effect's string track `strokes` in a compact text form (`animation/fx/paint.ts`: size, colour, opacity and a simplified
+  polyline in fractions of the node's box), so a few seconds of drawing fit the 2900-byte parameter; the pad says when it is full.
+  Write On reveals them in the order they were painted (animatable), Brush Size and Opacity scale them, and Paint on Transparent
+  takes the node's own pixels away. They are drawn as round-capped smoothed polylines inside the node's layer, so the other
+  effects chain over them. Limits: one brush (no hardness, erasers or clone/blend modes) and no per-stroke timing.
 - **Audio**: a sound is attached to a node (**Sound** in the transport; the file is uploaded as an asset and kept in the node's
   `meta`: `audio.hash`, `audio.start` in ms, `audio.name`; the server accepts WAV, MP3, Ogg, FLAC and MP4/AAC). The 13 Audio
   effects (`fx.ec.audio.*` tracks) form a Web Audio chain per node in track order; gate and compressor run as AudioWorklets built

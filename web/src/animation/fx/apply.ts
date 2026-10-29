@@ -4,7 +4,7 @@
 
 import type { CanvasKit, ImageFilter } from "canvaskit-wasm";
 import { ensureFxData } from "@/animation/fx/files";
-import { fxDef, resolveFx, resolveStrings, type FxKernel, type FxOverlay, type FxTextSpec } from "@/animation/fx/library";
+import { fxDef, resolveFx, resolveStrings, type FxKernel, type FxOverlay, type FxPaintSpec, type FxTextSpec } from "@/animation/fx/library";
 
 type AnimFx = Readonly<Record<string, Readonly<Record<string, number>>>>;
 
@@ -28,6 +28,8 @@ export interface BuiltFx {
   kernels: FxKernel[];
   /** The effects that draw text over the node, in track order (animation/fx/props.ts has their strings). */
   texts: { spec: FxTextSpec; effect: string }[];
+  /** The effects that draw recorded strokes over the node. */
+  paints: { spec: FxPaintSpec; effect: string }[];
 }
 
 export function buildFx(
@@ -40,6 +42,7 @@ export function buildFx(
   const overlays: BuiltFx["overlays"] = [];
   const kernels: FxKernel[] = [];
   const texts: BuiltFx["texts"] = [];
+  const paints: BuiltFx["paints"] = [];
   for (const [id, given] of Object.entries(animFx)) {
     const def = fxDef(id);
     if (!def) continue;
@@ -49,7 +52,8 @@ export function buildFx(
     const strings = resolveStrings(def, animText?.[id]);
     for (const sp of def.strings ?? []) if (sp.file && strings[sp.id]) ensureFxData(docId, strings[sp.id]);
     if (def.kernel) kernels.push({ ...def.kernel(values, strings), effect: id });
+    if (def.paint) paints.push({ spec: def.paint(values, strings), effect: id });
     if (def.text) texts.push({ spec: def.text(values, strings), effect: id });
   }
-  return filter || overlays.length > 0 || kernels.length > 0 || texts.length > 0 ? { filter, overlays, kernels, texts } : null;
+  return filter || overlays.length > 0 || kernels.length > 0 || texts.length > 0 || paints.length > 0 ? { filter, overlays, kernels, texts, paints } : null;
 }

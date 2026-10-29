@@ -7,6 +7,8 @@ import { sampleClip } from "@/animation/engine";
 import { poseScene } from "@/animation/pose";
 import { fxStringProp } from "@/animation/fx/props";
 import { registerSound } from "@/animation/audio/library";
+import { encodeStrokes } from "@/animation/fx/paint";
+import { parseCurves, registerFxData, type FxData } from "@/animation/fx/files";
 
 // Draws EffectCraft effect tracks through the REAL pipeline (clip -> pose -> CanvasKitRenderer on WebGL), one node per
 // effect, so the offscreen kernels, layers, time effects and the lookup-table read-back can be looked at.
@@ -138,7 +140,37 @@ const SET6: Case[] = [
   ["waveform, animated over time", withSound, { [A + "generate.audiowaveform.thickness"]: [2, 4] }],
   ["no sound: nothing drawn", {}, { [A + "generate.audiospectrum.bands"]: [32, 32] }],
 ];
-const SETS = [SET1, SET2, SET3, SET4, SET5, SET6];
+// strokes for Paint, and lookup tables for the file effects
+const wiggle = (y: number, x0 = 0.1, x1 = 0.9): { x: number; y: number }[] => Array.from({ length: 24 }, (_, i) => ({ x: x0 + ((x1 - x0) * i) / 23, y: y + 0.12 * Math.sin(i / 3) }));
+const STROKES = encodeStrokes([
+  { size: 0.06, color: "#ff3b6b", opacity: 1, points: wiggle(0.3) },
+  { size: 0.1, color: "#2ec4ff", opacity: 0.7, points: wiggle(0.6, 0.2, 0.8) },
+  { size: 0.14, color: "#ffd23f", opacity: 1, points: [{ x: 0.5, y: 0.85 }] },
+]);
+const cubeOf = (f: (r: number, g: number, b: number) => [number, number, number]): FxData => {
+  const n = 17, table = new Float32Array(n * n * n * 3);
+  for (let b = 0; b < n; b++) for (let g = 0; g < n; g++) for (let r = 0; r < n; r++) table.set(f(r / (n - 1), g / (n - 1), b / (n - 1)), (r + g * n + b * n * n) * 3);
+  return { kind: "lut3d", size: n, table, domain: [0, 1], sat: 1 };
+};
+const LUT_SWAP = "c1".repeat(32), LUT_SEPIA = "c2".repeat(32), CURVES = "c3".repeat(32);
+registerFxData(LUT_SWAP, cubeOf((r, g, b) => [b, g, r]));
+registerFxData(LUT_SEPIA, cubeOf((r, g, b) => { const l = 0.3 * r + 0.59 * g + 0.11 * b; return [Math.min(1, l * 1.2 + 0.05), l, Math.max(0, l * 0.8 - 0.02)]; }));
+registerFxData(CURVES, parseCurves(new Uint8Array([0, 4, 0, 1, 0, 3, 0, 0, 0, 0, 0, 200, 0, 128, 0, 255, 0, 255]))!);
+const fileOf = (effect: string, hash: string): [string, string, string] => [effect, "file", hash];
+const SET7: Case[] = [
+  ["paint strokes", {}, {}, undefined, [["ec.paint.paint", "strokes", STROKES]]],
+  ["paint: write-on 0 -> 100", {}, { [A + "paint.paint.writeOn"]: [0, 100] }, undefined, [["ec.paint.paint", "strokes", STROKES]]],
+  ["paint: brush 200%, 50% opacity", {}, { [A + "paint.paint.brushScale"]: [200, 200], [A + "paint.paint.opacity"]: [50, 50] }, undefined, [["ec.paint.paint", "strokes", STROKES]]],
+  ["paint on transparent", {}, { [A + "paint.paint.onTransparent"]: [1, 1] }, undefined, [["ec.paint.paint", "strokes", STROKES]]],
+  ["paint + blur chain", {}, { [A + "blur.gaussian.blurriness"]: [3, 3] }, undefined, [["ec.paint.paint", "strokes", STROKES]]],
+  ["LUT: red/blue swap", {}, { [A + "utility.applylut.amount"]: [100, 100] }, undefined, [fileOf("ec.utility.applylut", LUT_SWAP)]],
+  ["LUT: sepia, amount 0 -> 100", {}, { [A + "utility.applylut.amount"]: [0, 100] }, undefined, [fileOf("ec.utility.applylut", LUT_SEPIA)]],
+  ["OCIO file: inverse of the sepia table", {}, { [A + "color.ociofile.direction"]: [1, 1] }, undefined, [fileOf("ec.color.ociofile", LUT_SEPIA)]],
+  ["OCIO look: tetrahedral, desaturated", {}, { [A + "color.ociolook.interpolation"]: [2, 2], [A + "color.ociolook.saturation"]: [30, 30] }, undefined, [fileOf("ec.color.ociolook", LUT_SEPIA)]],
+  ["PS arbitrary map (curve lifts mids)", {}, { [A + "color.psarbitrarymap.amount"]: [100, 100] }, undefined, [fileOf("ec.color.psarbitrarymap", CURVES)]],
+  ["LUT file missing: node unchanged", {}, {}, undefined, [fileOf("ec.utility.applylut", "dd".repeat(32))]],
+];
+const SETS = [SET1, SET2, SET3, SET4, SET5, SET6, SET7];
 
 function build(CASES: Case[]): { scene: SceneState; anim: (t: number) => ReturnType<typeof sampleClip> } {
   const nodes: NodeLite[] = [];

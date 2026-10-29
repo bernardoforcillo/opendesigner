@@ -15,8 +15,9 @@ import { LAYER_FX } from "@/animation/fx/kernelsLayer";
 import { MASK_FX } from "@/animation/fx/kernelsMask";
 import { TEXT_FX } from "@/animation/fx/kernelsText";
 import { AUDIO_FX } from "@/animation/audio/effects";
+import { PAINT_FX } from "@/animation/fx/kernelsPaint";
 import { FILE_FX } from "@/animation/fx/kernelsFiles";
 import { VISUALISER_FX } from "@/animation/audio/visualisers";
 import { GEN_FX } from "@/animation/fx/kernelsGen";
 
-export const KERNEL_FX: readonly FxDef[] = [...DISTORT_FX, ...BLUR_FX, ...COLOR_FX, ...GEN_FX, ...TIME_FX, ...MORE_FX, ...MORE2_FX, ...MORE3_FX, ...LAST_FX, ...SIM_FX, ...LAYER_FX, ...MASK_FX, ...TEXT_FX, ...AUDIO_FX, ...VISUALISER_FX, ...FILE_FX];
+export const KERNEL_FX: readonly FxDef[] = [...DISTORT_FX, ...BLUR_FX, ...COLOR_FX, ...GEN_FX, ...TIME_FX, ...MORE_FX, ...MORE2_FX, ...MORE3_FX, ...LAST_FX, ...SIM_FX, ...LAYER_FX, ...MASK_FX, ...TEXT_FX, ...AUDIO_FX, ...VISUALISER_FX, ...FILE_FX, ...PAINT_FX];

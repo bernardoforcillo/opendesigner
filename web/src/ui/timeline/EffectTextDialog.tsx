@@ -9,6 +9,7 @@ import { fxDef, resolveStrings } from "@/animation/fx/library";
 import { FX_CATALOG } from "@/animation/fx/catalog";
 import { setStringParam, stringParamOf } from "@/animation/timelineLogic";
 import { parseFxFile, registerFxData, wrapFxFile } from "@/animation/fx/files";
+import { StrokePad } from "@/ui/timeline/StrokePad";
 import { uploadAsset } from "@/rpc/assets";
 
 // THE TEXT OF AN EFFECT (Basic Text, Path Text): a string parameter cannot be a keyframe value, so it is typed here. Adding the
@@ -29,6 +30,8 @@ function Form({ target }: { target: Target }) {
     if (clip && target.nodeId) for (const s of strings) { const v = stringParamOf(clip, target.nodeId, target.effectId, s.id); if (v !== undefined) given[s.id] = v; }
     return resolveStrings(def!, given);
   });
+  const box = scene?.nodes.get(target.nodeId ?? useScene.getState().selection[0] ?? "");
+  const aspect = box && box.height > 0 ? box.width / box.height : 1;
   const [note, setNote] = useState("");
   const [busy, setBusy] = useState(false);
   const close = useEffectText((s) => s.close);
@@ -51,7 +54,7 @@ function Form({ target }: { target: Target }) {
       setBusy(false);
     }
   };
-  const missingFile = strings.some((s) => s.file && (values[s.id] ?? "") === "");
+  const missingFile = strings.some((s) => (s.file || s.strokes) && (values[s.id] ?? "") === "");
   const name = FX_CATALOG.find((e) => e.id === target.effectId)?.name ?? target.effectId;
 
   const apply = () => {
@@ -75,7 +78,12 @@ function Form({ target }: { target: Target }) {
   return (
     <Dialog aria-label={`${name} text`} className="flex flex-col gap-3 outline-none">
       <h2 className="text-[14px] font-semibold">{name}</h2>
-      {strings.map((s) => s.file ? (
+      {strings.map((s) => s.strokes ? (
+        <div key={s.id} className="flex flex-col gap-1">
+          {s.label}
+          <StrokePad value={values[s.id] ?? ""} aspect={aspect} onChange={(v) => setValues((o) => ({ ...o, [s.id]: v }))} />
+        </div>
+      ) : s.file ? (
         <label key={s.id} className="flex flex-col gap-1">
           {s.label}
           <input type="file" aria-label={s.label} accept={s.file} disabled={busy} className="text-[12px]" onChange={(e) => void pickFile(s.id, e.target.files?.[0])} />

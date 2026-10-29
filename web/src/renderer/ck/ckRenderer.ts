@@ -26,7 +26,7 @@ import { buildFx, type BuiltFx } from "@/animation/fx/apply";
 import { DISPLACE_SKSL } from "@/animation/fx/timeFx";
 import { makeLutShader, readHistogram } from "@/animation/fx/lutImage";
 import { fxRefKey } from "@/animation/fx/props";
-import type { FxEnv, FxTextSpec } from "@/animation/fx/library";
+import type { FxEnv, FxPaintSpec, FxTextSpec } from "@/animation/fx/library";
 import { soundBuffer, soundOf } from "@/animation/audio/library";
 import { builtInPath } from "@/animation/fx/kernelsText";
 import { pathPointsFor } from "@/store/textPath";
@@ -606,7 +606,7 @@ export class CanvasKitRenderer {
       if (filter !== fx.filter) f.garbage.push(filter);
     }
     const blend = n.blendMode ? this.blendModeOf(n.blendMode) : null;
-    if (!filter && !blend && !fx?.overlays.length && !fx?.texts.length && !(fx?.kernels.length && n.kind !== "group")) return false;
+    if (!filter && !blend && !fx?.overlays.length && !fx?.texts.length && !fx?.paints.length && !(fx?.kernels.length && n.kind !== "group")) return false;
     const lp = new this.CK.Paint();
     if (filter) lp.setImageFilter(filter);
     if (blend) lp.setBlendMode(blend);
@@ -764,6 +764,7 @@ export class CanvasKitRenderer {
         paint.delete();
         shader.delete();
       }
+      for (const t of pending.fx.paints) this.drawFxPaint(sk, pending.box, t.spec);
       for (const t of pending.fx.texts) this.drawFxText(sk, pending.node, pending.box, t.spec, t.effect);
     }
     sk.restore();
@@ -776,6 +777,36 @@ export class CanvasKitRenderer {
     const sound = soundOf(refId ? f.scene.nodes.get(refId) : undefined) ?? soundOf(n);
     const buffer = sound ? soundBuffer(sound.hash) : null;
     return { timeMs: n.animTime ?? 0, sound: sound && buffer ? { buffer, startMs: sound.startMs } : null };
+  }
+
+  // Strokes the Paint effect draws (animation/fx/paint.ts): round-capped polylines smoothed through their midpoints, inside the node's layer.
+  private drawFxPaint(sk: Canvas, box: Bounds, spec: FxPaintSpec): void {
+    const CK = this.CK;
+    const u = Math.min(box.width, box.height);
+    for (const s of spec.strokes) {
+      if (s.points.length === 0) continue;
+      const pts = s.points.map((p) => ({ x: box.x + p.x * box.width, y: box.y + p.y * box.height }));
+      const path = new CK.PathBuilder();
+      path.moveTo(pts[0].x, pts[0].y);
+      if (pts.length === 1) path.lineTo(pts[0].x, pts[0].y);
+      else if (pts.length === 2) path.lineTo(pts[1].x, pts[1].y);
+      else {
+        for (let i = 1; i < pts.length - 1; i++) path.quadTo(pts[i].x, pts[i].y, (pts[i].x + pts[i + 1].x) / 2, (pts[i].y + pts[i + 1].y) / 2);
+        path.lineTo(pts[pts.length - 1].x, pts[pts.length - 1].y);
+      }
+      const paint = new CK.Paint();
+      const n = parseInt(s.color.slice(1), 16);
+      paint.setColor(CK.Color4f(((n >> 16) & 255) / 255, ((n >> 8) & 255) / 255, (n & 255) / 255, Math.max(0, Math.min(1, s.opacity * spec.opacity))));
+      paint.setStyle(CK.PaintStyle.Stroke);
+      paint.setStrokeCap(CK.StrokeCap.Round);
+      paint.setStrokeJoin(CK.StrokeJoin.Round);
+      paint.setStrokeWidth(Math.max(0.5, s.size * u));
+      paint.setAntiAlias(true);
+      const built: Path = path.detachAndDelete();
+      sk.drawPath(built, paint);
+      paint.delete();
+      built.delete();
+    }
   }
 
   // Text an effect draws (animation/fx/kernelsText.ts): a text node built from the effect's spec, drawn as the document's own text.

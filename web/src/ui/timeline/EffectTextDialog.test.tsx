@@ -1,5 +1,5 @@
 import "@testing-library/jest-dom/vitest";
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { render, screen, cleanup, fireEvent, act } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { EffectTextDialog, useEffectText } from "@/ui/timeline/EffectTextDialog";
@@ -11,6 +11,7 @@ import { parseFxStringProp } from "@/animation/fx/props";
 import { stringParamOf } from "@/animation/timelineLogic";
 import type { SceneState } from "@/store/types";
 import { fxData } from "@/animation/fx/files";
+import { parseStrokes } from "@/animation/fx/paint";
 
 // Adding an effect with text asks for the text first; editing it later replaces the track. One undo step each.
 const BASIC = "ec.obsolete.basictext";
@@ -107,5 +108,24 @@ describe("EffectTextDialog", () => {
     } finally {
       globalThis.fetch = real;
     }
+  });
+
+  it("Paint: strokes are drawn on the pad, Add waits for one, and they are kept as the strokes string", async () => {
+    vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue(null); // jsdom has no 2D canvas: the pad then just records
+    render(<EffectTextDialog />);
+    act(() => useEffectText.getState().open({ effectId: "ec.paint.paint", mode: "add" }));
+    const add = await screen.findByRole("button", { name: "Add" });
+    expect(add).toBeDisabled();
+    const pad = screen.getByLabelText("Paint pad");
+    pad.getBoundingClientRect = () => ({ left: 0, top: 0, width: 360, height: 360, right: 360, bottom: 360, x: 0, y: 0, toJSON: () => ({}) });
+    fireEvent.pointerDown(pad, { clientX: 36, clientY: 36, pointerId: 1 });
+    fireEvent.pointerMove(pad, { clientX: 180, clientY: 250, pointerId: 1 });
+    fireEvent.pointerUp(pad, { clientX: 300, clientY: 60, pointerId: 1 });
+    expect(await screen.findByText("1 stroke")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Add" }));
+    const saved = parseStrokes(stringParamOf(sc().clips.k, "n", "ec.paint.paint", "strokes") ?? "");
+    expect(saved).toHaveLength(1);
+    expect(saved[0].points.length).toBeGreaterThanOrEqual(2);
+    expect(saved[0].points[0].x).toBeCloseTo(0.1, 1);
   });
 });

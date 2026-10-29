@@ -85,11 +85,16 @@ export interface FxKernel {
   effect?: string;
 }
 
+/** Strokes to draw over the node: points are fractions of its box, `size` of its shorter side. Already trimmed to what is written so far. */
+export interface FxPaintSpec { strokes: { size: number; color: string; opacity: number; points: { x: number; y: number }[] }[]; opacity: number }
+
 /** A string parameter (animation/fx/props.ts stores its text in a track's name): not animated, edited in a dialog. */
 export interface FxStringParam {
   id: string; label: string; default: string; multiline?: boolean;
   /** The string is the hash of an uploaded data file (fx/files.ts), chosen with a file picker that accepts these extensions. */
   file?: string;
+  /** The string is the node's recorded brush strokes (fx/paint.ts), drawn on a pad in the dialog. */
+  strokes?: true;
 }
 
 /**
@@ -149,6 +154,8 @@ export interface FxDef {
   /** String parameters (the text of Basic Text...), and how the text is drawn from them and the numeric parameters. */
   strings?: readonly FxStringParam[];
   text?: (v: FxValues, s: Readonly<Record<string, string>>) => FxTextSpec;
+  /** Recorded brush strokes drawn over the node (the Paint effect, fx/paint.ts). */
+  paint?: (v: FxValues, s: Readonly<Record<string, string>>) => FxPaintSpec;
   /** With `text`: a layer can be named (the path to run along) but is not required. */
   layerOptional?: true;
   /**
