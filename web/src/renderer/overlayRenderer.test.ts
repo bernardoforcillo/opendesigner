@@ -273,6 +273,7 @@ function fakeCtx(width: number, height: number) {
     fillRect: (..._a: unknown[]) => { calls.push("fillRect"); },
     beginPath: () => { calls.push("beginPath"); },
     arc: (x: number, y: number, r: number, ..._a: number[]) => { calls.push("arc"); arcs.push({ x, y, r }); },
+    fill: () => {}, // the live-corner handle of a big enough rectangle
     stroke: () => { calls.push("stroke"); },
     save: record("save"),
     restore: record("restore"),

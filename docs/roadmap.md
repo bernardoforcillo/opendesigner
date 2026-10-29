@@ -62,7 +62,7 @@ Legend: [x] done · [ ] to do
 ## 1b. Vector (Illustrator parity)
 - [x] Node tool: anchors, handles, add/delete points, corner/smooth, join, smooth/corner all (docs/vector.md)
 - [x] Path offset (grow/shrink) and simplification; pathfinder = the live boolean groups
-- [ ] Live corners
+- [x] Live corners (a handle inside the corner of a selected rectangle: drag to round all four, live; docs/shapes.md)
 - [x] Strokes: cap, join, miter limit and dashes on every shape (panel, canvas, GPU, SVG)
 - [x] Arrowheads on open vector strokes (arrow, triangle, circle, square, diamond at either end; panel, canvas, GPU, SVG, code, MCP `set_stroke`)
 - [x] Variable-width strokes on vectors (width points with a left and right width along the path, presets, a Variable width tool and panel; canvas, GPU, SVG as a filled outline, outline stroke, MCP `set_stroke`); see docs/vector.md
@@ -179,7 +179,7 @@ Output (docs/output.md)
 - [x] Optional GPU renderer with CanvasKit (WebGL), parity verified with `pnpm parity`; to be measured on a real GPU before making it the default
 - [x] User-loadable fonts (also in the GPU renderer)
 - [ ] Kerning and text shaping in the GPU renderer (CanvasKit's Paragraph)
-- [ ] Persistent data structures for the scene (applyOp without copying the whole map)
+- [x] Persistent data structures for the scene (`store/nodeMap.ts`: a persistent 256-bucket map, an edit copies the touched buckets; the server's `core.ApplyShared` is copy-on-write; docs/performance.md)
 
 ## 5. Differentiators
 - [ ] MCP AI agent: consistency reviews, variants, token usage

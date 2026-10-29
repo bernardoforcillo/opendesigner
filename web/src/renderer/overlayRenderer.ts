@@ -1,6 +1,7 @@
 import type { SceneState } from "@/store/types";
 import { type Camera, worldToScreen } from "@/canvas/camera";
 import { type Bounds, unionBounds, worldBoundsToScreen } from "@/canvas/geometry";
+import { cornerHandleOf } from "@/selection/cornerHandle";
 import { contentWorldBounds, isGroup } from "@/store/groups";
 import { isInstance } from "@/store/instances";
 import { applyTransform, worldBoundsOfNode, worldTransformOf } from "@/canvas/transform";
@@ -453,6 +454,23 @@ export function drawPageSheet(ctx: CanvasRenderingContext2D, page: PageLite, set
   }
 }
 
+// THE LIVE-CORNER HANDLE of a selected rectangle (selection/cornerHandle.ts): a white dot with an accent ring, inside the
+// top-left corner, where the corner radius is dragged.
+function drawCornerHandle(ctx: CanvasRenderingContext2D, state: SceneState, cam: Camera, selection: readonly string[], accent: string): void {
+  const h = cornerHandleOf(state, selection, cam.zoom);
+  if (!h) return;
+  const p = worldToScreen(cam, h.world.x, h.world.y);
+  ctx.save();
+  ctx.beginPath();
+  ctx.arc(p.x, p.y, 4.5, 0, Math.PI * 2);
+  ctx.fillStyle = "#fff";
+  ctx.fill();
+  ctx.lineWidth = 1.5;
+  ctx.strokeStyle = accent;
+  ctx.stroke();
+  ctx.restore();
+}
+
 // THREAD PORTS of text frames (store/threads.ts), editor-only like the layout grids: a hollow square at the
 // top-left of a frame that receives text from another, a filled one at the bottom-right of a frame that
 // flows into the next, and a red "+" there when the last frame has text left over. When a frame of the
@@ -532,6 +550,7 @@ export function drawOverlay(
   if (sheet) drawPageSheet(ctx, sheet.page, sheet.settings, cam, sheet);
   drawLayoutGrids(ctx, state, cam);
   drawThreadPorts(ctx, state, cam, selection, ACCENT);
+  drawCornerHandle(ctx, state, cam, selection, ACCENT);
 
   const frame = selectionFrame(state, selection);
   if (frame) {
