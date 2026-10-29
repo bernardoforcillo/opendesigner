@@ -8,9 +8,10 @@ import { instanceDescentLocal, instanceOverrideMap, resolveInstance } from "@/st
 import type { EffectLite, FillLite, GradientLite, InstanceOverrideLite, MeshLite, NodeLite, SceneState, StrokeLite, TextStyleLite } from "@/store/types";
 import { anchorPoint, inHandlePoint, outHandlePoint, subpathFills } from "@/store/vectorGeometry";
 import {
-  CLIP_MIN_PX, LOD_FLAT_PX, SKIP_SUBTREE_PX, type ImageSource, resolvedFill, rootsOf, withOverride,
+  CLIP_MIN_PX, FAST_BOX_PX, LOD_FLAT_PX, SKIP_SUBTREE_PX, type ImageSource, plainShape, resolvedFill, rootsOf, withOverride,
 } from "@/renderer/canvasRenderer";
 import { effectsOutset, sceneIndexOf } from "@/renderer/sceneIndex";
+import { HEAVY_MS } from "@/renderer/layerCache";
 import { MESH_BITMAP_SIZE, meshBitmap } from "@/renderer/mesh";
 import { outlineCommands, type PathCmd } from "@/renderer/shapeGeometry";
 import { hasArrowheads, strokeHeads } from "@/renderer/arrowheads";
@@ -74,6 +75,17 @@ export class CanvasKitRenderer {
   private widths = new Map<Font, Map<string, number>>();
   private textLines = new WeakMap<NodeLite, ReturnType<typeof placeTextLines>>();
   lost = false;
+  /** The last frame's cost: `walkMs` is the JS walk plus the calls into CanvasKit, `flushMs` the submit to the GPU. */
+  readonly stats = { walkMs: 0, flushMs: 0 };
+  // Scratch arrays for the per-node calls that take a colour or a rectangle: CanvasKit copies them into the
+  // WASM heap on the call, so one array can be refilled for every node instead of allocating two per node.
+  // THE LAST HEAVY FRAME, kept as an image: while only the camera moves, it is drawn moved and scaled instead of
+  // walking the whole scene again (the 2D renderer does the same, see renderer/layerCache.ts). The walk is JS and
+  // WASM on the main thread, so on a big document it, not the GPU, is what a pan or a zoom waits for.
+  private snap: { img: SkImage; scene: SceneState; pageId: string | null; spread: string; w: number; h: number; cam: Camera } | null = null;
+  private lastCostMs = 0;
+  private readonly colorBuf = new Float32Array(4);
+  private readonly rectBuf = new Float32Array(4);
 
   constructor(
     private readonly CK: CanvasKit,
@@ -103,6 +115,7 @@ export class CanvasKitRenderer {
 
   /** The font measures changed (a weight arrived): the layout is redone. */
   fontsChanged(): void {
+    this.dropSnapshot();
     this.widths = new Map();
     this.textLines = new WeakMap();
   }
@@ -117,17 +130,39 @@ export class CanvasKitRenderer {
     return this.surface;
   }
 
-  draw(scene: SceneState, cam: Camera, pageId: string | null, spread: { pageId: string; dx: number } | null = null): void {
+  /**
+   * Draws the scene. Returns `true` when the frame is exact and `false` when it is the last heavy frame moved
+   * to the new camera (only the camera changed since it): the caller then schedules the real frame for when
+   * the movement ends. `force` skips the reuse.
+   */
+  draw(scene: SceneState, cam: Camera, pageId: string | null, spread: { pageId: string; dx: number } | null = null, force = false): boolean {
     const CK = this.CK;
     const { canvas } = this;
     const w = canvas.width;
     const h = canvas.height;
-    if (w <= 0 || h <= 0 || this.lost) return;
+    if (w <= 0 || h <= 0 || this.lost) return true;
+    const t0 = performance.now();
     const surface = this.ensureSurface(w, h);
     const sk = surface.getCanvas();
-    sk.clear(CK.TRANSPARENT);
-
     const dpr = canvas.clientWidth > 0 ? w / canvas.clientWidth : window.devicePixelRatio || 1;
+
+    const spreadKey = spread ? `${spread.pageId}@${spread.dx}` : "";
+    const s = this.snap;
+    if (
+      !force && s && s.scene === scene && s.pageId === pageId && s.spread === spreadKey && s.w === w && s.h === h &&
+      (s.cam.x !== cam.x || s.cam.y !== cam.y || s.cam.zoom !== cam.zoom) && this.lastCostMs > HEAVY_MS
+    ) {
+      // The camera took the old frame to the new one: one image drawn under p1 = k * p0 + t, with k the zoom ratio.
+      const k = cam.zoom / s.cam.zoom;
+      const tx = (cam.x - s.cam.x * k) * dpr;
+      const ty = (cam.y - s.cam.y * k) * dpr;
+      sk.clear(CK.TRANSPARENT);
+      sk.drawImageRectOptions(s.img, CK.LTRBRect(0, 0, w, h), CK.LTRBRect(tx, ty, tx + w * k, ty + h * k), CK.FilterMode.Linear, CK.MipmapMode.None, null);
+      surface.flush();
+      return false;
+    }
+
+    sk.clear(CK.TRANSPARENT);
     const index = sceneIndexOf(scene);
     const px = 1 / (cam.zoom || 1);
     const cssW = w / dpr;
@@ -157,10 +192,27 @@ export class CanvasKitRenderer {
       sk.restore();
     }
     sk.restore();
+    const t1 = performance.now();
     surface.flush();
+    this.stats.walkMs = t1 - t0;
+    this.stats.flushMs = performance.now() - t1;
+    this.lastCostMs = this.stats.walkMs + this.stats.flushMs;
 
     for (const g of this.frame.garbage) g.delete();
     this.frame = null;
+
+    // A heavy frame is kept for the camera moves that follow; a light one needs no help.
+    this.dropSnapshot();
+    if (this.lastCostMs > HEAVY_MS) {
+      const img = surface.makeImageSnapshot();
+      if (img) this.snap = { img, scene, pageId, spread: spreadKey, w, h, cam: { ...cam } };
+    }
+    return true;
+  }
+
+  private dropSnapshot(): void {
+    this.snap?.img.delete();
+    this.snap = null;
   }
 
   // --- traversal: same shape as canvasRenderer.ts::drawSiblings --------------
@@ -252,6 +304,19 @@ export class CanvasKitRenderer {
     sk.restore();
   }
 
+  // One flat-colour box (or oval) in the node's own rectangle, through the scratch arrays.
+  private flatRect(sk: Canvas, p: Paint, n: NodeLite, fill: FillLite, alpha: number, oval = false): void {
+    p.setShader(null);
+    p.setImageFilter(null);
+    const c = this.colorBuf;
+    c[0] = fill.r; c[1] = fill.g; c[2] = fill.b; c[3] = fill.a * alpha;
+    p.setColor(c);
+    const r = this.rectBuf;
+    r[0] = n.x; r[1] = n.y; r[2] = n.x + n.width; r[3] = n.y + n.height; // left, top, right, bottom: what CanvasKit's rect calls take
+    if (oval) sk.drawOval(r, p);
+    else sk.drawRect(r, p);
+  }
+
   // --- the node --------------------------------------------------------------
 
   private drawNode(sk: Canvas, n: NodeLite, overrides: ReadonlyMap<string, InstanceOverrideLite> | null): void {
@@ -269,8 +334,17 @@ export class CanvasKitRenderer {
       const p = this.fillP;
       p.setShader(null);
       p.setImageFilter(null);
-      p.setColor(this.CK.Color4f(fill.r, fill.g, fill.b, fill.a * (eff.kind === "text" ? eff.opacity * 0.5 : eff.opacity)));
-      sk.drawRect(this.CK.XYWHRect(eff.x, eff.y, eff.width, eff.height), p);
+      this.flatRect(sk, p, eff, fill, eff.kind === "text" ? eff.opacity * 0.5 : eff.opacity);
+      return;
+    }
+
+    // THE FAST PATH (as in the 2D renderer): a box or an oval of one flat colour -- no stroke, effect, blend,
+    // rotation or animation -- is one colour set and one draw call, without the shape, paint and effect
+    // machinery below. Most of what fills a big page is that.
+    const plain = flatSize / f.px < FAST_BOX_PX ? plainShape(eff, f.px) : null;
+    if (plain !== null) {
+      if (eff.kind === "frame" && eff.fills.length === 0) return;
+      this.flatRect(sk, this.fillP, eff, resolvedFill(eff), eff.opacity, plain === "ellipse");
       return;
     }
 
@@ -996,6 +1070,7 @@ export class CanvasKitRenderer {
     this.skImages.clear();
     this.fillP.delete();
     this.strokeP.delete();
+    this.dropSnapshot();
     this.surface?.delete();
     this.surface = null;
     this.grCtx?.releaseResourcesAndAbandonContext();

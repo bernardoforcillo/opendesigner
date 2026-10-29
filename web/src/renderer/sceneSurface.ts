@@ -34,10 +34,11 @@ export class GpuSceneRenderer {
     return this.renderer.lost;
   }
 
-  draw(scene: SceneState, cam: Camera, pageId: string | null, spread: SpreadAt | null = null): void {
+  /** Draws; `false` when it is the last heavy frame moved to the new camera (see CanvasKitRenderer.draw). */
+  draw(scene: SceneState, cam: Camera, pageId: string | null, spread: SpreadAt | null = null, force = false): boolean {
     // The uploaded fonts: loaded into CanvasKit's own font book (it cannot see document.fonts).
     this.fonts.setDocumentFonts(scene.id, scene.fonts, fontFamiliesOnPage(scene, pageId));
-    this.renderer.draw(scene, cam, pageId, spread);
+    return this.renderer.draw(scene, cam, pageId, spread, force) !== false;
   }
 
   dispose(): void {
@@ -71,7 +72,7 @@ export class SceneSurface {
 
   /**
    * Draws the scene with the chosen renderer. Returns `true` if the frame is exact, `false` if
-   * it is the reuse of an image (CPU only, see layerCache.ts) and the real frame
+   * it is the reuse of an image (layerCache.ts on the CPU, CanvasKitRenderer on the GPU) and the real frame
    * must be scheduled.
    */
   draw(scene: SceneState, cam: Camera, pageId: string | null, force: boolean, spread: SpreadAt | null = null): boolean {
@@ -89,8 +90,7 @@ export class SceneSurface {
           this.fail("the WebGL context was lost");
         } else {
           try {
-            this.drawGpu(this.gpu, scene, cam, pageId, spread);
-            return true;
+            return this.drawGpu(this.gpu, scene, cam, pageId, spread, force);
           } catch (e) {
             this.fail(e instanceof Error ? e.message : String(e));
           }
@@ -116,7 +116,7 @@ export class SceneSurface {
     return exact;
   }
 
-  private drawGpu(gpu: GpuSceneRenderer, scene: SceneState, cam: Camera, pageId: string | null, spread: SpreadAt | null): void {
+  private drawGpu(gpu: GpuSceneRenderer, scene: SceneState, cam: Camera, pageId: string | null, spread: SpreadAt | null, force: boolean): boolean {
     // The 2D canvas sits on top and receives events: it must be left transparent.
     if (!this.cpuCleared) {
       const ctx = this.cpuCanvas.getContext("2d");
@@ -134,9 +134,10 @@ export class SceneSurface {
     this.glCanvas.style.display = "block";
     resizeCanvasToDisplaySize(this.glCanvas);
     const t0 = performance.now();
-    gpu.draw(scene, cam, pageId, spread);
-    this.report(performance.now() - t0);
+    const exact = gpu.draw(scene, cam, pageId, spread, force);
+    if (exact) this.report(performance.now() - t0);
     if (useRenderer.getState().status !== "gpu") useRenderer.getState().setStatus("gpu");
+    return exact;
   }
 
   private startLoad(): void {
