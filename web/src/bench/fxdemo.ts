@@ -5,6 +5,7 @@ import { emptyScene } from "@/store/types";
 import type { NodeLite, SceneState } from "@/store/types";
 import { sampleClip } from "@/animation/engine";
 import { poseScene } from "@/animation/pose";
+import { fxStringProp } from "@/animation/fx/props";
 
 // Draws EffectCraft effect tracks through the REAL pipeline (clip -> pose -> CanvasKitRenderer on WebGL), one node per
 // effect, so the offscreen kernels, layers, time effects and the lookup-table read-back can be looked at.
@@ -22,8 +23,9 @@ const lowContrast = { fills: [{ r: 0, g: 0, b: 0, a: 1, gradient: { kind: "linea
 
 // [label, node overrides, tracks: prop -> [value at t0, value at t1]]
 // An optional 4th element makes a hidden second layer for the effect (`effect`) and points the case's node at it.
+// A 5th element sets string parameters: [effect, param, text].
 type Layer = { effect: string; node: Partial<NodeLite>; dx?: number; dy?: number; second?: { node: Partial<NodeLite>; dx?: number; dy?: number } };
-type Case = [string, Partial<NodeLite>, Record<string, [number, number]>, Layer?];
+type Case = [string, Partial<NodeLite>, Record<string, [number, number]>, Layer?, [string, string, string][]?];
 const SET1: Case[] = [
   ["blur", {}, { "fx.ec.blur.gaussian.blurriness": [12, 12] }],
   ["wave (kernel)", {}, { "fx.ec.distort.wavewarp.height": [8, 8], "fx.ec.distort.wavewarp.width": [40, 40] }],
@@ -99,15 +101,30 @@ const SET4: Case[] = [
   ["glue gun", {}, { [A + "generate.ccgluegun.progress"]: [0, 100] }],
   ["mask shape (ellipse)", {}, { [A + "obsolete.mochashape.w"]: [70, 70], [A + "obsolete.mochashape.feather"]: [10, 10] }],
 ];
-const SETS = [SET1, SET2, SET3, SET4];
+const wave = { kind: "vector" as const, fills: [], strokes: [{ color: { r: 1, g: 1, b: 1, a: 0.5 }, weight: 1, align: "center" as const }], width: 100, height: 60, cornerRadius: 0, vector: { subpaths: [{ closed: false, anchors: [
+  { x: 0, y: 40, inX: 0, inY: 0, outX: 25, outY: -50 }, { x: 100, y: 40, inX: -25, inY: 50, outX: 0, outY: 0 }] }] } };
+const SET5: Case[] = [
+  ["basic text", {}, {}, undefined, [["ec.obsolete.basictext", "text", "Hello, effects"], ["ec.obsolete.basictext", "font", "Inter"]]],
+  ["basic text: size, weight, colour", {}, { [A + "obsolete.basictext.size"]: [26, 26], [A + "obsolete.basictext.weight"]: [700, 700], [A + "obsolete.basictext.hue"]: [50, 50], [A + "obsolete.basictext.sat"]: [90, 90] }, undefined, [["ec.obsolete.basictext", "text", "Bold\nyellow\ntext"]]],
+  ["basic text: unicode, wrapped", {}, { [A + "obsolete.basictext.size"]: [16, 16], [A + "obsolete.basictext.align"]: [0, 0], [A + "obsolete.basictext.x"]: [50, 50] }, undefined, [["ec.obsolete.basictext", "text", "Ünïcode ✓ 日本語 — a longer sentence that has to wrap inside the box"]]],
+  ["path text: circle", {}, { [A + "obsolete.pathtext.size"]: [13, 13], [A + "obsolete.pathtext.shape"]: [1, 1], [A + "obsolete.pathtext.radius"]: [0.38, 0.38] }, undefined, [["ec.obsolete.pathtext", "text", "Text running round a circle • "]]],
+  ["path text: wave", {}, { [A + "obsolete.pathtext.size"]: [14, 14], [A + "obsolete.pathtext.shape"]: [3, 3] }, undefined, [["ec.obsolete.pathtext", "text", "Waves of words along a wave"]]],
+  ["path text: on a vector layer", {}, { [A + "obsolete.pathtext.size"]: [14, 14] }, { effect: "ec.obsolete.pathtext", node: wave, dx: 0, dy: 20 }, [["ec.obsolete.pathtext", "text", "Following a drawn curve"]]],
+  ["text without a string track (default)", {}, { [A + "obsolete.basictext.size"]: [22, 22] }],
+  ["text + blur chain", {}, { [A + "blur.gaussian.blurriness"]: [3, 3] }, undefined, [["ec.obsolete.basictext", "text", "Blurred"]]],
+];
+const SETS = [SET1, SET2, SET3, SET4, SET5];
 
 function build(CASES: Case[]): { scene: SceneState; anim: (t: number) => ReturnType<typeof sampleClip> } {
   const nodes: NodeLite[] = [];
   const tracks: { nodeId: string; prop: string; keyframes: { time: number; value: number; easing: string }[] }[] = [];
-  CASES.forEach(([label, over, tr, layer], i) => {
+  CASES.forEach(([label, over, tr, layer, strs], i) => {
     const id = `n${i}`;
     const col = i % 4, row = Math.floor(i / 4);
     nodes.push(node(id, 40 + col * 290, 40 + row * 170, over));
+    for (const [effect, param, text] of strs ?? []) {
+      tracks.push({ nodeId: id, prop: fxStringProp(effect, param, text), keyframes: [{ time: 0, value: 1, easing: "linear" }] });
+    }
     if (layer) {
       // the second layer is hidden, as a matte layer usually is, and sits in the same row; "layer is missing" names a node that is not there
       const rid = label === "layer is missing" ? "gone" : `r${i}`;

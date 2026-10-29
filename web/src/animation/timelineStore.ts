@@ -10,7 +10,7 @@ import {
   uniqueClipName, unwrapDegrees, valueAt, type KeyRef,
 } from "@/animation/timelineLogic";
 import { buildPreset, type PresetId } from "@/animation/presets";
-import { parseFxLayerProp, parseFxProp } from "@/animation/fx/props";
+import { parseFxLayerProp, parseFxProp, parseFxStringProp } from "@/animation/fx/props";
 import { fxParam } from "@/animation/fx/library";
 
 // THE TIMELINE STATE: VIEW state, like the camera and the selection -- it is not
@@ -264,7 +264,7 @@ export function duplicateClipOp(scene: SceneState, id: string): void {
  * (a track outside the target is not exported). Returns how many tracks it added.
  */
 const isFxTrack = (prop: string): boolean => {
-  if (parseFxLayerProp(prop)) return true;
+  if (parseFxLayerProp(prop) || parseFxStringProp(prop)) return true;
   const fx = parseFxProp(prop);
   return !!fx && fxParam(fx.effect, fx.param) !== undefined;
 };

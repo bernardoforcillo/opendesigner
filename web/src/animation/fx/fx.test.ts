@@ -3,16 +3,17 @@ import { describe, it, expect, beforeAll } from "vitest";
 import { createRequire } from "node:module";
 import type { CanvasKit } from "canvaskit-wasm";
 import { FX_CATALOG } from "@/animation/fx/catalog";
+import { builtInPath } from "@/animation/fx/kernelsText";
 import { formatNumber, formatTimecode } from "@/animation/fx/kernelsSim";
 import { invertHomography, unitSquareTo } from "@/animation/fx/kernelsDistort";
 import { FX_LIBRARY, fxDef, fxParam, hsv, resolveFx } from "@/animation/fx/library";
 import { makeLutShader, readHistogram } from "@/animation/fx/lutImage";
 import { buildFx, fxOutset } from "@/animation/fx/apply";
-import { fxLayerProp, fxRefKey, fxProp, isFxProp, parseFxLayerProp, parseFxProp } from "@/animation/fx/props";
+import { MAX_FX_TEXT_BYTES, fxStringProp, parseFxStringProp, fxLayerProp, fxRefKey, fxProp, isFxProp, parseFxLayerProp, parseFxProp } from "@/animation/fx/props";
 import { isTrackProp, sampleClip } from "@/animation/engine";
 import { mergeAnim, poseScene } from "@/animation/pose";
 import { isValidClip } from "@/animation/validate";
-import { addPropertyTrack, baseValueOf, clampValue, propLabel } from "@/animation/timelineLogic";
+import { setStringParam, stringParamOf, addPropertyTrack, baseValueOf, clampValue, propLabel } from "@/animation/timelineLogic";
 import { baseScene, child } from "@/flow/testSupport";
 import { nodesWith } from "@/store/nodeMap";
 
@@ -29,7 +30,7 @@ describe("the catalog", () => {
   it("gives every parameter a sane range and a default inside it", () => {
     for (const d of FX_LIBRARY) {
       expect(d.params.length, d.id).toBeGreaterThan(0);
-      expect([d.filter, d.overlay, d.kernel, d.time, d.carrier].filter(Boolean).length, `${d.id}: exactly one kind`).toBe(1);
+      expect([d.filter, d.overlay, d.kernel, d.time, d.text, d.carrier].filter(Boolean).length, `${d.id}: exactly one kind`).toBe(1);
       for (const p of d.params) {
         expect(p.min, `${d.id}.${p.id}`).toBeLessThan(p.max);
         expect(p.default).toBeGreaterThanOrEqual(p.min);
@@ -391,5 +392,82 @@ describe("layer references", () => {
     expect(posed.nodes.at("n").animFxRefs).toEqual({ "ec.key.differencematte": "L" });
     const merged = mergeAnim(new Map([["n", { fxRefs: { a: "1" } }]]), new Map([["n", { fxRefs: { b: "2" } }]]));
     expect(merged.get("n")?.fxRefs).toEqual({ a: "1", b: "2" });
+  });
+});
+
+describe("string parameters", () => {
+  it("live in a track's name: UTF-8 in unpadded base64url, round-tripped, never a keyframe value", () => {
+    for (const text of ["", "Hello", "Ünïcode ✓ 日本語 — 😀", "line one\nline two", "a/b+c=d?e&f", "x".repeat(900)]) {
+      const prop = fxStringProp("ec.obsolete.basictext", "text", text);
+      expect(prop).toMatch(/^fx\.ec\.obsolete\.basictext\.str\.text\.[A-Za-z0-9_-]*$/);
+      expect(parseFxStringProp(prop)).toEqual({ effect: "ec.obsolete.basictext", param: "text", text });
+      expect(isFxProp(prop)).toBe(true);
+      expect(isTrackProp(prop)).toBe(true);
+      expect(parseFxProp(prop)).toBeNull();
+    }
+  });
+  it("are cut at a size the prop shape allows, and bad shapes are not string props", () => {
+    const long = fxStringProp("ec.obsolete.basictext", "text", "é".repeat(5000));
+    expect(long.length).toBeLessThan(4200);
+    expect(new TextEncoder().encode(parseFxStringProp(long)!.text).length).toBeLessThanOrEqual(MAX_FX_TEXT_BYTES);
+    for (const bad of ["fx.ec.obsolete.basictext.str.text", "fx.ec.obsolete.basictext.str..AAAA", "fx.ec.obsolete.basictext.str.text.a+b", "fx.ec.obsolete.basictext.str.text.a b", "fx.obsolete.basictext.str.text.AAAA"]) {
+      expect(parseFxStringProp(bad), bad).toBeNull();
+      expect(isTrackProp(bad), bad).toBe(false);
+    }
+    expect(parseFxStringProp("fx.ec.obsolete.basictext.str.text.//")).toBeNull();
+  });
+  it("sample into NodeAnim.fxText, activate the effect, and reach the posed node", () => {
+    const tracks = [{ nodeId: "n", prop: fxStringProp("ec.obsolete.basictext", "text", "Hi ✓"), keyframes: [{ time: 0, value: 1, easing: "linear" }] }];
+    const a = sampleClip({ tracks }, 50).get("n");
+    expect(a?.fxText).toEqual({ "ec.obsolete.basictext": { text: "Hi ✓" } });
+    expect(a?.fx).toEqual({ "ec.obsolete.basictext": {} });
+    const s = baseScene();
+    const scene = { ...s, nodes: nodesWith(s.nodes, { n: child("n", "A", 0, 0) }) };
+    expect(poseScene(scene, sampleClip({ tracks }, 0)).nodes.at("n").animFxText).toEqual({ "ec.obsolete.basictext": { text: "Hi ✓" } });
+    const merged = mergeAnim(new Map([["n", { fxText: { a: { x: "1" } } }]]), new Map([["n", { fxText: { a: { y: "2" }, b: { z: "3" } } }]]));
+    expect(merged.get("n")?.fxText).toEqual({ a: { x: "1", y: "2" }, b: { z: "3" } });
+  });
+  it("a track for the same parameter replaces the earlier one; nothing changes if the text is the same", () => {
+    const clip = { id: "c", name: "c", duration: 1000, trigger: "enter", delay: 0, repeat: 0, yoyo: false, targetId: "n", tracks: [] };
+    const one = setStringParam(clip, "n", "ec.obsolete.basictext", "text", "first");
+    expect(one.tracks).toHaveLength(1);
+    expect(one.tracks[0].keyframes).toHaveLength(1);
+    const two = setStringParam(one, "n", "ec.obsolete.basictext", "text", "second");
+    expect(two.tracks).toHaveLength(1);
+    expect(stringParamOf(two, "n", "ec.obsolete.basictext", "text")).toBe("second");
+    expect(setStringParam(two, "n", "ec.obsolete.basictext", "text", "second")).toBe(two);
+    // other parameters and other nodes are left alone
+    const withFont = setStringParam(two, "n", "ec.obsolete.basictext", "font", "Georgia");
+    expect(withFont.tracks).toHaveLength(2);
+    expect(stringParamOf(withFont, "m", "ec.obsolete.basictext", "text")).toBeUndefined();
+    expect(baseValueOf({ x: 0, y: 0, rotation: 0, opacity: 1 }, fxStringProp("ec.obsolete.basictext", "text", "x"))).toBe(1);
+  });
+  it("the label shows the text, shortened", () => {
+    expect(propLabel(fxStringProp("ec.obsolete.basictext", "text", "Hello"))).toBe('Basic Text · Text: "Hello"');
+    expect(propLabel(fxStringProp("ec.obsolete.basictext", "text", "a\nb   c"))).toBe('Basic Text · Text: "a b c"');
+    expect(propLabel(fxStringProp("ec.obsolete.basictext", "text", "x".repeat(40)))).toBe(`Basic Text · Text: "${"x".repeat(23)}…"`);
+  });
+  it("the text effects build their spec from the values and the strings, with defaults", () => {
+    const basic = fxDef("ec.obsolete.basictext")!;
+    expect(basic.strings?.map((x) => x.id)).toEqual(["text", "font"]);
+    const spec = basic.text!(resolveFx(basic, { size: 20, weight: 640, align: 2, x: 30, hue: 0, sat: 0, val: 100 }), { text: "Hi", font: "Georgia" });
+    expect(spec).toMatchObject({ content: "Hi", fontFamily: "Georgia", fontWeight: "600", fontSize: 20, align: "right", ax: 0.3, color: { r: 1, g: 1, b: 1 } });
+    const path = fxDef("ec.obsolete.pathtext")!;
+    expect(path.layerOptional).toBe(true);
+    expect(path.text!(resolveFx(path, {}), { text: "x", font: "Inter" }).path).toBe("layer");
+    const circle = path.text!(resolveFx(path, { shape: 1 }), { text: "x", font: "Inter" }).path as { x: number; y: number }[];
+    expect(circle[0].x).toBeCloseTo(0, 1);
+    expect(circle[0].y).toBeCloseTo(-0.38, 2);
+  });
+  it("built-in text paths: a line, a wave and a circle start where they say", () => {
+    const v = { radius: 0.4, sweep: 180, start: 0, amplitude: 0.1 };
+    const line = builtInPath(4, v);
+    expect([line[0].x, line[line.length - 1].x]).toEqual([-0.5, 0.5]);
+    const wave = builtInPath(3, v);
+    expect(Math.max(...wave.map((p) => p.y))).toBeCloseTo(0.1, 2);
+    const arc = builtInPath(2, v);
+    expect(Math.hypot(arc[40].x, arc[40].y)).toBeCloseTo(0.4, 5);
+    // an arc of 180 degrees from the top ends at the bottom
+    expect(arc[arc.length - 1].y).toBeCloseTo(0.4, 2);
   });
 });

@@ -3,7 +3,7 @@ import { recordDelta } from "@/store/sceneDelta";
 import { contentWorldBounds } from "@/store/groups";
 import { applyTransform, invertTransform, worldTransformOf } from "@/canvas/transform";
 import { sampleClip, type NodeAnim } from "@/animation/engine";
-import type { NodeFx } from "@/animation/fx/props";
+import type { NodeFx, NodeFxText } from "@/animation/fx/props";
 import { fxDef, resolveFx } from "@/animation/fx/library";
 
 // THE POSED SCENE.
@@ -30,6 +30,13 @@ export function canDraw(n: Pick<NodeLite, "kind">): boolean {
   return n.kind === "vector" || n.kind === "rect" || n.kind === "ellipse" || n.kind === "frame" || n.kind === "polygon" || n.kind === "star";
 }
 
+function mergeText(dst: NodeFxText | undefined, src: NodeFxText): NodeFxText {
+  const out: NodeFxText = {};
+  for (const [id, v] of Object.entries(dst ?? {})) out[id] = { ...v };
+  for (const [id, v] of Object.entries(src)) out[id] = { ...out[id], ...v };
+  return out;
+}
+
 function mergeFx(dst: NodeFx | undefined, src: NodeFx): NodeFx {
   const out: NodeFx = {};
   for (const [id, v] of Object.entries(dst ?? {})) out[id] = { ...v };
@@ -42,10 +49,11 @@ export function mergeAnim(dst: Map<string, NodeAnim>, src: ReadonlyMap<string, N
   for (const [id, a] of src) {
     const cur = dst.get(id);
     if (cur) {
-      const { fx, fxRefs, ...rest } = a;
+      const { fx, fxRefs, fxText, ...rest } = a;
       Object.assign(cur, rest);
       if (fx) cur.fx = mergeFx(cur.fx, fx);
       if (fxRefs) cur.fxRefs = { ...cur.fxRefs, ...fxRefs };
+      if (fxText) cur.fxText = mergeText(cur.fxText, fxText);
     }
     else dst.set(id, { ...a });
   }
@@ -98,6 +106,7 @@ function patchNode(base: SceneState, n: NodeLite, a: NodeAnim): { next: NodeLite
   }
   if (a.fx) patch().animFx = mergeFx(n.animFx, a.fx);
   if (a.fxRefs) patch().animFxRefs = { ...n.animFxRefs, ...a.fxRefs };
+  if (a.fxText) patch().animFxText = mergeText(n.animFxText, a.fxText);
   if (a.draw !== undefined && canDraw(n)) {
     patch().animDraw = a.draw;
     // at 1 the path is whole: the GPU renderer draws it normally, no CPU fallback

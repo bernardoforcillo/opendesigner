@@ -1,3 +1,5 @@
+import { parseFxLayerProp, parseFxStringProp } from "@/animation/fx/props";
+import { useEffectText } from "@/ui/timeline/EffectTextDialog";
 import { useEffect, useRef, useState } from "react";
 import { Button as RacButton } from "react-aria-components";
 import { EmptyState, Icon } from "@/ui/ds";
@@ -246,12 +248,16 @@ export function TrackArea({ clip }: { clip: ClipLite }) {
                     </span>
                     <span className="shrink-0 text-fg-subtle">{propLabel(tr.prop, layerName)}</span>
                   </RacButton>
+                  {parseFxStringProp(tr.prop) ? (
+                    <AnimIconButton icon="sliders" label="Edit the text" size={22} onPress={() => { const sp = parseFxStringProp(tr.prop); if (sp) useEffectText.getState().open({ effectId: sp.effect, mode: "edit", nodeId: tr.nodeId }); }} />
+                  ) : parseFxLayerProp(tr.prop) ? null : (
                   <AnimIconButton
                     icon="diamondPlus"
                     label={`Add a keyframe at the playhead on ${propLabel(tr.prop, layerName)}`}
                     size={22}
                     onPress={() => addAt(ti, Math.round(playhead))}
                   />
+                  )}
                   <AnimIconButton
                     icon="x"
                     label={`Remove the ${propLabel(tr.prop, layerName)} track`}

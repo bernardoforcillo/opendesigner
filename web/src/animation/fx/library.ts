@@ -75,6 +75,32 @@ export interface FxKernel {
   effect?: string;
 }
 
+/** A string parameter (animation/fx/props.ts stores its text in a track's name): not animated, edited in a dialog. */
+export interface FxStringParam { id: string; label: string; default: string; multiline?: boolean }
+
+/**
+ * Text an effect has drawn over the node with the editor's own fonts (renderer/ck draws it as a text node, so wrapping, kerning,
+ * weights and text on a path are the document's). Fractions are of the node's box; `path` units are of its shorter side, from
+ * its centre.
+ */
+export interface FxTextSpec {
+  content: string;
+  fontFamily: string;
+  fontWeight: string;
+  fontSize: number;
+  lineHeight: number;
+  letterSpacing: number;
+  align: "left" | "center" | "right";
+  color: { r: number; g: number; b: number; a: number };
+  opacity: number;
+  /** the anchor of the text (centre) in the node's box and the width of its box as a fraction of the node's */
+  ax: number;
+  ay: number;
+  width: number;
+  /** "layer": run along the vector layer the effect names; or a polyline to run along (in units of the node's shorter side, from its centre) */
+  path?: "layer" | { x: number; y: number }[];
+}
+
 export interface FxDef {
   id: string;
   params: readonly FxParam[];
@@ -92,6 +118,11 @@ export interface FxDef {
    * current time in ms. Resolved by animation/pose.ts, which re-samples the clip; the renderer only combines them.
    */
   time?: (v: FxValues, t: number) => FxTime;
+  /** String parameters (the text of Basic Text...), and how the text is drawn from them and the numeric parameters. */
+  strings?: readonly FxStringParam[];
+  text?: (v: FxValues, s: Readonly<Record<string, string>>) => FxTextSpec;
+  /** With `text`: a layer can be named (the path to run along) but is not required. */
+  layerOptional?: true;
   /** The effect takes a second layer chosen in the editor (a `fx.<effect>.layer.<node>` track). */
   needsLayer?: 1 | 2;
   /** No pixels at all: the effect only carries values for expressions (EffectCraft's Expression Controls). */
@@ -610,6 +641,13 @@ export const hasFx = (id: string): boolean => BY_ID.has(id);
 /** The parameter `paramId` of effect `id`, if both exist. */
 export function fxParam(id: string, paramId: string): FxParam | undefined {
   return BY_ID.get(id)?.params.find((p) => p.id === paramId);
+}
+
+/** The string parameters of `def`: `given` over the defaults. */
+export function resolveStrings(def: FxDef, given: Readonly<Record<string, string>> | undefined): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const p of def.strings ?? []) out[p.id] = given?.[p.id] ?? p.default;
+  return out;
 }
 
 /** The values of effect `id`: `given` over the defaults, clamped to each parameter's range. */

@@ -227,7 +227,7 @@ track names it; parameters without a track keep their default. Values are finite
 clamps them to the parameter's range.
 
 - `web/src/animation/fx/catalog.ts`: all 307 EffectCraft effects (id, name, category), generated from its `docs/effects.md`.
-- `web/src/animation/fx/library.ts` + `kernels*.ts`: the 281 that are drawn, with EffectCraft's parameter names, ranges and
+- `web/src/animation/fx/library.ts` + `kernels*.ts`: the 283 that are drawn, with EffectCraft's parameter names, ranges and
   defaults where it has them. Each is one of four kinds:
   - **filter**: a CanvasKit image/colour filter over the node's pixels (blur, colour matrices, minimax, glow, offset);
   - **overlay**: an SkSL shader drawn over the node inside its layer (grain, fills, gradients, patterns, generators), or a
@@ -274,6 +274,17 @@ clamps them to the parameter's range.
     Puppet (4 pins), Liquify (3 push, bloat, pucker or twirl dabs), Mesh Warp (4 inner lattice points) and Reshape (source region to
     destination region) are inverse-mapped warps; Write-on and CC Glue Gun follow a path given by points up to a progress you animate;
     Mocha shape is a shape mask given by parameters. They are simpler than EffectCraft's tools, which edit meshes and paths by hand.
+  - **text** (`fx/kernelsText.ts`) and **string parameters** (`fx/props.ts`): Basic Text and Path Text have a real string. A keyframe
+    value is a number and the document has no other place for text without a model change, so the string lives in the NAME of a
+    track, like a layer reference: `fx.<effectId>.str.<paramId>.<text>`, the text as UTF-8 in unpadded base64url (at most 4000
+    characters of it, about 2900 bytes of text), with one constant keyframe. It is not animated; a later track for the same
+    parameter replaces an earlier one (`timelineLogic.ts::setStringParam`), and Go (`core.ValidTrackProp`) and TypeScript check the same
+    shape. In the editor, **+ Effect > Basic Text** asks for the text and the font in a dialog (`ui/timeline/EffectTextDialog.tsx`), and
+    the pencil on the text track edits it later. The renderer draws the text as a text node built from the effect's numeric parameters
+    (`ckRenderer.ts::drawFxText`), so it uses the document's fonts, wrapping, weights and letter spacing, not a bitmap font. Path Text
+    runs along a built-in circle, arc, wave or line, or along a vector layer named like any layer (**+ Effect > Path Text > on a layer**),
+    using the document's own text-on-path. Limits: a glyph the document's fonts do not have (for example Chinese or Japanese) is
+    drawn as a box, the same as in text nodes; the text is a static string; the text node is not clipped to the layer.
   - **carrier**: no pixels, only values for expressions (EffectCraft's Expression Controls, Grow Bounds).
 - `pnpm fx-render [zoom] [ms]` (web/) draws a node per effect through the real pipeline (clip -> pose -> `CanvasKitRenderer` on WebGL in
   headless Chromium) into `web/fx-out/`: the offscreen kernels, layers, time effects and lookup-table read-back, at any zoom.
@@ -284,11 +295,11 @@ clamps them to the parameter's range.
   Order: kernels first (innermost), then the node's own effects and the animated image filters, then overlays.
 - Editor: **+ Effect** in the transport adds an effect (its first parameter as a track); **+ Property** then lists the other
   parameters of the effects the node already has.
-- Not drawn (26 of 307, still listed in the catalog so nothing is silently missing), and why:
+- Not drawn (24 of 307, still listed in the catalog so nothing is silently missing), and why:
   - **audio** (13 effects plus Audio Spectrum and Audio Waveform): there is no audio engine in the editor;
   - **tracking and camera data**: 3D Camera Tracker, Warp Stabilizer, Face Track Points, Face Measurements;
   - **files**: Apply Color LUT, OCIO File and Look transforms, PS Arbitrary Map;
-  - **arbitrary text and recorded strokes**: Basic Text, Path Text (an effect parameter is a number), Paint (needs recorded brush strokes).
+  - **recorded strokes**: Paint.
   Where EffectCraft's version needs data this editor does not have, the ones that are drawn work on the node's own pixels
   instead: the 3D-channel effects take the node's luminance as depth and its colours as IDs, Stroke/Vegas/Stylize follow the
   node's alpha edge, Paint Bucket fills the colours that match the one at a point. The shatter, card, particle, hair, mercury,

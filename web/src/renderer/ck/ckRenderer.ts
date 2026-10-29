@@ -26,6 +26,9 @@ import { buildFx, type BuiltFx } from "@/animation/fx/apply";
 import { DISPLACE_SKSL } from "@/animation/fx/timeFx";
 import { makeLutShader, readHistogram } from "@/animation/fx/lutImage";
 import { fxRefKey } from "@/animation/fx/props";
+import type { FxTextSpec } from "@/animation/fx/library";
+import { builtInPath } from "@/animation/fx/kernelsText";
+import { pathPointsFor } from "@/store/textPath";
 import { hasRealStroke, vectorStyleOf } from "@/renderer/vectorStyle";
 import type { FontBook } from "@/renderer/ck/canvaskit";
 
@@ -80,7 +83,7 @@ export class CanvasKitRenderer {
   private dpr = 1;
   // Nodes whose second layer is being drawn: a layer that names this node back would loop.
   private readonly layerStack = new Set<string>();
-  private readonly fxLayers: ({ fx: BuiltFx; box: Bounds; reach: Bounds } | null)[] = [];
+  private readonly fxLayers: ({ fx: BuiltFx; box: Bounds; reach: Bounds; node: NodeLite } | null)[] = [];
   private readonly runtimeEffects = new Map<string, RuntimeEffect | null>();
   private readonly skImages = new Map<HTMLImageElement, SkImage>();
   private widths = new Map<Font, Map<string, number>>();
@@ -594,7 +597,7 @@ export class CanvasKitRenderer {
     const track = (o: { delete(): void }) => f.garbage.push(o as never);
     // Effect tracks (animation/fx): their image filters wrap the node's own, their shaders are
     // drawn over the node inside its layer (endEffects).
-    const fx = buildFx(this.CK, n.animFx, track);
+    const fx = buildFx(this.CK, n.animFx, track, n.animFxText);
     let filter = this.effectsFilter(n.effects);
     if (fx?.filter) {
       // the classic effects first, then the animated ones on top of them
@@ -602,7 +605,7 @@ export class CanvasKitRenderer {
       if (filter !== fx.filter) f.garbage.push(filter);
     }
     const blend = n.blendMode ? this.blendModeOf(n.blendMode) : null;
-    if (!filter && !blend && !fx?.overlays.length && !(fx?.kernels.length && n.kind !== "group")) return false;
+    if (!filter && !blend && !fx?.overlays.length && !fx?.texts.length && !(fx?.kernels.length && n.kind !== "group")) return false;
     const lp = new this.CK.Paint();
     if (filter) lp.setImageFilter(filter);
     if (blend) lp.setBlendMode(blend);
@@ -611,7 +614,7 @@ export class CanvasKitRenderer {
     const bounds = n.kind === "text" ? null : inflateBounds(boundsOfNode(n), effectsOutset(n) + strokeOutsetOfNode(n) + 1);
     sk.saveLayer(lp, bounds ? this.CK.XYWHRect(bounds.x, bounds.y, bounds.width, bounds.height) : null);
     lp.delete();
-    this.fxLayers.push(fx && n.kind !== "group" ? { fx, box: boundsOfNode(n), reach: bounds ?? inflateBounds(boundsOfNode(n), 64) } : null);
+    this.fxLayers.push(fx && n.kind !== "group" ? { fx, box: boundsOfNode(n), reach: bounds ?? inflateBounds(boundsOfNode(n), 64), node: n } : null);
     return true;
   }
 
@@ -751,8 +754,47 @@ export class CanvasKitRenderer {
         paint.delete();
         shader.delete();
       }
+      for (const t of pending.fx.texts) this.drawFxText(sk, pending.node, pending.box, t.spec, t.effect);
     }
     sk.restore();
+  }
+
+  // Text an effect draws (animation/fx/kernelsText.ts): a text node built from the effect's spec, drawn as the document's own text.
+  private drawFxText(sk: Canvas, n: NodeLite, box: Bounds, spec: FxTextSpec, effect: string): void {
+    if (spec.content === "") return;
+    let onPath: { x: number; y: number }[] | undefined;
+    if (spec.path === "layer") {
+      const f = this.frame as Frame;
+      const ref = n.animFxRefs?.[effect] ? f.scene.nodes.get(n.animFxRefs[effect]) : undefined;
+      if (ref && ref.kind === "vector" && (ref.vector?.subpaths[0]?.anchors.length ?? 0) >= 2) onPath = pathPointsFor(f.scene, ref, n);
+      else onPath = builtInPath(1, { radius: 0.38, sweep: 360, start: -90, amplitude: 0 }).map((p) => ({ x: box.x + box.width / 2 + p.x * Math.min(box.width, box.height), y: box.y + box.height / 2 + p.y * Math.min(box.width, box.height) }));
+    } else if (spec.path) {
+      const u = Math.min(box.width, box.height);
+      onPath = spec.path.map((p) => ({ x: box.x + box.width * spec.ax + p.x * u, y: box.y + box.height * spec.ay + p.y * u }));
+    }
+    const lines = spec.content.split("\n").length;
+    const size = spec.fontSize;
+    let x: number, y: number, width: number, height: number;
+    if (onPath && onPath.length >= 2) {
+      // as store/textPath.ts does: the box of the polyline, grown by the font size
+      const xs = onPath.map((p) => p.x), ys = onPath.map((p) => p.y);
+      x = Math.min(...xs) - size; y = Math.min(...ys) - size;
+      width = Math.max(...xs) - Math.min(...xs) + 2 * size; height = Math.max(...ys) - Math.min(...ys) + 2 * size;
+    } else {
+      width = Math.max(size, box.width * spec.width);
+      height = size * spec.lineHeight * lines;
+      x = box.x + box.width * spec.ax - width / 2;
+      y = box.y + box.height * spec.ay - height / 2;
+    }
+    const node: NodeLite = {
+      id: `${n.id}#fx-text`, parentId: n.parentId, orderKey: "a", name: "", visible: true, opacity: spec.opacity, x, y, width, height, rotation: 0,
+      strokes: [], kind: "text", cornerRadius: 0, clipsContent: false, fills: [spec.color],
+      text: {
+        content: spec.content, onPath,
+        style: { fontFamily: spec.fontFamily, fontSize: size, fontWeight: spec.fontWeight, lineHeight: spec.lineHeight, align: spec.align, letterSpacing: spec.letterSpacing },
+      },
+    };
+    this.drawText(sk, node);
   }
 
   private runtimeEffect(src: string) {

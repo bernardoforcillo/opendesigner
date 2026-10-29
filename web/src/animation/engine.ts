@@ -11,7 +11,7 @@
 // with easingFn(spec) giving the curve of a single segment.
 
 import type { ClipLite, TrackLite } from "@/store/types";
-import { fxRefKey, parseFxLayerProp, parseFxProp, type NodeFx, type NodeFxRefs } from "@/animation/fx/props";
+import { fxRefKey, parseFxLayerProp, parseFxProp, parseFxStringProp, type NodeFx, type NodeFxRefs, type NodeFxText } from "@/animation/fx/props";
 
 // The closed sets of the model: repeated in Go (core.TrackProps/ClipTriggers).
 export const TRACK_PROPS = ["opacity", "x", "y", "scale", "rotation", "draw"] as const;
@@ -158,10 +158,10 @@ export function sampleTrack(track: Pick<TrackLite, "keyframes">, tMs: number): n
 
 /** Parity with core.ValidTrackProp: the closed set, or an effect parameter (`fx.<effect>.<param>`). */
 export function isTrackProp(prop: string): boolean {
-  return (TRACK_PROPS as readonly string[]).includes(prop) || parseFxProp(prop) !== null || parseFxLayerProp(prop) !== null;
+  return (TRACK_PROPS as readonly string[]).includes(prop) || parseFxProp(prop) !== null || parseFxLayerProp(prop) !== null || parseFxStringProp(prop) !== null;
 }
 
-export interface NodeAnim { opacity?: number; x?: number; y?: number; scale?: number; rotation?: number; draw?: number; fx?: NodeFx; fxRefs?: NodeFxRefs }
+export interface NodeAnim { opacity?: number; x?: number; y?: number; scale?: number; rotation?: number; draw?: number; fx?: NodeFx; fxRefs?: NodeFxRefs; fxText?: NodeFxText }
 
 /** Values of all the clip's tracks at time `tMs` (inside the clip): nodeId -> animated properties. */
 export function sampleClip(clip: Pick<ClipLite, "tracks">, tMs: number): Map<string, NodeAnim> {
@@ -176,6 +176,12 @@ export function sampleClip(clip: Pick<ClipLite, "tracks">, tMs: number): Map<str
       (a.fxRefs ??= {})[fxRefKey(ref.effect, ref.slot)] = ref.layerId;
       // naming a layer is enough to have the effect, with its default parameters
       ((a.fx ??= {})[ref.effect] ??= {});
+      continue;
+    }
+    const str = parseFxStringProp(tr.prop);
+    if (str) {
+      ((a.fxText ??= {})[str.effect] ??= {})[str.param] = str.text;
+      ((a.fx ??= {})[str.effect] ??= {});
       continue;
     }
     const fx = parseFxProp(tr.prop);

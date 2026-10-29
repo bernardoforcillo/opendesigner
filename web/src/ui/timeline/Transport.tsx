@@ -5,6 +5,7 @@ import { SPEEDS, useTimeline } from "@/animation/timelineStore";
 import { formatClock } from "@/animation/timelineLogic";
 import type { ClipLite } from "@/store/types";
 import { ClipSettingsButton } from "@/ui/timeline/ClipSettings";
+import { EffectTextDialog } from "@/ui/timeline/EffectTextDialog";
 import { AddEffectMenu, AddPropertyMenu, PresetMenu } from "@/ui/timeline/menus";
 
 // THE TRANSPORT: play/pause, stop, loop, speed, the current time, Record,
@@ -64,6 +65,7 @@ export function Transport({ clip }: { clip: ClipLite | null }) {
       <span className="mx-0.5 h-5 w-px bg-line" />
       <AddPropertyMenu />
       <AddEffectMenu />
+      <EffectTextDialog />
       <PresetMenu />
 
       <div className="ml-auto flex items-center gap-0.5">

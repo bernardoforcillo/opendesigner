@@ -3,7 +3,7 @@
 // CanvasKit objects, handing each one to `track` so the caller frees them with the frame.
 
 import type { CanvasKit, ImageFilter } from "canvaskit-wasm";
-import { fxDef, resolveFx, type FxKernel, type FxOverlay } from "@/animation/fx/library";
+import { fxDef, resolveFx, resolveStrings, type FxKernel, type FxOverlay, type FxTextSpec } from "@/animation/fx/library";
 
 type AnimFx = Readonly<Record<string, Readonly<Record<string, number>>>>;
 
@@ -25,13 +25,19 @@ export interface BuiltFx {
   overlays: { overlay: FxOverlay; values: Record<string, number> }[];
   /** The effects that read the node's pixels, in track order (drawn offscreen first). */
   kernels: FxKernel[];
+  /** The effects that draw text over the node, in track order (animation/fx/props.ts has their strings). */
+  texts: { spec: FxTextSpec; effect: string }[];
 }
 
-export function buildFx(CK: CanvasKit, animFx: AnimFx | undefined, track: (o: { delete(): void }) => void): BuiltFx | null {
+export function buildFx(
+  CK: CanvasKit, animFx: AnimFx | undefined, track: (o: { delete(): void }) => void,
+  animText?: Readonly<Record<string, Readonly<Record<string, string>>>>,
+): BuiltFx | null {
   if (!animFx) return null;
   let filter: ImageFilter | null = null;
   const overlays: BuiltFx["overlays"] = [];
   const kernels: FxKernel[] = [];
+  const texts: BuiltFx["texts"] = [];
   for (const [id, given] of Object.entries(animFx)) {
     const def = fxDef(id);
     if (!def) continue;
@@ -39,6 +45,7 @@ export function buildFx(CK: CanvasKit, animFx: AnimFx | undefined, track: (o: { 
     if (def.filter) filter = def.filter(CK, values, filter, track);
     if (def.overlay) overlays.push({ overlay: def.overlay(values), values });
     if (def.kernel) kernels.push({ ...def.kernel(values), effect: id });
+    if (def.text) texts.push({ spec: def.text(values, resolveStrings(def, animText?.[id])), effect: id });
   }
-  return filter || overlays.length > 0 || kernels.length > 0 ? { filter, overlays, kernels } : null;
+  return filter || overlays.length > 0 || kernels.length > 0 || texts.length > 0 ? { filter, overlays, kernels, texts } : null;
 }

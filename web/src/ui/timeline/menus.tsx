@@ -7,6 +7,7 @@ import { findTrack, fxPropsFor, isInside, propLabel, propsFor } from "@/animatio
 import { fxLayerProp, parseFxProp } from "@/animation/fx/props";
 import { FX_CATALOG } from "@/animation/fx/catalog";
 import { fxDef, hasFx } from "@/animation/fx/library";
+import { useEffectText } from "@/ui/timeline/EffectTextDialog";
 import { PRESETS } from "@/animation/presets";
 
 // THE TWO MENUS that bring a layer into an animation: "+ Property" (one
@@ -138,6 +139,8 @@ export function AddEffectMenu() {
             const m = /^(layer2?):([^:]+):(.+)$/.exec(raw);
             const def = fxDef(m ? m[2] : raw);
             if (!scene || !def) return;
+            // an effect with text asks for it first (the layer it was picked with, if any, is kept for when the text is typed)
+            if (def.strings) { useEffectText.getState().open({ effectId: def.id, mode: "add", layerId: m?.[1] === "layer" ? m[3] : undefined }); return; }
             const first = `fx.${def.id}.${def.params[0].id}`;
             addPropertyTracks(scene, selection, m ? [fxLayerProp(def.id, m[3], m[1] === "layer2" ? 2 : 1), first] : first);
           }}
@@ -150,12 +153,14 @@ export function AddEffectMenu() {
               <MenuSection key={cat}>
                 <Header className="px-2 pb-0.5 pt-1.5 text-[11px] font-semibold uppercase tracking-[0.06em] text-fg-subtle">{cat}</Header>
                 {ready.map((e) =>
-                  fxDef(e.id)?.needsLayer ? (
-                    [1, ...(fxDef(e.id)?.needsLayer === 2 ? [2] : [])].map((slot) => (
+                  fxDef(e.id)?.needsLayer || fxDef(e.id)?.layerOptional ? (
+                    [...(fxDef(e.id)?.layerOptional ? [0] : []), 1, ...(fxDef(e.id)?.needsLayer === 2 ? [2] : [])].map((slot) => slot === 0 ? (
+                      <MenuItem key={`${e.id}:plain`} id={e.id} textValue={e.name} className={ITEM}>{e.name}</MenuItem>
+                    ) : (
                       <SubmenuTrigger key={`${e.id}:${slot}`}>
                         <MenuItem id={`${e.id}:${slot}`} textValue={e.name} className={ITEM}>
                           {e.name}
-                          <span className="ml-auto text-[11px] text-fg-subtle">{fxDef(e.id)?.needsLayer === 2 ? (slot === 1 ? "inner layer ›" : "outer layer ›") : "layer ›"}</span>
+                          <span className="ml-auto text-[11px] text-fg-subtle">{fxDef(e.id)?.needsLayer === 2 ? (slot === 1 ? "inner layer ›" : "outer layer ›") : fxDef(e.id)?.layerOptional ? "on a layer ›" : "layer ›"}</span>
                         </MenuItem>
                         <Popover className={POPOVER} offset={4}>
                           <Menu aria-label={`Layer for ${e.name}`} className="max-h-[300px] overflow-y-auto outline-none">
