@@ -131,7 +131,8 @@ type graph struct {
 func buildGraph(doc *opendesignerv1.Document, flowID string) *graph {
 	g := &graph{doc: doc, flow: doc.GetFlows()[flowID], out: map[string][]*opendesignerv1.Transition{}}
 	for _, t := range doc.GetTransitions() {
-		if t.GetFlowId() == flowID {
+		// A component state change stays on its screen: it is not a step of the journey.
+		if t.GetFlowId() == flowID && t.GetAnimation() != AnimSetVariant {
 			g.trans = append(g.trans, t)
 		}
 	}
@@ -193,3 +194,6 @@ func (g *graph) reachable() map[string]bool {
 	}
 	return seen
 }
+
+// AnimSetVariant is the Transition.animation of a component state change (see core.TransitionAnimations).
+const AnimSetVariant = "set-variant"

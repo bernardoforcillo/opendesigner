@@ -88,3 +88,13 @@ func TestSpecMentionsTheChainPosition(t *testing.T) {
 		t.Errorf("spec lacks the chain position:\n%s", spec)
 	}
 }
+
+func TestComponentStateChangeIsNotAStepOfTheJourney(t *testing.T) {
+	d := newTDoc().node("cart", "Cart").node("done", "Done").node("btn", "Pay button").node("hover", "Pay hover").flow("f1", "Checkout", "cart")
+	d.tr("go", "f1", "cart", "done", "Pay", "click")
+	d.tr("back", "f1", "done", "cart", "Again", "click")
+	v := d.tr("v", "f1", "cart", "hover", "", "hover")
+	v.ElementId, v.Animation = "btn", AnimSetVariant
+	// The master "hover" is no screen: without the exclusion it would be an unreachable dead end.
+	wantIssues(t, d)
+}

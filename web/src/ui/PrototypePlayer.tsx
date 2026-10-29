@@ -18,7 +18,7 @@ import { makeSetDocSettingsOp } from "@/tools/ops";
 import { DEVICES, deviceById, deviceGeometry, type DeviceId } from "@/flow/devices";
 import "@/ui/ds/flow-stage.css";
 import {
-  back, backTo, canGoBack, closeOverlay, follow, isGestureTrigger, optionsFrom, startState, trail, varEntries,
+  applyVariants, back, backTo, canGoBack, closeOverlay, follow, restoreVariant, SET_VARIANT, isGestureTrigger, optionsFrom, startState, trail, varEntries,
   type Option, type ProtoState,
 } from "@/flow/prototype";
 
@@ -68,6 +68,7 @@ export function PrototypePlayer({ onClose }: { onClose: () => void }) {
   const [state, setState] = useState<ProtoState | null>(() => (scene ? startState(scene, flow, pageId) : null));
   const [showVars, setShowVars] = useState(false);
   const stage = useRef<HTMLDivElement>(null);
+  const held = useRef(new Map<string, { id: string; before: Readonly<Record<string, string>> | undefined }>());
   const dragFrom = useRef<{ id: string | null; x: number; y: number } | null>(null);
   const canvas = useRef<HTMLCanvasElement>(null);
   const [size, setSize] = useState({ w: 0, h: 0 });
@@ -137,7 +138,9 @@ export function PrototypePlayer({ onClose }: { onClose: () => void }) {
 
   useEffect(() => imageCache.subscribe(() => setImgTick((n) => n + 1)), []);
 
-  const derived = useMemo(() => (scene && state ? sceneForScreen(resolveScene(scene), state.screenId) : null), [scene, state?.screenId]);
+  // The document as resolved, with the component variants the person switched to while playing.
+  const live = useMemo(() => (scene ? applyVariants(resolveScene(scene), state?.variants) : null), [scene, state?.variants]);
+  const derived = useMemo(() => (live && state ? sceneForScreen(live, state.screenId) : null), [live, state?.screenId]);
   const screenBox = useMemo(() => {
     const n = scene && state ? scene.nodes.at(state.screenId) : undefined;
     return scene && n ? worldBoundsOfNode(scene, n) : null;
@@ -150,8 +153,8 @@ export function PrototypePlayer({ onClose }: { onClose: () => void }) {
     if (!scene || !n || !screenBox) return null;
     const box = worldBoundsOfNode(scene, n);
     const shift = { x: screenBox.x + screenBox.width / 2 - (box.x + box.width / 2), y: screenBox.y + screenBox.height / 2 - (box.y + box.height / 2) };
-    return { id: n.id, box, shift, scene: sceneForScreen(resolveScene(scene), n.id) };
-  }, [scene, overlayId, screenBox]);
+    return { id: n.id, box, shift, scene: sceneForScreen(live ?? resolveScene(scene), n.id) };
+  }, [scene, live, overlayId, screenBox]);
 
   // The document's clips (enter/loop when the screen appears, hover and tap on the
   // target): frame loop only while one is running, see ui/protoAnim.ts.
@@ -188,7 +191,7 @@ export function PrototypePlayer({ onClose }: { onClose: () => void }) {
     const c = canvas.current;
     if (!tx || !c || !scene || !state || !derived || !cam || !screenBox) { if (tx) setTx(null); return; }
     resizeCanvasToDisplaySize(c);
-    const resolved = resolveScene(scene);
+    const resolved = live ?? resolveScene(scene);
     const fromScene = sceneForScreen(resolved, tx.fromId);
     // The source screen sits elsewhere in the world: it gets the camera that frames IT.
     const fromRoot = scene.nodes.at(tx.fromId);
@@ -254,6 +257,21 @@ export function PrototypePlayer({ onClose }: { onClose: () => void }) {
     else bar.push(o);
   }
   const go = navigate;
+
+  // A component state change on hover or press lasts while the pointer is on the hotspot (or the button is down);
+  // `held` remembers what the instance showed before, to put it back.
+  function press(o: Option) {
+    const t = o.transition;
+    if (t.animation === SET_VARIANT && state) held.current.set(t.id, { id: t.elementId, before: state.variants?.[t.elementId] });
+    go(o);
+  }
+  function release(o: Option) {
+    const t = o.transition;
+    const h = held.current.get(t.id);
+    if (!h || (t.trigger !== "hover" && t.trigger !== "press")) return;
+    held.current.delete(t.id);
+    setState((s) => (s ? restoreVariant(s, h.id, h.before) : s));
+  }
 
   // Drag: a press that moves far enough on the hotspot (or, for a drag with no element, anywhere on the screen).
   const DRAG_PX = 24;
@@ -350,8 +368,10 @@ export function PrototypePlayer({ onClose }: { onClose: () => void }) {
                     title={o.enabled ? optionLabel(scene, o) : o.reason}
                     // A hover, drag or scroll hotspot is performed by that gesture; a keyboard activation (detail 0) still works.
                     onClick={(e) => { if (isGestureTrigger(o.transition.trigger) && e.detail !== 0) return; go(o); }}
-                    onPointerEnter={() => { if (o.transition.trigger === "hover") go(o); }}
-                    onPointerDown={(e) => { if (o.transition.trigger === "drag") { e.stopPropagation(); dragFrom.current = { id: o.transition.id, x: e.clientX, y: e.clientY }; } }}
+                    onPointerEnter={() => { if (o.transition.trigger === "hover") press(o); }}
+                    onPointerLeave={() => release(o)}
+                    onPointerUp={() => release(o)}
+                    onPointerDown={(e) => { if (o.transition.trigger === "press") press(o); if (o.transition.trigger === "drag") { e.stopPropagation(); dragFrom.current = { id: o.transition.id, x: e.clientX, y: e.clientY }; } }}
                     onPointerMove={(e) => dragMove(e, o.transition.id)}
                     onWheel={(e) => { if (o.transition.trigger === "scroll" && e.deltaY !== 0) go(o); }}
                     style={{ left: x, top: y, width: box.width * cam.zoom, height: box.height * cam.zoom }}

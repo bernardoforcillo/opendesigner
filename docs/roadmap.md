@@ -52,7 +52,7 @@ Legend: [x] done · [ ] to do
 - [x] .fig import robustness tests on generated files: truncation at every length, bit flips, junk, hostile counts (no real file was available)
 - [x] Prototyping: animated transitions between frames (dissolve, slide, push, smart animate) with duration and easing, and `auto` transitions after a delay; see docs/flows.md
 - [x] Prototyping: hover, drag and scroll triggers, overlays in the player; see docs/flows.md
-- [ ] Prototyping: component state changes (variants on hover / press) in the player
+- [x] Prototyping: component state changes (`set-variant` transitions: variants on hover / press / click) in the player; see docs/flows.md
 - [x] Present: device frames (generic, phone, tablet, desktop browser, none) and hotspot hints (flash on a missed click, a "Show hotspots" toggle); see docs/flows.md
 - [x] Present device frame as a document setting (`DocSettings.present_device`, `set_document_settings`, "Make default" in the player), the person's pick kept as an override; see docs/flows.md
 - [x] Prototype variables with expressions (`count = count + 1`, `count >= 3 || paid`) and an `else` guard for if / else on a hotspot; see docs/flows.md

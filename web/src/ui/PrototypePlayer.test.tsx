@@ -402,4 +402,28 @@ describe("PrototypePlayer gestures", () => {
     // the drawing got the overlay's screen too
     expect(vi.mocked(renderer.drawScene).mock.calls.length).toBeGreaterThan(1);
   });
+
+  it("a hover variant change shows while the pointer is on the hotspot, and is undone when it leaves", () => {
+    const b = baseScene();
+    const m = (id: string) => ({ ...b.nodes.at("btn")!, id, parentId: "components", kind: "group" as const });
+    const scene = withFlows(
+      { ...b, nodes: b.nodes.set("btn", { ...b.nodes.at("btn")!, instance: { componentId: "c1", overrides: [] } }).set("m1", m("m1")).set("m2", m("m2")) },
+      [flowOf("f1", "A", "Main")],
+      [transition("v", "f1", "A", "m2", { label: "Hover", elementId: "btn", trigger: "hover", animation: "set-variant" })],
+    );
+    scene.components = {
+      c1: { rootNodeId: "m1", name: "B", setId: "s", variant: { State: "default" }, properties: [] },
+      c2: { rootNodeId: "m2", name: "B hover", setId: "s", variant: { State: "hover" }, properties: [] },
+    };
+    install(scene);
+    render(<PrototypePlayer onClose={() => {}} />);
+    const lastBtn = () => vi.mocked(renderer.drawScene).mock.calls.at(-1)![1].nodes.at("btn")!.instance?.variantProps;
+    const hot = screen.getByRole("button", { name: "Hover" });
+    expect(lastBtn()).toBeUndefined();
+    fireEvent.pointerEnter(hot);
+    expect(lastBtn()).toEqual({ State: "hover" });
+    fireEvent.pointerLeave(hot);
+    expect(lastBtn() ?? {}).toEqual({});
+    expect(screen.getByRole("navigation", { name: "Path" })).toHaveTextContent("A");
+  });
 });
