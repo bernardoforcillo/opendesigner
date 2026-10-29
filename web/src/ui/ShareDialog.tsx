@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { useT } from "@/i18n";
 import { formatDate } from "@/i18n/format";
 import { Dialog, Modal, ModalOverlay } from "react-aria-components";
 import type { AccessLink, GetAccessResponse } from "@/gen/opendesigner/v1/opendesigner_pb";
@@ -23,6 +24,7 @@ function when(sec: bigint): string {
 }
 
 export function ShareDialog({ isOpen, onOpenChange }: { isOpen: boolean; onOpenChange: (open: boolean) => void }) {
+  const { t, tx } = useT();
   const docId = useScene((s) => s.scene?.id ?? "");
   const [access, setAccess] = useState<GetAccessResponse | null>(null);
   const [role, setRole] = useState<(typeof ROLES)[number][0]>("view");
@@ -88,17 +90,17 @@ export function ShareDialog({ isOpen, onOpenChange }: { isOpen: boolean; onOpenC
   return (
     <ModalOverlay isDismissable isOpen={isOpen} onOpenChange={onOpenChange} className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
       <Modal className="max-h-[85vh] w-full max-w-[540px] overflow-auto rounded-xl bg-raised p-4 text-[13px] text-fg shadow-pop">
-        <Dialog aria-label="Share" className="flex flex-col gap-3 outline-none">
-          <h2 className="text-[14px] font-semibold">Share</h2>
+        <Dialog aria-label={t("Share")} className="flex flex-col gap-3 outline-none">
+          <h2 className="text-[14px] font-semibold">{t("Share")}</h2>
           {access === null ? (
-            <p className="text-fg-subtle">Loading…</p>
+            <p className="text-fg-subtle">{t("Loading…")}</p>
           ) : !access.enabled ? (
             <>
               <p className="text-fg-subtle">
                 This document is <strong>open</strong>: anyone who can reach this server can read and edit it (fine on a trusted network). Protect it to
                 reach it only through share links, each one view-only, comment-only, edit or owner.
               </p>
-              <div><Button variant="primary" isDisabled={busy} onPress={() => void protect()}>Protect with share links</Button></div>
+              <div><Button variant="primary" isDisabled={busy} onPress={() => void protect()}>{t("Protect with share links")}</Button></div>
             </>
           ) : !owner ? (
             <p>You have <strong>{access.role}</strong> access to this protected document through your link.</p>
@@ -108,38 +110,38 @@ export function ShareDialog({ isOpen, onOpenChange }: { isOpen: boolean; onOpenC
                 This document is <strong>protected</strong>. Only these links reach it. A link is shown once, when it is made; revoke it to
                 cut it off at once. This browser holds the owner link.
               </p>
-              <ul aria-label="Share links" className="flex flex-col gap-1">
+              <ul aria-label={t("Share links")} className="flex flex-col gap-1">
                 {access.links.map((l) => (
                   <li key={l.id} className="flex items-center gap-2 rounded-md bg-surface-2 px-2 py-1.5">
                     <span className="min-w-0 flex-1">
-                      <span className="block truncate font-medium">{l.label || "Untitled link"}</span>
-                      <span className="block text-[11px] text-fg-subtle">{ROLES.find(([r]) => r === l.role)?.[1] ?? l.role} · made {when(l.createdAt)}</span>
+                      <span className="block truncate font-medium">{l.label || t("Untitled link")}</span>
+                      <span className="block text-[11px] text-fg-subtle">{t("{role} · made {when}", { role: tx(ROLES.find(([r]) => r === l.role)?.[1] ?? l.role), when: when(l.createdAt) })}</span>
                     </span>
-                    <button type="button" aria-label={`Revoke ${l.label || "link"}`} disabled={busy} className="text-fg-subtle hover:text-danger" onClick={() => void revoke(l)}>Revoke</button>
+                    <button type="button" aria-label={t("Revoke {name}", { name: l.label || t("link") })} disabled={busy} className="text-fg-subtle hover:text-danger" onClick={() => void revoke(l)}>{t("Revoke")}</button>
                   </li>
                 ))}
               </ul>
               <div className="flex flex-wrap items-center gap-2">
-                <select aria-label="Link role" className="h-8 rounded-md border border-line bg-surface px-2" value={role} onChange={(e) => setRole(e.target.value as typeof role)}>
-                  {ROLES.map(([r, text]) => <option key={r} value={r}>Anyone with the link {text}</option>)}
+                <select aria-label={t("Link role")} className="h-8 rounded-md border border-line bg-surface px-2" value={role} onChange={(e) => setRole(e.target.value as typeof role)}>
+                  {ROLES.map(([r, text]) => <option key={r} value={r}>{t("Anyone with the link {role}", { role: tx(text) })}</option>)}
                 </select>
-                <input aria-label="Link label" className={`${cls.input} min-w-0 flex-1`} placeholder="Label (e.g. Client review)" maxLength={60} value={label} onChange={(e) => setLabel(e.target.value)} />
-                <Button variant="primary" isDisabled={busy} onPress={() => void create()}>Create link</Button>
+                <input aria-label={t("Link label")} className={`${cls.input} min-w-0 flex-1`} placeholder={t("Label (e.g. Client review)")} maxLength={60} value={label} onChange={(e) => setLabel(e.target.value)} />
+                <Button variant="primary" isDisabled={busy} onPress={() => void create()}>{t("Create link")}</Button>
               </div>
               {made && (
                 <div role="status" className="flex flex-col gap-1 rounded-md bg-ok-soft p-2">
-                  <span className="text-[12px] text-ok">Copy it now: it is not shown again.</span>
+                  <span className="text-[12px] text-ok">{t("Copy it now: it is not shown again.")}</span>
                   <div className="flex gap-2">
-                    <input aria-label="New link" readOnly className={`${cls.input} min-w-0 flex-1 font-mono text-[12px]`} value={made.url} onFocus={(e) => e.currentTarget.select()} />
-                    <Button onPress={() => void copy(made.url)}>Copy</Button>
+                    <input aria-label={t("New link")} readOnly className={`${cls.input} min-w-0 flex-1 font-mono text-[12px]`} value={made.url} onFocus={(e) => e.currentTarget.select()} />
+                    <Button onPress={() => void copy(made.url)}>{t("Copy")}</Button>
                   </div>
                 </div>
               )}
-              <div><button type="button" disabled={busy} className="text-fg-subtle hover:text-danger" onClick={() => void unprotect()}>Remove protection (open to everyone again)</button></div>
+              <div><button type="button" disabled={busy} className="text-fg-subtle hover:text-danger" onClick={() => void unprotect()}>{t("Remove protection (open to everyone again)")}</button></div>
             </>
           )}
           {error && <p role="alert" className="text-danger">{error}</p>}
-          <div className="flex justify-end border-t border-line pt-3"><Button onPress={() => onOpenChange(false)}>Done</Button></div>
+          <div className="flex justify-end border-t border-line pt-3"><Button onPress={() => onOpenChange(false)}>{t("Done")}</Button></div>
         </Dialog>
       </Modal>
     </ModalOverlay>
