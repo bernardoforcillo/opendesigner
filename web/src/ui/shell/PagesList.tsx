@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useT } from "@/i18n";
 import { IconButton } from "@/ui/ds";
 import { useScene } from "@/store/store";
 import { makeCreatePageWithMasterOp, makeRenamePageOp, uuid } from "@/tools/ops";
@@ -10,6 +11,7 @@ import { PageRenameField } from "@/ui/PageBar";
 // form of the page selector (PageBar): the same ops, the same current page in the store. Masters are not pages
 // of a design and are left to the Publishing workspace.
 export function PagesList() {
+  const { t } = useT();
   const scene = useScene((s) => s.scene);
   const currentPageId = useScene((s) => s.currentPageId);
   const [renaming, setRenaming] = useState<string | null>(null);
@@ -36,10 +38,10 @@ export function PagesList() {
   }
 
   return (
-    <section aria-label="Pages" className="flex max-h-48 shrink-0 flex-col border-b border-line">
+    <section aria-label={t("Pages")} className="flex max-h-48 shrink-0 flex-col border-b border-line">
       <div className="flex h-9 items-center gap-1 pl-3 pr-1.5">
-        <h3 className="flex-1 text-[12px] font-semibold text-fg">Pages</h3>
-        <IconButton icon="plus" label="Add a page" size={24} onPress={add} />
+        <h3 className="flex-1 text-[12px] font-semibold text-fg">{t("Pages")}</h3>
+        <IconButton icon="plus" label={t("Add a page")} size={24} onPress={add} />
       </div>
       <ul className="min-h-0 overflow-y-auto px-1.5 pb-1.5">
         {pages.map((p) => {
@@ -47,7 +49,7 @@ export function PagesList() {
           return (
             <li key={p.id}>
               {renaming === p.id ? (
-                <PageRenameField initial={p.name} placeholder={p.name || "Page"} onCommit={(v) => commit(p.id, v)} onCancel={() => setRenaming(null)} />
+                <PageRenameField initial={p.name} placeholder={p.name || t("Page")} onCommit={(v) => commit(p.id, v)} onCancel={() => setRenaming(null)} />
               ) : (
                 <button
                   type="button"
@@ -59,7 +61,7 @@ export function PagesList() {
                     (active ? "bg-accent-soft font-medium text-accent" : "text-fg hover:bg-surface-3")
                   }
                 >
-                  <span className="min-w-0 flex-1 truncate">{p.name.trim() !== "" ? p.name : "Unnamed page"}</span>
+                  <span className="min-w-0 flex-1 truncate">{p.name.trim() !== "" ? p.name : t("Unnamed page")}</span>
                 </button>
               )}
             </li>

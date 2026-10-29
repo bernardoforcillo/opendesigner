@@ -174,7 +174,7 @@ Output (docs/output.md)
 - [ ] Syncing components with the code
 - [x] Localization layer: typed catalogs, live language switch, language from the browser or the document menu / Home, plurals; menus, tool dock, Home and panel headings translated into es, fr, de, it, pt-BR, ja, zh-Hans (machine drafts); see docs/localization.md
 - [x] Localization: dates, numbers and relative times by interface language (docs/localization.md)
-- [ ] Localization: translate the remaining dialogs and panels (Versions, Share, Insert table, Comments, Page setup, Fonts, Variables, Styles, Find and change, Data merge, Preflight, Export PDF, Object styles and the prototype player are done), review the drafts with native speakers
+- [ ] Localization: translate the remaining dialogs and panels (Versions, Share, Insert table, Comments, Page setup, Fonts, Variables, Styles, Find and change, Data merge, Preflight, Export PDF, Object styles, Layers and Pages panels and the prototype player are done), review the drafts with native speakers
 
 ## 4. Performance
 - [x] Invalidation-driven rendering, incremental scene index, discarding what is not visible, levels of detail, image reuse during pan/zoom; test bench on 20,000 nodes (see docs/performance.md)

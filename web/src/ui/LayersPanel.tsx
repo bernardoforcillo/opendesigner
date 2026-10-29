@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useT } from "@/i18n";
 import { Button, GridList, GridListItem, ListLayout, Virtualizer } from "react-aria-components";
 import { EmptyState, Icon, IconButton, cls, type IconName } from "@/ui/ds";
 import type { Selection } from "react-aria-components";
@@ -290,6 +291,7 @@ function RenameField({
   onCommit: (value: string) => void;
   onCancel: () => void;
 }) {
+  const { tx } = useT();
   const [value, setValue] = useState(initial);
   const ref = useRef<HTMLInputElement | null>(null);
   // A session closes ONLY once: Enter/Escape close, and the blur that
@@ -317,7 +319,7 @@ function RenameField({
   return (
     <input
       ref={ref}
-      aria-label={RENAME_LABEL}
+      aria-label={tx(RENAME_LABEL)}
       value={value}
       placeholder={placeholder}
       spellCheck={false}
@@ -399,6 +401,7 @@ const ROW_HEIGHT = 28;
 export const AUTO_COLLAPSE_NODES = 2000;
 
 export function LayersPanel() {
+  const { t, tn } = useT();
   // The panel redraws for the tree's STRUCTURE (who is where, the names,
   // visibility), not for every new scene: a drag produces one at
   // every step, and without this every step redid 20,000 react-aria rows.
@@ -660,7 +663,7 @@ export function LayersPanel() {
 
   const list = (
     <GridList
-      aria-label="Layers"
+      aria-label={t("Layers")}
       items={rows}
       // The CACHE of react-aria-components' items. With a dynamic
       // collection (`items` + render function) RAC rebuilds the rows only
@@ -677,8 +680,8 @@ export function LayersPanel() {
       renderEmptyState={() => (
         <EmptyState
           icon="layers"
-          title="No layers"
-          hint="Draw a shape with the tools below: it will appear here."
+          title={t("No layers")}
+          hint={t("Draw a shape with the tools below: it will appear here.")}
         />
       )}
       className="min-h-0 flex-1 select-none overflow-auto px-1 pb-2 outline-none"
@@ -762,7 +765,7 @@ export function LayersPanel() {
             {row.container && row.hasChildren && !filtering ? (
               <button
                 type="button"
-                aria-label={row.expanded ? `Collapse ${label}` : `Expand ${label}`}
+                aria-label={row.expanded ? t("Collapse {name}", { name: label }) : t("Expand {name}", { name: label })}
                 aria-expanded={row.expanded}
                 onPointerDown={(e) => e.stopPropagation()}
                 onClick={(e) => {
@@ -787,9 +790,9 @@ export function LayersPanel() {
                 impossible without a mouse. */}
             <button
               type="button"
-              aria-label={`Reorder ${label}`}
+              aria-label={t("Reorder {name}", { name: label })}
               disabled={filtering}
-              title="Drag to reorder or reparent (Alt+↑ / Alt+↓)"
+              title={t("Drag to reorder or reparent (Alt+↑ / Alt+↓)")}
               // As for the rename field: pointerdown for the normal
               // path, click for the "virtual" one (screen reader), so the
               // handle grab does not also become a click on the row.
@@ -860,7 +863,7 @@ export function LayersPanel() {
                 pointerdown would still reach the row below and the
                 selection would change together with the visibility. */}
             <Button
-              aria-label={n.visible ? `Hide ${label}` : `Show ${label}`}
+              aria-label={n.visible ? t("Hide {name}", { name: label }) : t("Show {name}", { name: label })}
               onPress={() => toggleVisible(n)}
               onPointerDown={(e) => e.stopPropagation()}
               // Visible: the eye appears only on hover (or focus). Hidden:
@@ -886,8 +889,8 @@ export function LayersPanel() {
         <Icon name="search" size={13} className="shrink-0 text-fg-subtle" />
         <input
           type="text"
-          aria-label="Find layers"
-          placeholder="Find layers"
+          aria-label={t("Find layers")}
+          placeholder={t("Find layers")}
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           onKeyDown={(e) => { if (e.key === "Escape" && query !== "") { e.stopPropagation(); setQuery(""); } }}
@@ -898,11 +901,11 @@ export function LayersPanel() {
           the tab, and at rest those 36px are space for layers. */}
       {selection.length > 0 && (
       <div className="flex h-8 shrink-0 items-center gap-2 border-b border-line px-3">
-        <h3 className={cls.sectionTitle}>{selection.length === 1 ? "1 selected" : `${selection.length} selected`}</h3>
+        <h3 className={cls.sectionTitle}>{tn("{n} selected", selection.length)}</h3>
         <div className="ml-auto flex items-center">
           <IconButton
             icon="trash"
-            label="Delete the selected layers"
+            label={t("Delete the selected layers")}
             size={24}
             isDisabled={selection.length === 0}
             onPress={deleteSelected}

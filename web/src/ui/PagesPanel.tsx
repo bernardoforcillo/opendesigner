@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { useT } from "@/i18n";
 import { Button } from "@/ui/ds";
 import { useScene } from "@/store/store";
 import { resolveScene } from "@/store/variables";
@@ -45,6 +46,7 @@ export function PageThumb({ page, nodes }: { page: PageLite; nodes: readonly Nod
 }
 
 export function PagesPanel() {
+  const { t } = useT();
   const scene = useScene((s) => s.scene);
   const currentPageId = useScene((s) => s.currentPageId);
   const [setupOpen, setSetupOpen] = useState(false);
@@ -108,7 +110,7 @@ export function PagesPanel() {
       <div key={p.id}>
         <button
           type="button"
-          aria-label={`Open ${p.name || "page"}`}
+          aria-label={t("Open {name}", { name: p.name || t("page") })}
           aria-current={active ? "page" : undefined}
           onClick={() => useScene.getState().setCurrentPage(p.id)}
           className={"flex w-full flex-col items-center gap-1 rounded-md p-1.5 outline-none focus-visible:shadow-[var(--ring)] " + (active ? "bg-accent-soft" : "hover:bg-surface-3")}
@@ -130,12 +132,12 @@ export function PagesPanel() {
   const item = (p: PageLite, label: string) => <li key={p.id}>{card(p, label)}</li>;
 
   return (
-    <div className="flex h-full min-h-0 flex-col" role="region" aria-label="Pages">
+    <div className="flex h-full min-h-0 flex-col" role="region" aria-label={t("Pages")}>
       <div className="min-h-0 flex-1 overflow-y-auto p-1.5">
-        <ul aria-label="Pages" className="flex flex-col gap-1">
+        <ul aria-label={t("Pages")} className="flex flex-col gap-1">
           {facing
             ? spreads.map((row) => (
-              <li key={row[0].id} aria-label={`Spread ${row.map((p) => numbers.get(p.id)?.label).join("–")}`} className="grid grid-cols-2 gap-1">
+              <li key={row[0].id} aria-label={t("Spread {range}", { range: row.map((p) => numbers.get(p.id)?.label).join("–") })} className="grid grid-cols-2 gap-1">
                 {isRightPage(numbers.get(row[0].id)) && <div aria-hidden="true" />}
                 {row.map((p) => card(p, numbers.get(p.id)?.label ?? ""))}
               </li>
@@ -144,20 +146,20 @@ export function PagesPanel() {
         </ul>
         {masters.length > 0 && (
           <>
-            <h3 className="mt-3 px-1.5 font-mono text-[10px] font-semibold uppercase tracking-[0.08em] text-fg-subtle">Masters</h3>
-            <ul aria-label="Masters" className="mt-1 flex flex-col gap-1">
+            <h3 className="mt-3 px-1.5 font-mono text-[10px] font-semibold uppercase tracking-[0.08em] text-fg-subtle">{t("Masters")}</h3>
+            <ul aria-label={t("Masters")} className="mt-1 flex flex-col gap-1">
               {masters.map((p) => item(p, p.name.slice(0, 1)))}
             </ul>
           </>
         )}
       </div>
       <div className="flex shrink-0 flex-wrap gap-1.5 border-t border-line p-2">
-        <Button icon="plus" onPress={() => add(false)}>Page</Button>
-        <Button icon="plus" onPress={() => add(true)}>Master</Button>
-        <Button icon="page" onPress={() => setSetupOpen(true)}>Setup…</Button>
-        <Button onPress={duplicate} isDisabled={!current}>Duplicate</Button>
-        <Button aria-label="Move page earlier" onPress={() => move(-1)} isDisabled={!current || pages.indexOf(current) === 0}>Earlier</Button>
-        <Button aria-label="Move page later" onPress={() => move(1)} isDisabled={!current || pages.indexOf(current) === pages.length - 1}>Later</Button>
+        <Button icon="plus" onPress={() => add(false)}>{t("Page")}</Button>
+        <Button icon="plus" onPress={() => add(true)}>{t("Master")}</Button>
+        <Button icon="page" onPress={() => setSetupOpen(true)}>{t("Setup…")}</Button>
+        <Button onPress={duplicate} isDisabled={!current}>{t("Duplicate")}</Button>
+        <Button aria-label={t("Move page earlier")} onPress={() => move(-1)} isDisabled={!current || pages.indexOf(current) === 0}>{t("Earlier")}</Button>
+        <Button aria-label={t("Move page later")} onPress={() => move(1)} isDisabled={!current || pages.indexOf(current) === pages.length - 1}>{t("Later")}</Button>
       </div>
       <PageSetupDialog isOpen={setupOpen} onOpenChange={setSetupOpen} />
     </div>
