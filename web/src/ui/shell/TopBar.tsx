@@ -5,6 +5,7 @@ import { useAccess } from "@/rpc/access";
 import { useScene } from "@/store/store";
 import { DocMenu } from "@/ui/shell/DocMenu";
 import { DocName } from "@/ui/shell/DocName";
+import { ZoomMenu } from "@/ui/shell/ZoomMenu";
 import { usePanels } from "@/ui/shell/panels";
 import { useFlowUi, type EditorMode } from "@/store/flowUi";
 import { verticalOf } from "@/store/docSettings";
@@ -38,7 +39,6 @@ export function TopBar({
   connection: string; statusLabel: string;
 }) {
   const { t } = useT();
-  const zoom = useScene((s) => s.camera.zoom);
   const accessRole = useAccess((s) => s.role);
   const vertical = useScene((s) => verticalOf(s.scene));
   const def = verticalDef(vertical);
@@ -109,7 +109,7 @@ export function TopBar({
             <span className={`h-1.5 w-1.5 rounded-full ${dot}`} />
             <span className="max-[1600px]:hidden">{statusLabel}</span>
           </span>
-          <span title={t("Zoom")}>{Math.round(zoom * 100)}%</span>
+          <ZoomMenu />
         </span>
         <IconButton icon="panelRight" label={right ? t("Close right panel") : t("Open right panel")} shortcut="]" size={32} onPress={() => usePanels.getState().toggle("right")} />
       </span>

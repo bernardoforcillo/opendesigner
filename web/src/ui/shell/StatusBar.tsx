@@ -1,11 +1,11 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { useScene } from "@/store/store";
 import { ToggleButton } from "react-aria-components";
 import { IconButton } from "@/ui/ds";
 import { zoomAt } from "@/canvas/camera";
-import { isTextField } from "@/tools/toolManager";
+import { runZoom } from "@/canvas/zoomCommands";
 import { pageNumbers } from "@/store/pageNumbers";
-import { facingPartner, fitSpreadCamera, useSpreadView } from "@/store/spread";
+import { facingPartner, useSpreadView } from "@/store/spread";
 import { hasErrors } from "@/export/preflight";
 import { showDockTab } from "@/store/dock";
 import { usePreflight } from "@/ui/shell/preflightIssues";
@@ -15,7 +15,7 @@ import { usePreflight } from "@/ui/shell/preflightIssues";
 //  - zoom steps around the middle of the canvas (the same anchor the shortcuts use), so the page
 //    stays where it is;
 //  - the zoom is a field: type a percentage and press Enter. Fit frames the page (or the spread);
-//    Ctrl/Cmd+0 fits, Ctrl/Cmd+1 is 100%, Ctrl/Cmd +/- steps (the browser's own page zoom is not wanted here);
+//    the shortcuts live in canvas/zoomCommands.ts (useZoomShortcuts, mounted by the editor);
 //  - the navigator walks the regular pages (masters are not pages) and shows the number `<#>` shows;
 //  - the Spread toggle shows the page facing the one on screen beside it (store/spread.ts); it needs the
 //    document's Facing pages setting (Page setup), and the navigator then names the pair, "2–3";
@@ -48,14 +48,7 @@ export function StatusBar() {
     if (st.camera.zoom > 0) zoomBy(zoom / st.camera.zoom);
   }
   // Frames the page on screen, and its facing page when the spread is on.
-  const fit = () => {
-    const st = useScene.getState();
-    const canvas = document.getElementById("scene");
-    if (!st.scene || !canvas) return;
-    const sp = useSpreadView.getState().on ? facingPartner(st.scene, st.currentPageId) : null;
-    const cam = fitSpreadCamera(st.scene, st.currentPageId, sp, canvas.clientWidth, canvas.clientHeight);
-    if (cam) st.setCamera(cam);
-  };
+  const fit = () => runZoom("fit");
   const go = (to: number) => {
     const p = pages[Math.min(pages.length - 1, Math.max(0, to))];
     if (!p) return;
@@ -70,22 +63,6 @@ export function StatusBar() {
     setDraft(null);
     if (Number.isFinite(n) && n > 0) zoomTo(n / 100);
   };
-
-  // Zoom shortcuts, for as long as the status bar (the Publishing workspace) is on screen.
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (!(e.ctrlKey || e.metaKey) || e.altKey || isTextField(e.target)) return;
-      if (e.key === "0") fit();
-      else if (e.key === "1") zoomTo(1);
-      else if (e.key === "=" || e.key === "+") zoomBy(STEP);
-      else if (e.key === "-") zoomBy(1 / STEP);
-      else return;
-      e.preventDefault();
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
 
   const current = pages[at];
   const facing = scene?.settings?.facingPages === true;

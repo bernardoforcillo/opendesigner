@@ -1,12 +1,15 @@
 import { effectiveGuides, isLeftPage } from "@/store/masters";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Code, ConnectError } from "@connectrpc/connect";
 import { Tab, TabList, TabPanel, Tabs } from "react-aria-components";
 import { Banner, Icon } from "@/ui/ds";
 import { ToolDock } from "@/ui/shell/ToolDock";
 import { ControlPanel } from "@/ui/shell/ControlPanel";
+import { useZoomShortcuts } from "@/canvas/zoomCommands";
 import { facingPartner, partnerSheet, pointOnFacingPage, useSpreadView } from "@/store/spread";
 import { StatusBar } from "@/ui/shell/StatusBar";
+import { ActionsPalette } from "@/ui/shell/ActionsPalette";
+import { buildPaletteActions } from "@/ui/shell/paletteActions";
 import { StylesPanel } from "@/ui/shell/StylesPanel";
 import { PreflightPanel } from "@/ui/shell/PreflightPanel";
 import { useDock, type DockTab } from "@/store/dock";
@@ -61,7 +64,7 @@ import { TimelinePanel } from "@/ui/timeline/TimelinePanel";
 import { useTimeline } from "@/animation/timelineStore";
 import { posedScene } from "@/animation/posedScene";
 import { verticalOf } from "@/store/docSettings";
-import { modeFor } from "@/verticals";
+import { modeFor, verticalDef } from "@/verticals";
 import { attachTimelineShortcuts } from "@/ui/timeline/shortcuts";
 import { resolveFlow, useFlowUi, type EditorMode } from "@/store/flowUi";
 import { drawFlows } from "@/renderer/flowRenderer";
@@ -202,6 +205,7 @@ export function App() {
   // opens the left panel if it was closed.
   const [leftTab, setLeftTab] = useState("layers");
   // The Publishing workspace has no left panel: its dock (Properties, Pages, Layers, Comments) is on the right.
+  useZoomShortcuts();
   const dockTab = useDock((d) => d.tab);
   const setDockTab = useDock((d) => d.setTab);
   const reveal = useCommentsUi((c) => c.revealRequested);
@@ -656,6 +660,12 @@ export function App() {
   // document bar, a tabbed dock on the right and a status bar -- in place of the design editor's floating
   // tool dock and left panel. Same document, same canvas; only the chrome differs.
   const publishing = vertical === "publishing" && mode === "design";
+  const paletteActions = useMemo(
+    () => buildPaletteActions({ tools: toolsForMode(mode, role), chooseTool, modes: verticalDef(vertical).modes, publishing }),
+    // chooseTool is recreated every render but only writes a ref and a setState: the list is stable enough.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [mode, role, vertical, publishing],
+  );
   useEffect(() => {
     const wanted = modeFor(vertical, useFlowUi.getState().mode);
     if (wanted !== useFlowUi.getState().mode) useFlowUi.getState().setMode(wanted);
@@ -908,6 +918,7 @@ export function App() {
         )}
       </div>
       {publishing && <StatusBar />}
+      <ActionsPalette actions={paletteActions} />
       {presenting && <PrototypePlayer onClose={() => useFlowUi.getState().setPresenting(false)} />}
     </div>
   );

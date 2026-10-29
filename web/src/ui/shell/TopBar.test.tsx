@@ -51,7 +51,7 @@ describe("TopBar", () => {
   it("shows the camera zoom", () => {
     useScene.setState({ camera: { x: 0, y: 0, zoom: 1.5 } });
     renderTopBar();
-    expect(screen.getByTitle("Zoom")).toHaveTextContent("150%");
+    expect(screen.getByRole("button", { name: "Zoom" })).toHaveTextContent("150%");
   });
 
   it("shows the connection status", () => {

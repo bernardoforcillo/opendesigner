@@ -156,14 +156,4 @@ describe("StatusBar zoom", () => {
     fireEvent.keyDown(field, { key: "Enter" });
     expect(useScene.getState().camera.zoom).toBe(1);
   });
-
-  it("zooms with Ctrl+= / Ctrl+- and sets 100% with Ctrl+1", () => {
-    render(<StatusBar />);
-    fireEvent.keyDown(window, { key: "=", ctrlKey: true });
-    expect(useScene.getState().camera.zoom).toBeCloseTo(1.25);
-    fireEvent.keyDown(window, { key: "1", ctrlKey: true });
-    expect(useScene.getState().camera.zoom).toBeCloseTo(1);
-    fireEvent.keyDown(window, { key: "-", metaKey: true });
-    expect(useScene.getState().camera.zoom).toBeCloseTo(0.8);
-  });
 });
