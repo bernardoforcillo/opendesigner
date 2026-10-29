@@ -254,6 +254,9 @@ clamps them to the parameter's range.
     Photoshop style). The read-back runs every frame the effect is on screen, and EffectCraft's temporal smoothing and scene
     detection are not implemented (each frame is analysed on its own, so a changing frame can make the levels flicker).
   - **carrier**: no pixels, only values for expressions (EffectCraft's Expression Controls, Grow Bounds).
+- `pnpm fx-render [zoom] [ms]` (web/) draws a node per effect through the real pipeline (clip -> pose -> `CanvasKitRenderer` on WebGL in
+  headless Chromium) into `web/fx-out/`: the offscreen kernels, layers, time effects and lookup-table read-back, at any zoom.
+  It fails on SkSL errors. The scene is `src/bench/fxdemo.ts`.
 - `fx/kit.ts` has the SkSL helpers (`kern`, `over`, noise, hsv, `ring` taps). Every shader is compiled and drawn against the real
   CanvasKit by `fx/fx.test.ts`.
 - `pose.ts` writes the sampled values to the transient `NodeLite.animFx`; `ckRenderer.ts::beginEffects/endEffects` draws them.

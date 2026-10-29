@@ -209,7 +209,7 @@ export const COLOR_FX: FxDef[] = [
   }
   half4 base = S(xy);
   half4 add = acc * half(p[0] / 100.0 / 6.0);
-  return half4(base.rgb + add.rgb, clamp(base.a + add.a * 0.5, 0.0, 1.0));`),
+  return half4(base.rgb + add.rgb, clamp(base.a + add.a * 0.5, 0.0, 1.0));`, { outset: () => 120 }),
 
   kern("ec.generate.cclightburst", [P("intensity", "Intensity", 0, 300, 100), P("centerX", "Center X", -100, 200, 50, 0.5, "%"), P("centerY", "Center Y", -100, 200, 50, 0.5, "%"), P("rayLength", "Ray Length", 0, 100, 60), P("threshold", "Threshold", 0, 100, 30)], `
   float2 c = box.xy + box.zw * float2(p[1], p[2]) / 100.0;
@@ -222,5 +222,5 @@ export const COLOR_FX: FxDef[] = [
   }
   half4 base = S(xy);
   half4 add = acc * half(p[0] / 100.0 / 8.0);
-  return half4(base.rgb + add.rgb, clamp(base.a + add.a * 0.5, 0.0, 1.0));`),
+  return half4(base.rgb + add.rgb, clamp(base.a + add.a * 0.5, 0.0, 1.0));`, { outset: () => 120 }),
 ];

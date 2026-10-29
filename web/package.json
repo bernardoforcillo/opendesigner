@@ -8,6 +8,7 @@
     "build": "tsc -b && vite build",
     "test": "vitest run",
     "parity": "node src/features/editor/scripts/render-parity/index.ts",
+    "fx-render": "node src/features/timeline/scripts/fx-render/index.ts",
     "export-parity": "node src/features/editor/scripts/export-parity/index.ts",
     "export-app": "node src/features/prototype/scripts/export-app/index.ts",
     "export-anim-app": "node src/features/timeline/scripts/export-anim-app/index.ts",

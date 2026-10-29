@@ -104,8 +104,11 @@ export const MORE_FX: FxDef[] = [
   // Colour -------------------------------------------------------------------------------------------
   kern("ec.color.cccoloroffset", [P("red", "Red Phase", -360, 360, 0, 1, "°"), P("green", "Green Phase", -360, 360, 0, 1, "°"), P("blue", "Blue Phase", -360, 360, 0, 1, "°"), P("overflow", "Overflow (0 Wrap, 1 Clip)", 0, 1, 0)], `
   half4 c = S(xy); float3 u = unp(c);
-  float3 o = u + float3(p[0], p[1], p[2]) / 360.0;
-  o = p[3] > 0.5 ? clamp(o, 0.0, 1.0) : fract(o + 1.0);
+  float3 ph = float3(p[0], p[1], p[2]) / 360.0;
+  float3 o = u + ph;
+  // wrapping: a channel with no offset is left alone (1.0 must not wrap to 0.0)
+  float3 wrapped = fract(o + 1.0);
+  o = p[3] > 0.5 ? clamp(o, 0.0, 1.0) : float3(abs(ph.x) < 1e-5 ? u.x : wrapped.x, abs(ph.y) < 1e-5 ? u.y : wrapped.y, abs(ph.z) < 1e-5 ? u.z : wrapped.z);
   return pre(o, float(c.a));`),
 
   kern("ec.color.levelsic", [

@@ -15,8 +15,9 @@ export const MORE2_FX: FxDef[] = [
   kern("ec.distort.cclens", [P("size", "Size", 1, 1000, 150), P("convergence", "Convergence", -200, 200, 60), CX, CY], `
   float2 c = box.xy + box.zw * float2(p[2], p[3]) / 100.0;
   float2 q = xy - c; float r = length(q) / max(p[0], 1.0);
-  float k = r < 1.0 ? pow(max(r, 1e-4), p[1] / 100.0) / max(r, 1e-4) : 1.0;
-  return S(c + q * (r < 1.0 ? k : 1.0));`),
+  // convergence 0 is the identity, > 0 magnifies the middle, < 0 pinches it
+  float k = r < 1.0 ? pow(max(r, 1e-3), p[1] / 200.0) : 1.0;
+  return S(c + q * k);`),
 
   kern("ec.distort.ccbendit", [P("bend", "Bend", -100, 100, 30), P("start", "Start", 0, 100, 0, 1, "%"), P("end", "End", 0, 100, 100, 1, "%"), P("render", "Render Prestyle (0 Bend, 1 Squeeze)", 0, 1, 0)], `
   float2 u = uv(xy);
@@ -66,19 +67,14 @@ export const MORE2_FX: FxDef[] = [
   float2 src = rot((cell + 0.5 + g * 1.0) * p[2], radians(p[3])) + box.xy;
   return mix(S(src), S(xy), half(p[4] / 100.0));`),
 
-  kern("ec.stylize.cchextile", [P("size", "Size", 4, 500, 40), P("blend", "Blend With Original", 0, 100, 0)], `
-  float s = max(p[0], 2.0);
-  float2 q = (xy - box.xy) / float2(s * 1.7320508, s);
-  float2 a = floor(q * float2(1.0, 1.0)) , b = a + 0.5;
-  float2 r1 = (q - a - float2(0.5, 0.5));
-  float2 qq = (xy - box.xy) / s;
-  float2 c1 = float2(floor(qq.x / 1.5 + 0.5) * 1.5, 0.0);
-  float rowH = 1.7320508;
-  float row = floor(qq.y / rowH + (mod(floor(qq.x / 1.5 + 0.5), 2.0) > 0.5 ? 0.0 : 0.5));
-  float2 ca = float2(floor(qq.x / 1.5 + 0.5) * 1.5, (floor(qq.y / rowH) + (mod(floor(qq.x / 1.5 + 0.5), 2.0) > 0.5 ? 0.5 : 0.0)) * rowH + rowH * 0.5);
-  float2 cb = float2(ca.x + (qq.x > ca.x ? 1.5 : -1.5), ca.y + (qq.y > ca.y ? rowH * 0.5 : -rowH * 0.5));
-  float2 cen = length(qq - ca) < length(qq - cb) ? ca : cb;
-  return mix(S(box.xy + cen * s), S(xy), half(p[1] / 100.0));`),
+  kern("ec.stylize.cchextile", [P("size", "Size", 4, 500, 24), P("blend", "Blend With Original", 0, 100, 0)], `
+  // hexagonal mosaic: every pixel takes the colour at the centre of its hexagon
+  float2 q = (xy - box.xy) / max(p[0], 2.0);
+  float2 r = float2(1.0, 1.7320508), h = r * 0.5;
+  float2 a = mod(q, r) - h, b = mod(q - h, r) - h;
+  float2 gv = dot(a, a) < dot(b, b) ? a : b;
+  float2 cen = q - gv;
+  return mix(S(box.xy + cen * max(p[0], 2.0)), S(xy), half(p[1] / 100.0));`, { outset: (v) => v.size }),
 
   kern("ec.sim.ccballaction", [P("spacing", "Grid Spacing", 4, 200, 24), P("radius", "Ball Size", 0.1, 1, 0.45, 0.01), P("lens", "Lens Strength", 0, 1, 0.6, 0.01), P("scatter", "Scatter", 0, 1, 0, 0.01)], `
   float2 g = (xy - box.xy) / p[0];
@@ -92,7 +88,7 @@ export const MORE2_FX: FxDef[] = [
   float shade = 0.65 + 0.35 * z;
   return half4(c.rgb * half(shade), c.a);`),
 
-  kern("ec.perspective.ccsphere", [P("radius", "Radius", 1, 2000, 150), P("rotation", "Rotation Y", -3600, 3600, 0, 1, "°"), P("tilt", "Rotation X", -90, 90, 0, 1, "°"), P("light", "Light Intensity", 0, 100, 60), CX, CY], `
+  kern("ec.perspective.ccsphere", [P("radius", "Radius", 1, 2000, 60), P("rotation", "Rotation Y", -3600, 3600, 0, 1, "°"), P("tilt", "Rotation X", -90, 90, 0, 1, "°"), P("light", "Light Intensity", 0, 100, 60), CX, CY], `
   float2 c = box.xy + box.zw * float2(p[4], p[5]) / 100.0;
   float2 q = (xy - c) / max(p[0], 1.0);
   float r2 = dot(q, q);
@@ -107,20 +103,21 @@ export const MORE2_FX: FxDef[] = [
   half4 col = S(box.xy + u * box.zw);
   float diff = clamp(dot(float3(q, z), normalize(float3(-0.5, -0.6, 0.8))), 0.0, 1.0);
   float lit = 1.0 - p[3] / 100.0 + p[3] / 100.0 * (0.25 + 0.75 * diff);
-  return half4(col.rgb * half(lit), col.a);`),
+  return half4(col.rgb * half(lit), col.a);`, { outset: (v) => v.radius }),
 
-  kern("ec.perspective.cccylinder", [P("radius", "Radius", 1, 2000, 120), P("rotation", "Rotation", -3600, 3600, 0, 1, "°"), P("light", "Light Intensity", 0, 100, 60), CX, CY], `
+  kern("ec.perspective.cccylinder", [P("radius", "Radius", 1, 2000, 50), P("rotation", "Rotation", -3600, 3600, 0, 1, "°"), P("light", "Light Intensity", 0, 100, 60), CX, CY], `
   float2 c = box.xy + box.zw * float2(p[3], p[4]) / 100.0;
   float2 q = xy - c;
   float x = q.x / max(p[0], 1.0);
   if (abs(x) > 1.0) { return half4(0.0); }
   float z = sqrt(1.0 - x * x);
   float lon = asin(x) + radians(p[1]);
-  float2 u = float2(fract(lon / (2.0 * PI) + 0.5), (q.y + ctr().y - c.y) / max(box.w, 1.0) + 0.5 - (ctr().y - c.y) / max(box.w, 1.0));
+  // the cylinder spans the node's height; its surface wraps the node's image around it
+  float2 u = float2(fract(lon / (2.0 * PI) + 0.5), (xy.y - box.xy.y) / max(box.w, 1.0));
   if (u.y < 0.0 || u.y > 1.0) { return half4(0.0); }
   half4 col = S(box.xy + u * box.zw);
   float lit = 1.0 - p[2] / 100.0 + p[2] / 100.0 * (0.3 + 0.7 * z);
-  return half4(col.rgb * half(lit), col.a);`),
+  return half4(col.rgb * half(lit), col.a);`, { outset: (v) => v.radius }),
 
   kern("ec.perspective.3dglasses", [P("convergence", "Convergence Offset", -100, 100, 6), P("balance", "Balance", 0, 100, 50), P("swap", "Swap Left-Right", 0, 1, 0)], `
   float d = p[0] * (p[2] > 0.5 ? -1.0 : 1.0);
