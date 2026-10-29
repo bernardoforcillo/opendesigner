@@ -22,6 +22,16 @@ Document menu → **Diagram (Mermaid, UML)…**. The dialog has an example
 for each type. With a diagram selected the dialog opens on its text and
 **Update** redraws it in place (same name and position).
 
+## To Mermaid
+
+The other direction: the document's **flows** (docs/flows.md) come out as Mermaid text, from the CLI
+(`opendesigner flow mermaid [-doc ...] [-flow ID]`) or MCP (`export_mermaid`). A screen is a node (its `flow.kind`
+picks the shape: decision a diamond, start and end a pill, action rounded), a transition an edge labelled with its
+label -- or its trigger when that is not a plain click -- and its guard in brackets, with `auto` and `back`
+transitions dotted; several flows become one `subgraph` each. The text reads back as a diagram
+(`create_diagram`). A diagram drawn from Mermaid already carries its text in `meta` (`diagram.source`, in
+`list_diagrams`), so it exports as itself. `internal/flow/mermaid.go`.
+
 ## From MCP
 
 | Tool | What it does |

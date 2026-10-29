@@ -81,7 +81,7 @@ Legend: [x] done · [ ] to do
 - [x] Tables, kanban boards and mind maps, drawn as groups of plain nodes (editor dialog, `RenderBoard` RPC, `create_board_object` MCP tool)
 - [x] Templates: brainstorm, retrospective, user flow, customer journey
 - [x] Cursor chat, reactions, timer, dot voting, follow mode (ephemeral, through presence)
-- [ ] Mermaid import/export in both directions
+- [x] Mermaid import/export in both directions: diagrams are drawn from Mermaid text, and the flows are written back as Mermaid (`opendesigner flow mermaid`, MCP `export_mermaid`; docs/diagrams.md)
 
 ## 1d. Publishing (InDesign parity)
 

@@ -559,6 +559,22 @@ type FlowSpecOutput struct {
 	Markdown string `json:"markdown"`
 }
 
+type MermaidOutput struct {
+	Mermaid string `json:"mermaid"`
+}
+
+// ExportMermaid writes the flows as a Mermaid flowchart (same as `opendesigner flow mermaid`).
+func (s *Session) ExportMermaid(_ context.Context, in AnalyzeFlowsInput) (MermaidOutput, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if in.FlowId != "" {
+		if _, ok := s.doc.GetFlows()[in.FlowId]; !ok {
+			return MermaidOutput{}, fmt.Errorf("flow %q not found: use list_flows for the ids", in.FlowId)
+		}
+	}
+	return MermaidOutput{Mermaid: flow.Mermaid(s.doc, in.FlowId)}, nil
+}
+
 // GetFlowSpec returns the Markdown specification (same as `opendesigner flow spec`).
 func (s *Session) GetFlowSpec(_ context.Context, in AnalyzeFlowsInput) (FlowSpecOutput, error) {
 	s.mu.Lock()
@@ -590,5 +606,6 @@ func registerFlowTools(srv *mcp.Server, s *Session) {
 	addTool(srv, "delete_transition", "Delete a transition by id.", s.DeleteTransition)
 	addTool(srv, "set_node_meta", "Merge keys into a node's meta (and optionally remove some with unset); other keys are preserved. Use it to link a screen to the code (code.route, code.component), to its test locators (test.id, test.text) and to mark progress (status)."+flowConventions, s.SetNodeMeta)
 	addTool(srv, "analyze_flows", "Analyse flows (all, or one with flowId): issues (empty, no_start, unreachable, dead_end, ambiguous) with messages naming the screens, plus every path from the start screen to an end or a loop (capped at 200 paths / depth 50, then pathsTruncated)."+flowConventions, s.AnalyzeFlows)
+	addTool(srv, "export_mermaid", "Write the flows as Mermaid flowchart text: screens as nodes (decision, start/end and action shapes from flow.kind), transitions as labelled edges (guards in brackets, auto/back dotted), one subgraph per flow when there are several. Paste it anywhere Mermaid renders, or back into create_diagram. The diagram text of a diagram drawn from Mermaid is already in its `diagram.source` meta (list_diagrams).", s.ExportMermaid)
 	addTool(srv, "get_flow_spec", "Return the Markdown specification of the flows (screens table, numbered transitions, Given/When/Then scenarios, issues). Use it as the requirements to implement."+flowConventions, s.GetFlowSpec)
 }

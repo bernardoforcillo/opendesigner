@@ -380,3 +380,32 @@ func TestTransitionAnimationTool(t *testing.T) {
 		}
 	}
 }
+
+// TestExportMermaid: the flows come out as Mermaid text that create_diagram reads back.
+func TestExportMermaid(t *testing.T) {
+	url := serveInMemory(t)
+	docID := newDoc(t, odmcp.NewClient(url))
+	s := startSession(t, url, docID, "agent")
+	ctx := context.Background()
+	home, list := frame(t, s, "Home"), frame(t, s, "List")
+	fl, err := s.CreateFlow(ctx, odmcp.CreateFlowInput{Name: "Browse", StartId: home})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.SetTransition(ctx, odmcp.SetTransitionInput{FlowId: fl.FlowId, FromId: home, ToId: list, Label: ptr("Open")}); err != nil {
+		t.Fatal(err)
+	}
+	out, err := s.ExportMermaid(ctx, odmcp.AnalyzeFlowsInput{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasPrefix(out.Mermaid, "flowchart LR") || !strings.Contains(out.Mermaid, "|Open|") || !strings.Contains(out.Mermaid, `"Home"`) {
+		t.Errorf("mermaid = %q", out.Mermaid)
+	}
+	if _, err := s.CreateDiagram(ctx, odmcp.CreateDiagramInput{Source: out.Mermaid}); err != nil {
+		t.Errorf("the export must read back as a diagram: %v", err)
+	}
+	if _, err := s.ExportMermaid(ctx, odmcp.AnalyzeFlowsInput{FlowId: "nope"}); err == nil {
+		t.Error("an unknown flow is an error")
+	}
+}
