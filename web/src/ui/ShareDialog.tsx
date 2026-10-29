@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { formatDate } from "@/i18n/format";
 import { Dialog, Modal, ModalOverlay } from "react-aria-components";
 import type { AccessLink, GetAccessResponse } from "@/gen/opendesigner/v1/opendesigner_pb";
 import { docClient } from "@/rpc/client";
@@ -18,7 +19,7 @@ const ROLES = [
 ] as const;
 
 function when(sec: bigint): string {
-  return new Date(Number(sec) * 1000).toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
+  return formatDate(sec, { year: "numeric", month: "short", day: "numeric" });
 }
 
 export function ShareDialog({ isOpen, onOpenChange }: { isOpen: boolean; onOpenChange: (open: boolean) => void }) {

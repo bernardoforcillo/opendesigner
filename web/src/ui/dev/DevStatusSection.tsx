@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { formatDate } from "@/i18n/format";
 import { useScene } from "@/store/store";
 import { loadNickname } from "@/store/presence";
 import { ANNOTATION_CATEGORIES, annotationsOf, categoryColor, MAX_ANNOTATION_RUNES, MAX_READY_NOTE_RUNES, readyOfScene } from "@/store/devMode";
@@ -18,7 +19,7 @@ import { Badge, Button, cls } from "@/ui/ds";
 //    written as comments into the exported code.
 // Every action is one op (ops without an inverse: none of this enters the undo stack).
 
-const when = (sec: number) => (sec ? new Date(sec * 1000).toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" }) : "");
+const when = (sec: number) => (sec ? formatDate(sec, { year: "numeric", month: "short", day: "numeric" }) : "");
 
 function Changes({ frameId, markedAt }: { frameId: string; markedAt: number }) {
   const cmp = useReadyComparison(frameId, true, markedAt);

@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { formatDate } from "@/i18n/format";
 import { useScene } from "@/store/store";
 import { useCommentsUi } from "@/store/commentsUi";
 import { loadNickname } from "@/store/presence";
@@ -22,8 +23,7 @@ const now = () => Math.floor(Date.now() / 1000);
 
 function when(sec: number): string {
   if (!sec) return "";
-  const d = new Date(sec * 1000);
-  return d.toLocaleString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
+  return formatDate(sec, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
 }
 
 function Composer({

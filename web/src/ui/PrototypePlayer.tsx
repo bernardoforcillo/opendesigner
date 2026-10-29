@@ -1,4 +1,5 @@
 import { resolveScene } from "@/store/variables";
+import { useT } from "@/i18n";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Button as RacButton } from "react-aria-components";
 import { useScene } from "@/store/store";
@@ -61,6 +62,7 @@ function optionLabel(scene: Parameters<typeof screenName>[0], o: Option): string
 }
 
 export function PrototypePlayer({ onClose }: { onClose: () => void }) {
+  const { t } = useT();
   const scene = useScene((s) => s.scene);
   const pageId = useScene((s) => s.currentPageId);
   const currentFlowId = useFlowUi((s) => s.currentFlowId);
@@ -312,7 +314,7 @@ export function PrototypePlayer({ onClose }: { onClose: () => void }) {
     <div
       role="dialog"
       aria-modal="true"
-      aria-label="Prototype"
+      aria-label={t("Prototype")}
       className="od-island-dark fixed inset-0 z-50 overflow-hidden bg-[radial-gradient(ellipse_at_50%_38%,var(--surface-2),var(--canvas)_72%)] text-[13px] text-fg"
     >
       {/* The stage: the screen at the center of the area above the dock. */}
@@ -394,7 +396,7 @@ export function PrototypePlayer({ onClose }: { onClose: () => void }) {
           </>
         ) : (
           <div className="flex h-full items-center justify-center px-8 text-center text-fg-muted">
-            No screen to present: add a top-level frame or set the flow's start.
+            {t("No screen to present: add a top-level frame or set the flow's start.")}
           </div>
         )}
       </div>
@@ -407,7 +409,7 @@ export function PrototypePlayer({ onClose }: { onClose: () => void }) {
           {flowName !== "" && <span className="max-w-[200px] truncate text-[12px] text-fg-muted">{flowName}</span>}
         </div>
         <div className="pointer-events-auto rounded-full bg-raised p-1 shadow-bar">
-          <IconButton icon="x" label="Close the prototype" shortcut="Esc" onPress={onClose} className="rounded-full" />
+          <IconButton icon="x" label={t("Close the prototype")} shortcut="Esc" onPress={onClose} className="rounded-full" />
         </div>
       </div>
 
@@ -420,7 +422,7 @@ export function PrototypePlayer({ onClose }: { onClose: () => void }) {
         >
           {state && bar.length === 0 && hotspots.length === 0 && (
             <span className="od-rise rounded-full bg-raised px-3 py-1.5 text-[12px] text-fg-muted shadow-bar">
-              End of the path: no exit from this screen.
+              {t("End of the path: no exit from this screen.")}
             </span>
           )}
           {bar.map((o) => (
@@ -454,11 +456,11 @@ export function PrototypePlayer({ onClose }: { onClose: () => void }) {
         <div className="pointer-events-auto relative flex h-11 max-w-full items-center gap-1 rounded-2xl bg-raised px-1.5 shadow-bar">
           <FlowIconButton
             icon="arrowLeft"
-            label="Back"
+            label={t("Back")}
             isDisabled={!state || !canGoBack(state)}
             onPress={() => { setTx(null); if (state) setState(back(state)); }}
           />
-          <FlowIconButton icon="restart" label="Restart" onPress={() => { setTx(null); setState(startState(scene, flow, pageId)); }} />
+          <FlowIconButton icon="restart" label={t("Restart")} onPress={() => { setTx(null); setState(startState(scene, flow, pageId)); }} />
           {state && (
             <nav
               aria-label="Path"
@@ -486,14 +488,14 @@ export function PrototypePlayer({ onClose }: { onClose: () => void }) {
           )}
           <FlowIconButton
             icon={pinned ? "eye" : "eyeOff"}
-            label="Show hotspots"
+            label={t("Show hotspots")}
             selected={pinned}
             onPress={() => { setPinned((v) => !v); setFlashes((n) => n + 1); }}
           />
           <label className="flex h-7 items-center gap-1 rounded-md px-1 text-fg-muted hover:bg-surface-3">
             <FlowIcon name="device" size={14} />
             <select
-              aria-label="Device frame"
+              aria-label={t("Device frame")}
               value={device}
               onChange={(e) => {
                 const id = deviceById(e.target.value).id;

@@ -49,11 +49,19 @@ no-break space before `: ; ? !`; German uses formal address; Brazilian Portugues
 (arquivo, tela, você); Japanese is concise without です/ます and with full-width punctuation; Chinese uses
 full-width punctuation. Japanese and Chinese have no plural forms, so their plurals give only `other`.
 
+## Dates and numbers
+
+`i18n/format.ts` formats with the **interface language**, not the browser's: `formatDate(seconds, options)`,
+`formatNumber(n, options)` and `formatRelative(value, unit)` wrap `Intl` (formats are cached per language and options).
+The comment, version, share and Dev-mode dates and the Home's "Edited ..." line use them, and `relativeTime` (Home) says
+"hace 3 horas" in Spanish; in English it keeps its short wording ("3 hours ago"). Time labels on the animation timeline
+(`animation/timelineLogic.ts`) and the properties panel's percent field are still formatted for English / the browser.
+
 ## What is translated so far
 
 The top bar, the tool dock (labels, tooltips, undo/redo, Present), the document menu, the Home (headings,
 empty state, join field, document cards with plural counts) and the headings of the properties-panel
-sections (the `Section` component translates its title). Everything else is still English: dialogs,
+sections (the `Section` component translates its title), the Versions dialog (all but the merge-back section) and the prototype player's controls. Everything else is still English: other dialogs,
 the layers panel, comments, prototype player, dev mode, notices, MCP and server messages. A string with no
 catalog entry shows as written, so the interface is never half-blank.
 

@@ -1,3 +1,4 @@
+import { formatDate, formatRelative, intlLocale } from "@/i18n/format";
 // THE APP ROUTING, as pure helpers (the router itself lives in router.tsx).
 //
 //   /                  -> Home: list of documents and templates
@@ -67,6 +68,14 @@ const MIN = 60, HOUR = 3600, DAY = 86400;
 export function relativeTime(unixSeconds: number, nowMs: number = Date.now()): string {
   if (!unixSeconds) return "—";
   const diff = Math.max(0, Math.floor(nowMs / 1000) - unixSeconds);
+  // Another language than English is left to Intl (the English wording below is what the tests and the source read).
+  if (intlLocale() !== "en") {
+    if (diff < 45) return formatRelative(0, "second");
+    if (diff < HOUR) return formatRelative(-Math.max(1, Math.round(diff / MIN)), "minute");
+    if (diff < DAY) return formatRelative(-Math.round(diff / HOUR), "hour");
+    if (diff < 7 * DAY) return formatRelative(-Math.floor(diff / DAY), "day");
+    return formatDate(unixSeconds, { day: "numeric", month: "short", year: "numeric" });
+  }
   if (diff < 45) return "now";
   if (diff < HOUR) return `${Math.max(1, Math.round(diff / MIN))} min ago`;
   if (diff < DAY) { const h = Math.round(diff / HOUR); return h === 1 ? "1 hour ago" : `${h} hours ago`; }
