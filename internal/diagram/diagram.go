@@ -1,4 +1,4 @@
-// Package diagram draws diagrams from Mermaid text -- flowchart and
+// Package diagram draws diagrams from Mermaid text -- flowchart, entity-relationship and
 // the three UML ones Mermaid can describe (class, sequence, state) -- and
 // turns them into normal document nodes (a group of shapes, vectors and text).
 //
@@ -28,6 +28,7 @@ const (
 	KindClass     = "class"
 	KindSequence  = "sequence"
 	KindState     = "state"
+	KindER        = "er"
 )
 
 // Result is the drawn diagram.
@@ -49,7 +50,7 @@ func fail(format string, a ...any) error { return &Error{fmt.Sprintf(format, a..
 // MaxSourceBytes limits the text: beyond that it is not a diagram, it is abuse.
 const MaxSourceBytes = 64 * 1024
 
-var unsupported = []string{"erDiagram", "gantt", "pie", "journey", "gitGraph", "mindmap", "timeline", "quadrantChart", "requirementDiagram", "C4Context", "sankey", "xychart", "block", "architecture", "kanban", "packet"}
+var unsupported = []string{"gantt", "pie", "journey", "gitGraph", "mindmap", "timeline", "quadrantChart", "requirementDiagram", "C4Context", "sankey", "xychart", "block", "architecture", "kanban", "packet"}
 
 // Detect recognizes the kind from the first significant line.
 func Detect(src string) (kind string, err error) {
@@ -69,10 +70,12 @@ func Detect(src string) (kind string, err error) {
 			return KindSequence, nil
 		case lw == "statediagram" || lw == "statediagram-v2":
 			return KindState, nil
+		case lw == "erdiagram":
+			return KindER, nil
 		}
 		for _, u := range unsupported {
 			if strings.EqualFold(word, u) || strings.HasPrefix(strings.ToLower(word), strings.ToLower(u)+"-") {
-				return "", fail("diagram %q is not supported: flowchart, classDiagram, sequenceDiagram and stateDiagram are supported", word)
+				return "", fail("diagram %q is not supported: flowchart, classDiagram, sequenceDiagram, stateDiagram and erDiagram are supported", word)
 			}
 		}
 		// Without a header a flowchart is assumed, as the tool does.
@@ -106,6 +109,12 @@ func Render(source string) (*Result, error) {
 		sc = renderFlowchart(fc)
 	case KindClass:
 		cd, perr := parseClass(source)
+		if perr != nil {
+			return nil, fail("%s", perr.Error())
+		}
+		sc = renderClass(cd)
+	case KindER:
+		cd, perr := parseER(source)
 		if perr != nil {
 			return nil, fail("%s", perr.Error())
 		}

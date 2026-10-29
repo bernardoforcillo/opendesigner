@@ -20,6 +20,7 @@ var (
 	reStateDesc  = regexp.MustCompile(`^([\w.-]+)\s*:\s*(.+)$`)
 	reStateHead  = regexp.MustCompile(`(?i)^stateDiagram(?:-v2)?\s*$`)
 	reStateDir   = regexp.MustCompile(`(?i)^direction\s+(TB|TD|BT|LR|RL)\s*$`)
+	reStateNote  = regexp.MustCompile(`(?i)^note\s+(?:left|right|top|bottom)\s+of\s+([\w.-]+)\s*(?::\s*(.*))?$`)
 )
 
 func parseState(src string) (*flowchart, error) {
@@ -47,7 +48,27 @@ func parseState(src string) (*flowchart, error) {
 		}
 		return "[*]start:" + s
 	}
-	inNote := false
+	noteSeq := 0
+	// addNote puts a note on the diagram: a node of its own and a dotted line to the state it is about.
+	addNote := func(target, text string) error {
+		if _, err := ensure(target); err != nil {
+			return err
+		}
+		noteSeq++
+		id := fmt.Sprintf("note#%d", noteSeq)
+		if _, err := ensure(id); err != nil {
+			return err
+		}
+		fc.Nodes[idx[id]].Shape = fNote
+		fc.Nodes[idx[id]].Label = strings.TrimSpace(text)
+		if len(fc.Edges) >= MaxEdges {
+			return fmt.Errorf("too many transitions (maximum %d)", MaxEdges)
+		}
+		fc.Edges = append(fc.Edges, flowEdge{From: target, To: id, Style: sDotted})
+		return nil
+	}
+	inNote, noteTarget := false, ""
+	var noteLines []string
 	for _, raw := range strings.Split(strings.ReplaceAll(src, "\r", ""), "\n") {
 		line := strings.TrimSpace(reComment.ReplaceAllString(raw, ""))
 		if line == "" || reStateHead.MatchString(line) {
@@ -56,12 +77,32 @@ func parseState(src string) (*flowchart, error) {
 		if inNote {
 			if strings.EqualFold(line, "end note") {
 				inNote = false
+				if noteTarget != "" {
+					if err := addNote(noteTarget, strings.Join(noteLines, "\n")); err != nil {
+						return nil, err
+					}
+				}
+				continue
 			}
+			noteLines = append(noteLines, line)
 			continue
 		}
 		if strings.HasPrefix(strings.ToLower(line), "note ") {
-			if !strings.Contains(line, ":") {
-				inNote = true
+			m := reStateNote.FindStringSubmatch(line)
+			if m == nil {
+				// `note ... of "..."` and the like: not drawn, as before.
+				if !strings.Contains(line, ":") {
+					inNote = true
+					noteTarget = ""
+				}
+				continue
+			}
+			if m[2] != "" {
+				if err := addNote(m[1], unquote(m[2])); err != nil {
+					return nil, err
+				}
+			} else {
+				inNote, noteTarget, noteLines = true, m[1], nil
 			}
 			continue
 		}

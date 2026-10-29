@@ -44,7 +44,7 @@ Legend: [x] done · [ ] to do
 - [x] Presentation mode: the playable prototype (Present)
 - [x] Diagrams: flowchart and UML (class, sequence, state) from Mermaid text, computed by the server; editor (document menu) and MCP (`create_diagram`, `update_diagram`, `list_diagrams`), see docs/diagrams.md
 - [x] Connectors that follow the shapes (Link tool and panel; derived path, see docs/whiteboard.md)
-- [ ] Diagrams: `subgraph`, ER, notes in class and state diagrams
+- [x] Diagrams: `subgraph` (nested, titled boxes), ER diagrams (`erDiagram`), notes in class and state diagrams; see docs/diagrams.md
 - [x] SVG import (paste, drop, import tool)
 - [x] .fig import (experimental: read from the documented layout, tested on generated files; components and instances are not kept; docs/handoff.md)
 - [x] .fig import tail: connectors (saved, straight, elbowed, curved, placed by their ends), tables and cells, sticky notes and other frame-like layers with their text, per-kind counts (synthetic files only; docs/handoff.md)
