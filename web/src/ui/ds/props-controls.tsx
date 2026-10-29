@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { Label, Radio, RadioGroup } from "react-aria-components";
+import { useT } from "@/i18n";
 
 // INSPECTOR PRIMITIVES ("props" area).
 //
@@ -64,15 +65,16 @@ export interface SegOption<T extends string> {
 }
 
 function SegContent<T extends string>({ o }: { o: SegOption<T> }) {
+  const { tx } = useT();
   // With the icon the text stays in the DOM, just not visible: the previous accessible name
   // (e.g. "Left") does not change.
   return o.icon ? (
     <>
       <SegIcon name={o.icon} rotate={o.rotate} />
-      <span className="sr-only">{o.label}</span>
+      <span className="sr-only">{tx(o.label)}</span>
     </>
   ) : (
-    <span className="truncate">{o.label}</span>
+    <span className="truncate">{tx(o.label)}</span>
   );
 }
 
@@ -91,6 +93,7 @@ export function SegRadio<T extends string>({
   onChange: (v: T) => void;
   showLabel?: boolean;
 }) {
+  const { tx } = useT();
   return (
     <RadioGroup
       value={value}
@@ -98,13 +101,13 @@ export function SegRadio<T extends string>({
       orientation="horizontal"
       className="flex flex-col gap-1"
     >
-      <Label className={showLabel ? "text-[11px] font-medium text-fg-subtle" : "sr-only"}>{label}</Label>
+      <Label className={showLabel ? "text-[11px] font-medium text-fg-subtle" : "sr-only"}>{tx(label)}</Label>
       <div className={SEG_WRAP}>
         {options.map((o) => (
           <Radio
             key={o.value}
             value={o.value}
-            aria-label={o.icon ? o.label : undefined}
+            aria-label={o.icon ? tx(o.label) : undefined}
             className={({ isSelected }) => `${SEG_ITEM} ${isSelected ? SEG_ON : ""}`}
           >
             <SegContent o={o} />
@@ -131,17 +134,18 @@ export function SegButtons<T extends string>({
   /** Lays the options out in rows of three instead of one row (for five or more). */
   wrap?: boolean;
 }) {
+  const { tx } = useT();
   return (
     <div className="flex flex-col gap-1">
-      {showLabel && <span className="text-[11px] font-medium text-fg-subtle">{label}</span>}
-      <div role="group" aria-label={label} className={wrap ? "grid w-full grid-cols-3 gap-0.5 rounded-md bg-surface-2 p-0.5" : SEG_WRAP}>
+      {showLabel && <span className="text-[11px] font-medium text-fg-subtle">{tx(label)}</span>}
+      <div role="group" aria-label={tx(label)} className={wrap ? "grid w-full grid-cols-3 gap-0.5 rounded-md bg-surface-2 p-0.5" : SEG_WRAP}>
         {options.map((o) => (
           <button
             key={o.value}
             type="button"
             aria-pressed={value === o.value}
-            aria-label={o.icon ? o.label : undefined}
-            title={o.label}
+            aria-label={o.icon ? tx(o.label) : undefined}
+            title={tx(o.label)}
             onClick={() => onPick(o.value)}
             className={`${SEG_ITEM} ${wrap ? "h-6" : ""} ${value === o.value ? SEG_ON : ""}`}
           >

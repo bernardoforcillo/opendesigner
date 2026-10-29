@@ -1,4 +1,5 @@
 import { Fragment, useEffect, useRef, useState } from "react";
+import { useT } from "@/i18n";
 import { Dialog, DialogTrigger, Popover } from "react-aria-components";
 import { Button, Icon, IconButton, cls } from "@/ui/ds";
 import { useScene } from "@/store/store";
@@ -58,6 +59,7 @@ export function PageRenameField({
   onCommit: (value: string) => void;
   onCancel: () => void;
 }) {
+  const { tx } = useT();
   const [value, setValue] = useState(initial);
   const ref = useRef<HTMLInputElement | null>(null);
   // Closes ONCE only: Enter/Escape close, and the blur that comes right
@@ -81,7 +83,7 @@ export function PageRenameField({
   return (
     <input
       ref={ref}
-      aria-label={RENAME_LABEL}
+      aria-label={tx(RENAME_LABEL)}
       value={value}
       placeholder={placeholder}
       spellCheck={false}
@@ -110,6 +112,7 @@ export function PageRenameField({
 // no row of its own, no + and trash buttons (new page and deletion
 // are already in the list the button opens).
 export function PageBar({ compact = false }: { compact?: boolean } = {}) {
+  const { t } = useT();
   const scene = useScene((s) => s.scene);
   const currentPageId = useScene((s) => s.currentPageId);
   // The page whose name is being renamed, or null. Only one at a time.
@@ -126,7 +129,7 @@ export function PageBar({ compact = false }: { compact?: boolean } = {}) {
   if (!scene) return null;
   const pages = scene.pages;
   const current = pages.find((p) => p.id === currentPageId) ?? pages[0];
-  const pageLabel = (name: string) => (name.trim() !== "" ? name : "Unnamed page");
+  const pageLabel = (name: string) => (name.trim() !== "" ? name : t("Unnamed page"));
 
   const masters = pages.filter((p) => p.isMaster);
   const normal = pages.filter((p) => !p.isMaster);
@@ -192,13 +195,13 @@ export function PageBar({ compact = false }: { compact?: boolean } = {}) {
 
   return (
     <fieldset
-      aria-label="Pages"
+      aria-label={t("Pages")}
       className={compact ? "flex w-28 shrink-0 items-center" : "flex h-10 shrink-0 items-center gap-1 border-b border-line px-2"}
     >
       {current && renamingId === current.id ? (
         <PageRenameField
           initial={current.name}
-          placeholder={current.name || "Page"}
+          placeholder={current.name || t("Page")}
           onCommit={(value) => commitRename(current.id, value)}
           onCancel={() => setRenamingId(null)}
         />
@@ -212,7 +215,7 @@ export function PageBar({ compact = false }: { compact?: boolean } = {}) {
               }
             >
               <Icon name="page" size={14} className="shrink-0 text-fg-subtle" />
-              <span className="min-w-0 flex-1 truncate">{current ? pageLabel(current.name) : "Page"}</span>
+              <span className="min-w-0 flex-1 truncate">{current ? pageLabel(current.name) : t("Page")}</span>
               <Icon name="chevronDown" size={14} className="shrink-0 text-fg-subtle" />
             </Button>
           </div>
@@ -221,14 +224,14 @@ export function PageBar({ compact = false }: { compact?: boolean } = {}) {
             offset={4}
             className="z-50 w-60 rounded-lg border border-line bg-raised text-fg shadow-pop outline-none"
           >
-            <Dialog aria-label="Page list" className="flex flex-col outline-none">
+            <Dialog aria-label={t("Page list")} className="flex flex-col outline-none">
               <ul className="flex max-h-64 flex-col gap-px overflow-auto p-1">
                 {[...normal, ...masters].map((p, at) => {
                   const active = p.id === currentPageId;
                   return (
                     <Fragment key={p.id}>
                     {p.isMaster && at === normal.length && (
-                      <li aria-hidden="true" className="px-2 pb-0.5 pt-1.5 text-[11px] font-semibold uppercase tracking-[0.06em] text-fg-subtle">Masters</li>
+                      <li aria-hidden="true" className="px-2 pb-0.5 pt-1.5 text-[11px] font-semibold uppercase tracking-[0.06em] text-fg-subtle">{t("Masters")}</li>
                     )}
                     <li className="group/page flex items-center gap-0.5">
                       <Button
@@ -252,7 +255,7 @@ export function PageBar({ compact = false }: { compact?: boolean } = {}) {
                       <span className="flex shrink-0 opacity-0 transition-opacity focus-within:opacity-100 group-hover/page:opacity-100">
                         <IconButton
                           icon="pen"
-                          label={`Rename ${pageLabel(p.name)}`}
+                          label={t("Rename {name}", { name: pageLabel(p.name) })}
                           size={24}
                           onPress={() => {
                             setOpen(false);
@@ -264,7 +267,7 @@ export function PageBar({ compact = false }: { compact?: boolean } = {}) {
                         />
                         <IconButton
                           icon="trash"
-                          label={`Delete ${pageLabel(p.name)}`}
+                          label={t("Delete {name}", { name: pageLabel(p.name) })}
                           size={24}
                           isDisabled={!canDelete(p.id)}
                           onPress={() => deletePage(p.id)}
@@ -279,16 +282,16 @@ export function PageBar({ compact = false }: { compact?: boolean } = {}) {
                 <div className="flex flex-col gap-1 border-t border-line p-2 text-[12px] text-fg-muted">
                   {current.isMaster ? (
                     <>
-                      <span>Master page: its content is drawn behind the pages that apply it. Use <code>&lt;#&gt;</code> in a text for the page number.</span>
+                      <span>{t("Master page: its content is drawn behind the pages that apply it. Use {token} in a text for the page number.", { token: "<#>" })}</span>
                       <label className="flex items-center gap-2">
-                        <span className="shrink-0">Based on</span>
+                        <span className="shrink-0">{t("Based on")}</span>
                         <select
-                          aria-label="Master this master is based on"
+                          aria-label={t("Master this master is based on")}
                           value={current.masterId ?? ""}
                           onChange={(e) => setMaster(current.id, e.target.value)}
                           className="h-7 min-w-0 flex-1 rounded-md border border-line bg-surface px-1 text-[13px] text-fg"
                         >
-                          <option value="">None</option>
+                          <option value="">{t("None")}</option>
                           {masters.filter((m) => m.id !== current.id && masterFieldsValid(pages, { ...current, masterId: m.id })).map((m) => (
                             <option key={m.id} value={m.id}>{pageLabel(m.name)}</option>
                           ))}
@@ -298,14 +301,14 @@ export function PageBar({ compact = false }: { compact?: boolean } = {}) {
                   ) : (
                     <>
                       <label className="flex items-center gap-2">
-                        <span className="shrink-0">Master</span>
+                        <span className="shrink-0">{t("Master")}</span>
                         <select
-                          aria-label="Master for this page"
+                          aria-label={t("Master for this page")}
                           value={current.masterId ?? ""}
                           onChange={(e) => setMaster(current.id, e.target.value)}
                           className="h-7 min-w-0 flex-1 rounded-md border border-line bg-surface px-1 text-[13px] text-fg"
                         >
-                          <option value="">None</option>
+                          <option value="">{t("None")}</option>
                           {masters.map((m) => (
                             <option key={m.id} value={m.id}>{pageLabel(m.name)}</option>
                           ))}
@@ -313,14 +316,14 @@ export function PageBar({ compact = false }: { compact?: boolean } = {}) {
                       </label>
                       {facing && (
                         <label className="flex items-center gap-2">
-                          <span className="shrink-0">Left pages</span>
+                          <span className="shrink-0">{t("Left pages")}</span>
                           <select
-                            aria-label="Master for left-hand pages"
+                            aria-label={t("Master for left-hand pages")}
                             value={current.leftMasterId ?? ""}
                             onChange={(e) => setMaster(current.id, e.target.value, "leftMasterId")}
                             className="h-7 min-w-0 flex-1 rounded-md border border-line bg-surface px-1 text-[13px] text-fg"
                           >
-                            <option value="">Same as the master</option>
+                            <option value="">{t("Same as the master")}</option>
                             {masters.map((m) => (
                               <option key={m.id} value={m.id}>{pageLabel(m.name)}</option>
                             ))}
@@ -334,7 +337,7 @@ export function PageBar({ compact = false }: { compact?: boolean } = {}) {
                     isDisabled={!current.isMaster && regularPages(pages, current.id).length === 0}
                     className="flex h-7 w-full items-center gap-2 rounded-md px-2 text-left text-[13px] text-fg-muted outline-none hover:bg-surface-3 hover:text-fg data-disabled:opacity-50 data-focus-visible:shadow-(--ring)"
                   >
-                    {current.isMaster ? "Convert to a normal page" : "Convert to a master"}
+                    {current.isMaster ? t("Convert to a normal page") : t("Convert to a master")}
                   </Button>
                 </div>
               )}
@@ -344,21 +347,21 @@ export function PageBar({ compact = false }: { compact?: boolean } = {}) {
                   className="flex h-7 w-full items-center gap-2 rounded-md px-2 text-left text-[13px] text-fg-muted outline-none hover:bg-surface-3 hover:text-fg data-focus-visible:shadow-(--ring)"
                 >
                   <Icon name="plus" size={13} />
-                  Add a page
+                  {t("Add a page")}
                 </Button>
                 <Button
                   onPress={() => { setOpen(false); setSetupOpen(true); }}
                   className="flex h-7 w-full items-center gap-2 rounded-md px-2 text-left text-[13px] text-fg-muted outline-none hover:bg-surface-3 hover:text-fg data-focus-visible:shadow-(--ring)"
                 >
                   <Icon name="page" size={13} />
-                  Page setup…
+                  {t("Page setup…")}
                 </Button>
                 <Button
                   onPress={createMaster}
                   className="flex h-7 w-full items-center gap-2 rounded-md px-2 text-left text-[13px] text-fg-muted outline-none hover:bg-surface-3 hover:text-fg data-focus-visible:shadow-(--ring)"
                 >
                   <Icon name="plus" size={13} />
-                  Add a master page
+                  {t("Add a master page")}
                 </Button>
               </div>
             </Dialog>
@@ -366,11 +369,11 @@ export function PageBar({ compact = false }: { compact?: boolean } = {}) {
         </DialogTrigger>
       )}
       <PageSetupDialog isOpen={setupOpen} onOpenChange={setSetupOpen} />
-      {!compact && <IconButton icon="plus" label="New page" onPress={createPage} />}
+      {!compact && <IconButton icon="plus" label={t("New page")} onPress={createPage} />}
       {!compact && (
         <IconButton
           icon="trash"
-          label="Delete page"
+          label={t("Delete page")}
           // The LAST page cannot be deleted (ErrLastPage in the core): the button is
           // disabled instead of sending an op known to be rejected.
           isDisabled={!canDelete(currentPageId)}
