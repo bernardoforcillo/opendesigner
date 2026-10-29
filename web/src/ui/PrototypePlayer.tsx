@@ -18,7 +18,7 @@ import { makeSetDocSettingsOp } from "@/tools/ops";
 import { DEVICES, deviceById, deviceGeometry, type DeviceId } from "@/flow/devices";
 import "@/ui/ds/flow-stage.css";
 import {
-  back, backTo, canGoBack, follow, optionsFrom, startState, trail, varEntries,
+  back, backTo, canGoBack, closeOverlay, follow, isGestureTrigger, optionsFrom, startState, trail, varEntries,
   type Option, type ProtoState,
 } from "@/flow/prototype";
 
@@ -68,6 +68,7 @@ export function PrototypePlayer({ onClose }: { onClose: () => void }) {
   const [state, setState] = useState<ProtoState | null>(() => (scene ? startState(scene, flow, pageId) : null));
   const [showVars, setShowVars] = useState(false);
   const stage = useRef<HTMLDivElement>(null);
+  const dragFrom = useRef<{ id: string | null; x: number; y: number } | null>(null);
   const canvas = useRef<HTMLCanvasElement>(null);
   const [size, setSize] = useState({ w: 0, h: 0 });
   // It also redraws when an image arrives.
@@ -107,7 +108,7 @@ export function PrototypePlayer({ onClose }: { onClose: () => void }) {
     if (!auto) return;
     const id = setTimeout(() => navigateRef.current(auto), auto.transition.delayMs ?? 0);
     return () => clearTimeout(id);
-  }, [scene, flow?.id, state?.screenId]);
+  }, [scene, flow?.id, state?.screenId, state?.overlay]);
 
   // Esc closes. In capture and stopping propagation: no other global
   // listener (toolManager, selectTool) must react to an Esc that belongs to the prototype.
@@ -142,6 +143,15 @@ export function PrototypePlayer({ onClose }: { onClose: () => void }) {
     return scene && n ? worldBoundsOfNode(scene, n) : null;
   }, [scene, state?.screenId]);
   const cam = useMemo(() => (screenBox && size.w > 0 ? fitCamera(screenBox, size.w, size.h) : null), [screenBox, size]);
+  // The overlay: its screen is drawn over the one under it, centred on it. `shift` moves its world into the base screen's.
+  const overlayId = state?.overlay ?? null;
+  const overlay = useMemo(() => {
+    const n = scene && overlayId ? scene.nodes.at(overlayId) : undefined;
+    if (!scene || !n || !screenBox) return null;
+    const box = worldBoundsOfNode(scene, n);
+    const shift = { x: screenBox.x + screenBox.width / 2 - (box.x + box.width / 2), y: screenBox.y + screenBox.height / 2 - (box.y + box.height / 2) };
+    return { id: n.id, box, shift, scene: sceneForScreen(resolveScene(scene), n.id) };
+  }, [scene, overlayId, screenBox]);
 
   // The document's clips (enter/loop when the screen appears, hover and tap on the
   // target): frame loop only while one is running, see ui/protoAnim.ts.
@@ -152,8 +162,25 @@ export function PrototypePlayer({ onClose }: { onClose: () => void }) {
     if (!c || !derived || !cam || tx) return;
     resizeCanvasToDisplaySize(c);
     const ctx = c.getContext("2d");
-    if (ctx) drawScene(ctx, anim.pose(derived), cam, PROTO_PAGE_ID);
-  }, [derived, cam, size, imgTick, anim.pose, tx]);
+    if (!ctx) return;
+    drawScene(ctx, anim.pose(derived), cam, PROTO_PAGE_ID);
+    if (overlay?.scene) {
+      // Dim what is under the overlay, then draw the overlay itself (on its own canvas: drawScene clears what it draws on).
+      const off = document.createElement("canvas");
+      off.width = c.width;
+      off.height = c.height;
+      const octx = off.getContext("2d");
+      if (octx) {
+        drawScene(octx, overlay.scene, { ...cam, x: cam.x - overlay.shift.x * cam.zoom, y: cam.y - overlay.shift.y * cam.zoom }, PROTO_PAGE_ID);
+        ctx.save();
+        ctx.setTransform(1, 0, 0, 1, 0, 0);
+        ctx.fillStyle = "rgba(0,0,0,0.45)";
+        ctx.fillRect(0, 0, c.width, c.height);
+        ctx.drawImage(off, 0, 0);
+        ctx.restore();
+      }
+    }
+  }, [derived, cam, size, imgTick, anim.pose, tx, overlay]);
 
   // The transition: a frame loop for its duration. "smart" draws ONE interpolated scene; the
   // others draw the two screens on their own canvases and lay them over each other.
@@ -212,16 +239,38 @@ export function PrototypePlayer({ onClose }: { onClose: () => void }) {
 
   if (!scene) return null;
   const options = flow && state ? optionsFrom(scene, flow.id, state) : [];
+  // The hotspots of an open overlay sit in the overlay's own coordinates: this moves them over the screen it covers.
+  const hotShift = overlay?.shift ?? { x: 0, y: 0 };
   // A hotspot exists only if the element really has a box in the screen.
   const hotspots: { o: Option; box: Bounds }[] = [];
   const bar: Option[] = [];
   for (const o of options) {
     if (o.superseded) continue; // the other branch of an if / else on this hotspot applies instead
     const el = o.transition.elementId !== "" ? scene.nodes.at(o.transition.elementId) : undefined;
-    if (el && cam) hotspots.push({ o, box: worldBoundsOfNode(scene, el) });
+    if (el && cam) {
+      const b = worldBoundsOfNode(scene, el);
+      hotspots.push({ o, box: { ...b, x: b.x + hotShift.x, y: b.y + hotShift.y } });
+    }
     else bar.push(o);
   }
   const go = navigate;
+
+  // Drag: a press that moves far enough on the hotspot (or, for a drag with no element, anywhere on the screen).
+  const DRAG_PX = 24;
+  function dragMove(e: { clientX: number; clientY: number; buttons: number }, id: string | null) {
+    const d = dragFrom.current;
+    if (!d || d.id !== id || e.buttons === 0) return;
+    if (Math.hypot(e.clientX - d.x, e.clientY - d.y) < DRAG_PX) return;
+    dragFrom.current = null;
+    const o = options.find((x) => x.enabled && x.transition.trigger === "drag" && (id === null ? x.transition.elementId === "" : x.transition.id === id));
+    if (o) go(o);
+  }
+  // Scroll (or drag) on a transition with no element acts on the whole screen.
+  function screenGesture(trigger: "scroll", dy: number) {
+    if (dy === 0) return;
+    const o = options.find((x) => x.enabled && x.transition.trigger === trigger && x.transition.elementId === "");
+    if (o) go(o);
+  }
 
 
   const flowName = flow?.name ?? "";
@@ -264,7 +313,21 @@ export function PrototypePlayer({ onClose }: { onClose: () => void }) {
               aria-label={`Screen ${screenName(scene, state.screenId)}`}
               className="absolute inset-0 block h-full w-full"
               // A click that misses every hotspot flashes them: "where can I click?".
-              onClick={() => setFlashes((n) => n + 1)}
+              onClick={(e) => {
+                // Outside an open overlay closes it.
+                if (overlay && cam && state) {
+                  const r = e.currentTarget.getBoundingClientRect();
+                  const wx = (e.clientX - r.left - cam.x) / cam.zoom - overlay.shift.x, wy = (e.clientY - r.top - cam.y) / cam.zoom - overlay.shift.y;
+                  if (wx < overlay.box.x || wy < overlay.box.y || wx > overlay.box.x + overlay.box.width || wy > overlay.box.y + overlay.box.height) {
+                    setState(closeOverlay(state));
+                    return;
+                  }
+                }
+                setFlashes((n) => n + 1);
+              }}
+              onWheel={(e) => screenGesture("scroll", e.deltaY)}
+              onPointerDown={(e) => { dragFrom.current = { id: null, x: e.clientX, y: e.clientY }; }}
+              onPointerMove={(e) => dragMove(e, null)}
               style={
                 frame
                   ? {
@@ -285,7 +348,12 @@ export function PrototypePlayer({ onClose }: { onClose: () => void }) {
                     aria-label={optionLabel(scene, o)}
                     aria-disabled={!o.enabled}
                     title={o.enabled ? optionLabel(scene, o) : o.reason}
-                    onClick={() => go(o)}
+                    // A hover, drag or scroll hotspot is performed by that gesture; a keyboard activation (detail 0) still works.
+                    onClick={(e) => { if (isGestureTrigger(o.transition.trigger) && e.detail !== 0) return; go(o); }}
+                    onPointerEnter={() => { if (o.transition.trigger === "hover") go(o); }}
+                    onPointerDown={(e) => { if (o.transition.trigger === "drag") { e.stopPropagation(); dragFrom.current = { id: o.transition.id, x: e.clientX, y: e.clientY }; } }}
+                    onPointerMove={(e) => dragMove(e, o.transition.id)}
+                    onWheel={(e) => { if (o.transition.trigger === "scroll" && e.deltaY !== 0) go(o); }}
                     style={{ left: x, top: y, width: box.width * cam.zoom, height: box.height * cam.zoom }}
                     className={
                       "absolute rounded-md border-2 outline-none transition-[background-color,border-color] duration-500 " +

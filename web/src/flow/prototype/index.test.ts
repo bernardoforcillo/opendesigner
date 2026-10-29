@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import {
-  applyEffect, back, backTo, canGoBack, entryScreen, evalGuard, follow, optionsFrom, parseEffect, startState,
+  applyEffect, back, backTo, canGoBack, closeOverlay, isGestureTrigger, entryScreen, evalGuard, follow, optionsFrom, parseEffect, startState,
   trail, truthy, varEntries,
 } from "@/flow/prototype";
 import { baseScene, flowOf, transition, withFlows } from "@/flow/testSupport";
@@ -164,5 +164,49 @@ describe("navigazione", () => {
 
   it("varEntries sorts by name", () => {
     expect(varEntries({ b: "2", a: "1" })).toEqual([["a", "1"], ["b", "2"]]);
+  });
+});
+
+describe("overlays", () => {
+  const sc = () => withFlows(baseScene(), [flowOf("f1", "A")], [
+    transition("o", "f1", "A", "B", { animation: "overlay", effect: "open=1" }),
+    transition("x", "f1", "B", "C", { label: "Next" }),
+  ]);
+  const o = (t: string) => sc().transitions[t];
+
+  it("opens the target over the screen, which stays", () => {
+    const s = sc();
+    const st = follow(s, startState(s, null, null)!, o("o"));
+    expect(st.screenId).toBe("A");
+    expect(st.overlay).toBe("B");
+    expect(st.vars.open).toBe("1");
+  });
+
+  it("answers with the overlay's own exits while it is open", () => {
+    const s = sc();
+    const st = follow(s, startState(s, null, null)!, o("o"));
+    expect(optionsFrom(s, "f1", st).map((x) => x.transition.id)).toEqual(["x"]);
+  });
+
+  it("an exit of the overlay leaves the overlay and goes to the target", () => {
+    const s = sc();
+    const st = follow(s, follow(s, startState(s, null, null)!, o("o")), o("x"));
+    expect(st.screenId).toBe("C");
+    expect(st.overlay).toBeUndefined();
+  });
+
+  it("closing keeps the screen and the variables; back restores the overlay", () => {
+    const s = sc();
+    const open = follow(s, startState(s, null, null)!, o("o"));
+    expect(closeOverlay(open)).toMatchObject({ screenId: "A", vars: { open: "1" } });
+    expect(closeOverlay(open).overlay).toBeUndefined();
+    const next = follow(s, open, o("x"));
+    expect(back(next).overlay).toBe("B");
+    expect(back(open).overlay).toBeUndefined();
+  });
+
+  it("knows the gesture triggers", () => {
+    expect(["hover", "drag", "scroll"].every(isGestureTrigger)).toBe(true);
+    expect(isGestureTrigger("click")).toBe(false);
   });
 });

@@ -65,7 +65,7 @@ func applyDeleteFlow(doc *opendesignerv1.Document, d *opendesignerv1.DeleteFlow)
 // TransitionAnimations is the closed set of Transition.animation (the empty string is a cut).
 var TransitionAnimations = []string{
 	"dissolve", "slide-left", "slide-right", "slide-up", "slide-down",
-	"push-left", "push-right", "push-up", "push-down", "smart",
+	"push-left", "push-right", "push-up", "push-down", "smart", "overlay",
 }
 
 // ValidTransitionAnimation: "" (a cut) or one of TransitionAnimations.

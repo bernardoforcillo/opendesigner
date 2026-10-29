@@ -503,7 +503,7 @@ export const MAX_TRANSITION_ORDER = 1000;
 /** The closed set of Transition.animation values (parity with core.TransitionAnimations). */
 export const TRANSITION_ANIMATIONS = [
   "dissolve", "slide-left", "slide-right", "slide-up", "slide-down",
-  "push-left", "push-right", "push-up", "push-down", "smart",
+  "push-left", "push-right", "push-up", "push-down", "smart", "overlay",
 ] as const;
 
 // VARIABLES (design tokens): see proto VariableCollection / Variable and

@@ -282,7 +282,7 @@ type SetTransitionInput struct {
 	ElementId  *string `json:"elementId,omitempty" jsonschema:"optional: the node INSIDE fromId that triggers (the hotspot); its meta test.id/test.text give the test locator"`
 	Guard      *string `json:"guard,omitempty" jsonschema:"condition under which the edge can be taken: free text, or one the prototype player evaluates (user=guest, count >= 3 && !paid, a || b; else = when no other edge on the same trigger+element holds; see order for an ordered if / else if / else chain)"`
 	Effect     *string `json:"effect,omitempty" jsonschema:"what the edge changes, free text"`
-	Animation  *string `json:"animation,omitempty" jsonschema:"how the player goes to toId: dissolve, slide-left|right|up|down, push-left|right|up|down, smart (matching names move into place); empty = cut"`
+	Animation  *string `json:"animation,omitempty" jsonschema:"how the player goes to toId: dissolve, slide-left|right|up|down, push-left|right|up|down, smart (matching names move into place), overlay (open toId over the current screen; a click outside it closes it); empty = cut"`
 	DurationMs *int32  `json:"durationMs,omitempty" jsonschema:"0..10000; 0 = the player's default (300)"`
 	Easing     *string `json:"easing,omitempty" jsonschema:"linear, easeIn, easeOut, easeInOut, spring or cubic-bezier(x1,y1,x2,y2); empty = easeInOut"`
 	DelayMs    *int32  `json:"delayMs,omitempty" jsonschema:"trigger auto only: wait on the screen this long (0..60000) before following"`

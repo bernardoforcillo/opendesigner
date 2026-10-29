@@ -31,9 +31,9 @@ import { Field, FlowIcon, SwitchRow } from "@/ui/ds/flow-parts";
 // chosen flow and on the entry; the selection of a transition stays in the
 // accent blue, like the arrow on the canvas.
 
-const TRIGGERS = ["click", "submit", "auto", "key", "back"] as const;
+const TRIGGERS = ["click", "hover", "drag", "scroll", "submit", "auto", "key", "back"] as const;
 const TRIGGER_LABELS: Record<string, string> = {
-  click: "Click",
+  click: "Click", hover: "Hover", drag: "Drag", scroll: "Scroll",
   submit: "Form submit",
   auto: "Automatic",
   key: "Key",
@@ -97,7 +97,7 @@ const ANIMATION_LABELS: Record<string, string> = {
   dissolve: "Dissolve", "slide-left": "Slide in from the right", "slide-right": "Slide in from the left",
   "slide-up": "Slide in from the bottom", "slide-down": "Slide in from the top",
   "push-left": "Push left", "push-right": "Push right", "push-up": "Push up", "push-down": "Push down",
-  smart: "Smart animate",
+  smart: "Smart animate", overlay: "Open as overlay",
 };
 
 // The if / else if / else chain of a hotspot (Transition.order): the branches the player tries in
