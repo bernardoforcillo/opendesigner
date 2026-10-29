@@ -1,9 +1,14 @@
+// @vitest-environment node
 import { describe, it, expect } from "vitest";
 import { baseScene, child } from "@/flow/testSupport";
 import { nodesWith } from "@/store/nodeMap";
 import { sampleClip } from "@/animation/engine";
 import { poseScene } from "@/animation/pose";
 import { fxDef, resolveFx } from "@/animation/fx/library";
+
+import { createRequire } from "node:module";
+import type { CanvasKit } from "canvaskit-wasm";
+import { DISPLACE_FRAMES, DISPLACE_SKSL } from "@/animation/fx/timeFx";
 
 // x runs 0 -> 1000 over 1000 ms, so the pose at time t has x = t
 const kf = (time: number, value: number) => ({ time, value, easing: "linear" });
@@ -69,4 +74,39 @@ describe("time effects re-pose the node at other moments", () => {
     const anim = sampleClip({ tracks: [{ nodeId: "n", prop: "fx.ec.time.echo.echoes", keyframes: [kf(0, 3)] }] }, 0);
     expect(poseScene(scene, anim).nodes.at("n").animEcho).toBeUndefined();
   });
+
+  it("time displacement: frames spread over +-max, the node now is the last (the map)", () => {
+    const n = setup({ "fx.ec.time.timedisplacement.maxDisplacement": [0.35] }).pose(500);
+    expect(n.animEcho!.mode).toBe("displace");
+    expect(n.animEcho!.samples).toHaveLength(DISPLACE_FRAMES + 1);
+    expect(xs(n)).toEqual([150, 250, 350, 450, 550, 650, 750, 850, 500]);
+    expect(n.animEcho!.uniforms).toEqual([0, 1, 0]);
+  });
+});
+
+// The real shader: with solid-colour "frames", the map value picks the frame.
+describe("time displacement shader", () => {
+  it("compiles and picks frame i for map value i / 7, blending between", async () => {
+    const require = createRequire(import.meta.url);
+    const init = require("canvaskit-wasm/bin/full/canvaskit.js") as (o: { locateFile: (f: string) => string }) => Promise<CanvasKit>;
+    const wasm = require.resolve("canvaskit-wasm/bin/full/canvaskit.wasm");
+    const CK = await init({ locateFile: () => wasm });
+    const effect = CK.RuntimeEffect.Make(DISPLACE_SKSL, (e) => { throw new Error(e); })!;
+    const frames = Array.from({ length: DISPLACE_FRAMES }, (_, i) => CK.Shader.MakeColor(CK.Color4f(i / 7, 0, 0, 1), CK.ColorSpace.SRGB));
+    const render = (gray: number, uniforms = [0, 1, 0]) => {
+      const surface = CK.MakeSurface(4, 4)!;
+      const map = CK.Shader.MakeColor(CK.Color4f(gray, gray, gray, 1), CK.ColorSpace.SRGB);
+      const sh = effect.makeShaderWithChildren([0, 0, 4, 4, ...uniforms, ...new Array(9).fill(0)], [map, ...frames]);
+      const p = new CK.Paint();
+      p.setShader(sh);
+      surface.getCanvas().drawRect(CK.XYWHRect(0, 0, 4, 4), p);
+      const px = surface.getCanvas().readPixels(0, 0, { width: 1, height: 1, colorType: CK.ColorType.RGBA_8888, alphaType: CK.AlphaType.Unpremul, colorSpace: CK.ColorSpace.SRGB }) as Uint8Array;
+      p.delete(); sh.delete(); map.delete(); surface.delete();
+      return px[0];
+    };
+    expect(render(0)).toBe(0);                       // frame 0
+    expect(render(1)).toBe(255);                     // frame 7
+    expect(render(3 / 7)).toBeCloseTo(255 * 3 / 7, -1);
+    expect(render(1, [0, 1, 1])).toBe(0);            // inverted map
+  }, 60_000);
 });

@@ -35,7 +35,7 @@ export interface FxOverlay {
 }
 
 /** How a time effect combines the node's poses at other moments (see animation/pose.ts and renderer/ck). */
-export type FxTimeMode = "plus" | "screen" | "lighten" | "darken" | "over" | "difference";
+export type FxTimeMode = "plus" | "screen" | "lighten" | "darken" | "over" | "difference" | "displace";
 
 export interface FxTime {
   /**
@@ -45,6 +45,11 @@ export interface FxTime {
    */
   samples: { dt: number; weight: number }[];
   mode: FxTimeMode;
+  /**
+   * Only for mode "displace": the samples are DISPLACE_FRAMES frames followed by the node now (the map); each pixel shows
+   * the frame the map picks. `uniforms` fill `uniform float p[12]` of DISPLACE_SKSL.
+   */
+  uniforms?: number[];
 }
 
 export interface FxKernel {

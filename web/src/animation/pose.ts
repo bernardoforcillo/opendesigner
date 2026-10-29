@@ -140,7 +140,7 @@ export function poseScene(base: SceneState, anim: ReadonlyMap<string, NodeAnim>,
         const posed = sa ? patchNode(base, n, sa).next : null;
         return { node: posed ?? n, weight };
       });
-      next = { ...nowNode, animEcho: { mode: te.mode, samples } };
+      next = { ...nowNode, animEcho: { mode: te.mode, samples, ...(te.uniforms ? { uniforms: te.uniforms } : {}) } };
     }
     if (next) {
       edit ??= base.nodes.edit();

@@ -22,6 +22,7 @@ import { VECTOR_STROKE_PX, inkIsBox, nodeCenter } from "@/renderer/shapes";
 import { decorationBars, fontSizeOf, hscaleOf, paragraphDecorations, piecesOfLine, piecesOfSegment, placeTextLines, trackedOffsets, type MeasureFor } from "@/renderer/text";
 import { FX_TILE, blurBands, overlayEffects, overlayTile, progressiveBlur, tileUnit, withBandBlur, withExpandedGlass } from "@/renderer/effectsFx";
 import { buildFx, type BuiltFx } from "@/animation/fx/apply";
+import { DISPLACE_SKSL } from "@/animation/fx/timeFx";
 import { hasRealStroke, vectorStyleOf } from "@/renderer/vectorStyle";
 import type { FontBook } from "@/renderer/ck/canvaskit";
 
@@ -39,6 +40,7 @@ import type { FontBook } from "@/renderer/ck/canvaskit";
 //   - the inner/outer stroke clips with the exact outline, not with a
 //     widened rectangle.
 
+const pad12 = (n: readonly number[]): number[] => { const o = n.slice(0, 12); while (o.length < 12) o.push(0); return o; };
 const DEG = 1; // CanvasKit rotates in DEGREES, like the model.
 
 // An image's placeholder (colors of canvasRenderer.ts::PLACEHOLDER_*).
@@ -249,14 +251,61 @@ export class CanvasKitRenderer {
 
   // --- the node --------------------------------------------------------------
 
+  // Device pixels per local unit for an offscreen surface covering `reach`, capped so the surface stays reasonable.
+  private offscreenScale(reach: Bounds): number {
+    const f = this.frame as Frame;
+    const MAX = 4096;
+    return Math.min(Math.max(0.05, f.zoom * this.dpr), MAX / Math.max(1, reach.width), MAX / Math.max(1, reach.height));
+  }
+
+  // Time Displacement: the node posed at several moments is drawn offscreen, one image each, and a shader picks per
+  // pixel which one to show from the map (the node now, the last sample). See DISPLACE_SKSL.
+  private drawDisplaced(sk: Canvas, echo: NonNullable<NodeLite["animEcho"]>, reach: Bounds | null, overrides: ReadonlyMap<string, InstanceOverrideLite> | null): void {
+    const CK = this.CK;
+    const f = this.frame as Frame;
+    const area = reach ?? inflateBounds(boundsOfNode(echo.samples[echo.samples.length - 1].node), 64);
+    const effect = this.runtimeEffect(DISPLACE_SKSL);
+    if (!effect) return;
+    const s = this.offscreenScale(area);
+    const w = Math.max(1, Math.ceil(area.width * s)), h = Math.max(1, Math.ceil(area.height * s));
+    const toLocal = [1 / s, 0, area.x, 0, 1 / s, area.y, 0, 0, 1];
+    const shaders = echo.samples.map(({ node }) => {
+      const surface = CK.MakeRenderTarget(this.grCtx as GrDirectContext, w, h) ?? CK.MakeSurface(w, h);
+      if (!surface) return null;
+      const c = surface.getCanvas();
+      c.clear(CK.TRANSPARENT);
+      c.save();
+      c.scale(s, s);
+      c.translate(-area.x, -area.y);
+      this.drawNode(c, node, overrides);
+      c.restore();
+      const img = surface.makeImageSnapshot();
+      const sh = img.makeShaderOptions(CK.TileMode.Decal, CK.TileMode.Decal, CK.FilterMode.Linear, CK.MipmapMode.None, toLocal);
+      f.garbage.push(surface, img, sh);
+      return sh;
+    });
+    if (shaders.some((x) => x === null)) return;
+    const now = shaders[shaders.length - 1] as Shader;
+    const shader = effect.makeShaderWithChildren([0, 0, 0, 0, ...pad12(echo.uniforms ?? [])], [now, ...(shaders.slice(0, -1) as Shader[])]);
+    f.garbage.push(shader);
+    const p = new CK.Paint();
+    p.setShader(shader);
+    sk.drawRect(CK.XYWHRect(area.x, area.y, area.width, area.height), p);
+    p.delete();
+  }
+
   // A node with a time effect (animation/fx/timeFx.ts): the node posed at several moments, each drawn as a layer
   // with its weight, combined inside an isolated layer so they blend with each other and not with the backdrop.
   private drawEchoes(sk: Canvas, n: NodeLite, echo: NonNullable<NodeLite["animEcho"]>, overrides: ReadonlyMap<string, InstanceOverrideLite> | null): void {
     const CK = this.CK;
     const BM = CK.BlendMode;
-    const mode = { plus: BM.Plus, screen: BM.Screen, lighten: BM.Lighten, darken: BM.Darken, over: BM.SrcOver, difference: BM.Difference }[echo.mode];
+    const mode = { plus: BM.Plus, screen: BM.Screen, lighten: BM.Lighten, darken: BM.Darken, over: BM.SrcOver, difference: BM.Difference, displace: BM.SrcOver }[echo.mode];
     const reach = n.kind === "text" ? null : unionBounds(echo.samples.map(({ node }) =>
       inflateBounds(boundsOfNode(node), Math.hypot(node.width, node.height) * 0.5 * (node.animScale ?? 1) + effectsOutset(node) + strokeOutsetOfNode(node) + 2)));
+    if (echo.mode === "displace") {
+      this.drawDisplaced(sk, echo, reach, overrides);
+      return;
+    }
     sk.saveLayer(undefined, reach ? CK.XYWHRect(reach.x, reach.y, reach.width, reach.height) : null);
     echo.samples.forEach(({ node, weight }, i) => {
       const lp = new CK.Paint();
@@ -489,9 +538,7 @@ export class CanvasKitRenderer {
     const f = this.frame as Frame;
     const { box, reach } = top;
     // device pixels per local unit, capped so the offscreen surface stays reasonable
-    let s = Math.max(0.05, f.zoom * this.dpr);
-    const MAX = 4096;
-    s = Math.min(s, MAX / Math.max(1, reach.width), MAX / Math.max(1, reach.height));
+    const s = this.offscreenScale(reach);
     const w = Math.max(1, Math.ceil(reach.width * s)), h = Math.max(1, Math.ceil(reach.height * s));
     const rect = CK.XYWHRect(reach.x, reach.y, reach.width, reach.height);
     let paint: (c: Canvas) => void = drawBody;

@@ -4,12 +4,35 @@
 // the playhead is scrubbed, jumped or played backwards. animation/pose.ts builds the samples; the renderer
 // (ckRenderer.ts::drawEchoes) draws them and combines them with the mode.
 //
-// Not done: Time Displacement (it needs many frames read per pixel).
 
 import type { FxDef, FxTime } from "@/animation/fx/library";
 import { P } from "@/animation/fx/kit";
 
 const MS = 1000;
+
+/** Frames a Time Displacement chooses between (SkSL cannot index children dynamically, so they are named). */
+export const DISPLACE_FRAMES = 8;
+
+/**
+ * Time Displacement: each pixel is taken from a different moment, chosen by a map. The map is the node itself now
+ * (its luminance, alpha or red), 0.5 meaning "no displacement"; the frames are the node posed at DISPLACE_FRAMES moments
+ * evenly spread over [-maxDisplacement, +maxDisplacement], blended linearly between neighbours.
+ * p: [0] map (0 luma, 1 alpha, 2 red, 3 green, 4 blue), [1] contrast, [2] invert.
+ */
+export const DISPLACE_SKSL = `uniform shader map;
+${Array.from({ length: DISPLACE_FRAMES }, (_, i) => `uniform shader f${i};`).join("\n")}
+uniform float4 box; uniform float p[12];
+half4 main(float2 xy) {
+  half4 m = map.eval(xy);
+  float3 u = m.a > 0.0 ? float3(m.rgb) / float(m.a) : float3(0.0);
+  float v = p[0] < 0.5 ? dot(float3(m.rgb), float3(0.2126, 0.7152, 0.0722)) : p[0] < 1.5 ? float(m.a) : p[0] < 2.5 ? u.r : p[0] < 3.5 ? u.g : u.b;
+  v = clamp((v - 0.5) * p[1] + 0.5, 0.0, 1.0);
+  if (p[2] > 0.5) { v = 1.0 - v; }
+  float pos = v * ${DISPLACE_FRAMES - 1}.0;
+  half4 acc = half4(0.0);
+${Array.from({ length: DISPLACE_FRAMES }, (_, i) => `  acc += f${i}.eval(xy) * half(max(0.0, 1.0 - abs(pos - ${i}.0)));`).join("\n")}
+  return acc;
+}`;
 const time = (id: string, params: FxDef["params"], t: NonNullable<FxDef["time"]>): FxDef => ({ id, params, time: t });
 
 /** Evenly spaced samples over the shutter interval ending now, each with the same weight (they add up to 1). */
@@ -75,6 +98,16 @@ export const TIME_FX: FxDef[] = [
   time("ec.time.timewarp", [P("speed", "Speed", -400, 400, 100, 1, "%"), P("offset", "Time Offset (s)", -60, 60, 0, 0.01)], (v, t) => ({
     samples: [{ dt: Math.max(0, (t * v.speed) / 100 + v.offset * MS) - t, weight: 1 }], mode: "over",
   })),
+
+  time("ec.time.timedisplacement", [
+    P("maxDisplacement", "Max Displacement Time (s)", -2, 2, 0.5, 0.01), P("map", "Time Displacement Map (0 Luma, 1 Alpha, 2 Red, 3 Green, 4 Blue)", 0, 4, 0),
+    P("contrast", "Contrast", 0, 10, 1, 0.05), P("invert", "Invert Map", 0, 1, 0),
+  ], (v) => {
+    const samples = [];
+    for (let i = 0; i < DISPLACE_FRAMES; i++) samples.push({ dt: v.maxDisplacement * MS * ((2 * i) / (DISPLACE_FRAMES - 1) - 1), weight: 1 });
+    samples.push({ dt: 0, weight: 1 });
+    return { samples, mode: "displace", uniforms: [v.map, v.contrast, v.invert] };
+  }),
 
   time("ec.time.timedifference", [P("offset", "Time Offset (s)", -2, 2, -0.033, 0.001), P("opacity", "Opacity", 0, 100, 100, 1, "%")], (v) => ({
     samples: [{ dt: v.offset * MS, weight: 1 }, { dt: 0, weight: v.opacity / 100 }], mode: "difference",

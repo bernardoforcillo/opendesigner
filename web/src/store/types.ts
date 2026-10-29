@@ -476,7 +476,7 @@ export interface NodeLite {
   animFx?: Record<string, Record<string, number>>;
   // Time effects (animation/fx/timeFx.ts): the node posed at other moments, in drawing order, with how to combine them.
   // `node` never carries an animEcho itself.
-  animEcho?: { mode: "plus" | "screen" | "lighten" | "darken" | "over" | "difference"; samples: { node: NodeLite; weight: number }[] };
+  animEcho?: { mode: "plus" | "screen" | "lighten" | "darken" | "over" | "difference" | "displace"; uniforms?: number[]; samples: { node: NodeLite; weight: number }[] };
 }
 
 // What the renderer needs to know about a scene DERIVED from playback: which
