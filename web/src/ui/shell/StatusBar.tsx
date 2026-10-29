@@ -1,8 +1,9 @@
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useScene } from "@/store/store";
 import { ToggleButton } from "react-aria-components";
 import { IconButton } from "@/ui/ds";
 import { zoomAt } from "@/canvas/camera";
+import { isTextField } from "@/tools/toolManager";
 import { pageNumbers } from "@/store/pageNumbers";
 import { facingPartner, fitSpreadCamera, useSpreadView } from "@/store/spread";
 import { hasErrors } from "@/export/preflight";
@@ -13,6 +14,8 @@ import { usePreflight } from "@/ui/shell/preflightIssues";
 // bottom of the window where a page-layout app keeps them.
 //  - zoom steps around the middle of the canvas (the same anchor the shortcuts use), so the page
 //    stays where it is;
+//  - the zoom is a field: type a percentage and press Enter. Fit frames the page (or the spread);
+//    Ctrl/Cmd+0 fits, Ctrl/Cmd+1 is 100%, Ctrl/Cmd +/- steps (the browser's own page zoom is not wanted here);
 //  - the navigator walks the regular pages (masters are not pages) and shows the number `<#>` shows;
 //  - the Spread toggle shows the page facing the one on screen beside it (store/spread.ts); it needs the
 //    document's Facing pages setting (Page setup), and the navigator then names the pair, "2–3";
@@ -39,6 +42,11 @@ export function StatusBar() {
     const h = canvas?.clientHeight ?? 0;
     st.setCamera(zoomAt(st.camera, factor, w / 2, h / 2));
   }
+  // An absolute zoom, around the middle of the canvas.
+  function zoomTo(zoom: number) {
+    const st = useScene.getState();
+    if (st.camera.zoom > 0) zoomBy(zoom / st.camera.zoom);
+  }
   // Frames the page on screen, and its facing page when the spread is on.
   const fit = () => {
     const st = useScene.getState();
@@ -55,6 +63,30 @@ export function StatusBar() {
     fit();
   };
 
+  // The zoom field: what is typed stays until Enter or blur; Escape puts the real value back.
+  const [draft, setDraft] = useState<string | null>(null);
+  const commitZoom = () => {
+    const n = parseFloat((draft ?? "").replace("%", ""));
+    setDraft(null);
+    if (Number.isFinite(n) && n > 0) zoomTo(n / 100);
+  };
+
+  // Zoom shortcuts, for as long as the status bar (the Publishing workspace) is on screen.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (!(e.ctrlKey || e.metaKey) || e.altKey || isTextField(e.target)) return;
+      if (e.key === "0") fit();
+      else if (e.key === "1") zoomTo(1);
+      else if (e.key === "=" || e.key === "+") zoomBy(STEP);
+      else if (e.key === "-") zoomBy(1 / STEP);
+      else return;
+      e.preventDefault();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const current = pages[at];
   const facing = scene?.settings?.facingPages === true;
   const spreadOn = useSpreadView((s) => s.on);
@@ -69,8 +101,21 @@ export function StatusBar() {
     <div role="status" aria-label="Status" className="flex h-7 shrink-0 items-center gap-4 border-t border-line bg-surface px-2 text-[12px] text-fg-muted">
       <div className="flex items-center gap-0.5">
         <IconButton icon="minus" label="Zoom out" size={20} onPress={() => zoomBy(1 / STEP)} />
-        <span className="w-12 text-center tabular-nums text-fg" aria-label="Zoom">{Math.round(zoom * 100)}%</span>
+        <input
+          aria-label="Zoom"
+          inputMode="decimal"
+          value={draft ?? `${Math.round(zoom * 100)}%`}
+          onFocus={(e) => e.currentTarget.select()}
+          onChange={(e) => setDraft(e.target.value)}
+          onBlur={() => draft !== null && commitZoom()}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") { commitZoom(); e.currentTarget.blur(); }
+            else if (e.key === "Escape") { setDraft(null); e.currentTarget.blur(); }
+          }}
+          className="h-5 w-14 rounded bg-transparent text-center tabular-nums text-fg outline-none hover:bg-surface-3 focus:bg-surface-3 focus-visible:shadow-[var(--ring)]"
+        />
         <IconButton icon="plus" label="Zoom in" size={20} onPress={() => zoomBy(STEP)} />
+        <button type="button" aria-label="Fit" title="Fit the page (Ctrl+0)" onClick={fit} className="ml-1 h-5 rounded px-1.5 outline-none hover:bg-surface-3 focus-visible:shadow-[var(--ring)]">Fit</button>
       </div>
       {pages.length > 0 && (
         <div className="flex items-center gap-0.5">

@@ -72,10 +72,10 @@ describe("ControlPanel", () => {
 describe("StatusBar", () => {
   it("shows the zoom and steps it around the canvas centre", () => {
     render(<StatusBar />);
-    expect(screen.getByLabelText("Zoom")).toHaveTextContent("100%");
+    expect(screen.getByLabelText("Zoom")).toHaveValue("100%");
     fireEvent.click(screen.getByRole("button", { name: "Zoom in" }));
     expect(useScene.getState().camera.zoom).toBeCloseTo(1.25);
-    expect(screen.getByLabelText("Zoom")).toHaveTextContent("125%");
+    expect(screen.getByLabelText("Zoom")).toHaveValue("125%");
   });
 
   it("walks the regular pages (masters are not pages)", () => {
@@ -132,5 +132,38 @@ describe("ToolDock rail", () => {
     expect(bar).toHaveAttribute("aria-orientation", "vertical");
     expect(screen.queryByRole("button", { name: "Animation" })).toBeNull();
     expect(screen.getByRole("button", { name: "Undo" })).toBeInTheDocument();
+  });
+});
+
+describe("StatusBar zoom", () => {
+  it("types a percentage and applies it on Enter, and Escape puts the real value back", () => {
+    render(<StatusBar />);
+    const field = screen.getByLabelText("Zoom");
+    fireEvent.change(field, { target: { value: "50" } });
+    fireEvent.keyDown(field, { key: "Enter" });
+    expect(useScene.getState().camera.zoom).toBeCloseTo(0.5);
+    expect(field).toHaveValue("50%");
+    fireEvent.change(field, { target: { value: "999" } });
+    fireEvent.keyDown(field, { key: "Escape" });
+    expect(useScene.getState().camera.zoom).toBeCloseTo(0.5);
+    expect(field).toHaveValue("50%");
+  });
+
+  it("ignores text that is not a number", () => {
+    render(<StatusBar />);
+    const field = screen.getByLabelText("Zoom");
+    fireEvent.change(field, { target: { value: "abc" } });
+    fireEvent.keyDown(field, { key: "Enter" });
+    expect(useScene.getState().camera.zoom).toBe(1);
+  });
+
+  it("zooms with Ctrl+= / Ctrl+- and sets 100% with Ctrl+1", () => {
+    render(<StatusBar />);
+    fireEvent.keyDown(window, { key: "=", ctrlKey: true });
+    expect(useScene.getState().camera.zoom).toBeCloseTo(1.25);
+    fireEvent.keyDown(window, { key: "1", ctrlKey: true });
+    expect(useScene.getState().camera.zoom).toBeCloseTo(1);
+    fireEvent.keyDown(window, { key: "-", metaKey: true });
+    expect(useScene.getState().camera.zoom).toBeCloseTo(0.8);
   });
 });
