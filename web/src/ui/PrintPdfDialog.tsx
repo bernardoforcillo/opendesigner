@@ -42,39 +42,39 @@ export function PrintPdfDialog({ isOpen, onOpenChange }: { isOpen: boolean; onOp
   return (
     <ModalOverlay isDismissable isOpen={isOpen} onOpenChange={onOpenChange} className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
       <Modal className="max-h-[85vh] w-full max-w-[560px] overflow-auto rounded-xl bg-raised p-4 text-[13px] text-fg shadow-pop">
-        <Dialog aria-label="Export PDF" className="flex flex-col gap-3 outline-none">
-          <h2 className="text-[14px] font-semibold">Export PDF</h2>
+        <Dialog aria-label={tr.t("Export PDF")} className="flex flex-col gap-3 outline-none">
+          <h2 className="text-[14px] font-semibold">{tr.t("Export PDF")}</h2>
           <label className="flex items-center gap-2">
-            Standard
-            <select aria-label="PDF standard" className={cls.select} value={opts.pdfx} onChange={(e) => set("pdfx", e.target.value as typeof opts.pdfx)}>
-              {STANDARDS.map((s) => <option key={s.id} value={s.id}>{s.label}</option>)}
+            {tr.t("Standard")}
+            <select aria-label={tr.t("PDF standard")} className={cls.select} value={opts.pdfx} onChange={(e) => set("pdfx", e.target.value as typeof opts.pdfx)}>
+              {STANDARDS.map((s) => <option key={s.id} value={s.id}>{tr.tx(s.label)}</option>)}
             </select>
           </label>
           <div className="flex flex-col gap-1.5">
-            <Check label="Include bleed" checked={opts.bleed} onChange={(v) => set("bleed", v)} />
-            <Check label="Crop marks and page information" checked={opts.marks} onChange={(v) => set("marks", v)} />
-            <Check label="Include slug" checked={opts.slug} onChange={(v) => set("slug", v)} />
-            <Check label="Facing pages as spreads" checked={opts.spreads} disabled={!facing} onChange={(v) => set("spreads", v)} />
-            <Check label="Bookmarks and links" checked={opts.interactive} onChange={(v) => set("interactive", v)} />
-            <Check label="Tagged PDF (reading order, headings, alt text)" checked={opts.tagged} onChange={(v) => set("tagged", v)} />
-            <Check label="Booklet: two pages per sheet side, saddle-stitch order" checked={opts.booklet} onChange={(v) => set("booklet", v)} />
+            <Check label={tr.tx("Include bleed")} checked={opts.bleed} onChange={(v) => set("bleed", v)} />
+            <Check label={tr.tx("Crop marks and page information")} checked={opts.marks} onChange={(v) => set("marks", v)} />
+            <Check label={tr.tx("Include slug")} checked={opts.slug} onChange={(v) => set("slug", v)} />
+            <Check label={tr.tx("Facing pages as spreads")} checked={opts.spreads} disabled={!facing} onChange={(v) => set("spreads", v)} />
+            <Check label={tr.tx("Bookmarks and links")} checked={opts.interactive} onChange={(v) => set("interactive", v)} />
+            <Check label={tr.tx("Tagged PDF (reading order, headings, alt text)")} checked={opts.tagged} onChange={(v) => set("tagged", v)} />
+            <Check label={tr.tx("Booklet: two pages per sheet side, saddle-stitch order")} checked={opts.booklet} onChange={(v) => set("booklet", v)} />
           </div>
-          <section aria-label="Preflight" className="flex flex-col gap-1">
-            <h3 className="text-[12px] font-semibold">Preflight</h3>
-            {issues.length === 0 && <p className="text-fg-subtle">No problems found in the document.</p>}
+          <section aria-label={tr.t("Preflight")} className="flex flex-col gap-1">
+            <h3 className="text-[12px] font-semibold">{tr.t("Preflight")}</h3>
+            {issues.length === 0 && <p className="text-fg-subtle">{tr.t("No problems found in the document.")}</p>}
             <ul className="flex flex-col gap-1">
               {issues.map((i, k) => (
                 <li key={k} className={"rounded-md border border-line p-1.5 " + (i.severity === "error" ? "text-danger" : i.severity === "info" ? "text-fg-subtle" : "")}>
-                  <span className="font-medium">{i.severity === "error" ? "Error" : i.severity === "warning" ? "Warning" : "Note"}: </span>{issueText(i, tr)}
+                  <span className="font-medium">{i.severity === "error" ? tr.t("Error") : i.severity === "warning" ? tr.t("Warning") : tr.t("Note")}: </span>{issueText(i, tr)}
                 </li>
               ))}
             </ul>
-            <p className="text-[12px] text-fg-subtle">A checklist of known problems, not a PDF/X validator. Image resolution and missing glyphs are checked when the file is written.</p>
+            <p className="text-[12px] text-fg-subtle">{tr.t("A checklist of known problems, not a PDF/X validator. Image resolution and missing glyphs are checked when the file is written.")}</p>
           </section>
           <div className="flex justify-end gap-2">
-            <Button onPress={() => onOpenChange(false)}>Cancel</Button>
-            <Button onPress={() => { onOpenChange(false); void runPackage({}, opts); }}>Package…</Button>
-            <Button variant="primary" onPress={() => { onOpenChange(false); void runDocumentExport("pdf", {}, opts); }}>Export</Button>
+            <Button onPress={() => onOpenChange(false)}>{tr.t("Cancel")}</Button>
+            <Button onPress={() => { onOpenChange(false); void runPackage({}, opts); }}>{tr.t("Package…")}</Button>
+            <Button variant="primary" onPress={() => { onOpenChange(false); void runDocumentExport("pdf", {}, opts); }}>{tr.t("Export")}</Button>
           </div>
         </Dialog>
       </Modal>

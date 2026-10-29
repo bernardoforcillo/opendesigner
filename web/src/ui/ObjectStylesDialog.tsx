@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useT } from "@/i18n";
 import { Dialog, Modal, ModalOverlay } from "react-aria-components";
 import { useScene } from "@/store/store";
 import { OBJECT_STYLE_PROPS, type ObjectStyleProp } from "@/store/types";
@@ -22,6 +23,7 @@ function run(ops: Ops) {
 }
 
 export function ObjectStylesDialog({ isOpen, onOpenChange }: { isOpen: boolean; onOpenChange: (open: boolean) => void }) {
+  const { t, tn, tx } = useT();
   const scene = useScene((s) => s.scene);
   const selection = useScene((s) => s.selection);
   const [selected, setSelected] = useState<string | null>(null);
@@ -34,12 +36,12 @@ export function ObjectStylesDialog({ isOpen, onOpenChange }: { isOpen: boolean; 
   return (
     <ModalOverlay isDismissable isOpen={isOpen} onOpenChange={onOpenChange} className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
       <Modal className="max-h-[85vh] w-full max-w-[620px] overflow-auto rounded-xl bg-raised p-4 text-[13px] text-fg shadow-pop">
-        <Dialog aria-label="Object styles" className="flex flex-col gap-3 outline-none">
-          <h2 className="text-[14px] font-semibold">Object styles</h2>
-          <p className="text-fg-subtle">Make a style from the look of the selected shape, apply it to others, and change it once for all of them.</p>
+        <Dialog aria-label={t("Object styles")} className="flex flex-col gap-3 outline-none">
+          <h2 className="text-[14px] font-semibold">{t("Object styles")}</h2>
+          <p className="text-fg-subtle">{t("Make a style from the look of the selected shape, apply it to others, and change it once for all of them.")}</p>
           <div className="grid grid-cols-[200px_1fr] gap-3">
             <div className="flex flex-col gap-2">
-              <ul aria-label="Object styles" className="flex max-h-[260px] flex-col gap-px overflow-auto">
+              <ul aria-label={t("Object styles")} className="flex max-h-[260px] flex-col gap-px overflow-auto">
                 {styles.map((d) => (
                   <li key={d.id}>
                     <button type="button" aria-current={d.id === selected ? "true" : undefined}
@@ -51,37 +53,37 @@ export function ObjectStylesDialog({ isOpen, onOpenChange }: { isOpen: boolean; 
               <Button isDisabled={!first} onPress={() => {
                 const made = first && createObjectStyleOps(scene, first, `Object style ${styles.length + 1}`);
                 if (made) { run(made.ops); setSelected(made.id); }
-              }}>New from selection</Button>
+              }}>{t("New from selection")}</Button>
             </div>
             <div className="flex min-w-0 flex-col gap-2">
-              {!cur ? <p className="text-fg-subtle">Select a style, or make one from a shape.</p> : (
+              {!cur ? <p className="text-fg-subtle">{t("Select a style, or make one from a shape.")}</p> : (
                 <>
-                  <input aria-label="Object style name" className={cls.input} defaultValue={cur.name} key={cur.id + ":name"} maxLength={80}
+                  <input aria-label={t("Object style name")} className={cls.input} defaultValue={cur.name} key={cur.id + ":name"} maxLength={80}
                     onBlur={(e) => { const v = e.target.value.trim(); if (v !== "" && v !== cur.name) run(updateObjectStyleOps(scene, cur.id, { name: v })); }} />
-                  <span className={cls.label}>It sets</span>
+                  <span className={cls.label}>{t("It sets")}</span>
                   <div className="grid grid-cols-2 gap-1.5">
                     {OBJECT_STYLE_PROPS.map((p) => (
                       <label key={p} className="flex items-center gap-1.5">
-                        <input type="checkbox" aria-label={LABELS[p]} checked={cur.sets.includes(p)}
-                          onChange={(e) => run(updateObjectStyleOps(scene, cur.id, { sets: OBJECT_STYLE_PROPS.filter((q) => (q === p ? e.target.checked : cur.sets.includes(q))) }))} /> {LABELS[p]}
+                        <input type="checkbox" aria-label={tx(LABELS[p])} checked={cur.sets.includes(p)}
+                          onChange={(e) => run(updateObjectStyleOps(scene, cur.id, { sets: OBJECT_STYLE_PROPS.filter((q) => (q === p ? e.target.checked : cur.sets.includes(q))) }))} /> {tx(LABELS[p])}
                       </label>
                     ))}
                   </div>
-                  <select aria-label="Based on" className={cls.select} value={cur.basedOn ?? ""} onChange={(e) => run(updateObjectStyleOps(scene, cur.id, { basedOn: e.target.value }))}>
-                    <option value="">Not based on another style</option>
-                    {styles.filter((d) => d.id !== cur.id).map((d) => <option key={d.id} value={d.id}>Based on {d.name}</option>)}
+                  <select aria-label={t("Based on")} className={cls.select} value={cur.basedOn ?? ""} onChange={(e) => run(updateObjectStyleOps(scene, cur.id, { basedOn: e.target.value }))}>
+                    <option value="">{t("Not based on another style")}</option>
+                    {styles.filter((d) => d.id !== cur.id).map((d) => <option key={d.id} value={d.id}>{t("Based on {name}", { name: d.name })}</option>)}
                   </select>
-                  <p className="text-fg-subtle">{users === 0 ? "Not used yet." : `Used by ${users} ${users === 1 ? "object" : "objects"}.`}</p>
+                  <p className="text-fg-subtle">{users === 0 ? t("Not used yet.") : tn("Used by {n} objects", users)}</p>
                   <div className="flex flex-wrap gap-2">
-                    <Button isDisabled={selection.length === 0} onPress={() => run(applyObjectStyleOps(scene, selection, cur.id))}>Apply to selection</Button>
-                    <Button isDisabled={!first} onPress={() => { if (first) run(redefineObjectStyleOps(scene, cur.id, first)); }}>Redefine from selection</Button>
-                    <Button variant="danger" onPress={() => { run(deleteObjectStyleOps(scene, cur.id)); setSelected(null); }}>Delete</Button>
+                    <Button isDisabled={selection.length === 0} onPress={() => run(applyObjectStyleOps(scene, selection, cur.id))}>{t("Apply to selection")}</Button>
+                    <Button isDisabled={!first} onPress={() => { if (first) run(redefineObjectStyleOps(scene, cur.id, first)); }}>{t("Redefine from selection")}</Button>
+                    <Button variant="danger" onPress={() => { run(deleteObjectStyleOps(scene, cur.id)); setSelected(null); }}>{t("Delete")}</Button>
                   </div>
                 </>
               )}
             </div>
           </div>
-          <div className="flex justify-end"><Button onPress={() => onOpenChange(false)}>Done</Button></div>
+          <div className="flex justify-end"><Button onPress={() => onOpenChange(false)}>{t("Done")}</Button></div>
         </Dialog>
       </Modal>
     </ModalOverlay>
