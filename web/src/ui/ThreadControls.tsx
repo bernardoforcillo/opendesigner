@@ -1,4 +1,6 @@
+import { useState } from "react";
 import { useScene } from "@/store/store";
+import { StoryDialog } from "@/ui/StoryDialog";
 import { nextOrderKey } from "@/store/orderKey";
 import { META_NEXT, chainsOf, headOf, isThreaded, nextOf, threadOps, unlinkOps } from "@/store/threads";
 import { toPbNode, type NodeLite } from "@/store/types";
@@ -28,6 +30,7 @@ function run(ops: Ops | null) {
 const GAP = 24;
 
 export function ThreadControls() {
+  const [storyOpen, setStoryOpen] = useState(false);
   const scene = useScene((s) => s.scene);
   const selection = useScene((s) => s.selection);
   if (!scene || selection.length === 0) return null;
@@ -93,6 +96,8 @@ export function ThreadControls() {
   return (
     <div className="flex flex-col gap-1.5" role="group" aria-label="Text thread">
       {columnRow}
+      <Button onPress={() => setStoryOpen(true)} className="h-7 w-full">Edit story…</Button>
+      <StoryDialog id={n.id} isOpen={storyOpen} onOpenChange={setStoryOpen} />
       {info && <p className="text-[11px] text-fg-subtle">{info}{headOf(scene, n.id) !== n.id ? " · edit the text in the first frame" : ""}</p>}
       {!hasNext && <Button onPress={() => addNext(n)} className="h-7 w-full">Add next frame</Button>}
       {hasNext && <Button onPress={() => run(unlinkOps(scene, n.id))} className="h-7 w-full">Unlink after this frame</Button>}

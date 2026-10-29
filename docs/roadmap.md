@@ -107,7 +107,7 @@ Pages and structure
 Text
 - [x] Text frames with columns, inset and vertical alignment (columns and gutter in the Text section; docs/text-frames.md)
 - [x] Threaded frames (text flows from one frame to the next, across pages), overset indicator; thread/unlink/add next frame, MCP (`thread_text_frames`); see docs/text-frames.md
-- [ ] Threading by dragging from a frame's port, a story editor
+- [x] Threading by dragging from a frame's port, a story editor (docs/text-frames.md)
 - [x] Paragraph styles and character styles (based-on, next style, space before/after, indents), underline and strikethrough, editor pickers, MCP (`format_text`); see docs/rich-text.md
 - [x] Nested styles, colour in styles, bullets and numbering, tabs (with leaders); see docs/rich-text.md
 - [x] Baseline grid (document setting, drawn on the page, snap target) and paragraphs that align to it; see docs/rich-text.md
