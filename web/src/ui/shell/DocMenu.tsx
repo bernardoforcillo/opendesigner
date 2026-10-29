@@ -15,6 +15,7 @@ import { runCommand } from "@/jobs/commands";
 import { runDocumentExport } from "@/export/exportScene";
 import { DiagramDialog } from "@/ui/DiagramDialog";
 import { VariablesDialog } from "@/ui/VariablesDialog";
+import { useShareDialog, useVariablesDialog } from "@/store/dialogs";
 import { FontsDialog } from "@/ui/FontsDialog";
 import { StylesDialog } from "@/ui/StylesDialog";
 import { PageSetupDialog } from "@/ui/PageSetupDialog";
@@ -69,13 +70,15 @@ export function DocMenu({ onNewDocument }: { onNewDocument: () => void }) {
   const pixelSnap = useViewPrefs((s) => s.pixelSnap);
   const [open, setOpen] = useState(false);
   const [diagramOpen, setDiagramOpen] = useState(false);
-  const [variablesOpen, setVariablesOpen] = useState(false);
+  const variablesOpen = useVariablesDialog((s) => s.open);
+  const setVariablesOpen = useVariablesDialog((s) => s.setOpen);
   const [fontsOpen, setFontsOpen] = useState(false);
   const [stylesOpen, setStylesOpen] = useState(false);
   const [pageSetupOpen, setPageSetupOpen] = useState(false);
   const [versionsOpen, setVersionsOpen] = useState(false);
   const [pluginsOpen, setPluginsOpen] = useState(false);
-  const [shareOpen, setShareOpen] = useState(false);
+  const shareOpen = useShareDialog((s) => s.open);
+  const setShareOpen = useShareDialog((s) => s.setOpen);
   const [boardOpen, setBoardOpen] = useState(false);
   const [findOpen, setFindOpen] = useState(false);
   const [swatchesOpen, setSwatchesOpen] = useState(false);
@@ -138,6 +141,7 @@ export function DocMenu({ onNewDocument }: { onNewDocument: () => void }) {
           else if (k === "page-setup") setPageSetupOpen(true);
           else if (k === "export-epub") void runDocumentExport("epub");
           else if (k === "export-epub-reflow") void runDocumentExport("epub-reflow");
+          else if (k === "export-html-text") void runDocumentExport("html-text");
           else if (k === "diagram") setDiagramOpen(true);
           else if (k === "variables") setVariablesOpen(true);
           else if (k === "fonts") setFontsOpen(true);
@@ -224,6 +228,11 @@ export function DocMenu({ onNewDocument }: { onNewDocument: () => void }) {
               {show("export-epub") && (
                 <MenuItem id="export-epub-reflow" className={ITEM}>
                   <Icon name="download" size={14} /> Export text as EPUB (reflowable)
+                </MenuItem>
+              )}
+              {show("export-epub") && (
+                <MenuItem id="export-html-text" className={ITEM}>
+                  <Icon name="download" size={14} /> Export text as HTML (reflowable)
                 </MenuItem>
               )}
               {show("page-setup") && (

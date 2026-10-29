@@ -20,6 +20,8 @@ import (
 type classDef struct {
 	ID, Label, Annot string
 	Attrs, Methods   []string
+	// Note: this is a note (its Label is the text), not a class: a yellow card, no compartments.
+	Note bool
 }
 
 type headMark int
@@ -54,6 +56,7 @@ var (
 	reClassDir    = regexp.MustCompile(`(?i)^direction\s+(TB|TD|BT|LR|RL)\s*$`)
 	reClassDecl   = regexp.MustCompile(`^class\s+(` + classIdent + `)(?:\s*\[\s*"([^"]*)"\s*\])?\s*(\{)?\s*$`)
 	reClassMember = regexp.MustCompile(`^(` + classIdent + `)\s*:\s*(.+)$`)
+	reClassNote   = regexp.MustCompile(`^note\s+(?:for\s+(` + classIdent + `)\s+)?"([^"]*)"\s*$`)
 	reClassAnnot  = regexp.MustCompile(`^<<\s*([^>]+?)\s*>>\s*(` + classIdent + `)?\s*$`)
 	reClassRel    = regexp.MustCompile(`^(` + classIdent + `)\s*(?:"([^"]*)"\s*)?(<\|--|--\|>|<\|\.\.|\.\.\|>|\*--|--\*|o--|--o|<--|-->|<\.\.|\.\.>|--|\.\.)\s*(?:"([^"]*)"\s*)?(` + classIdent + `)\s*(?::\s*(.*))?$`)
 )
@@ -103,6 +106,7 @@ func parseClass(src string) (*classDiagram, error) {
 		}
 	}
 	body := ""
+	noteSeq := 0
 	for _, raw := range strings.Split(strings.ReplaceAll(src, "\r", ""), "\n") {
 		line := strings.TrimSpace(reComment.ReplaceAllString(raw, ""))
 		if line == "" || reClassHead.MatchString(line) {
@@ -119,6 +123,27 @@ func parseClass(src string) (*classDiagram, error) {
 		}
 		if m := reClassDir.FindStringSubmatch(line); m != nil {
 			cd.Dir = parseDir(m[1])
+			continue
+		}
+		if m := reClassNote.FindStringSubmatch(line); m != nil {
+			if len(cd.Classes) >= MaxNodes {
+				return nil, fmt.Errorf("too many classes (maximum %d)", MaxNodes)
+			}
+			noteSeq++
+			id := fmt.Sprintf("note#%d", noteSeq)
+			idx[id] = len(cd.Classes)
+			cd.Classes = append(cd.Classes, classDef{ID: id, Label: strings.ReplaceAll(m[2], `\n`, "\n"), Note: true})
+			if m[1] != "" {
+				target, err := ensure(m[1])
+				if err != nil {
+					return nil, err
+				}
+				if len(cd.Rels) >= MaxEdges {
+					return nil, fmt.Errorf("too many relations (maximum %d)", MaxEdges)
+				}
+				// The class sits above its note.
+				cd.Rels = append(cd.Rels, classRel{A: id, B: target.ID, Dashed: true, topIsA: false})
+			}
 			continue
 		}
 		if strings.HasPrefix(line, "note ") || strings.HasPrefix(line, "style ") || strings.HasPrefix(line, "classDef ") || strings.HasPrefix(line, "cssClass ") || strings.HasPrefix(line, "click ") || strings.HasPrefix(line, "link ") || strings.HasPrefix(line, "callback ") {
@@ -213,6 +238,9 @@ const (
 )
 
 func classBox(c classDef) (w, h, headH, attrH, methH float64) {
+	if c.Note {
+		return math.Max(100, textW(c.Label, memSize)+24), math.Max(36, textH(c.Label, memSize)+18), 0, 0, 0
+	}
 	nameW := textW(c.Label, fontSize) + 28
 	w = math.Max(120, nameW)
 	for _, m := range c.Attrs {
@@ -363,6 +391,14 @@ func renderClass(cd *classDiagram) *Scene {
 		x, y, _, _ := rect(i)
 		x, y = x+dx, y+dy
 		w, h, headH, attrH, _ := classBox(c)
+		if c.Note {
+			th := textH(c.Label, memSize)
+			sc.add(
+				Box{X: x, Y: y, W: w, H: h, Shape: ShapeRect, Radius: 3, Fill: rgb(colNote), Stroke: rgb(colNoteLine), StrokeW: 1, Name: "Note"},
+				Text{X: x + 10, Y: y + h/2 - th/2, W: w - 20, H: th, Content: c.Label, Size: memSize, Align: "left", Color: colInk, Name: name("Note text", c.Label)},
+			)
+			continue
+		}
 		sc.add(Box{X: x, Y: y, W: w, H: h, Shape: ShapeRect, Fill: rgb(colWhite), Stroke: rgb(colNodeLine), StrokeW: 1.5, Name: "Class " + c.Label})
 		sc.add(Box{X: x, Y: y, W: w, H: headH, Shape: ShapeRect, Fill: rgb(colHeader), Stroke: rgb(colNodeLine), StrokeW: 1.5, Name: "Header " + c.Label})
 		ty := y + 8

@@ -68,14 +68,14 @@ const stateSrc = `stateDiagram-v2
 func TestDetect(t *testing.T) {
 	for src, want := range map[string]string{
 		"flowchart LR\nA-->B": KindFlowchart, "graph TD\nA-->B": KindFlowchart, "A-->B": KindFlowchart,
-		"%% c\nclassDiagram\nclass A": KindClass, "sequenceDiagram\nA->>B: x": KindSequence, "stateDiagram\n[*] --> A": KindState,
+		"%% c\nclassDiagram\nclass A": KindClass, "sequenceDiagram\nA->>B: x": KindSequence, "stateDiagram\n[*] --> A": KindState, "erDiagram\nA ||--o{ B : x": KindER,
 	} {
 		got, err := Detect(src)
 		if err != nil || got != want {
 			t.Errorf("Detect(%q) = %q, %v; want %q", src, got, err, want)
 		}
 	}
-	for _, src := range []string{"", "  \n%% comment only", "erDiagram\nA ||--o{ B : x", "gantt\ntitle x"} {
+	for _, src := range []string{"", "  \n%% comment only", "pie\ntitle x", "gantt\ntitle x"} {
 		if _, err := Detect(src); err == nil {
 			t.Errorf("Detect(%q) should have failed", src)
 		}
@@ -348,7 +348,7 @@ func TestLimitsAndErrors(t *testing.T) {
 	if _, err := Render(strings.Repeat("A-->B\n", 20000)); err == nil {
 		t.Error("text that is too long should fail")
 	}
-	_, err := Render("erDiagram\nA ||--o{ B : has")
+	_, err := Render("gantt\nA ||--o{ B : has")
 	var de *Error
 	if err == nil || !asErr(err, &de) {
 		t.Errorf("expected an error of type *Error, found %v", err)

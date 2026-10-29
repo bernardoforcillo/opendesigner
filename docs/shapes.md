@@ -37,6 +37,14 @@ The outline is computed once, as path commands, by `renderer/shapeGeometry.ts` (
 
 Editor: the shapes menu of the tool dock has **Polygon** and **Star** (drag a box, or click for a 100 px one); the panel shows **Sides**, **Points** / **Inner ratio**, or **Start** / **Sweep** / **Ring** for the selected shape. MCP: `create_polygon`, `create_star`, and `set_properties` with `sides`, `points`, `innerRatio`, `arcStart`, `arcSweep`; `list_nodes` / `get_document` report them in `shape`. `.fig` import keeps `STAR`, `REGULAR_POLYGON` and the `arcData` of ellipses.
 
+## Live corners
+
+A single selected rectangle at least 80 px on screen shows a round handle just inside its top-left corner (`selection/cornerHandle.ts`).
+Drag it along the diagonal and all four corners round together, live; one drag is one undo step, a click that does not move writes nothing,
+and Escape puts the radius back. The handle rides the curve (it sits `radius` in from the corner, never nearer than about 14 px on screen) and
+works on a rotated rectangle (the pointer is read in the rectangle's own space). It does not appear with smoothed or independent corners, where the
+radius is not one number: the Corners section of the panel is for those.
+
 ## Rectangle corners: smoothing and independent radii
 
 `RectNode.corner_smoothing` (0..1) and `RectNode.radii` (four radii: top left, top right, bottom right, bottom left; when present they replace `corner_radius`).

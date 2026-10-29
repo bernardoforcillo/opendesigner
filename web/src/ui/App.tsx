@@ -1,9 +1,23 @@
 import { effectiveGuides, isLeftPage } from "@/store/masters";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Code, ConnectError } from "@connectrpc/connect";
 import { Tab, TabList, TabPanel, Tabs } from "react-aria-components";
 import { Banner, Icon } from "@/ui/ds";
 import { ToolDock } from "@/ui/shell/ToolDock";
+import { ControlPanel } from "@/ui/shell/ControlPanel";
+import { useZoomShortcuts } from "@/canvas/zoomCommands";
+import { facingPartner, partnerSheet, pointOnFacingPage, useSpreadView } from "@/store/spread";
+import { StatusBar } from "@/ui/shell/StatusBar";
+import { PagesList } from "@/ui/shell/PagesList";
+import { ModeTabs } from "@/ui/shell/ModeTabs";
+import { ShareHeader } from "@/ui/shell/ShareHeader";
+import { ZoomMenu } from "@/ui/shell/ZoomMenu";
+import { useVariablesDialog } from "@/store/dialogs";
+import { ActionsPalette } from "@/ui/shell/ActionsPalette";
+import { buildPaletteActions } from "@/ui/shell/paletteActions";
+import { StylesPanel } from "@/ui/shell/StylesPanel";
+import { PreflightPanel } from "@/ui/shell/PreflightPanel";
+import { useDock, type DockTab } from "@/store/dock";
 import { ISLAND_CLS, TopBar } from "@/ui/shell/TopBar";
 import { usePanels } from "@/ui/shell/panels";
 import { SyncClient } from "@/rpc/syncClient";
@@ -44,7 +58,6 @@ import { LayersPanel } from "@/ui/LayersPanel";
 import { ComponentsPanel } from "@/ui/ComponentsPanel";
 import { PagesPanel } from "@/ui/PagesPanel";
 import { PropertiesPanel } from "@/ui/PropertiesPanel";
-import { PageBar } from "@/ui/PageBar";
 import { FlowPanel } from "@/ui/FlowPanel";
 import { ScreenMetaEditor } from "@/ui/ScreenMetaEditor";
 import { PrototypePlayer } from "@/ui/PrototypePlayer";
@@ -55,7 +68,7 @@ import { TimelinePanel } from "@/ui/timeline/TimelinePanel";
 import { useTimeline } from "@/animation/timelineStore";
 import { posedScene } from "@/animation/posedScene";
 import { verticalOf } from "@/store/docSettings";
-import { modeFor } from "@/verticals";
+import { modeFor, verticalDef } from "@/verticals";
 import { attachTimelineShortcuts } from "@/ui/timeline/shortcuts";
 import { resolveFlow, useFlowUi, type EditorMode } from "@/store/flowUi";
 import { drawFlows } from "@/renderer/flowRenderer";
@@ -195,10 +208,15 @@ export function App() {
   // The left panel's tab. The comment tool brings Comments to the front (revealRequested), and
   // opens the left panel if it was closed.
   const [leftTab, setLeftTab] = useState("layers");
+  // The Publishing workspace has no left panel: its dock (Properties, Pages, Layers, Comments) is on the right.
+  useZoomShortcuts();
+  const dockTab = useDock((d) => d.tab);
+  const setDockTab = useDock((d) => d.setTab);
   const reveal = useCommentsUi((c) => c.revealRequested);
   useEffect(() => {
     if (reveal === 0) return;
     setLeftTab("comments");
+    setDockTab("comments");
     if (!usePanels.getState().left) usePanels.getState().toggle("left");
   }, [reveal]);
   const nicknameRef = useRef(nickname);
@@ -429,12 +447,16 @@ export function App() {
     const onPage = () => {
       const st = useScene.getState();
       if (st.currentPageId === shownPage) return;
+      const prev = shownPage;
       if (shownPage !== null) pageCameras.save(shownPage, st.camera);
       shownPage = st.currentPageId;
       force = true;
       if (st.scene && shownPage !== null && canvasRef.current) {
         const c = canvasRef.current;
-        st.setCamera(pageCameras.restore(st.scene, shownPage, c.clientWidth, c.clientHeight, st.camera));
+        // Within a spread the view stays where it is: the new page's origin is where the facing page was drawn.
+        const sp = prev !== null && useSpreadView.getState().on ? facingPartner(st.scene, prev) : null;
+        if (sp && sp.pageId === shownPage) st.setCamera({ ...st.camera, x: st.camera.x + sp.dx * st.camera.zoom });
+        else st.setCamera(pageCameras.restore(st.scene, shownPage, c.clientWidth, c.clientHeight, st.camera));
       }
     };
 
@@ -448,11 +470,13 @@ export function App() {
       // The posed scene when the timeline scrubs/plays/records, otherwise
       // the store's scene (same instance: no cost with the timeline idle).
       const scene = posedScene(true);
+      // The page that faces the one on screen, drawn beside it (store/spread.ts).
+      const spread = scene && useSpreadView.getState().on ? facingPartner(scene, useScene.getState().currentPageId) : null;
       if (canvas && scene) {
         resizeCanvasToDisplaySize(canvas);
         const ctx = canvas.getContext("2d");
         if (ctx && surface) {
-          const exact = surface.draw(scene, useScene.getState().camera, useScene.getState().currentPageId, force);
+          const exact = surface.draw(scene, useScene.getState().camera, useScene.getState().currentPageId, force, spread);
           force = false;
           if (settle) clearTimeout(settle);
           settle = exact
@@ -478,7 +502,7 @@ export function App() {
           // a geometry that changes every frame (and the animated scale is not in the
           // selection box). Paused or scrubbing they follow the posed geometry.
           const pageNow = scene.pages.find((p) => p.id === useScene.getState().currentPageId) ?? scene.pages[0];
-          drawOverlay(octx, scene, camera, useTimeline.getState().playing ? [] : selection, marquee, snapGuides, penPreview, linkPreview, pageNow ? { page: pageNow, settings: scene.settings, left: isLeftPage(scene, pageNow), guides: effectiveGuides(scene, pageNow) } : null);
+          drawOverlay(octx, scene, camera, useTimeline.getState().playing ? [] : selection, marquee, snapGuides, penPreview, linkPreview, pageNow ? { page: pageNow, settings: scene.settings, left: isLeftPage(scene, pageNow), guides: effectiveGuides(scene, pageNow), partner: spread ? partnerSheet(scene, spread) : undefined } : null);
           const peers = usePresence.getState().peers;
           if (Object.keys(peers).length > 0) {
             drawPeers(octx, scene, camera, peers, useScene.getState().currentPageId ?? null);
@@ -536,6 +560,7 @@ export function App() {
       useFacilitation.subscribe(invalidate),
       useFlowUi.subscribe(invalidate),
       useCommentsUi.subscribe(invalidate),
+      useSpreadView.subscribe(invalidate),
       // The playhead, the pose and the recording draft: the playback tick
       // is the only frame producer while animating, with the timeline idle nothing
       // arrives and the editor stays at zero frames.
@@ -635,6 +660,19 @@ export function App() {
   // A document of a vertical only has its modes (a book has no flows): if the one on screen is not
   // among them -- the document was just opened, or its vertical changed -- go to the vertical's first.
   const vertical = useScene((s) => verticalOf(s.scene));
+  // THE PUBLISHING WORKSPACE: a page-layout shell -- tool rail on the left, a Control panel under the
+  // document bar, a tabbed dock on the right and a status bar -- in place of the design editor's floating
+  // tool dock and left panel. Same document, same canvas; only the chrome differs.
+  const publishing = vertical === "publishing" && mode === "design";
+  // Who is here, with the nickname and the link: in the document bar for Publishing, at the top of the right panel
+  // (next to Share) in the design workspace.
+  const presenceBar = <PresenceBar compact nickname={nickname} onNickname={(n) => { nicknameRef.current = n; setNickname(n); presenceRef.current?.setNickname(n); }} />;
+  const paletteActions = useMemo(
+    () => buildPaletteActions({ tools: toolsForMode(mode, role), chooseTool, modes: verticalDef(vertical).modes, publishing }),
+    // chooseTool is recreated every render but only writes a ref and a setState: the list is stable enough.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [mode, role, vertical, publishing],
+  );
   useEffect(() => {
     const wanted = modeFor(vertical, useFlowUi.getState().mode);
     if (wanted !== useFlowUi.getState().mode) useFlowUi.getState().setMode(wanted);
@@ -710,7 +748,7 @@ export function App() {
       )}
       {notice && <Banner tone="info" onClose={clearNotice}>{notice}</Banner>}
       {/* The document bar: a full-width island above the columns. */}
-      <TopBar mode={mode} presence={<PresenceBar compact nickname={nickname} onNickname={(n) => { nicknameRef.current = n; setNickname(n); presenceRef.current?.setNickname(n); }} />} onNewDocument={() => navigate(HOME_TEMPLATES_PATH)} connection={connection} statusLabel={statusLabel} />
+      <TopBar mode={mode} presence={vertical === "publishing" ? presenceBar : null} onNewDocument={() => navigate(HOME_TEMPLATES_PATH)} connection={connection} statusLabel={statusLabel} />
       {/* THE THREE COLUMNS: left panel, canvas in the middle, properties on the right.
           `min-h-0` on the row and `min-w-0` on the central column are not
           decorations: without them, a flex child NEVER shrinks below its own
@@ -721,8 +759,10 @@ export function App() {
           resizes on its own: resizeCanvasToDisplaySize reads clientWidth on
           every frame and eventToCanvasPoint starts from getBoundingClientRect).
           Each column is an island (ISLAND_CLS) set apart from the others by the gap. */}
+      {publishing && <ControlPanel />}
       <div className="flex min-h-0 flex-1 gap-px">
-        {mode === "dev" ? (
+        {publishing && <ToolDock variant="rail" tools={toolsForMode(mode, role)} toolId={toolId} onChoose={chooseTool} mode={mode} />}
+        {publishing ? null : mode === "dev" ? (
           <aside aria-label="Readiness" className={`${leftOpen ? "flex" : "hidden"} w-72 shrink-0 flex-col overflow-hidden ${ISLAND_CLS}`}>
             <ReadinessPanel />
           </aside>
@@ -731,47 +771,49 @@ export function App() {
             <FlowPanel />
           </aside>
         ) : (
-          <aside aria-label="Layers and components" className={`${leftOpen ? "flex" : "hidden"} w-64 shrink-0 flex-col overflow-hidden ${ISLAND_CLS}`}>
-            <Tabs className="flex min-h-0 flex-1 flex-col" selectedKey={leftTab} onSelectionChange={(k) => setLeftTab(String(k))}>
-              {/* Tabs and page selector in the SAME row: 40px less. */}
-              <div className="flex shrink-0 items-center border-b border-line pr-1.5">
-              <TabList aria-label="Panel" className="flex min-w-0 flex-1 gap-0.5 px-1.5 pt-1">
-                {([...(vertical === "publishing" ? [["pages", "Pages", "page"] as const] : []), ["layers", "Layers", "layers"], ["components", "Components", "components"], ["comments", "Comments", "comment"]] as const).map(([id, label, icon]) => (
+          <aside aria-label="Layers and components" className={`${leftOpen ? "flex" : "hidden"} w-72 shrink-0 overflow-hidden ${ISLAND_CLS}`}>
+            {/* THE FIGMA-STYLE LEFT SIDE: an icon rail (File, Assets, Comments, Variables) and, beside it, the
+                panel of the one chosen -- Pages above Layers under File. The rail is the tab list, so the tabs
+                keep their names ("Layers", "Components", "Comments"). */}
+            <Tabs orientation="vertical" className="flex min-h-0 flex-1" selectedKey={leftTab} onSelectionChange={(k) => setLeftTab(String(k))}>
+              <div className="flex w-12 shrink-0 flex-col items-center gap-1 border-r border-line py-2">
+              <TabList aria-label="Panel" className="flex flex-col items-center gap-1">
+                {([["layers", "Layers", "layers"], ["components", "Components", "components"], ["comments", "Comments", "comment"]] as const).map(([id, label, icon]) => (
                   <Tab
                     key={id}
                     id={id}
                     aria-label={label}
                     className={({ isSelected }) =>
-                      `flex h-9 cursor-default items-center gap-1.5 border-b-2 px-1.5 text-[13px] font-medium outline-none ` +
-                      `focus-visible:shadow-[var(--ring)] ` +
-                      (isSelected ? "border-accent text-fg" : "border-transparent text-fg-subtle hover:text-fg")
+                      `flex h-9 w-9 cursor-default items-center justify-center rounded-md outline-none focus-visible:shadow-[var(--ring)] ` +
+                      (isSelected ? "bg-accent-soft text-accent" : "text-fg-subtle hover:bg-surface-3 hover:text-fg")
                     }
                   >
-                    {({ isSelected }) => (
-                      <>
-                        <Icon name={icon} size={14} />
-                        {/* Only the active tab carries the text: the row also hosts the
-                            page selector. The name stays in the aria-label. */}
-                        {isSelected && id !== "comments" && label}
-                      </>
-                    )}
+                    <Icon name={icon} size={16} />
                   </Tab>
                 ))}
               </TabList>
-              <PageBar compact />
+                <button
+                  type="button"
+                  aria-label="Variables"
+                  title="Variables"
+                  onClick={() => useVariablesDialog.getState().setOpen(true)}
+                  className="flex h-9 w-9 items-center justify-center rounded-md text-fg-subtle outline-none hover:bg-surface-3 hover:text-fg focus-visible:shadow-[var(--ring)]"
+                >
+                  <Icon name="variables" size={16} />
+                </button>
               </div>
-              <TabPanel id="pages" className="min-h-0 flex-1 overflow-hidden outline-none">
-                <PagesPanel />
-              </TabPanel>
-              <TabPanel id="layers" className="min-h-0 flex-1 overflow-hidden outline-none">
-                <LayersPanel />
-              </TabPanel>
-              <TabPanel id="components" className="min-h-0 flex-1 overflow-y-auto outline-none">
-                <ComponentsPanel />
-              </TabPanel>
-              <TabPanel id="comments" className="min-h-0 flex-1 overflow-hidden outline-none">
-                <CommentsPanel />
-              </TabPanel>
+              <div className="flex min-w-0 flex-1 flex-col">
+                <TabPanel id="layers" className="flex min-h-0 flex-1 flex-col outline-none">
+                  <PagesList />
+                  <div className="min-h-0 flex-1 overflow-hidden"><LayersPanel /></div>
+                </TabPanel>
+                <TabPanel id="components" className="min-h-0 flex-1 overflow-y-auto outline-none">
+                  <ComponentsPanel />
+                </TabPanel>
+                <TabPanel id="comments" className="min-h-0 flex-1 overflow-hidden outline-none">
+                  <CommentsPanel />
+                </TabPanel>
+              </div>
             </Tabs>
           </aside>
         )}
@@ -795,6 +837,17 @@ export function App() {
             ref={canvasRef}
             style={{ cursor: (TOOLS[toolId] ?? selectTool).cursor }}
             className="absolute inset-0 block h-full w-full touch-none"
+            // A press on the facing page of a spread makes it the page on screen (its coordinates become
+            // the working ones, the view does not move), and then goes on to the tool as usual.
+            onPointerDownCapture={(e) => {
+              const st = useScene.getState();
+              if (!st.scene || e.button !== 0 || !useSpreadView.getState().on) return;
+              const sp = facingPartner(st.scene, st.currentPageId);
+              if (!sp) return;
+              const p = eventToCanvasPoint(e.currentTarget, e);
+              const world = screenToWorld(st.camera, p.x, p.y);
+              if (pointOnFacingPage(st.scene, st.currentPageId, sp, world)) st.setCurrentPage(sp.pageId);
+            }}
             // Right click: the menu of the node under the pointer (it becomes the selection unless it
             // already is part of it). Design mode, with write access, like every edit.
             onContextMenu={(e) => {
@@ -825,11 +878,45 @@ export function App() {
               drawing loop use it) and sits BELOW the dock (z-20). */}
           {mode === "dev" && <CodeWorkbench />}
           {mode === "board" && <FacilitationBar myId={CLIENT_ID} />}
-          <ToolDock tools={toolsForMode(mode, role)} toolId={toolId} onChoose={chooseTool} mode={mode} />
+          {!publishing && <ToolDock tools={toolsForMode(mode, role)} toolId={toolId} onChoose={chooseTool} mode={mode} />}
         </div>
-        {mode === "design" && <TimelinePanel />}
+        {mode === "design" && !publishing && <TimelinePanel />}
         </div>
-        <aside aria-label={mode === "dev" ? "Ship" : "Properties"} className={`${rightOpen ? "block" : "hidden"} ${mode === "dev" ? "w-72" : "w-64"} shrink-0 overflow-hidden ${ISLAND_CLS}`}>
+        {publishing ? (
+          <aside aria-label="Dock" className={`${rightOpen ? "flex" : "hidden"} w-80 shrink-0 flex-col overflow-hidden ${ISLAND_CLS}`}>
+            <Tabs className="flex min-h-0 flex-1 flex-col" selectedKey={dockTab} onSelectionChange={(k) => setDockTab(String(k) as DockTab)}>
+              <TabList aria-label="Dock" className="flex shrink-0 gap-0 border-b border-line px-1 pt-1">
+                {([["properties", "Properties"], ["pages", "Pages"], ["layers", "Layers"], ["styles", "Styles"], ["preflight", "Preflight"], ["comments", "Comments"]] as const).map(([id, label]) => (
+                  <Tab
+                    key={id}
+                    id={id}
+                    aria-label={label}
+                    className={({ isSelected }) =>
+                      `flex h-9 cursor-default items-center border-b-2 px-1.5 text-[12px] font-medium outline-none focus-visible:shadow-[var(--ring)] ` +
+                      (isSelected ? "border-accent text-fg" : "border-transparent text-fg-subtle hover:text-fg")
+                    }
+                  >
+                    {id === "comments" ? <Icon name="comment" size={14} /> : label}
+                  </Tab>
+                ))}
+              </TabList>
+              <TabPanel id="properties" className="min-h-0 flex-1 overflow-y-auto outline-none"><PropertiesPanel /></TabPanel>
+              <TabPanel id="pages" className="min-h-0 flex-1 overflow-hidden outline-none"><PagesPanel /></TabPanel>
+              <TabPanel id="layers" className="min-h-0 flex-1 overflow-hidden outline-none"><LayersPanel /></TabPanel>
+              <TabPanel id="styles" className="min-h-0 flex-1 overflow-hidden outline-none"><StylesPanel /></TabPanel>
+              <TabPanel id="preflight" className="min-h-0 flex-1 overflow-hidden outline-none"><PreflightPanel /></TabPanel>
+              <TabPanel id="comments" className="min-h-0 flex-1 overflow-hidden outline-none"><CommentsPanel /></TabPanel>
+            </Tabs>
+          </aside>
+        ) : (
+        <aside aria-label={mode === "dev" ? "Ship" : "Properties"} className={`${rightOpen ? "flex" : "hidden"} ${mode === "dev" ? "w-72" : "w-64"} shrink-0 flex-col overflow-hidden ${ISLAND_CLS}`}>
+          <ShareHeader presence={presenceBar} />
+          {/* The mode tabs and the zoom, at the top of the right panel as in a design tool. */}
+          <div className="flex h-10 shrink-0 items-center gap-1 border-b border-line pl-1.5 pr-1.5">
+            <ModeTabs />
+            <span className="ml-auto"><ZoomMenu /></span>
+          </div>
+          <div className="min-h-0 flex-1 overflow-hidden">
           {mode === "dev" ? (
             <ShipPanel />
           ) : mode === "flows" ? (
@@ -843,8 +930,12 @@ export function App() {
           ) : (
             <PropertiesPanel />
           )}
+          </div>
         </aside>
+        )}
       </div>
+      {publishing && <StatusBar />}
+      <ActionsPalette actions={paletteActions} />
       {presenting && <PrototypePlayer onClose={() => useFlowUi.getState().setPresenting(false)} />}
     </div>
   );

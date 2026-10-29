@@ -441,6 +441,8 @@ export interface DrawOptions {
   // drawScene has a single options parameter: whoever passes only the page can
   // also pass it as a bare string (see drawScene's signature).
   currentPageId?: string | null;
+  // The page that faces the one on screen and where it sits (store/spread.ts): drawn beside it.
+  spread?: { pageId: string; dx: number } | null;
 }
 
 /** The minimum that drawing asks of the image cache. */
@@ -561,6 +563,16 @@ export function drawScene(
         }
       : null;
   drawSiblings(ctx, state, children, rootsOf(state, children, currentPageId), cam, px, images, new Set(), null, new Set(), cull);
+  // The facing page of a spread (store/spread.ts), drawn beside the page on screen: the same walk from its
+  // roots, under a shift. The view moves the other way, so culling still compares like with like.
+  if (opts.spread) {
+    const { pageId, dx } = opts.spread;
+    ctx.save();
+    ctx.translate(dx, 0);
+    drawSiblings(ctx, state, children, rootsOf(state, children, pageId), cam, px, images, new Set(), null, new Set(),
+      cull ? { ...cull, view: { ...cull.view, x: cull.view.x - dx } } : null);
+    ctx.restore();
+  }
   ctx.globalAlpha = 1;
 }
 

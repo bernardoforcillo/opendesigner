@@ -56,7 +56,22 @@ const EXAMPLES: { label: string; source: string }[] = [
   Draft --> InReview : submit
   InReview --> Draft : reject
   InReview --> Published : approve
-  Published --> [*]`,
+  Published --> [*]
+  note right of InReview : two reviewers`,
+  },
+  {
+    label: "Entities",
+    source: `erDiagram
+  CUSTOMER ||--o{ ORDER : places
+  ORDER ||--|{ LINE_ITEM : contains
+  CUSTOMER {
+    string name
+    string email PK
+  }
+  ORDER {
+    int id PK
+    date placed
+  }`,
   },
 ];
 

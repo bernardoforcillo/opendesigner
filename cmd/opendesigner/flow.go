@@ -15,9 +15,10 @@ import (
 	"google.golang.org/protobuf/encoding/protojson"
 )
 
-const flowUsage = `usage: opendesigner flow <spec|tests|coverage|check|tasks> [options]
+const flowUsage = `usage: opendesigner flow <spec|mermaid|tests|coverage|check|tasks> [options]
 
   spec      Markdown specification of the flows (for people and agents)
+  mermaid   the flows as a Mermaid flowchart (reads back as a diagram)
   tests     Playwright e2e tests (TypeScript) generated from the paths
   coverage  implemented screens and tested transitions in the repository
   check     graph problems; exits with 1 if there are any (CI gate)
@@ -43,7 +44,7 @@ func runFlow(args []string, stdout, stderr io.Writer) int {
 	}
 	sub, args := args[0], args[1:]
 	switch sub {
-	case "spec", "tests", "coverage", "check", "tasks":
+	case "spec", "mermaid", "tests", "coverage", "check", "tasks":
 	default:
 		fmt.Fprintf(stderr, "unknown subcommand %q\n\n%s", sub, flowUsage)
 		return 2
@@ -83,6 +84,8 @@ func runFlow(args []string, stdout, stderr io.Writer) int {
 	switch sub {
 	case "spec":
 		text = flow.Spec(doc, *flowID)
+	case "mermaid":
+		text = flow.Mermaid(doc, *flowID)
 	case "tests":
 		text, err = flow.PlaywrightTests(doc, *flowID, flow.PlaywrightOptions{})
 	case "tasks":

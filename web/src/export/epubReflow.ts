@@ -44,13 +44,19 @@ function cssOf(s: TextStyleLite, f?: FlatStyle): string {
   return d.join(";");
 }
 
-interface Block { kind: "p"; level: number; cls: string; html: string; text: string; hid?: string }
-interface Fig { kind: "img"; src: string; alt: string; described: boolean }
-interface Chapter { title: string; blocks: (Block | Fig)[]; headings: { level: number; text: string; id: string }[] }
+export interface Block { kind: "p"; level: number; cls: string; html: string; text: string; hid?: string }
+export interface Fig { kind: "img"; src: string; alt: string; described: boolean }
+export interface Chapter { title: string; blocks: (Block | Fig)[]; headings: { level: number; text: string; id: string }[] }
 
-/** The EPUB, ready to download. `images` holds the bytes of each image asset by hash. */
-export function buildReflowEpub(scene: SceneState, meta: EpubMeta, images: ReadonlyMap<string, ReflowImage>): Uint8Array {
-  const lang = meta.language ?? meta.book?.language ?? "en";
+/** The document's stories as chapters of blocks, footnotes and CSS: what the reflowable EPUB and HTML are both written from. */
+export interface Reflow {
+  chapters: Chapter[];
+  notes: { id: string; num: number; text: string }[][];
+  css: string[];
+  assetFiles: Map<string, { href: string; mime: string }>;
+}
+
+export function collectReflow(scene: SceneState, images: ReadonlyMap<string, ReflowImage>): Reflow {
   const classOf = new Map<string, string>(); // style id -> css class
   const css: string[] = ["body{font-family:serif;line-height:1.35}img{max-width:100%;height:auto}figure{margin:1em 0;text-align:center}aside.note{font-size:.85em}"];
   const cls = (prefix: string, id: string, rule: string) => {
@@ -146,7 +152,13 @@ export function buildReflowEpub(scene: SceneState, meta: EpubMeta, images: Reado
     });
   }
   if (chapters.length === 0) throw new Error("nothing to export: no text or images to flow");
+  return { chapters, notes, css, assetFiles };
+}
 
+/** The EPUB, ready to download. `images` holds the bytes of each image asset by hash. */
+export function buildReflowEpub(scene: SceneState, meta: EpubMeta, images: ReadonlyMap<string, ReflowImage>): Uint8Array {
+  const lang = meta.language ?? meta.book?.language ?? "en";
+  const { chapters, notes, css, assetFiles } = collectReflow(scene, images);
   const figs = chapters.flatMap((c) => c.blocks.filter((b): b is Fig => b.kind === "img"));
   const fileOf = (i: number) => `chapter-${String(i + 1).padStart(3, "0")}.xhtml`;
   const entries: ZipEntry[] = [
@@ -194,4 +206,38 @@ export function buildReflowEpub(scene: SceneState, meta: EpubMeta, images: Reado
     data: bytes(`<?xml version="1.0" encoding="UTF-8"?>\n<package xmlns="http://www.idpf.org/2007/opf" version="3.0" unique-identifier="uid"><metadata xmlns:dc="http://purl.org/dc/elements/1.1/">${opfMetadata(meta, accessibilityMeta({ fixedLayout: false, hasImages: figs.length > 0, allImagesDescribed: figs.every((f) => f.described), hasHeadings: chapters.some((c) => c.headings.length > 0), hasText: true }))}</metadata><manifest>${manifest.join("")}</manifest><spine>${chapters.map((_, i) => `<itemref idref="c${i + 1}"/>`).join("")}</spine></package>`),
   });
   return zipStore(entries);
+}
+
+/**
+ * One standalone HTML file of the same reflowable text: semantic headings and paragraphs, the styles as CSS, a
+ * table of contents linked to the headings, footnotes as `doc-footnote` notes at the end of their chapter and the
+ * images inlined as data URIs, so the file is the whole document and opens anywhere.
+ */
+export function buildReflowHtml(scene: SceneState, meta: EpubMeta, images: ReadonlyMap<string, ReflowImage>): string {
+  const lang = meta.language ?? meta.book?.language ?? "en";
+  const { chapters, notes, css, assetFiles } = collectReflow(scene, images);
+  const uri = new Map<string, string>();
+  for (const [hash, f] of assetFiles) {
+    const img = images.get(hash)!;
+    let bin = "";
+    for (let i = 0; i < img.bytes.length; i += 0x8000) bin += String.fromCharCode(...img.bytes.subarray(i, i + 0x8000));
+    uri.set(f.href, `data:${img.mime};base64,${btoa(bin)}`);
+  }
+  const plainHtml = (h: string) => h.replace(/ epub:type="[^"]*"/g, "");
+  const toc: string[] = [];
+  const sections = chapters.map((ch, i) => {
+    const body = ch.blocks.map((b) => {
+      if (b.kind === "img") return `<figure><img src="${uri.get(b.src) ?? ""}" alt="${xmlEscape(b.alt)}"${b.alt === "" ? ' role="presentation"' : ""}/></figure>`;
+      const tag = b.level > 0 ? `h${Math.min(b.level, 6)}` : "p";
+      return `<${tag}${b.cls ? ` class="${b.cls}"` : ""}${b.hid ? ` id="${b.hid}"` : ""}>${plainHtml(b.html)}</${tag}>`;
+    }).join("\n");
+    // Footnote ids are numbered across the whole document, so they stay unique in one file.
+    const foot = notes[i]!.map((x) => `<aside role="doc-footnote" class="note" id="${x.id}"><p><a href="#r${x.num}">${x.num}</a> ${xmlEscape(x.text)}</p></aside>`).join("\n");
+    const items = ch.headings.length > 0 ? ch.headings.map((h) => ({ ...h, href: `#${h.id}` })) : [{ level: 1, text: ch.title, href: `#ch${i + 1}` }];
+    for (const h of items) toc.push(`<li class="l${Math.min(h.level, 6)}"><a href="${h.href}">${xmlEscape(h.text)}</a></li>`);
+    return `<section role="doc-chapter" id="ch${i + 1}">\n${body}\n${foot}\n</section>`;
+  });
+  const nav = toc.length > 1 ? `<nav role="doc-toc" aria-label="Contents"><ol>${toc.join("")}</ol></nav>\n` : "";
+  const style = [...css, "main{max-width:42em;margin:0 auto;padding:1.5em 1em}nav ol{list-style:none;padding:0}nav li.l2{margin-left:1em}nav li.l3{margin-left:2em}"].join("\n");
+  return `<!DOCTYPE html>\n<html lang="${xmlEscape(lang)}"><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/><title>${xmlEscape(meta.title)}</title><style>\n${style}\n</style></head><body><main>\n<h1 class="doc-title">${xmlEscape(meta.title)}</h1>\n${nav}${sections.join("\n")}\n</main></body></html>\n`;
 }

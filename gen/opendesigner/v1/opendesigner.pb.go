@@ -16123,7 +16123,7 @@ func (x *WatchJobsRequest) GetClientId() string {
 type RunJobRequest struct {
 	state          protoimpl.MessageState `protogen:"open.v1"`
 	DocId          string                 `protobuf:"bytes,1,opt,name=doc_id,json=docId,proto3" json:"doc_id,omitempty"`
-	Kind           string                 `protobuf:"bytes,2,opt,name=kind,proto3" json:"kind,omitempty"`                                            // export_pdf | export_package | export_epub | export_epub_reflow | export_html | export_pptx | export_idml | export_png | export_svg | preflight | command
+	Kind           string                 `protobuf:"bytes,2,opt,name=kind,proto3" json:"kind,omitempty"`                                            // export_pdf | export_package | export_epub | export_epub_reflow | export_html | export_html_text | export_pptx | export_idml | export_png | export_svg | preflight | command
 	OptionsJson    string                 `protobuf:"bytes,3,opt,name=options_json,json=optionsJson,proto3" json:"options_json,omitempty"`           // the kind's options, a JSON object
 	TimeoutSeconds uint32                 `protobuf:"varint,4,opt,name=timeout_seconds,json=timeoutSeconds,proto3" json:"timeout_seconds,omitempty"` // 0 => 120
 	Payload        []byte                 `protobuf:"bytes,5,opt,name=payload,proto3" json:"payload,omitempty"`                                      // an input file for kinds that take one (command: place_image, import_pdf...)

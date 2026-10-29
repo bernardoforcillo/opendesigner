@@ -27,6 +27,21 @@ A publication is built from the features of the publishing track:
 - **Pages panel** (left panel, Publishing only): every page as a thumbnail, numbered the way `<#>` counts (masters are not pages), with its master; click to open, add a page or a master, open the setup.
 - **Output.** *Export all pages as PDF…* and *as EPUB* export each page as **its sheet** (a sized page is exported as the sheet, not as the bounding box of its content; an empty sheet is still a page). *Export PDF for print (with bleed)…* adds each page's bleed around the sheet. EPUB is fixed-layout: one page per sheet, at its size. A page export of the page on screen is the sheet too.
 
+### The Publishing workspace
+
+A publication opens in a page-layout shell instead of the design editor's: the same document and canvas, different chrome (`web/src/ui/shell/`).
+
+- **Tool rail** (left): the tools as a vertical column (`ToolDock variant="rail"`), history at the bottom; shape tools and shortcuts are unchanged.
+- **Control panel** (under the document bar, `ControlPanel.tsx`): X, Y, W, H and rotation of the selection, always in place (disabled when nothing is selected). It writes the same ops as the Properties panel, so a typed value or a label drag is one undo step. With text frames selected it adds the paragraph style, the character style, the size and the alignment; the size is read-only while a paragraph style decides it.
+- **Dock** (right): Properties, Pages, Layers, Styles, Preflight and Comments as tabs (there is no left panel). Something outside the dock can bring a tab forward (`store/dock.ts::showDockTab`): the status bar's preflight verdict opens Preflight.
+- **Styles** (`StylesPanel.tsx`): the document's paragraph styles and character styles in two lists. Choosing one applies it to the selected text frames (every paragraph, or the whole text), the one in use is marked and *None* clears it; *Edit styles…* opens the Styles dialog. Inside a text being edited, the pickers of the text editor apply a style to the selection instead.
+- **Preflight** (`PreflightPanel.tsx`): everything the editor can see wrong -- fonts that cannot be embedded, text that does not fit its frame, stories that overflow their last frame, unsized pages, layers that do not print -- grouped as errors, warnings and notes, recomputed shortly after edits settle. Choosing one goes to its page and selects the object. It is the print dialog's check (`export/preflight.ts`), run live; not a PDF/X validator.
+- **Status bar** (bottom, `StatusBar.tsx`): zoom (a field: type a percentage and press Enter; **Fit** frames the page or the spread; Ctrl/Cmd+0 fits, Ctrl/Cmd+1 is 100%, Ctrl/Cmd +/- steps), the page navigator (regular pages, numbered as `<#>` counts them) and the preflight verdict (`export/preflight.ts`: errors, warnings or "No errors").
+
+- **Spreads** (`store/spread.ts`): with *Facing pages* on (Page setup; the Book and Magazine templates have it), the canvas shows the page on screen **and the page it faces** side by side -- an open book -- with each page's master, sheet, margins, columns and baseline grid. The page on screen keeps its own coordinates (its origin stays at 0,0), so tools, snapping and the Control panel work unchanged; the facing page is drawn beside it (CPU and GPU renderers) and becomes the page on screen when you click it or move to it, with the view held still. The status bar's **Spread** toggle turns it on and off (a per-person view setting, not saved in the document) and the navigator names the pair ("2–3"). Moving to another page frames the whole spread.
+
+Design and Design × Development keep the floating tool dock, the left panel and the timeline.
+
 ### The templates
 
 Each publishing template is a real document, not a picture: sized sheets with margins, columns and bleed, a master (running head, page number), paragraph and character styles, a baseline grid, and body text that flows through linked frames from page to page.
@@ -70,5 +85,7 @@ MCP: `set_document_settings`, `create_page` / `update_page` with the page-setup 
 Rules (same in Go and TS): number style is empty or one of `i I a A`; number start ≤ 100 000; slug 0 – 1000; at most 200 guides with |position| ≤ 100 000; hidden master item ids are non-empty.
 
 ## Not yet
+
+The facing page of a spread is drawn, not edited, until it becomes the page on screen: a marquee or drag cannot cross the spine, and text threads between facing pages are drawn but not followed across it.
 
 Slug is drawn but not yet exported (PDF/EPUB use the bleed box), the PDF/EPUB export does not lay facing pages out as spreads, and a fixed `Align to grid` for text that has no paragraph style.

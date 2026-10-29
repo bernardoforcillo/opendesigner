@@ -110,7 +110,17 @@ export function PresenceBar({
           aria-label="People"
           className="flex h-9 items-center gap-1.5 rounded-lg px-2 text-fg-muted outline-none hover:bg-surface-3 hover:text-fg focus-visible:shadow-[var(--ring)]"
         >
-          {others.length > 0 ? avatars : <Icon name="user" size={16} />}
+          <div className="flex items-center -space-x-1.5">
+            {/* You: your initial, then the others (avatars below). */}
+            <span
+              aria-hidden="true"
+              title={nickname}
+              className="flex h-6 w-6 select-none items-center justify-center rounded-full bg-accent text-[11px] font-semibold text-accent-fg ring-2 ring-surface"
+            >
+              {(nickname.trim()[0] ?? "?").toUpperCase()}
+            </span>
+            {others.length > 0 && avatars}
+          </div>
           <span className="text-[12px] font-medium tabular-nums">{others.length + 1}</span>
         </RacButton>
         <Popover placement="top" offset={10} className="w-[248px] rounded-xl bg-raised p-3 text-fg shadow-pop">

@@ -33,6 +33,7 @@ import { enterTargetOf, selectionTargetOf, selectionTargetsOf, transformTargetsO
 import { subtreeOf, topmostOf } from "@/store/tree";
 import { groupOps, ungroupOps } from "@/tools/grouping";
 import { creatingId, masterItemAt, overrideMasterItemOps } from "@/tools/pageOps";
+import { cornerHandleHit, cornerHandleOf, cornerRadiusAt, cornerRadiusOp } from "@/selection/cornerHandle";
 import { wrapSelectionInFrame } from "@/tools/wrapFrame";
 import { detachSelectedInstances } from "@/tools/instanceActions";
 import { computeLayoutDrop, layoutDropOps, reorderableParent, type LayoutDrop } from "@/tools/layoutDrop";
@@ -305,6 +306,16 @@ export function createSelectTool(): Tool {
   let rotateRef = 0;
   let rotateStartNodes: Record<string, { bounds: Bounds; rotation: number }> | null = null;
   let rotateStarted = false;
+
+  // --- live corner (selection/cornerHandle.ts) ------------------------------------
+  // The rectangle whose corner handle was grabbed, and whether the gesture has opened (a click on the handle that does
+  // not move writes nothing).
+  let cornerId: string | null = null;
+  let cornerStarted = false;
+  function resetCorner() {
+    cornerId = null;
+    cornerStarted = false;
+  }
 
   // --- marquee ---------------------------------------------------------------
   let marqueeAnchor: { x: number; y: number } | null = null;
@@ -621,6 +632,10 @@ export function createSelectTool(): Tool {
       if (rotateStarted) useScene.getState().cancelGesture();
       resetRotate();
     }
+    if (cornerId) {
+      if (cornerStarted) useScene.getState().cancelGesture();
+      resetCorner();
+    }
   }
 
   return {
@@ -645,6 +660,13 @@ export function createSelectTool(): Tool {
       // falls inside (or on the edge of) the rectangle itself, and the outer ones
       // fall on empty space -- without priority a pointerdown there would move it or
       // start a marquee clearing the selection.
+      // The live-corner handle sits inside a big rectangle, away from the resize handles at its corners.
+      const corner = cornerHandleOf(scene, store.selection, ctx.getCamera().zoom);
+      if (corner && cornerHandleHit(corner, world, ctx.getCamera().zoom)) {
+        cornerId = corner.id;
+        cornerStarted = false;
+        return;
+      }
       const overlay = frameUnderPointer(ctx, world);
       if (overlay?.kind === "resize") {
         // One op per TOPMOST node with GROUPS EXPANDED into their children
@@ -807,6 +829,16 @@ export function createSelectTool(): Tool {
       // Every preview LATCHES its modifiers: it is this pair, and not
       // the pointerup's, that the final op will use (see lastMods).
       lastMods = modsOf(e);
+      if (cornerId) {
+        const scene = ctx.getScene();
+        if (!scene) return;
+        if (!cornerStarted) {
+          cornerStarted = true;
+          useScene.getState().beginGesture();
+        }
+        useScene.getState().applyLocal(cornerRadiusOp(cornerId, cornerRadiusAt(scene, cornerId, ctx.toWorld(e))));
+        return;
+      }
       if (rotateCenter) {
         setCursor(ctx, ROTATING_CURSOR);
         if (!rotateStarted) {
@@ -839,7 +871,10 @@ export function createSelectTool(): Tool {
         // what can be grabbed under the pointer -- resize handle or rotation
         // zone (step 4 of the brief, extended to rotation).
         const hover = frameUnderPointer(ctx, ctx.toWorld(e));
-        setCursor(ctx, hover ? cursorForFrameHit(hover) : DEFAULT_CURSOR);
+        const scene = ctx.getScene();
+        const corner = scene ? cornerHandleOf(scene, useScene.getState().selection, ctx.getCamera().zoom) : null;
+        const overCorner = corner !== null && cornerHandleHit(corner, ctx.toWorld(e), ctx.getCamera().zoom);
+        setCursor(ctx, overCorner ? "pointer" : hover ? cursorForFrameHit(hover) : DEFAULT_CURSOR);
         return;
       }
       if (pendingTextEdit) {
@@ -879,6 +914,12 @@ export function createSelectTool(): Tool {
     // for the reason -- reading e.altKey here makes a gesture snap at commit that
     // the user had kept free the whole time.
     onPointerUp(e, ctx) {
+      if (cornerId) {
+        const scene = ctx.getScene();
+        if (cornerStarted && scene) useScene.getState().endGesture([cornerRadiusOp(cornerId, cornerRadiusAt(scene, cornerId, ctx.toWorld(e)))]);
+        resetCorner();
+        return;
+      }
       if (rotateCenter) {
         if (rotateStarted) useScene.getState().endGesture(rotateOps(e, ctx, lastMods));
         resetRotate();

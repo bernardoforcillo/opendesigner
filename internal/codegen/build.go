@@ -43,6 +43,9 @@ type builder struct {
 	triggers map[string][]Trigger
 	// anim: the current screen's animations by node id (planAnimations).
 	anim map[string]*ElemAnim
+	// tokensOn: bound properties read CSS custom properties (tokens.go); tokens are the ones used so far.
+	tokensOn bool
+	tokens   map[string]token
 }
 
 // bctx is the state that descends through the recursion.
@@ -190,7 +193,9 @@ func (b *builder) element(n *opendesignerv1.Node, c bctx) *Element {
 	// Variables: what is exported is what the canvas draws, so a bound property
 	// takes the value of the node's active mode. (A master descended into through
 	// an instance resolves in the master's own modes, not the instance's.)
+	orig := n
 	n = core.ResolveNode(b.doc, n)
+	resolved := n
 	if !n.GetVisible() {
 		return nil
 	}
@@ -230,6 +235,7 @@ func (b *builder) element(n *opendesignerv1.Node, c bctx) *Element {
 	}
 	el.Dyn = c.dyn[n.GetId()]
 	el.SwapProp = c.swapBind[n.GetId()]
+	b.applyTokens(orig, resolved, el)
 	el.NodeID = n.GetId()
 	el.NodeName = n.GetName()
 	el.Meta = n.GetMeta()

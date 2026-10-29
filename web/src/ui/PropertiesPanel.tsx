@@ -86,12 +86,12 @@ interface NumericField {
 // does not change a pixel on the canvas, and that still costs a network send and an
 // undo entry. Rotation lives in SIZE_FIELDS ("Rot" and not "R", already taken
 // by the rectangle's radius): the handle gives the gesture, the field gives the number.
-const POSITION_FIELDS: readonly NumericField[] = [
+export const POSITION_FIELDS: readonly NumericField[] = [
   { key: "x", label: "X", mask: "x" },
   { key: "y", label: "Y", mask: "y" },
 ];
 
-const SIZE_FIELDS: readonly NumericField[] = [
+export const SIZE_FIELDS: readonly NumericField[] = [
   { key: "width", label: "W", mask: "width", minValue: 0 },
   { key: "height", label: "H", mask: "height", minValue: 0 },
   { key: "rotation", label: "Rot", mask: "rotation", glyph: "°" },
@@ -158,7 +158,7 @@ function positionValueFor(scene: SceneState, n: NodeLite, key: "x" | "y", value:
 // goes to all selected nodes -- not a relative translation.
 // The only translation is positionValueFor's, which brings each node to the
 // same POSITION even when its x/y is not its edge.
-function numericOps(ids: readonly string[], field: NumericField, value: number): Op[] {
+export function numericOps(ids: readonly string[], field: NumericField, value: number): Op[] {
   const scene = useScene.getState().scene;
   return ids.map((id) => {
     const n = scene?.nodes.at(id);

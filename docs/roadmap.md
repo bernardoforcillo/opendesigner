@@ -34,7 +34,7 @@ Legend: [x] done · [ ] to do
 - [ ] Shared libraries across documents
 - [x] Variables / design tokens with modes: color and number variables in collections with modes, bound to fills, strokes, opacity, rotation, radius and stroke width, pinned per subtree; editor dialog and panel, MCP tools, resolved in canvas/export/code, see docs/variables.md
 - [x] Variables: string (text content) and boolean (visibility) variables, spacing / padding bindings that the auto layout engine reads per mode (density), aliases; see docs/variables.md
-- [ ] Variables: CSS custom properties per mode in the exported code
+- [x] Variables: CSS custom properties per mode in the exported code (html target, `-css-vars`: `var(--collection-name, fallback)` plus a `:root` and a `[data-mode-...]` rule per mode; docs/codegen.md)
 - [x] Typography: uploaded fonts (TTF/OTF/WOFF/WOFF2 as content-addressed assets, drawn by the 2D and GPU renderers and exported as @font-face), shared text styles, italic; multi-line text and wrapping were already there; see docs/typography.md
 - [x] Type extras: text case (upper, lower, title, small caps), super/subscript, bulleted and numbered lists with indent, OpenType feature string, vertical alignment and inset in text boxes (canvas, CanvasKit, SVG, CSS, panel, MCP); see docs/typography.md
 - [x] Horizontal text scale (a percentage on every text style: layout, canvas, CanvasKit, SVG, CSS, panel, MCP); see docs/typography.md
@@ -44,7 +44,7 @@ Legend: [x] done · [ ] to do
 - [x] Presentation mode: the playable prototype (Present)
 - [x] Diagrams: flowchart and UML (class, sequence, state) from Mermaid text, computed by the server; editor (document menu) and MCP (`create_diagram`, `update_diagram`, `list_diagrams`), see docs/diagrams.md
 - [x] Connectors that follow the shapes (Link tool and panel; derived path, see docs/whiteboard.md)
-- [ ] Diagrams: `subgraph`, ER, notes in class and state diagrams
+- [x] Diagrams: `subgraph` (nested, titled boxes), ER diagrams (`erDiagram`), notes in class and state diagrams; see docs/diagrams.md
 - [x] SVG import (paste, drop, import tool)
 - [x] .fig import (experimental: read from the documented layout, tested on generated files; components and instances are not kept; docs/handoff.md)
 - [x] .fig import tail: connectors (saved, straight, elbowed, curved, placed by their ends), tables and cells, sticky notes and other frame-like layers with their text, per-kind counts (synthetic files only; docs/handoff.md)
@@ -62,7 +62,7 @@ Legend: [x] done · [ ] to do
 ## 1b. Vector (Illustrator parity)
 - [x] Node tool: anchors, handles, add/delete points, corner/smooth, join, smooth/corner all (docs/vector.md)
 - [x] Path offset (grow/shrink) and simplification; pathfinder = the live boolean groups
-- [ ] Live corners
+- [x] Live corners (a handle inside the corner of a selected rectangle: drag to round all four, live; docs/shapes.md)
 - [x] Strokes: cap, join, miter limit and dashes on every shape (panel, canvas, GPU, SVG)
 - [x] Arrowheads on open vector strokes (arrow, triangle, circle, square, diamond at either end; panel, canvas, GPU, SVG, code, MCP `set_stroke`)
 - [x] Variable-width strokes on vectors (width points with a left and right width along the path, presets, a Variable width tool and panel; canvas, GPU, SVG as a filled outline, outline stroke, MCP `set_stroke`); see docs/vector.md
@@ -81,7 +81,7 @@ Legend: [x] done · [ ] to do
 - [x] Tables, kanban boards and mind maps, drawn as groups of plain nodes (editor dialog, `RenderBoard` RPC, `create_board_object` MCP tool)
 - [x] Templates: brainstorm, retrospective, user flow, customer journey
 - [x] Cursor chat, reactions, timer, dot voting, follow mode (ephemeral, through presence)
-- [ ] Mermaid import/export in both directions
+- [x] Mermaid import/export in both directions: diagrams are drawn from Mermaid text, and the flows are written back as Mermaid (`opendesigner flow mermaid`, MCP `export_mermaid`; docs/diagrams.md)
 
 ## 1d. Publishing (InDesign parity)
 
@@ -121,7 +121,7 @@ Text
 - [x] Anchored (inline) objects, tied to a place in the text; see docs/graphics-colour.md
 - [x] Footnotes, tables (rows, columns, header), table of contents, index; see docs/text-frames.md
 - [x] Table styles (header/body/alternate), index sub-entries, endnotes, cross-references, conditional text, editorial notes, typographic text checks (no dictionary spell check); see docs/long-documents.md
-- [ ] Cell spanning
+- [x] Cell spanning (merge selected cells into the top-left one, split again; rows and columns added or removed keep spans consistent; docs/text-frames.md)
 - [x] Find/change (text, word, regex), browser spell check, text variables (running headers, page count, document name)
 - [x] Text on a path
 - [x] OpenType feature settings per style (SVG output and editing field; not drawn on the canvas)
@@ -145,7 +145,7 @@ Output (docs/output.md)
 - [x] Data merge from a CSV/TSV table (`{{Field}}` in text and link URLs, one page per record); no image fields
 - [x] ONIX 3.0 book metadata: record in the document, ONIX message export, EPUB and PDF metadata; see docs/onix.md (not validated against the schema or code lists)
 - [x] Everything available over MCP: outputs, imports and editing commands run by an editor on request, ONIX / data merge / duplicate page by the server; see docs/mcp-editor.md
-- [ ] HTML export of text
+- [x] HTML export of text (`export_html` mode `text`; File menu "Export text as HTML")
 - [ ] Book (several documents with shared styles and continuous numbering): not built. A document already holds sections with their own numbering; a multi-document book needs a server-side entity and cross-document style sync
 - [ ] PDF/X validation and an embedded ICC profile; font subsetting; OpenType layout (ligatures, alternates) in the PDF; blur and inner shadows; gradient transparency stops
 
@@ -179,7 +179,7 @@ Output (docs/output.md)
 - [x] Optional GPU renderer with CanvasKit (WebGL), parity verified with `pnpm parity`; to be measured on a real GPU before making it the default
 - [x] User-loadable fonts (also in the GPU renderer)
 - [ ] Kerning and text shaping in the GPU renderer (CanvasKit's Paragraph)
-- [ ] Persistent data structures for the scene (applyOp without copying the whole map)
+- [x] Persistent data structures for the scene (`store/nodeMap.ts`: a persistent 256-bucket map, an edit copies the touched buckets; the server's `core.ApplyShared` is copy-on-write; docs/performance.md)
 
 ## 5. Differentiators
 - [ ] MCP AI agent: consistency reviews, variants, token usage

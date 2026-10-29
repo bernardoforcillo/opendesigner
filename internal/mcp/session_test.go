@@ -1897,7 +1897,7 @@ func TestFormatJobs(t *testing.T) {
 		kind string
 		call func() (odmcp.JobOutput, error)
 	}{
-		{"export_html", func() (odmcp.JobOutput, error) { return sess.ExportHtml(ctx, odmcp.ExportFileInput{OutPath: dir}) }},
+		{"export_html", func() (odmcp.JobOutput, error) { return sess.ExportHtml(ctx, odmcp.ExportHtmlInput{OutPath: dir}) }},
 		{"export_pptx", func() (odmcp.JobOutput, error) { return sess.ExportPptx(ctx, odmcp.ExportFileInput{OutPath: dir}) }},
 		{"export_idml", func() (odmcp.JobOutput, error) { return sess.ExportIdml(ctx, odmcp.ExportFileInput{OutPath: dir}) }},
 	} {

@@ -99,6 +99,24 @@ levels of detail. CanvasKit is downloaded only the first time the GPU is chosen 
 MB, in files separate from the main bundle). If it fails to load, WebGL is missing
 or the context is lost, the app goes back to the CPU and says so in the button.
 
+**Frame reuse and the fast path on the GPU.** A CanvasKit frame is mostly the *walk*: JS plus the calls
+into WASM that build Skia's display list, on the main thread. At 20,000 nodes framed on the software GL of the
+development environment the walk is ~125 ms of a ~175 ms frame and the flush the rest, so a pan or a zoom
+waited ~175 ms per step. Two changes (`renderer/ck/ckRenderer.ts`):
+
+- **The last heavy frame is kept as an image** (`makeImageSnapshot`) and, while only the camera moves, drawn
+  moved and scaled instead of walking the scene again -- what `layerCache.ts` does for the CPU. A step costs
+  ~0.1 ms (it was 43 / 57 / 174 ms at 1,000 / 5,000 / 20,000 nodes), and the exact frame is redone 120 ms after
+  the movement ends. A pure pan is pixel-identical to a real frame (`runCkCheck` in `src/bench/ckbench.ts`:
+  mean difference 0); a zoom is a resample until the exact frame replaces it. Fonts arriving drop the image.
+- **A fast path for plain boxes**, like the 2D renderer's: a sharp rectangle, frame or ellipse of one flat
+  colour (no stroke, effect, blend, rotation) is one colour set and one draw call through reused scratch
+  arrays, instead of the shape / paint / effect machinery. The framed 20,000-node walk went ~150 -> ~140 ms
+  median (minimum ~120 -> ~100 ms) on the same machine; the gain is real but small next to the reuse.
+
+To measure again: `window.runCkSplit([...])` (walk and flush), `window.runCkPan([...])` (pan with and without
+reuse) and `window.runCkCheck(n)` (reuse against an exact frame) on `/bench-ck.html`.
+
 **Parity.** `pnpm parity` draws a gallery with both renderers at four
 zoom levels and fails if more than 1.5% of the pixels differ by more than 32/255. Today:
 0.87% at zoom 1 (all text), 0.08% at 2, 0.15% at 0.35 and 0.01% at 0.08.
