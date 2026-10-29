@@ -47,7 +47,7 @@ const RENAME_LABEL = "Page name";
 // Inline rename field, twin of LayersPanel's (same reason it is a separate
 // component: the session has its own state -- the typed text
 // and whether it is already closed -- which must be born and die with the field).
-function PageRenameField({
+export function PageRenameField({
   initial,
   placeholder,
   onCommit,

@@ -5,7 +5,6 @@ import { useAccess } from "@/rpc/access";
 import { useScene } from "@/store/store";
 import { DocMenu } from "@/ui/shell/DocMenu";
 import { DocName } from "@/ui/shell/DocName";
-import { ZoomMenu } from "@/ui/shell/ZoomMenu";
 import { usePanels } from "@/ui/shell/panels";
 import { useFlowUi, type EditorMode } from "@/store/flowUi";
 import { verticalOf } from "@/store/docSettings";
@@ -58,7 +57,9 @@ export function TopBar({
       <span className="flex min-w-0 items-center gap-0.5">
       <DocMenu onNewDocument={onNewDocument} />
       <IconButton icon="panelLeft" label={left ? t("Close left panel") : t("Open left panel")} shortcut="[" size={32} onPress={() => usePanels.getState().toggle("left")} />
-      <ToggleButtonGroup
+      {/* A document's other modes (Board, Design, Flows, Develop) are the tabs at the top of the right panel; the
+          Publishing workspace has its one mode here. */}
+      {vertical === "publishing" && <ToggleButtonGroup
         aria-label={t("Mode")}
         selectionMode="single"
         disallowEmptySelection
@@ -92,7 +93,7 @@ export function TopBar({
           </TooltipTrigger>
           );
         })}
-      </ToggleButtonGroup>
+      </ToggleButtonGroup>}
       </span>
       <span className="flex min-w-0 items-center justify-center gap-2">
         <DocName />
@@ -109,7 +110,6 @@ export function TopBar({
             <span className={`h-1.5 w-1.5 rounded-full ${dot}`} />
             <span className="max-[1600px]:hidden">{statusLabel}</span>
           </span>
-          <ZoomMenu />
         </span>
         <IconButton icon="panelRight" label={right ? t("Close right panel") : t("Open right panel")} shortcut="]" size={32} onPress={() => usePanels.getState().toggle("right")} />
       </span>

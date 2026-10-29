@@ -15,6 +15,7 @@ import { runCommand } from "@/jobs/commands";
 import { runDocumentExport } from "@/export/exportScene";
 import { DiagramDialog } from "@/ui/DiagramDialog";
 import { VariablesDialog } from "@/ui/VariablesDialog";
+import { useVariablesDialog } from "@/store/dialogs";
 import { FontsDialog } from "@/ui/FontsDialog";
 import { StylesDialog } from "@/ui/StylesDialog";
 import { PageSetupDialog } from "@/ui/PageSetupDialog";
@@ -69,7 +70,8 @@ export function DocMenu({ onNewDocument }: { onNewDocument: () => void }) {
   const pixelSnap = useViewPrefs((s) => s.pixelSnap);
   const [open, setOpen] = useState(false);
   const [diagramOpen, setDiagramOpen] = useState(false);
-  const [variablesOpen, setVariablesOpen] = useState(false);
+  const variablesOpen = useVariablesDialog((s) => s.open);
+  const setVariablesOpen = useVariablesDialog((s) => s.setOpen);
   const [fontsOpen, setFontsOpen] = useState(false);
   const [stylesOpen, setStylesOpen] = useState(false);
   const [pageSetupOpen, setPageSetupOpen] = useState(false);

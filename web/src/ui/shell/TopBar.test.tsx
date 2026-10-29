@@ -28,30 +28,14 @@ describe("TopBar", () => {
     expect(screen.getByRole("button", { name: "Document menu" })).toBeInTheDocument();
   });
 
-  it("mounts the mode switch with the three modes", () => {
+  it("leaves the modes to the right panel (the Publishing workspace keeps its one here)", () => {
     renderTopBar();
-    const group = screen.getByRole("radiogroup", { name: "Mode" });
-    expect(group).toBeInTheDocument();
-    for (const label of ["Design", "Flows", "Develop"]) {
-      expect(screen.getByRole("radio", { name: new RegExp(label) })).toBeInTheDocument();
-    }
-  });
-
-  it("choosing Flows really changes the mode in the store", () => {
-    renderTopBar();
-    fireEvent.click(screen.getByRole("radio", { name: /Flows/ }));
-    expect(useFlowUi.getState().mode).toBe("flows");
+    expect(screen.queryByRole("radiogroup", { name: "Mode" })).toBeNull();
   });
 
   it("mounts the presence received via prop", () => {
     renderTopBar();
     expect(screen.getByText("fake-presence")).toBeInTheDocument();
-  });
-
-  it("shows the camera zoom", () => {
-    useScene.setState({ camera: { x: 0, y: 0, zoom: 1.5 } });
-    renderTopBar();
-    expect(screen.getByRole("button", { name: "Zoom" })).toHaveTextContent("150%");
   });
 
   it("shows the connection status", () => {

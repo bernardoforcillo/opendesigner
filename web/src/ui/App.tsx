@@ -8,6 +8,10 @@ import { ControlPanel } from "@/ui/shell/ControlPanel";
 import { useZoomShortcuts } from "@/canvas/zoomCommands";
 import { facingPartner, partnerSheet, pointOnFacingPage, useSpreadView } from "@/store/spread";
 import { StatusBar } from "@/ui/shell/StatusBar";
+import { PagesList } from "@/ui/shell/PagesList";
+import { ModeTabs } from "@/ui/shell/ModeTabs";
+import { ZoomMenu } from "@/ui/shell/ZoomMenu";
+import { useVariablesDialog } from "@/store/dialogs";
 import { ActionsPalette } from "@/ui/shell/ActionsPalette";
 import { buildPaletteActions } from "@/ui/shell/paletteActions";
 import { StylesPanel } from "@/ui/shell/StylesPanel";
@@ -53,7 +57,6 @@ import { LayersPanel } from "@/ui/LayersPanel";
 import { ComponentsPanel } from "@/ui/ComponentsPanel";
 import { PagesPanel } from "@/ui/PagesPanel";
 import { PropertiesPanel } from "@/ui/PropertiesPanel";
-import { PageBar } from "@/ui/PageBar";
 import { FlowPanel } from "@/ui/FlowPanel";
 import { ScreenMetaEditor } from "@/ui/ScreenMetaEditor";
 import { PrototypePlayer } from "@/ui/PrototypePlayer";
@@ -764,47 +767,49 @@ export function App() {
             <FlowPanel />
           </aside>
         ) : (
-          <aside aria-label="Layers and components" className={`${leftOpen ? "flex" : "hidden"} w-64 shrink-0 flex-col overflow-hidden ${ISLAND_CLS}`}>
-            <Tabs className="flex min-h-0 flex-1 flex-col" selectedKey={leftTab} onSelectionChange={(k) => setLeftTab(String(k))}>
-              {/* Tabs and page selector in the SAME row: 40px less. */}
-              <div className="flex shrink-0 items-center border-b border-line pr-1.5">
-              <TabList aria-label="Panel" className="flex min-w-0 flex-1 gap-0.5 px-1.5 pt-1">
-                {([...(vertical === "publishing" ? [["pages", "Pages", "page"] as const] : []), ["layers", "Layers", "layers"], ["components", "Components", "components"], ["comments", "Comments", "comment"]] as const).map(([id, label, icon]) => (
+          <aside aria-label="Layers and components" className={`${leftOpen ? "flex" : "hidden"} w-72 shrink-0 overflow-hidden ${ISLAND_CLS}`}>
+            {/* THE FIGMA-STYLE LEFT SIDE: an icon rail (File, Assets, Comments, Variables) and, beside it, the
+                panel of the one chosen -- Pages above Layers under File. The rail is the tab list, so the tabs
+                keep their names ("Layers", "Components", "Comments"). */}
+            <Tabs orientation="vertical" className="flex min-h-0 flex-1" selectedKey={leftTab} onSelectionChange={(k) => setLeftTab(String(k))}>
+              <div className="flex w-12 shrink-0 flex-col items-center gap-1 border-r border-line py-2">
+              <TabList aria-label="Panel" className="flex flex-col items-center gap-1">
+                {([["layers", "Layers", "layers"], ["components", "Components", "components"], ["comments", "Comments", "comment"]] as const).map(([id, label, icon]) => (
                   <Tab
                     key={id}
                     id={id}
                     aria-label={label}
                     className={({ isSelected }) =>
-                      `flex h-9 cursor-default items-center gap-1.5 border-b-2 px-1.5 text-[13px] font-medium outline-none ` +
-                      `focus-visible:shadow-[var(--ring)] ` +
-                      (isSelected ? "border-accent text-fg" : "border-transparent text-fg-subtle hover:text-fg")
+                      `flex h-9 w-9 cursor-default items-center justify-center rounded-md outline-none focus-visible:shadow-[var(--ring)] ` +
+                      (isSelected ? "bg-accent-soft text-accent" : "text-fg-subtle hover:bg-surface-3 hover:text-fg")
                     }
                   >
-                    {({ isSelected }) => (
-                      <>
-                        <Icon name={icon} size={14} />
-                        {/* Only the active tab carries the text: the row also hosts the
-                            page selector. The name stays in the aria-label. */}
-                        {isSelected && id !== "comments" && label}
-                      </>
-                    )}
+                    <Icon name={icon} size={16} />
                   </Tab>
                 ))}
               </TabList>
-              <PageBar compact />
+                <button
+                  type="button"
+                  aria-label="Variables"
+                  title="Variables"
+                  onClick={() => useVariablesDialog.getState().setOpen(true)}
+                  className="flex h-9 w-9 items-center justify-center rounded-md text-fg-subtle outline-none hover:bg-surface-3 hover:text-fg focus-visible:shadow-[var(--ring)]"
+                >
+                  <Icon name="variables" size={16} />
+                </button>
               </div>
-              <TabPanel id="pages" className="min-h-0 flex-1 overflow-hidden outline-none">
-                <PagesPanel />
-              </TabPanel>
-              <TabPanel id="layers" className="min-h-0 flex-1 overflow-hidden outline-none">
-                <LayersPanel />
-              </TabPanel>
-              <TabPanel id="components" className="min-h-0 flex-1 overflow-y-auto outline-none">
-                <ComponentsPanel />
-              </TabPanel>
-              <TabPanel id="comments" className="min-h-0 flex-1 overflow-hidden outline-none">
-                <CommentsPanel />
-              </TabPanel>
+              <div className="flex min-w-0 flex-1 flex-col">
+                <TabPanel id="layers" className="flex min-h-0 flex-1 flex-col outline-none">
+                  <PagesList />
+                  <div className="min-h-0 flex-1 overflow-hidden"><LayersPanel /></div>
+                </TabPanel>
+                <TabPanel id="components" className="min-h-0 flex-1 overflow-y-auto outline-none">
+                  <ComponentsPanel />
+                </TabPanel>
+                <TabPanel id="comments" className="min-h-0 flex-1 overflow-hidden outline-none">
+                  <CommentsPanel />
+                </TabPanel>
+              </div>
             </Tabs>
           </aside>
         )}
@@ -900,7 +905,13 @@ export function App() {
             </Tabs>
           </aside>
         ) : (
-        <aside aria-label={mode === "dev" ? "Ship" : "Properties"} className={`${rightOpen ? "block" : "hidden"} ${mode === "dev" ? "w-72" : "w-64"} shrink-0 overflow-hidden ${ISLAND_CLS}`}>
+        <aside aria-label={mode === "dev" ? "Ship" : "Properties"} className={`${rightOpen ? "flex" : "hidden"} ${mode === "dev" ? "w-72" : "w-64"} shrink-0 flex-col overflow-hidden ${ISLAND_CLS}`}>
+          {/* The mode tabs and the zoom, at the top of the right panel as in a design tool. */}
+          <div className="flex h-10 shrink-0 items-center gap-1 border-b border-line pl-1.5 pr-1.5">
+            <ModeTabs />
+            <span className="ml-auto"><ZoomMenu /></span>
+          </div>
+          <div className="min-h-0 flex-1 overflow-hidden">
           {mode === "dev" ? (
             <ShipPanel />
           ) : mode === "flows" ? (
@@ -914,6 +925,7 @@ export function App() {
           ) : (
             <PropertiesPanel />
           )}
+          </div>
         </aside>
         )}
       </div>
