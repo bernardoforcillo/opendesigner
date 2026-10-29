@@ -4,7 +4,7 @@ import { childrenOf } from "@/store/tree";
 import { toPbNode, type NodeLite, type SceneState, type TableStyleLite, type TextStyleLite } from "@/store/types";
 import { applyObjectStyleOps } from "@/tools/objectStyles";
 import { applyStyleOps } from "@/ui/typographyOps";
-import { makeCreateNodeOp, makeDeleteOp, makeSetPropsOp, uuid } from "@/tools/ops";
+import { makeCreateNodeOp, makeDeleteOp, makeSetPropsOp, makeSetTextOp, uuid } from "@/tools/ops";
 
 // TABLES. A table is a GROUP of cells -- no new kind of node: each cell is a rectangle (the box, fill and
 // borders) with a text over it (the content), both tagged with their row and column. The group's meta
@@ -12,13 +12,20 @@ import { makeCreateNodeOp, makeDeleteOp, makeSetPropsOp, uuid } from "@/tools/op
 // and `table.head` how many rows at the top are the header. Everything about a cell is an ordinary node:
 // type in the text, set the rectangle's fill and stroke, or restyle a whole row by selecting its nodes.
 // Adding and removing rows and columns, and resizing them, re-lay the grid out (one gesture, one undo).
-// There is no cell spanning. See docs/text-frames.md.
+//
+// SPANNING: merged cells are one cell that covers several grid positions. The cell at the top-left of the area keeps its
+// rectangle and its text, both grown over the area and tagged `table.span` = "rows,cols"; the nodes of the other positions
+// are gone, so a position with no cell of its own is covered by the span that includes it. Merging joins the texts of the
+// cells it absorbs; splitting gives the covered positions back empty cells. Adding or removing rows and columns keeps spans
+// consistent (a row inserted inside a span lengthens it, one removed from it shortens it, and a span whose first row or
+// column is removed is dropped, leaving empty cells). See docs/text-frames.md.
 
 export const META_TABLE_COLS = "table.cols";
 export const META_TABLE_ROWS = "table.rows";
 export const META_TABLE_HEAD = "table.head";
 export const META_TABLE_CELL = "table.cell"; // on the cell's rectangle: "row,col"
 export const META_TABLE_TEXT = "table.text"; // on the cell's text: "row,col"
+export const META_TABLE_SPAN = "table.span"; // on both of a merged cell's nodes: "rows,cols" (absent = 1,1)
 
 const PAD_X = 6, PAD_Y = 4;
 export const MAX_TABLE_SIDE = 100;
@@ -68,6 +75,27 @@ export function readTable(scene: SceneState, groupId: string): Table | null {
 }
 
 const sum = (a: readonly number[], to: number) => a.slice(0, to).reduce((s, n) => s + n, 0);
+/** The extent of positions [from, from + count) in `sizes`. */
+const extent = (sizes: readonly number[], from: number, count: number) => sizes.slice(from, from + count).reduce((s, n) => s + n, 0);
+
+/** How many rows and columns the cell covers: [1, 1] for an ordinary one. */
+export function spanOf(cell: { rect?: NodeLite; text?: NodeLite } | undefined): [number, number] {
+  const v = cell?.rect?.meta?.[META_TABLE_SPAN] ?? cell?.text?.meta?.[META_TABLE_SPAN];
+  if (!v) return [1, 1];
+  const [rs, cs] = v.split(",").map(Number);
+  return Number.isInteger(rs) && Number.isInteger(cs) && rs >= 1 && cs >= 1 ? [rs, cs] : [1, 1];
+}
+
+/** Every position some cell covers, mapped to the position of the cell (its top-left). */
+export function coverage(t: Table): Map<string, string> {
+  const out = new Map<string, string>();
+  for (const [k, cell] of t.cells) {
+    const [r, c] = k.split(",").map(Number);
+    const [rs, cs] = spanOf(cell);
+    for (let i = r; i < Math.min(r + rs, t.rows.length); i++) for (let j = c; j < Math.min(c + cs, t.cols.length); j++) out.set(key(i, j), k);
+  }
+  return out;
+}
 const TEXT_STYLE: TextStyleLite = { fontFamily: "", fontSize: 14, fontWeight: "", lineHeight: 1.3, align: "left" };
 
 function cellNodes(parentId: string, t: { x: number; y: number; cols: number[]; rows: number[]; head: number }, r: number, c: number, keys: [string, string]): [NodeLite, NodeLite] {
@@ -123,18 +151,35 @@ function restructure(
   for (const [k, cell] of t.cells) {
     const [r, c] = k.split(",").map(Number);
     const nr = rowMap(r), nc = colMap(c);
+    // A merged cell: the rows and columns of its area that survive, and where they end up. It stays a cell as long as
+    // its own first row and column survive; the area is the stretch from there to the last surviving one.
+    const [rs, cs] = spanOf(cell);
+    let nrs = 1, ncs = 1;
+    if (nr !== null && nc !== null) {
+      let lastR = nr, lastC = nc;
+      for (let i = r; i < r + rs; i++) { const m = rowMap(i); if (m !== null) lastR = Math.max(lastR, m); }
+      for (let j = c; j < c + cs; j++) { const m = colMap(j); if (m !== null) lastC = Math.max(lastC, m); }
+      nrs = lastR - nr + 1;
+      ncs = lastC - nc + 1;
+    }
     for (const n of [cell.rect, cell.text]) {
       if (!n) continue;
       if (nr === null || nc === null) { ops.push(makeDeleteOp(n.id)); continue; }
       const isText = n === cell.text;
       const x = t.x + sum(cols, nc) + (isText ? PAD_X : 0), y = t.y + sum(rows, nr) + (isText ? PAD_Y : 0);
-      const w = Math.max(1, cols[nc] - (isText ? 2 * PAD_X : 0)), h = Math.max(1, rows[nr] - (isText ? 2 * PAD_Y : 0));
+      const w = Math.max(1, extent(cols, nc, ncs) - (isText ? 2 * PAD_X : 0)), h = Math.max(1, extent(rows, nr, nrs) - (isText ? 2 * PAD_Y : 0));
       const moved = x !== n.x || y !== n.y || w !== n.width || h !== n.height;
       const relabel = nr !== r || nc !== c;
+      const respan = nrs !== rs || ncs !== cs;
       if (moved) ops.push(makeSetPropsOp(n.id, { x, y, width: w, height: h }, ["x", "y", "width", "height"]));
-      if (relabel) ops.push(makeSetPropsOp(n.id, { meta: { ...n.meta, [isText ? META_TABLE_TEXT : META_TABLE_CELL]: key(nr, nc) } }, ["meta"]));
+      if (relabel || respan) {
+        const meta = { ...n.meta, [isText ? META_TABLE_TEXT : META_TABLE_CELL]: key(nr, nc) };
+        if (nrs > 1 || ncs > 1) meta[META_TABLE_SPAN] = `${nrs},${ncs}`;
+        else delete meta[META_TABLE_SPAN];
+        ops.push(makeSetPropsOp(n.id, { meta }, ["meta"]));
+      }
     }
-    if (nr !== null && nc !== null) covered.add(key(nr, nc));
+    if (nr !== null && nc !== null) for (let i = nr; i < nr + nrs; i++) for (let j = nc; j < nc + ncs; j++) covered.add(key(i, j));
   }
   let prev = childrenOf(scene, t.group.id).at(-1)?.orderKey ?? null;
   for (let r = 0; r < rows.length; r++) {
@@ -218,5 +263,97 @@ export function applyTableStyleOps(scene: SceneState, tableId: string, style: Ta
   for (const [styleId, ids] of rects) ops.push(...applyObjectStyleOps(scene, ids, styleId));
   for (const [styleId, ids] of texts) ops.push(...applyStyleOps(scene, ids, styleId));
   if (t.group.meta?.[META_TABLE_STYLE] !== style.id) ops.push(makeSetPropsOp(t.group.id, { meta: { ...(t.group.meta ?? {}), [META_TABLE_STYLE]: style.id } }, ["meta"]));
+  return ops;
+}
+
+// ---------- merging and splitting cells ----------
+
+export interface CellRange { tableId: string; r0: number; c0: number; r1: number; c1: number }
+
+/** The cells the selected nodes are in, as the smallest block of the one table that holds them all; null if they are in different tables or not cells. */
+export function selectionCellRange(scene: SceneState, selection: readonly string[]): CellRange | null {
+  let tableId: string | null = null;
+  let r0 = Infinity, c0 = Infinity, r1 = -Infinity, c1 = -Infinity;
+  for (const id of selection) {
+    const tid = tableIdOf(scene, id), cell = cellOf(scene, id);
+    if (!tid || !cell || (tableId !== null && tid !== tableId)) return null;
+    tableId = tid;
+    const t = readTable(scene, tid);
+    const [rs, cs] = spanOf(t?.cells.get(key(cell[0], cell[1])));
+    r0 = Math.min(r0, cell[0]); c0 = Math.min(c0, cell[1]);
+    r1 = Math.max(r1, cell[0] + rs - 1); c1 = Math.max(c1, cell[1] + cs - 1);
+  }
+  return tableId === null ? null : { tableId, r0, c0, r1, c1 };
+}
+
+/**
+ * Merges the block of cells into one. The top-left cell grows over the block and takes the texts of the others (the
+ * non-empty ones, one per line); the others go. Refused ([]) when the block is a single position, falls outside the
+ * table, or would cut through a merged cell that sticks out of it.
+ */
+export function mergeCellsOps(scene: SceneState, range: CellRange): Op[] {
+  const t = readTable(scene, range.tableId);
+  if (!t) return [];
+  const { r0, c0, r1, c1 } = range;
+  if (r0 < 0 || c0 < 0 || r1 >= t.rows.length || c1 >= t.cols.length || r1 < r0 || c1 < c0 || (r0 === r1 && c0 === c1)) return [];
+  const cover = coverage(t);
+  const inside = (k: string) => { const [r, c] = k.split(",").map(Number); return r >= r0 && r <= r1 && c >= c0 && c <= c1; };
+  const absorbed: string[] = [];
+  for (let r = r0; r <= r1; r++) {
+    for (let c = c0; c <= c1; c++) {
+      const owner = cover.get(key(r, c));
+      if (owner === undefined || !inside(owner)) return []; // a merged cell from outside reaches in
+      if (owner !== key(r0, c0) && !absorbed.includes(owner)) absorbed.push(owner);
+    }
+  }
+  // ... and none of the cells in the block may reach out of it.
+  for (const k of [key(r0, c0), ...absorbed]) {
+    const [r, c] = k.split(",").map(Number);
+    const [rs, cs] = spanOf(t.cells.get(k));
+    if (r + rs - 1 > r1 || c + cs - 1 > c1) return [];
+  }
+  const anchor = t.cells.get(key(r0, c0));
+  if (!anchor?.rect) return [];
+  const ops: Op[] = [];
+  const texts: string[] = [];
+  if (anchor.text?.text?.content) texts.push(anchor.text.text.content);
+  for (const k of absorbed) {
+    const cell = t.cells.get(k);
+    if (cell?.text?.text?.content) texts.push(cell.text.text.content);
+    for (const n of [cell?.rect, cell?.text]) if (n) ops.push(makeDeleteOp(n.id));
+  }
+  const rs = r1 - r0 + 1, cs = c1 - c0 + 1;
+  const span = { [META_TABLE_SPAN]: `${rs},${cs}` };
+  const x = t.x + sum(t.cols, c0), y = t.y + sum(t.rows, r0), w = extent(t.cols, c0, cs), h = extent(t.rows, r0, rs);
+  ops.push(makeSetPropsOp(anchor.rect.id, { width: w, height: h, meta: { ...anchor.rect.meta, ...span } }, ["width", "height", "meta"]));
+  if (anchor.text) {
+    ops.push(makeSetPropsOp(anchor.text.id, { x: x + PAD_X, y: y + PAD_Y, width: Math.max(1, w - 2 * PAD_X), height: Math.max(1, h - 2 * PAD_Y), meta: { ...anchor.text.meta, ...span } }, ["x", "y", "width", "height", "meta"]));
+    if (texts.length > 1 && anchor.text.text) ops.push(makeSetTextOp(anchor.text.id, texts.join("\n"), anchor.text.text.style));
+  }
+  return ops;
+}
+
+/** Splits the merged cell at [r, c] back into single cells; the covered positions get empty cells. [] for a cell that is not merged. */
+export function splitCellOps(scene: SceneState, tableId: string, r: number, c: number): Op[] {
+  const t = readTable(scene, tableId);
+  const cell = t?.cells.get(key(r, c));
+  if (!t || !cell?.rect) return [];
+  const [rs, cs] = spanOf(cell);
+  if (rs === 1 && cs === 1) return [];
+  const ops: Op[] = [];
+  const x = t.x + sum(t.cols, c), y = t.y + sum(t.rows, r), w = t.cols[c], h = t.rows[r];
+  const plain = (m: Record<string, string> | undefined) => { const meta = { ...m }; delete meta[META_TABLE_SPAN]; return meta; };
+  ops.push(makeSetPropsOp(cell.rect.id, { width: w, height: h, meta: plain(cell.rect.meta) }, ["width", "height", "meta"]));
+  if (cell.text) ops.push(makeSetPropsOp(cell.text.id, { x: x + PAD_X, y: y + PAD_Y, width: Math.max(1, w - 2 * PAD_X), height: Math.max(1, h - 2 * PAD_Y), meta: plain(cell.text.meta) }, ["x", "y", "width", "height", "meta"]));
+  let prev = childrenOf(scene, t.group.id).at(-1)?.orderKey ?? null;
+  const grid = { x: t.x, y: t.y, cols: t.cols, rows: t.rows, head: t.head };
+  for (let i = r; i < r + rs; i++) {
+    for (let j = c; j < c + cs; j++) {
+      if (i === r && j === c) continue;
+      const k1 = orderKeyBetween(prev, null), k2 = orderKeyBetween(k1, null);
+      prev = k2;
+      for (const n of cellNodes(t.group.id, grid, i, j, [k1, k2])) ops.push(makeCreateNodeOp(toPbNode(n)));
+    }
+  }
   return ops;
 }
