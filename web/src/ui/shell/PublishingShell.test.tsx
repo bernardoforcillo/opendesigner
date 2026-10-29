@@ -6,6 +6,7 @@ import { ControlPanel } from "@/ui/shell/ControlPanel";
 import { StatusBar } from "@/ui/shell/StatusBar";
 import { ToolDock } from "@/ui/shell/ToolDock";
 import { useScene } from "@/store/store";
+import { useSpreadView } from "@/store/spread";
 import { NodeMap } from "@/store/nodeMap";
 import { emptyScene, type NodeLite, type SceneState } from "@/store/types";
 
@@ -90,6 +91,37 @@ describe("StatusBar", () => {
   it("reports the preflight verdict", () => {
     render(<StatusBar />);
     expect(screen.getByLabelText("Preflight")).toBeInTheDocument();
+  });
+});
+
+describe("StatusBar spread", () => {
+  const facing = () => ({ ...book(), settings: { vertical: "publishing" as const, facingPages: true }, pages: [
+    { id: "page1", name: "Cover", ...sheet }, { id: "p2", name: "Two", ...sheet }, { id: "p3", name: "Three", ...sheet },
+  ] });
+
+  it("is disabled without facing pages", () => {
+    render(<StatusBar />);
+    expect(screen.getByRole("button", { name: "Spread" })).toBeDisabled();
+  });
+
+  it("names the pair on screen when navigating", () => {
+    install(facing());
+    useSpreadView.getState().setOn(true);
+    render(<StatusBar />);
+    expect(screen.getByLabelText("Page")).toHaveTextContent("1 / 3"); // the first page faces nothing
+    fireEvent.click(screen.getByRole("button", { name: "Next page" }));
+    expect(useScene.getState().currentPageId).toBe("p2");
+    expect(screen.getByLabelText("Page")).toHaveTextContent("2–3 / 3");
+  });
+
+  it("turns the spread off and back on", () => {
+    install(facing());
+    useScene.setState({ currentPageId: "p2" });
+    useSpreadView.getState().setOn(true);
+    render(<StatusBar />);
+    fireEvent.click(screen.getByRole("button", { name: "Spread" }));
+    expect(useSpreadView.getState().on).toBe(false);
+    expect(screen.getByLabelText("Page")).toHaveTextContent("2 / 3");
   });
 });
 
