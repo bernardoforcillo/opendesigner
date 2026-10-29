@@ -3,7 +3,7 @@
 // CanvasKit objects, handing each one to `track` so the caller frees them with the frame.
 
 import type { CanvasKit, ImageFilter } from "canvaskit-wasm";
-import { fxDef, resolveFx, type FxOverlay } from "@/animation/fx/library";
+import { fxDef, resolveFx, type FxKernel, type FxOverlay } from "@/animation/fx/library";
 
 type AnimFx = Readonly<Record<string, Readonly<Record<string, number>>>>;
 
@@ -23,18 +23,22 @@ export interface BuiltFx {
   filter: ImageFilter | null;
   /** The shader effects, in track order, each with its resolved uniforms. */
   overlays: { overlay: FxOverlay; values: Record<string, number> }[];
+  /** The effects that read the node's pixels, in track order (drawn offscreen first). */
+  kernels: FxKernel[];
 }
 
 export function buildFx(CK: CanvasKit, animFx: AnimFx | undefined, track: (o: { delete(): void }) => void): BuiltFx | null {
   if (!animFx) return null;
   let filter: ImageFilter | null = null;
   const overlays: BuiltFx["overlays"] = [];
+  const kernels: FxKernel[] = [];
   for (const [id, given] of Object.entries(animFx)) {
     const def = fxDef(id);
     if (!def) continue;
     const values = resolveFx(def, given);
     if (def.filter) filter = def.filter(CK, values, filter, track);
     if (def.overlay) overlays.push({ overlay: def.overlay(values), values });
+    if (def.kernel) kernels.push(def.kernel(values));
   }
-  return filter || overlays.length > 0 ? { filter, overlays } : null;
+  return filter || overlays.length > 0 || kernels.length > 0 ? { filter, overlays, kernels } : null;
 }

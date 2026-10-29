@@ -227,16 +227,27 @@ track names it; parameters without a track keep their default. Values are finite
 clamps them to the parameter's range.
 
 - `web/src/animation/fx/catalog.ts`: all 307 EffectCraft effects (id, name, category), generated from its `docs/effects.md`.
-- `web/src/animation/fx/library.ts`: the ones that are drawn, with EffectCraft's parameter names, ranges and defaults.
-  Each is a CanvasKit image filter (`filter`: blur, colour correction, minimax, glow, offset...) or an SkSL shader drawn over
-  the node inside its layer (`overlay`: noise, fills, gradients, patterns, vignette, and the wipes, which keep the node where
-  the shader is opaque).
+- `web/src/animation/fx/library.ts` + `kernels*.ts`: the 126 that are drawn, with EffectCraft's parameter names, ranges and
+  defaults where it has them. Each is one of four kinds:
+  - **filter**: a CanvasKit image/colour filter over the node's pixels (blur, colour matrices, minimax, glow, offset);
+  - **overlay**: an SkSL shader drawn over the node inside its layer (grain, fills, gradients, patterns, generators), or a
+    mask that keeps the node where it is opaque (the wipes);
+  - **kernel**: an SkSL shader that READS the node (`uniform shader src`). The renderer draws the node offscreen
+    (`ckRenderer.ts::drawLayerBody`, at the screen's resolution, capped at 4096 px), passes the image in and draws the
+    result; several kernels chain, each reading the previous one. This is what distortions (wave, ripple, bulge, twirl,
+    polar, mirror, tiles, kaleidoscope, corner pin, transform), radial/cross/channel/lens/smart blurs, sharpen, edges,
+    emboss, posterize, mosaic, scatter, colour-by-hue effects, keyers, drop shadow, bevel and light rays are;
+  - **carrier**: no pixels, only values for expressions (EffectCraft's Expression Controls, Grow Bounds).
+- `fx/kit.ts` has the SkSL helpers (`kern`, `over`, noise, hsv, `ring` taps). Every shader is compiled and drawn against the real
+  CanvasKit by `fx/fx.test.ts`.
 - `pose.ts` writes the sampled values to the transient `NodeLite.animFx`; `ckRenderer.ts::beginEffects/endEffects` draws them.
-  They stack after the node's own effects (shadows, blurs), and shader effects are drawn before the layer's filter.
+  Order: kernels first (innermost), then the node's own effects and the animated image filters, then overlays.
 - Editor: **+ Effect** in the transport adds an effect (its first parameter as a track); **+ Property** then lists the other
   parameters of the effects the node already has.
-- Not drawn: the effects that need a pixel kernel CanvasKit has no filter for (keying, 3D, audio, time, simulation, paint,
-  OCIO, convolutions and displacement maps...). They stay in the catalog so nothing is silently missing.
+- Not drawn (181 of 307, still listed in the catalog so nothing is silently missing): effects that need another layer or
+  a camera (3D, depth, mattes from other layers), audio, time (they need past frames), particle/physics simulation, painting
+  and tracking, whole-image statistics (auto levels, equalize), colour management (OCIO, LUTs), spherical video, and the rest
+  of the Distort/Stylize family that needs meshes or user-drawn masks.
 - Code export (HTML/React) and the 2D canvas renderer ignore effect tracks (the exporter warns).
 
 ## Limits (for now)

@@ -3,6 +3,7 @@ import { describe, it, expect, beforeAll } from "vitest";
 import { createRequire } from "node:module";
 import type { CanvasKit } from "canvaskit-wasm";
 import { FX_CATALOG } from "@/animation/fx/catalog";
+import { invertHomography, unitSquareTo } from "@/animation/fx/kernelsDistort";
 import { FX_LIBRARY, fxDef, fxParam, hsv, resolveFx } from "@/animation/fx/library";
 import { buildFx, fxOutset } from "@/animation/fx/apply";
 import { fxProp, isFxProp, parseFxProp } from "@/animation/fx/props";
@@ -25,7 +26,7 @@ describe("the catalog", () => {
   it("gives every parameter a sane range and a default inside it", () => {
     for (const d of FX_LIBRARY) {
       expect(d.params.length, d.id).toBeGreaterThan(0);
-      expect(Boolean(d.filter) !== Boolean(d.overlay), `${d.id}: filter xor overlay`).toBe(true);
+      expect([d.filter, d.overlay, d.kernel, d.carrier].filter(Boolean).length, `${d.id}: exactly one kind`).toBe(1);
       for (const p of d.params) {
         expect(p.min, `${d.id}.${p.id}`).toBeLessThan(p.max);
         expect(p.default).toBeGreaterThanOrEqual(p.min);
@@ -112,8 +113,28 @@ describe("drawing every effect with CanvasKit", () => {
     if (fx?.filter) paint.setImageFilter(fx.filter);
     sk.saveLayer(paint, CK.XYWHRect(0, 0, 64, 64));
     const body = new CK.Paint();
-    body.setColor(CK.Color4f(0.8, 0.3, 0.2, 1));
-    sk.drawRect(CK.XYWHRect(16, 16, 32, 32), body);
+    // kernels: the node is drawn offscreen and read through each SkSL shader, as ckRenderer.drawLayerBody does
+    const bodyPaint = (c: import("canvaskit-wasm").Canvas) => {
+      const bp = new CK.Paint();
+      bp.setColor(CK.Color4f(0.8, 0.3, 0.2, 1));
+      c.drawRect(CK.XYWHRect(16, 16, 32, 32), bp);
+      bp.delete();
+    };
+    let current: ((c: import("canvaskit-wasm").Canvas) => void) | null = null;
+    for (const k of fx?.kernels ?? []) {
+      const eff = CK.RuntimeEffect.Make(k.sksl, (err) => { throw new Error(err); });
+      expect(eff).not.toBeNull();
+      const off = CK.MakeSurface(64, 64)!;
+      const oc = off.getCanvas();
+      oc.clear(CK.TRANSPARENT);
+      (current ?? bodyPaint)(oc);
+      const img = off.makeImageSnapshot();
+      const srcShader = img.makeShaderOptions(CK.TileMode.Decal, CK.TileMode.Decal, CK.FilterMode.Linear, CK.MipmapMode.None);
+      const sh = eff!.makeShaderWithChildren([16, 16, 32, 32, ...k.uniforms], [srcShader]);
+      garbage.push(off, img, srcShader, sh, eff!);
+      current = (c) => { const kp = new CK.Paint(); kp.setShader(sh); c.drawRect(CK.XYWHRect(0, 0, 64, 64), kp); kp.delete(); };
+    }
+    (current ?? bodyPaint)(sk);
     for (const { overlay, values } of fx?.overlays ?? []) {
       const e = CK.RuntimeEffect.Make(overlay.sksl, (err) => { throw new Error(err); });
       expect(e).not.toBeNull();
@@ -159,5 +180,33 @@ describe("drawing every effect with CanvasKit", () => {
     const px = draw({ "ec.generate.fill": { hue: 120, saturation: 100, value: 100, opacity: 100 } });
     expect(at(px, 4, 4)[3]).toBe(0);
     expect(at(px, 32, 32)[1]).toBeGreaterThan(200);
+  });
+
+  it("kernels read the node's pixels: mirror reflects it, posterize quantises it, offset moves them", () => {
+    // the square covers 16..48; mirroring about x = 16 puts a copy on 0..16
+    expect(at(draw({}), 8, 32)[3]).toBe(0);
+    expect(at(draw({ "ec.distort.mirror": { centerX: 0, centerY: 50, angle: 0 } }), 8, 32)[3]).toBe(255);
+    const q = at(draw({ "ec.stylize.posterize": { level: 2 } }), 32, 32);
+    for (const ch of q.slice(0, 3)) expect([0, 255]).toContain(ch);
+    expect(at(draw({ "ec.distort.offset": { x: 10, y: 0 } }), 54, 32)[3]).toBe(255);
+  });
+
+  it("a kernel chain reads the previous kernel: two mirrors compose", () => {
+    const once = draw({ "ec.stylize.mosaic": { h: 2, v: 2 } });
+    const twice = draw({ "ec.stylize.mosaic": { h: 2, v: 2 }, "ec.distort.mirror": { centerX: 25, centerY: 50, angle: 180 } });
+    expect(twice).not.toEqual(once);
+  });
+
+  it("corner pin with no offsets is the identity; the homography inverts", () => {
+    const base = draw({});
+    expect(at(draw({ "ec.distort.cornerpin": {} }), 32, 32)).toEqual(at(base, 32, 32));
+    const m = unitSquareTo([[0, 0], [1, 0], [1, 1], [0, 1]]);
+    expect(invertHomography(m).map((x) => Math.round(x * 1000) / 1000 + 0)).toEqual([1, 0, 0, 0, 1, 0, 0, 0, 1]);
+  });
+
+  it("carriers draw nothing and the keyer removes the key colour", () => {
+    expect(at(draw({ "ec.control.slider": { slider: 5 } }), 32, 32)[3]).toBe(255);
+    const keyed = draw({ "ec.key.linearcolor": { hue: 10, saturation: 75, value: 80, tolerance: 40, softness: 5, keep: 0 } });
+    expect(at(keyed, 32, 32)[3]).toBeLessThan(255);
   });
 });

@@ -13,6 +13,7 @@
 // Everything here is PURE data plus builders: no DOM, no store.
 
 import type { CanvasKit, ColorFilter, ImageFilter } from "canvaskit-wasm";
+import { KERNEL_FX } from "@/animation/fx/kernels";
 
 export interface FxParam {
   id: string;
@@ -33,12 +34,26 @@ export interface FxOverlay {
   blend: "srcatop" | "dstin";
 }
 
+export interface FxKernel {
+  sksl: string;
+  /** box (x, y, w, h) is prepended by the renderer; these fill `uniform float p[12]`. */
+  uniforms: number[];
+}
+
 export interface FxDef {
   id: string;
   params: readonly FxParam[];
   /** Image filter over the node's pixels, given the filter built so far (or null). */
   filter?: (CK: CanvasKit, v: FxValues, input: ImageFilter | null, track: (o: { delete(): void }) => void) => ImageFilter | null;
   overlay?: (v: FxValues) => FxOverlay;
+  /**
+   * A shader that READS the node's pixels: the node is first drawn offscreen (renderer/ck), and the SkSL gets it as
+   * `uniform shader src` (sampled in the node's local coordinates), producing the node's new pixels. This is what
+   * distortions, convolutions, mosaics and keyers need. Several kernels chain, each reading the previous one.
+   */
+  kernel?: (v: FxValues) => FxKernel;
+  /** No pixels at all: the effect only carries values for expressions (EffectCraft's Expression Controls). */
+  carrier?: true;
   /** How far beyond the node's box the effect paints (world units). */
   outset?: (v: FxValues) => number;
 }
@@ -131,7 +146,7 @@ const wipe = (body: string): FxOverlay["sksl"] => sksl(`${body}\n  return half4(
 
 // --- the effects ---------------------------------------------------------------------
 
-export const FX_LIBRARY: readonly FxDef[] = [
+const BASE_FX: readonly FxDef[] = [
   // Blur & Sharpen ---------------------------------------------------------------------
   {
     id: "ec.blur.gaussian",
@@ -523,7 +538,9 @@ export const FX_LIBRARY: readonly FxDef[] = [
       uniforms: (w) => pad(w.completion / 100, w.block, w.seed),
     }),
   },
-] as const;
+];
+
+export const FX_LIBRARY: readonly FxDef[] = [...BASE_FX, ...KERNEL_FX];
 
 const BY_ID = new Map<string, FxDef>(FX_LIBRARY.map((d) => [d.id, d]));
 
