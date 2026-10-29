@@ -21,7 +21,8 @@ const lowContrast = { fills: [{ r: 0, g: 0, b: 0, a: 1, gradient: { kind: "linea
   { color: { r: 0.32, g: 0.32, b: 0.34, a: 1 }, position: 0 }, { color: { r: 0.62, g: 0.6, b: 0.58, a: 1 }, position: 1 }] } }] };
 
 // [label, node overrides, tracks: prop -> [value at t0, value at t1]]
-const CASES: [string, Partial<NodeLite>, Record<string, [number, number]>][] = [
+type Case = [string, Partial<NodeLite>, Record<string, [number, number]>];
+const SET1: Case[] = [
   ["blur", {}, { "fx.ec.blur.gaussian.blurriness": [12, 12] }],
   ["wave (kernel)", {}, { "fx.ec.distort.wavewarp.height": [8, 8], "fx.ec.distort.wavewarp.width": [40, 40] }],
   ["mosaic (kernel)", {}, { "fx.ec.stylize.mosaic.h": [8, 8], "fx.ec.stylize.mosaic.v": [8, 8] }],
@@ -39,8 +40,28 @@ const CASES: [string, Partial<NodeLite>, Record<string, [number, number]>][] = [
   ["hex tile", {}, { "fx.ec.stylize.cchextile.size": [16, 16] }],
   ["glow", {}, { "fx.ec.stylize.glow.radius": [14, 14] }],
 ];
+const A = "fx.ec.";
+const SET2: Case[] = [
+  ["shatter", {}, { [A + "sim.shatter.phase"]: [0, 60], [A + "sim.shatter.piece"]: [14, 14] }],
+  ["card dance", {}, { [A + "sim.carddance.phase"]: [0, 80], [A + "sim.carddance.piece"]: [20, 20] }],
+  ["card wipe", {}, { [A + "transition.cardwipe.completion"]: [0, 100], [A + "transition.cardwipe.piece"]: [20, 20] }],
+  ["pixel polly", {}, { [A + "sim.ccpixelpolly.phase"]: [0, 70] }],
+  ["particle world", {}, { [A + "sim.ccparticleworld.phase"]: [0, 720] }],
+  ["particle playground", {}, { [A + "sim.particleplayground.phase"]: [0, 360] }],
+  ["numbers", {}, { [A + "text.numbers.value"]: [0, 1234.5], [A + "text.numbers.decimals"]: [1, 1], [A + "text.numbers.commas"]: [1, 1], [A + "text.numbers.size"]: [18, 18] }],
+  ["timecode", {}, { [A + "text.timecode.seconds"]: [0, 61.5], [A + "text.timecode.size"]: [14, 14] }],
+  ["wave world", {}, { [A + "sim.waveworld.phase"]: [0, 360] }],
+  ["mercury", {}, { [A + "sim.ccmrmercury.phase"]: [0, 360] }],
+  ["hair", {}, { [A + "sim.cchair.length"]: [22, 22] }],
+  ["bezier warp", {}, { [A + "distort.bezierwarp.top"]: [30, 30], [A + "distort.bezierwarp.trx"]: [-10, -10], [A + "distort.bezierwarp.bly"]: [-12, -12] }],
+  ["stroke (alpha edge)", {}, { [A + "generate.stroke.width"]: [4, 4], [A + "generate.stroke.hue"]: [50, 50], [A + "generate.stroke.sat"]: [90, 90] }],
+  ["vegas", {}, { [A + "generate.vegas.phase"]: [0, 360], [A + "generate.vegas.width"]: [3, 3] }],
+  ["depth of field", {}, { [A + "3d.depthoffield.maxBlur"]: [10, 10], [A + "3d.depthoffield.focal"]: [0.5, 0.5] }],
+  ["paint bucket", {}, { [A + "generate.paintbucket.x"]: [10, 10], [A + "generate.paintbucket.y"]: [10, 10], [A + "generate.paintbucket.tolerance"]: [25, 25] }],
+];
+const SETS = [SET1, SET2];
 
-function build(): { scene: SceneState; anim: (t: number) => ReturnType<typeof sampleClip> } {
+function build(CASES: Case[]): { scene: SceneState; anim: (t: number) => ReturnType<typeof sampleClip> } {
   const nodes: NodeLite[] = [];
   const tracks: { nodeId: string; prop: string; keyframes: { time: number; value: number; easing: string }[] }[] = [];
   CASES.forEach(([, over, tr], i) => {
@@ -58,13 +79,14 @@ function build(): { scene: SceneState; anim: (t: number) => ReturnType<typeof sa
 }
 
 // @ts-expect-error exposed to Playwright
-window.runFx = async (zoom = 1, t = 500) => {
+window.runFx = async (zoom = 1, t = 500, set = 0) => {
+  const CASES = SETS[set] ?? SET1;
   const CK = await loadCanvasKit();
   const fonts = new FontBook(CK);
   await fonts.ready();
   const cgl = document.getElementById("cgl") as HTMLCanvasElement;
   const r = new CanvasKitRenderer(CK, cgl, fonts, images);
-  const { scene, anim } = build();
+  const { scene, anim } = build(CASES);
   const posed = poseScene(scene, anim(t), { t, at: (dt) => anim(Math.min(1000, Math.max(0, t + dt))) });
   const errors: string[] = [];
   const warn = console.warn;

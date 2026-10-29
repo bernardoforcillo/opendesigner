@@ -227,7 +227,7 @@ track names it; parameters without a track keep their default. Values are finite
 clamps them to the parameter's range.
 
 - `web/src/animation/fx/catalog.ts`: all 307 EffectCraft effects (id, name, category), generated from its `docs/effects.md`.
-- `web/src/animation/fx/library.ts` + `kernels*.ts`: the 223 that are drawn, with EffectCraft's parameter names, ranges and
+- `web/src/animation/fx/library.ts` + `kernels*.ts`: the 261 that are drawn, with EffectCraft's parameter names, ranges and
   defaults where it has them. Each is one of four kinds:
   - **filter**: a CanvasKit image/colour filter over the node's pixels (blur, colour matrices, minimax, glow, offset);
   - **overlay**: an SkSL shader drawn over the node inside its layer (grain, fills, gradients, patterns, generators), or a
@@ -253,6 +253,10 @@ clamps them to the parameter's range.
     gamma per channel that pulls the mid-tones to neutral, Equalize maps through the cumulative distribution (RGB, brightness or
     Photoshop style). The read-back runs every frame the effect is on screen, and EffectCraft's temporal smoothing and scene
     detection are not implemented (each frame is analysed on its own, so a changing frame can make the levels flicker).
+  - **pieces, particles and text** (`fx/kernelsSim.ts`): Shatter, Pixel Polly, Card Dance and Card Wipe cut the node into a grid
+    of shards or cards; for every output pixel the pieces that could cover it (3 cells around) are inverse-transformed and
+    tested. Particle World, Particle Systems II and Particle Playground run 96 closed-form particles. Numbers and Timecode draw
+    a 5x7 font in SkSL, the characters formatted on the CPU. These overlays use the `srcover` blend: they draw beyond the node.
   - **carrier**: no pixels, only values for expressions (EffectCraft's Expression Controls, Grow Bounds).
 - `pnpm fx-render [zoom] [ms]` (web/) draws a node per effect through the real pipeline (clip -> pose -> `CanvasKitRenderer` on WebGL in
   headless Chromium) into `web/fx-out/`: the offscreen kernels, layers, time effects and lookup-table read-back, at any zoom.
@@ -263,13 +267,22 @@ clamps them to the parameter's range.
   Order: kernels first (innermost), then the node's own effects and the animated image filters, then overlays.
 - Editor: **+ Effect** in the transport adds an effect (its first parameter as a track); **+ Property** then lists the other
   parameters of the effects the node already has.
-- Not drawn (84 of 307, still listed in the catalog so nothing is silently missing): audio (no audio engine here),
-  3D channels and depth, anything driven by other layers, masks or tracked data (set/combine matte effects, Roto Brush,
-  Warp Stabilizer, face and camera tracking, paint/write-on/stroke), particle and physics simulation (Particle Playground,
-  Card Dance, Shatter, Foam...), mesh warps (Liquify, Puppet, Mesh Warp), OCIO files/looks/displays and LUTs, text generators (Numbers, Timecode), Match/Remove Grain, Inner/Outer Key
-  and Key Cleaner. Some drawn effects are simplified: Selective Color and Lumetri cover the basic controls, OCIO Color Space
-  covers sRGB, linear Rec.709, ACEScg, Rec.2020 and Display P3, the matte refinements work on the node's own alpha, and a
-  few legacy effects reuse the behaviour of their modern counterpart (`ALIASES` in `fx/library.ts`).
+- Not drawn (46 of 307, still listed in the catalog so nothing is silently missing), and why:
+  - **audio** (13 effects plus Audio Spectrum and Audio Waveform): there is no audio engine in the editor;
+  - **a second layer**: Blend, CC Composite, Calculations, Compound Arithmetic, Set Channels, Set Matte, Difference Matte,
+    Match Grain (an effect parameter is a number, it cannot point at another layer);
+  - **drawn masks or brush paths**: Liquify, Puppet, Reshape, Mesh Warp, Write-on, CC Glue Gun, Object Matte, Roto Brush, Mocha
+    shape, Paint, Inner/Outer Key;
+  - **tracking and camera data**: 3D Camera Tracker, Warp Stabilizer, Face Track Points, Face Measurements, CC Environment,
+    Color Stabilizer (needs a reference frame);
+  - **files**: Apply Color LUT, OCIO File and Look transforms, PS Arbitrary Map;
+  - **arbitrary text**: Basic Text, Path Text (an effect parameter is a number).
+  Where EffectCraft's version needs data this editor does not have, the ones that are drawn work on the node's own pixels
+  instead: the 3D-channel effects take the node's luminance as depth and its colours as IDs, Stroke/Vegas/Stylize follow the
+  node's alpha edge, Paint Bucket fills the colours that match the one at a point. The shatter, card, particle, hair, mercury,
+  foam and wave effects are 2D, stateless approximations (every piece or particle is a function of its id and the animatable
+  phase), not EffectCraft's simulations. Selective Color and Lumetri cover the basic controls, OCIO Color Space covers sRGB, linear
+  Rec.709, ACEScg, Rec.2020 and Display P3, and a few legacy effects reuse their modern counterpart (`ALIASES` in `fx/library.ts`).
 - Code export (HTML/React) and the 2D canvas renderer ignore effect tracks (the exporter warns).
 
 ## Limits (for now)

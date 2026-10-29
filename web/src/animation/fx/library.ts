@@ -32,7 +32,8 @@ export interface FxOverlay {
   sksl: string;
   /** The values of `uniform float p[12]` (the box is passed separately). */
   uniforms: (v: FxValues) => number[];
-  blend: "srcatop" | "dstin";
+  /** srcatop: only where the node has pixels; dstin: a mask over the node; srcover: drawn over everything, also beyond the node (particles, text). */
+  blend: "srcatop" | "dstin" | "srcover";
 }
 
 /** How a time effect combines the node's poses at other moments (see animation/pose.ts and renderer/ck). */
@@ -579,7 +580,7 @@ const ALIASES: [alias: string, of: string][] = [
   ["ec.obsolete.lightning", "ec.generate.advancedlightning"], ["ec.key.spill", "ec.key.advancedspill"],
   ["ec.matte.mattechoker", "ec.matte.simplechoker"], ["ec.transition.ccimagewipe", "ec.transition.gradientwipe"],
   ["ec.distort.ccripplepulse", "ec.distort.ripple"], ["ec.distort.ccpowerpin", "ec.distort.cornerpin"],
-  ["ec.sim.ccscatterize", "ec.stylize.scatter"], ["ec.stylize.ccrepetile", "ec.stylize.motiontile"],
+  ["ec.sim.ccscatterize", "ec.stylize.scatter"], ["ec.distort.smear", "ec.distort.ccsmear"], ["ec.stylize.ccrepetile", "ec.stylize.motiontile"],
 ];
 export const FX_LIBRARY: readonly FxDef[] = [
   ...ALL,

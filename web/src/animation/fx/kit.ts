@@ -70,17 +70,22 @@ export function kern(
   };
 }
 
-/** An effect that draws a shader over the node (only where it has pixels, or as a mask). */
+/**
+ * An effect that draws a shader over the node: only where it has pixels (srcatop), as a mask over it (dstin), or over everything
+ * including beyond the node (srcover). `slots` is the size of `uniform float p[]` (12 by default); `head` declares helper functions.
+ */
 export function over(
-  id: string, params: readonly FxParam[], body: Body, blend: "srcatop" | "dstin" = "srcatop",
-  opts: { uniforms?: (v: FxValues) => number[] } = {},
+  id: string, params: readonly FxParam[], body: Body, blend: "srcatop" | "dstin" | "srcover" = "srcatop",
+  opts: { uniforms?: (v: FxValues) => number[]; outset?: (v: FxValues) => number; slots?: number; head?: string } = {},
 ): FxDef {
-  const sksl = `${COMMON}half4 main(float2 xy) {\n${body}\n}`;
+  const slots = opts.slots ?? 12;
+  const sksl = `${COMMON.replace("p[12]", `p[${slots}]`)}${opts.head ?? ""}\nhalf4 main(float2 xy) {\n${body}\n}`;
+  const fill = (n: readonly number[]) => { const o = n.slice(0, slots); while (o.length < slots) o.push(0); return o; };
   return {
-    id, params,
+    id, params, outset: opts.outset,
     overlay: () => ({
       sksl, blend,
-      uniforms: (w) => pad(opts.uniforms ? opts.uniforms(w) : params.map((q) => w[q.id])),
+      uniforms: (w) => fill(opts.uniforms ? opts.uniforms(w) : params.map((q) => w[q.id])),
     }),
   };
 }

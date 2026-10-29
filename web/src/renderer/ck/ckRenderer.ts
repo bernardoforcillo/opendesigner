@@ -592,7 +592,7 @@ export class CanvasKitRenderer {
         const shader = effect.makeShader([box.x, box.y, box.width, box.height, ...overlay.uniforms(values)]);
         const paint = new CK.Paint();
         paint.setShader(shader);
-        paint.setBlendMode(overlay.blend === "dstin" ? CK.BlendMode.DstIn : CK.BlendMode.SrcATop);
+        paint.setBlendMode(overlay.blend === "dstin" ? CK.BlendMode.DstIn : overlay.blend === "srcover" ? CK.BlendMode.SrcOver : CK.BlendMode.SrcATop);
         sk.drawRect(CK.XYWHRect(reach.x, reach.y, reach.width, reach.height), paint);
         paint.delete();
         shader.delete();

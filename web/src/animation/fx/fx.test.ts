@@ -3,6 +3,7 @@ import { describe, it, expect, beforeAll } from "vitest";
 import { createRequire } from "node:module";
 import type { CanvasKit } from "canvaskit-wasm";
 import { FX_CATALOG } from "@/animation/fx/catalog";
+import { formatNumber, formatTimecode } from "@/animation/fx/kernelsSim";
 import { invertHomography, unitSquareTo } from "@/animation/fx/kernelsDistort";
 import { FX_LIBRARY, fxDef, fxParam, hsv, resolveFx } from "@/animation/fx/library";
 import { makeLutShader, readHistogram } from "@/animation/fx/lutImage";
@@ -150,7 +151,7 @@ describe("drawing every effect with CanvasKit", () => {
       const shader = e!.makeShader([16, 16, 32, 32, ...overlay.uniforms(values)]);
       const p = new CK.Paint();
       p.setShader(shader);
-      p.setBlendMode(overlay.blend === "dstin" ? CK.BlendMode.DstIn : CK.BlendMode.SrcATop);
+      p.setBlendMode(overlay.blend === "dstin" ? CK.BlendMode.DstIn : overlay.blend === "srcover" ? CK.BlendMode.SrcOver : CK.BlendMode.SrcATop);
       sk.drawRect(CK.XYWHRect(0, 0, 64, 64), p);
       p.delete(); shader.delete(); e!.delete();
     }
@@ -254,5 +255,34 @@ describe("drawing every effect with CanvasKit", () => {
     expect(at(ac, 8, 8)[3]).toBe(0); // outside the node stays transparent
     const flat = at(draw({ "ec.color.autolevels": { blackClip: 0, whiteClip: 0, blend: 0 } }), 32, 32);
     expect(Math.abs(flat[0] - 204)).toBeLessThanOrEqual(2);
+  });
+
+  it("text effects draw glyph pixels over the whole layer; shatter at 0 is the node, at 100 it is gone from where it was", () => {
+    const num = draw({ "ec.text.numbers": { value: 8, size: 28, x: 50, y: 50, opacity: 100 } });
+    let lit = 0;
+    for (let i = 3; i < num.length; i += 4) if (num[i] > 0) lit++;
+    expect(lit).toBeGreaterThan(40);
+    const none = draw({ "ec.sim.shatter": { phase: 0 } });
+    expect(at(none, 32, 32)[3]).toBe(255);
+    const gone = draw({ "ec.sim.shatter": { phase: 100, force: 1200, grav: 0, piece: 8 } });
+    expect(at(gone, 32, 32)[3]).toBeLessThan(255);
+    // a card wipe at 0 keeps the node, at 100 shows the back (transparent)
+    expect(at(draw({ "ec.transition.cardwipe": { completion: 0 } }), 32, 32)[3]).toBe(255);
+    expect(at(draw({ "ec.transition.cardwipe": { completion: 100, back: 0 } }), 32, 32)[3]).toBe(0);
+  });
+});
+
+describe("text formatting", () => {
+  it("numbers: decimals, commas and sign", () => {
+    expect(formatNumber(1234.5, 1, true)).toBe("1,234.5");
+    expect(formatNumber(-0.04, 1, false)).toBe("0.0");
+    expect(formatNumber(-7, 0, false)).toBe("-7");
+    expect(formatNumber(1234567, 0, true)).toBe("1,234,567");
+  });
+  it("timecode: frames roll into seconds, minutes, hours", () => {
+    expect(formatTimecode(61.5, 24, 0)).toBe("00:01:01:12");
+    expect(formatTimecode(3600, 30, 0)).toBe("01:00:00:00");
+    expect(formatTimecode(61.5, 24, 1)).toBe("00:01:01");
+    expect(formatTimecode(2, 25, 2)).toBe("50");
   });
 });
