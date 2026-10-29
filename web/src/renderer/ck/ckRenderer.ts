@@ -25,6 +25,7 @@ import { FX_TILE, blurBands, overlayEffects, overlayTile, progressiveBlur, tileU
 import { buildFx, type BuiltFx } from "@/animation/fx/apply";
 import { DISPLACE_SKSL } from "@/animation/fx/timeFx";
 import { makeLutShader, readHistogram } from "@/animation/fx/lutImage";
+import { fxRefKey } from "@/animation/fx/props";
 import { hasRealStroke, vectorStyleOf } from "@/renderer/vectorStyle";
 import type { FontBook } from "@/renderer/ck/canvaskit";
 
@@ -713,11 +714,13 @@ export class CanvasKitRenderer {
         if (originalShader) children.push(originalShader);
       } else if (k.other === "layer") {
         // no layer named, or it is gone (deleted, or a loop): the effect does nothing, the node is not made to vanish
-        const sh = this.layerShader(n, k.effect ?? "", capture);
-        if (!sh) { f.garbage.push(surface, img, src); continue; }
+        const sh = this.layerShader(n, fxRefKey(k.effect ?? "", 1), capture);
+        const sh2 = k.other2 ? this.layerShader(n, fxRefKey(k.effect ?? "", 2), capture) : null;
+        if (!sh || (k.other2 && !sh2)) { f.garbage.push(surface, img, src); continue; }
         children.push(sh);
+        if (sh2) children.push(sh2);
       }
-      if (k.other && children.length < (k.lut ? 3 : 2)) { f.garbage.push(surface, img, src); continue; }
+      if (k.other && children.length < (k.lut ? 3 : 2) + (k.other2 ? 1 : 0)) { f.garbage.push(surface, img, src); continue; }
       const shader = effect.makeShaderWithChildren([box.x, box.y, box.width, box.height, ...k.uniforms], children);
       f.garbage.push(surface, img, src, shader);
       paint = (target) => {

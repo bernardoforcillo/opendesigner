@@ -11,7 +11,7 @@
 // with easingFn(spec) giving the curve of a single segment.
 
 import type { ClipLite, TrackLite } from "@/store/types";
-import { parseFxLayerProp, parseFxProp, type NodeFx, type NodeFxRefs } from "@/animation/fx/props";
+import { fxRefKey, parseFxLayerProp, parseFxProp, type NodeFx, type NodeFxRefs } from "@/animation/fx/props";
 
 // The closed sets of the model: repeated in Go (core.TrackProps/ClipTriggers).
 export const TRACK_PROPS = ["opacity", "x", "y", "scale", "rotation", "draw"] as const;
@@ -173,7 +173,7 @@ export function sampleClip(clip: Pick<ClipLite, "tracks">, tMs: number): Map<str
     if (!a) { a = {}; out.set(tr.nodeId, a); }
     const ref = parseFxLayerProp(tr.prop);
     if (ref) {
-      (a.fxRefs ??= {})[ref.effect] = ref.layerId;
+      (a.fxRefs ??= {})[fxRefKey(ref.effect, ref.slot)] = ref.layerId;
       // naming a layer is enough to have the effect, with its default parameters
       ((a.fx ??= {})[ref.effect] ??= {});
       continue;

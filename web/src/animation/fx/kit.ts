@@ -61,13 +61,16 @@ type Body = string;
 /** An effect that reads the node's pixels: `half4 main(float2 xy)` with `S(point)` sampling the node. */
 export function kern(
   id: string, params: readonly FxParam[], body: Body,
-  opts: { outset?: (v: FxValues) => number; uniforms?: (v: FxValues) => number[]; head?: string; other?: "layer" | "original" } = {},
+  opts: { outset?: (v: FxValues) => number; uniforms?: (v: FxValues) => number[]; head?: string; other?: "layer" | "original"; other2?: true; slots?: number } = {},
 ): FxDef {
   // `other` is the second image: the layer named by the effect, or the node as it was before the kernels
-  const sksl = `${KHEAD}${opts.other ? "uniform shader other;\nhalf4 O(float2 q) { return other.eval(q); }\n" : ""}${opts.head ?? ""}\nhalf4 main(float2 xy) {\n${body}\n}`;
+  const slots = opts.slots ?? 12;
+  const second = opts.other2 ? "uniform shader other2;\nhalf4 O2(float2 q) { return other2.eval(q); }\n" : "";
+  const sksl = `${KHEAD.replace("p[12]", `p[${slots}]`)}${opts.other ? `uniform shader other;\nhalf4 O(float2 q) { return other.eval(q); }\n${second}` : ""}${opts.head ?? ""}\nhalf4 main(float2 xy) {\n${body}\n}`;
+  const fill = (n: readonly number[]) => { const o = n.slice(0, slots); while (o.length < slots) o.push(0); return o; };
   return {
-    id, params, outset: opts.outset, needsLayer: opts.other === "layer" ? true : undefined,
-    kernel: (v) => ({ sksl, uniforms: pad(opts.uniforms ? opts.uniforms(v) : params.map((q) => v[q.id])), other: opts.other }),
+    id, params, outset: opts.outset, needsLayer: opts.other === "layer" ? (opts.other2 ? 2 : 1) : undefined,
+    kernel: (v) => ({ sksl, uniforms: fill(opts.uniforms ? opts.uniforms(v) : params.map((q) => v[q.id])), other: opts.other, other2: opts.other2 }),
   };
 }
 

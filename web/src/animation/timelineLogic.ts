@@ -75,7 +75,9 @@ export function propLabel(prop: string, layerName?: (id: string) => string | und
   const ref = parseFxLayerProp(prop);
   if (ref) {
     const name = FX_CATALOG.find((e) => e.id === ref.effect)?.name ?? ref.effect;
-    return `${name} · Layer: ${layerName?.(ref.layerId) ?? "(missing)"}`;
+    const two = fxDef(ref.effect)?.needsLayer === 2;
+    const which = ref.slot > 1 ? "Outer layer" : two ? "Inner layer" : "Layer";
+    return `${name} · ${which}: ${layerName?.(ref.layerId) ?? "(missing)"}`;
   }
   const fx = parseFxProp(prop);
   if (!fx) return prop;

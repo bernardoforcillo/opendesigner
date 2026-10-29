@@ -8,7 +8,7 @@ import { invertHomography, unitSquareTo } from "@/animation/fx/kernelsDistort";
 import { FX_LIBRARY, fxDef, fxParam, hsv, resolveFx } from "@/animation/fx/library";
 import { makeLutShader, readHistogram } from "@/animation/fx/lutImage";
 import { buildFx, fxOutset } from "@/animation/fx/apply";
-import { fxLayerProp, fxProp, isFxProp, parseFxLayerProp, parseFxProp } from "@/animation/fx/props";
+import { fxLayerProp, fxRefKey, fxProp, isFxProp, parseFxLayerProp, parseFxProp } from "@/animation/fx/props";
 import { isTrackProp, sampleClip } from "@/animation/engine";
 import { mergeAnim, poseScene } from "@/animation/pose";
 import { isValidClip } from "@/animation/validate";
@@ -153,6 +153,7 @@ describe("drawing every effect with CanvasKit", () => {
         const oi = o.makeImageSnapshot();
         const os = oi.makeShaderOptions(CK.TileMode.Decal, CK.TileMode.Decal, CK.FilterMode.Linear, CK.MipmapMode.None);
         children.push(os);
+        if (k.other2) children.push(os);
         garbage.push(o, oi, os);
       }
       const sh = eff!.makeShaderWithChildren([16, 16, 32, 32, ...k.uniforms], children);
@@ -306,6 +307,31 @@ describe("drawing every effect with CanvasKit", () => {
     // cc composite: the node composited with its own original is unchanged
     expect(at(draw({ "ec.channel.cccomposite": { composite: 0, rgbOnly: 0, opacity: 100 } }), 20, 32)[3]).toBe(255);
   });
+
+  it("mask-based effects: warps with nothing moved are the identity, shapes and brushes draw only what they should", () => {
+    const base = at(draw({}), 32, 32);
+    const same = (a: number[], b: number[], what: string) => a.forEach((v, i) => expect(Math.abs(v - b[i]), what).toBeLessThanOrEqual(2));
+    same(at(draw({ "ec.distort.puppet": {} }), 32, 32), base, "puppet");
+    same(at(draw({ "ec.distort.liquify": {} }), 32, 32), base, "liquify");
+    same(at(draw({ "ec.distort.meshwarp": {} }), 32, 32), base, "mesh warp");
+    same(at(draw({ "ec.distort.reshape": { sw: 40, dw: 40 } }), 32, 32), base, "reshape");
+    // a push moves pixels
+    expect(at(draw({ "ec.distort.liquify": { dx1: 200, dy1: 0, r1: 200, x1: 50, y1: 50 } }), 20, 32)).not.toEqual(at(draw({}), 20, 32));
+    // write-on and glue gun: nothing is drawn at 0%, something is at 100% (they paint over the node, so compare the pictures)
+    const differs = (x: Uint8Array, y: Uint8Array) => { let n = 0; for (let i = 0; i < x.length; i++) if (Math.abs(x[i] - y[i]) > 8) n++; return n; };
+    const plain = draw({});
+    expect(differs(draw({ "ec.generate.writeon": { progress: 0 } }), plain)).toBe(0);
+    expect(differs(draw({ "ec.generate.writeon": { progress: 100, size: 8 } }), plain)).toBeGreaterThan(30);
+    expect(differs(draw({ "ec.generate.ccgluegun": { progress: 0 } }), plain)).toBe(0);
+    expect(differs(draw({ "ec.generate.ccgluegun": { progress: 100 } }), plain)).toBeGreaterThan(10);
+    // the shape mask keeps the node in the shape and removes it elsewhere; inverted it is the other way round
+    const mask = draw({ "ec.obsolete.mochashape": { shape: 1, x: 50, y: 50, w: 30, h: 30, feather: 0, expand: 0, invert: 0, opacity: 100, rotation: 0 } });
+    expect(at(mask, 32, 32)[3]).toBe(255);
+    expect(at(mask, 18, 18)[3]).toBe(0);
+    const inv = draw({ "ec.obsolete.mochashape": { shape: 1, x: 50, y: 50, w: 30, h: 30, feather: 0, expand: 0, invert: 1, opacity: 100, rotation: 0 } });
+    expect(at(inv, 32, 32)[3]).toBe(0);
+    expect(at(inv, 18, 18)[3]).toBe(255);
+  });
 });
 
 describe("text formatting", () => {
@@ -327,7 +353,10 @@ describe("layer references", () => {
   it("are tracks named fx.<effect>.layer.<id>; parsed, valid and sampled", () => {
     const prop = fxLayerProp("ec.channel.setmatte", "3f2a9c10-aa55");
     expect(prop).toBe("fx.ec.channel.setmatte.layer.3f2a9c10-aa55");
-    expect(parseFxLayerProp(prop)).toEqual({ effect: "ec.channel.setmatte", layerId: "3f2a9c10-aa55" });
+    expect(parseFxLayerProp(prop)).toEqual({ effect: "ec.channel.setmatte", layerId: "3f2a9c10-aa55", slot: 1 });
+    expect(parseFxLayerProp(fxLayerProp("ec.key.innerouter", "B", 2))).toEqual({ effect: "ec.key.innerouter", layerId: "B", slot: 2 });
+    expect(fxLayerProp("ec.key.innerouter", "B", 2)).toBe("fx.ec.key.innerouter.layer2.B");
+    expect(fxRefKey("ec.key.innerouter", 2)).toBe("ec.key.innerouter#2");
     expect(parseFxProp(prop)).toBeNull();
     expect(isFxProp(prop)).toBe(true);
     expect(isTrackProp(prop)).toBe(true);
@@ -351,7 +380,7 @@ describe("layer references", () => {
     const need = FX_LIBRARY.filter((d) => d.needsLayer).map((d) => d.id).sort();
     expect(need).toEqual([
       "ec.channel.blend", "ec.channel.calculations", "ec.channel.compoundarithmetic", "ec.channel.setchannels", "ec.channel.setmatte",
-      "ec.color.colorstabilizer", "ec.key.differencematte", "ec.matte.objectmatte", "ec.noise.matchgrain", "ec.perspective.ccenvironment",
+      "ec.color.colorstabilizer", "ec.key.differencematte", "ec.key.innerouter", "ec.matte.objectmatte", "ec.matte.rotobrush", "ec.noise.matchgrain", "ec.perspective.ccenvironment",
     ]);
   });
   it("reach the posed node as animFxRefs, merged across clips", () => {

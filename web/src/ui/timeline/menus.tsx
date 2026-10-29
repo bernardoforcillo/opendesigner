@@ -133,12 +133,13 @@ export function AddEffectMenu() {
           aria-label="Effect to add"
           className="max-h-[360px] overflow-y-auto outline-none"
           onAction={(k) => {
-            // "layer:<effect>:<node>" is a layer picked for an effect that uses a second layer, otherwise "<effect>"
-            const [kind, effectId, layerId] = String(k).startsWith("layer:") ? String(k).split(":") : ["fx", String(k), ""];
-            const def = fxDef(kind === "layer" ? effectId : String(k));
+            // "layer:<effect>:<node>" / "layer2:<effect>:<node>" is a layer picked for an effect that uses one or two, otherwise "<effect>"
+            const raw = String(k);
+            const m = /^(layer2?):([^:]+):(.+)$/.exec(raw);
+            const def = fxDef(m ? m[2] : raw);
             if (!scene || !def) return;
             const first = `fx.${def.id}.${def.params[0].id}`;
-            addPropertyTracks(scene, selection, kind === "layer" ? [fxLayerProp(def.id, layerId), first] : first);
+            addPropertyTracks(scene, selection, m ? [fxLayerProp(def.id, m[3], m[1] === "layer2" ? 2 : 1), first] : first);
           }}
         >
           {CATEGORIES.map((cat) => {
@@ -150,20 +151,22 @@ export function AddEffectMenu() {
                 <Header className="px-2 pb-0.5 pt-1.5 text-[11px] font-semibold uppercase tracking-[0.06em] text-fg-subtle">{cat}</Header>
                 {ready.map((e) =>
                   fxDef(e.id)?.needsLayer ? (
-                    <SubmenuTrigger key={e.id}>
-                      <MenuItem id={e.id} textValue={e.name} className={ITEM}>
-                        {e.name}
-                        <span className="ml-auto text-[11px] text-fg-subtle">layer ›</span>
-                      </MenuItem>
-                      <Popover className={POPOVER} offset={4}>
-                        <Menu aria-label={`Layer for ${e.name}`} className="max-h-[300px] overflow-y-auto outline-none">
-                          {layers.length === 0 && <MenuItem id="none" isDisabled textValue="No other layers" className={ITEM}>No other layers</MenuItem>}
-                          {layers.map((l) => (
-                            <MenuItem key={l.id} id={`layer:${e.id}:${l.id}`} textValue={l.name} className={ITEM}>{l.name}</MenuItem>
-                          ))}
-                        </Menu>
-                      </Popover>
-                    </SubmenuTrigger>
+                    [1, ...(fxDef(e.id)?.needsLayer === 2 ? [2] : [])].map((slot) => (
+                      <SubmenuTrigger key={`${e.id}:${slot}`}>
+                        <MenuItem id={`${e.id}:${slot}`} textValue={e.name} className={ITEM}>
+                          {e.name}
+                          <span className="ml-auto text-[11px] text-fg-subtle">{fxDef(e.id)?.needsLayer === 2 ? (slot === 1 ? "inner layer ›" : "outer layer ›") : "layer ›"}</span>
+                        </MenuItem>
+                        <Popover className={POPOVER} offset={4}>
+                          <Menu aria-label={`Layer for ${e.name}`} className="max-h-[300px] overflow-y-auto outline-none">
+                            {layers.length === 0 && <MenuItem id="none" isDisabled textValue="No other layers" className={ITEM}>No other layers</MenuItem>}
+                            {layers.map((l) => (
+                              <MenuItem key={l.id} id={`${slot === 2 ? "layer2" : "layer"}:${e.id}:${l.id}`} textValue={l.name} className={ITEM}>{l.name}</MenuItem>
+                            ))}
+                          </Menu>
+                        </Popover>
+                      </SubmenuTrigger>
+                    ))
                   ) : (
                     <MenuItem key={e.id} id={e.id} textValue={e.name} className={ITEM}>{e.name}</MenuItem>
                   ),

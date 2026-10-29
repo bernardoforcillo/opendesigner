@@ -22,7 +22,7 @@ const lowContrast = { fills: [{ r: 0, g: 0, b: 0, a: 1, gradient: { kind: "linea
 
 // [label, node overrides, tracks: prop -> [value at t0, value at t1]]
 // An optional 4th element makes a hidden second layer for the effect (`effect`) and points the case's node at it.
-type Layer = { effect: string; node: Partial<NodeLite>; dx?: number; dy?: number };
+type Layer = { effect: string; node: Partial<NodeLite>; dx?: number; dy?: number; second?: { node: Partial<NodeLite>; dx?: number; dy?: number } };
 type Case = [string, Partial<NodeLite>, Record<string, [number, number]>, Layer?];
 const SET1: Case[] = [
   ["blur", {}, { "fx.ec.blur.gaussian.blurriness": [12, 12] }],
@@ -80,7 +80,26 @@ const SET3: Case[] = [
   ["layer is missing", {}, {}, { effect: "ec.channel.setmatte", node: { kind: "ellipse", fills: green, width: 80, height: 80 } }],
   ["matte + blur chain", {}, { [A + "blur.gaussian.blurriness"]: [5, 5] }, { effect: "ec.channel.setmatte", node: { kind: "ellipse", fills: green, width: 80, height: 80 }, dx: 10, dy: 10 }],
 ];
-const SETS = [SET1, SET2, SET3];
+// a disc of one colour on a ground of another, the usual thing to cut out
+const disc = { fills: [{ r: 0, g: 0, b: 0, a: 1, gradient: { kind: "radial" as const, x1: 0.5, y1: 0.5, x2: 1, y2: 0.5, stops: [
+  { color: { r: 0.95, g: 0.75, b: 0.15, a: 1 }, position: 0 }, { color: { r: 0.95, g: 0.75, b: 0.15, a: 1 }, position: 0.42 },
+  { color: { r: 0.15, g: 0.35, b: 0.8, a: 1 }, position: 0.43 }, { color: { r: 0.15, g: 0.35, b: 0.8, a: 1 }, position: 1 }] } }], cornerRadius: 0 };
+const white = [{ r: 1, g: 1, b: 1, a: 1 }];
+const SET4: Case[] = [
+  ["roto brush (rough matte)", disc, {}, { effect: "ec.matte.rotobrush", node: { kind: "ellipse", fills: white, width: 50, height: 50 }, dx: 25, dy: 25 }],
+  ["roto brush: matte view", disc, { [A + "matte.rotobrush.view"]: [1, 1] }, { effect: "ec.matte.rotobrush", node: { kind: "ellipse", fills: white, width: 50, height: 50 }, dx: 25, dy: 25 }],
+  ["inner/outer key", disc, {}, { effect: "ec.key.innerouter", node: { kind: "ellipse", fills: white, width: 34, height: 34 }, dx: 33, dy: 33, second: { node: { kind: "ellipse", fills: white, width: 62, height: 62 }, dx: 19, dy: 19 } }],
+  ["inner/outer: matte view", disc, { [A + "key.innerouter.view"]: [1, 1] }, { effect: "ec.key.innerouter", node: { kind: "ellipse", fills: white, width: 34, height: 34 }, dx: 33, dy: 33, second: { node: { kind: "ellipse", fills: white, width: 62, height: 62 }, dx: 19, dy: 19 } }],
+  ["puppet (pins)", {}, { [A + "distort.puppet.d1x"]: [0, 0], [A + "distort.puppet.d1y"]: [-25, -25], [A + "distort.puppet.d4x"]: [20, 20], [A + "distort.puppet.d4y"]: [10, 10] }],
+  ["liquify (push)", {}, { [A + "distort.liquify.dx1"]: [30, 30], [A + "distort.liquify.dy1"]: [10, 10], [A + "distort.liquify.dx2"]: [-30, -30], [A + "distort.liquify.dy2"]: [-10, -10] }],
+  ["liquify (twirl)", {}, { [A + "distort.liquify.mode"]: [3, 3], [A + "distort.liquify.dx1"]: [60, 60], [A + "distort.liquify.r1"]: [60, 60] }],
+  ["mesh warp", {}, { [A + "distort.meshwarp.m1x"]: [18, 18], [A + "distort.meshwarp.m1y"]: [-12, -12], [A + "distort.meshwarp.m4x"]: [-18, -18], [A + "distort.meshwarp.m4y"]: [14, 14] }],
+  ["reshape", disc, { [A + "distort.reshape.dw"]: [75, 75] }],
+  ["write-on", {}, { [A + "generate.writeon.progress"]: [0, 100] }],
+  ["glue gun", {}, { [A + "generate.ccgluegun.progress"]: [0, 100] }],
+  ["mask shape (ellipse)", {}, { [A + "obsolete.mochashape.w"]: [70, 70], [A + "obsolete.mochashape.feather"]: [10, 10] }],
+];
+const SETS = [SET1, SET2, SET3, SET4];
 
 function build(CASES: Case[]): { scene: SceneState; anim: (t: number) => ReturnType<typeof sampleClip> } {
   const nodes: NodeLite[] = [];
@@ -94,6 +113,11 @@ function build(CASES: Case[]): { scene: SceneState; anim: (t: number) => ReturnT
       const rid = label === "layer is missing" ? "gone" : `r${i}`;
       if (rid !== "gone") nodes.push(node(rid, 40 + col * 290 + (layer.dx ?? 0), 40 + row * 170 + (layer.dy ?? 0), { visible: false, ...layer.node }));
       tracks.push({ nodeId: id, prop: `fx.${layer.effect}.layer.${rid}`, keyframes: [{ time: 0, value: 1, easing: "linear" }] });
+      if (layer.second) {
+        const sid = `s${i}`;
+        nodes.push(node(sid, 40 + col * 290 + (layer.second.dx ?? 0), 40 + row * 170 + (layer.second.dy ?? 0), { visible: false, ...layer.second.node }));
+        tracks.push({ nodeId: id, prop: `fx.${layer.effect}.layer2.${sid}`, keyframes: [{ time: 0, value: 1, easing: "linear" }] });
+      }
     }
     for (const [prop, [a, b]] of Object.entries(tr)) {
       const base = nodes[nodes.length - 1];

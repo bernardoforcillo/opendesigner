@@ -227,7 +227,7 @@ track names it; parameters without a track keep their default. Values are finite
 clamps them to the parameter's range.
 
 - `web/src/animation/fx/catalog.ts`: all 307 EffectCraft effects (id, name, category), generated from its `docs/effects.md`.
-- `web/src/animation/fx/library.ts` + `kernels*.ts`: the 272 that are drawn, with EffectCraft's parameter names, ranges and
+- `web/src/animation/fx/library.ts` + `kernels*.ts`: the 281 that are drawn, with EffectCraft's parameter names, ranges and
   defaults where it has them. Each is one of four kinds:
   - **filter**: a CanvasKit image/colour filter over the node's pixels (blur, colour matrices, minimax, glow, offset);
   - **overlay**: an SkSL shader drawn over the node inside its layer (grain, fills, gradients, patterns, generators), or a
@@ -265,6 +265,15 @@ clamps them to the parameter's range.
     the layer may be hidden, keeps its own effects and animation, is not moved or turned by the node's own rotation and scale, and a
     loop (the layer names the node back) is cut. A layer that is gone, or none, makes the effect do nothing. In the editor,
     **+ Effect** lists these with a "layer" submenu of the other nodes; the track row reads "Set Matte · Layer: <name>".
+  - **mask-based** (`fx/kernelsMask.ts`): the editor has no free-hand mask tool, so what After Effects draws is given in the ways the
+    document does have. A *mask* is another layer (its alpha), named like any second layer; a *pin, push, mesh point, region or path
+    point* is a numeric parameter, so it animates like everything else. Roto Brush & Refine Edge takes a rough matte layer and re-computes
+    the alpha near its edge from the foreground and background colours the node has around it (a closed-form refine edge, with edge
+    decontamination); Inner/Outer Key does the same from an inner layer (surely foreground) and an outer layer (outside it, surely
+    background): a second layer reference, `fx.<effect>.layer2.<nodeId>`, listed as "inner layer" / "outer layer" in the Effect menu.
+    Puppet (4 pins), Liquify (3 push, bloat, pucker or twirl dabs), Mesh Warp (4 inner lattice points) and Reshape (source region to
+    destination region) are inverse-mapped warps; Write-on and CC Glue Gun follow a path given by points up to a progress you animate;
+    Mocha shape is a shape mask given by parameters. They are simpler than EffectCraft's tools, which edit meshes and paths by hand.
   - **carrier**: no pixels, only values for expressions (EffectCraft's Expression Controls, Grow Bounds).
 - `pnpm fx-render [zoom] [ms]` (web/) draws a node per effect through the real pipeline (clip -> pose -> `CanvasKitRenderer` on WebGL in
   headless Chromium) into `web/fx-out/`: the offscreen kernels, layers, time effects and lookup-table read-back, at any zoom.
@@ -275,14 +284,11 @@ clamps them to the parameter's range.
   Order: kernels first (innermost), then the node's own effects and the animated image filters, then overlays.
 - Editor: **+ Effect** in the transport adds an effect (its first parameter as a track); **+ Property** then lists the other
   parameters of the effects the node already has.
-- Not drawn (35 of 307, still listed in the catalog so nothing is silently missing), and why:
+- Not drawn (26 of 307, still listed in the catalog so nothing is silently missing), and why:
   - **audio** (13 effects plus Audio Spectrum and Audio Waveform): there is no audio engine in the editor;
-  - **drawn masks or brush paths**: Liquify, Puppet, Reshape, Mesh Warp, Write-on, CC Glue Gun, Object Matte, Roto Brush, Mocha
-    shape, Paint, Inner/Outer Key;
-  - **tracking and camera data**: 3D Camera Tracker, Warp Stabilizer, Face Track Points, Face Measurements, CC Environment,
-    Color Stabilizer (needs a reference frame);
+  - **tracking and camera data**: 3D Camera Tracker, Warp Stabilizer, Face Track Points, Face Measurements;
   - **files**: Apply Color LUT, OCIO File and Look transforms, PS Arbitrary Map;
-  - **arbitrary text**: Basic Text, Path Text (an effect parameter is a number).
+  - **arbitrary text and recorded strokes**: Basic Text, Path Text (an effect parameter is a number), Paint (needs recorded brush strokes).
   Where EffectCraft's version needs data this editor does not have, the ones that are drawn work on the node's own pixels
   instead: the 3D-channel effects take the node's luminance as depth and its colours as IDs, Stroke/Vegas/Stylize follow the
   node's alpha edge, Paint Bucket fills the colours that match the one at a point. The shatter, card, particle, hair, mercury,

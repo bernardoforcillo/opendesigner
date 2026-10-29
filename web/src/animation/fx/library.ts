@@ -69,6 +69,8 @@ export interface FxKernel {
    * drawn without any of the kernels (CC Composite).
    */
   other?: "layer" | "original";
+  /** With `other: "layer"`: also a second layer, `uniform shader other2` (the node's `fx.<effect>.layer2.<id>` track). */
+  other2?: true;
   /** Set by buildFx: the effect this kernel belongs to (to find its layer reference). */
   effect?: string;
 }
@@ -91,7 +93,7 @@ export interface FxDef {
    */
   time?: (v: FxValues, t: number) => FxTime;
   /** The effect takes a second layer chosen in the editor (a `fx.<effect>.layer.<node>` track). */
-  needsLayer?: true;
+  needsLayer?: 1 | 2;
   /** No pixels at all: the effect only carries values for expressions (EffectCraft's Expression Controls). */
   carrier?: true;
   /** How far beyond the node's box the effect paints (world units). */

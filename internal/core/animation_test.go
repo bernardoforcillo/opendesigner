@@ -216,12 +216,12 @@ func TestValidEasing(t *testing.T) {
 }
 
 func TestValidTrackPropAcceptsEffectParameters(t *testing.T) {
-	for _, p := range []string{"opacity", "fx.ec.blur.gaussian.blurriness", "fx.ec.transition.linearwipe.completion", "fx.ec.channel.setmatte.layer.3f2a9c10-aa55-4d1e-9b7e-0c1d2e3f4a5b", "fx.ec.key.differencematte.layer.n_1"} {
+	for _, p := range []string{"opacity", "fx.ec.blur.gaussian.blurriness", "fx.ec.transition.linearwipe.completion", "fx.ec.channel.setmatte.layer.3f2a9c10-aa55-4d1e-9b7e-0c1d2e3f4a5b", "fx.ec.key.differencematte.layer.n_1", "fx.ec.key.innerouter.layer2.abc"} {
 		if !ValidTrackProp(p) {
 			t.Errorf("%q should be a valid track prop", p)
 		}
 	}
-	for _, p := range []string{"", "width", "fx.", "fx.ec.blur.gaussian.", "fx.ec.blur.gaussian.a.b", "fx.ec.Blur.gaussian.x", "xfx.ec.blur.gaussian.x", "fx.ec.channel.setmatte.layer.", "fx.ec.channel.setmatte.layer.a b", "fx.ec.channel.setmatte.layer.a.b", "fx.channel.setmatte.layer.a"} {
+	for _, p := range []string{"", "width", "fx.", "fx.ec.blur.gaussian.", "fx.ec.blur.gaussian.a.b", "fx.ec.Blur.gaussian.x", "xfx.ec.blur.gaussian.x", "fx.ec.channel.setmatte.layer.", "fx.ec.channel.setmatte.layer.a b", "fx.ec.channel.setmatte.layer.a.b", "fx.channel.setmatte.layer.a", "fx.ec.key.innerouter.layer1.abc", "fx.ec.key.innerouter.layer22.abc"} {
 		if ValidTrackProp(p) {
 			t.Errorf("%q should not be a valid track prop", p)
 		}
