@@ -61,7 +61,7 @@ The comment, version, share and Dev-mode dates and the Home's "Edited ..." line 
 
 The top bar, the tool dock (labels, tooltips, undo/redo, Present), the document menu, the Home (headings,
 empty state, join field, document cards with plural counts) and the headings of the properties-panel
-sections (the `Section` component translates its title), the Versions dialog (all but the merge-back section), the Share dialog, Insert table, the Comments panel, Page setup, Fonts, Variables, Styles, Find and change and the prototype player's controls. Everything else is still English: other dialogs,
+sections (the `Section` component translates its title), the Versions dialog (all but the merge-back section), the Share dialog, Insert table, the Comments panel, Page setup, Fonts, Variables, Styles, Find and change, Data merge, the Preflight panel (its messages included) and the prototype player's controls. Everything else is still English: other dialogs,
 the layers panel, comments, prototype player, dev mode, notices, MCP and server messages. A string with no
 catalog entry shows as written, so the interface is never half-blank.
 

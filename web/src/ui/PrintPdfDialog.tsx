@@ -5,6 +5,8 @@ import { runDocumentExport, runPackage } from "@/export/exportScene";
 import { preflightScene } from "@/export/preflight";
 import type { PrintPdfOptions } from "@/export/printPdf";
 import { Button, cls } from "@/ui/ds";
+import { useT } from "@/i18n";
+import { issueText } from "@/ui/shell/PreflightPanel";
 
 // EXPORT PDF (document menu): the options of a PDF going to a printer, with the preflight of the document
 // beside them. The preflight here reads the document; what only the writer can see (image resolution,
@@ -28,6 +30,7 @@ function Check({ label, checked, onChange, disabled }: { label: string; checked:
 }
 
 export function PrintPdfDialog({ isOpen, onOpenChange }: { isOpen: boolean; onOpenChange: (open: boolean) => void }) {
+  const tr = useT();
   const scene = useScene((s) => s.scene);
   const [opts, setOpts] = useState<Required<Pick<PrintPdfOptions, "pdfx" | "bleed" | "marks" | "slug" | "spreads" | "interactive" | "booklet" | "tagged">>>({
     pdfx: "none", bleed: true, marks: false, slug: false, spreads: false, interactive: true, booklet: false, tagged: false,
@@ -62,7 +65,7 @@ export function PrintPdfDialog({ isOpen, onOpenChange }: { isOpen: boolean; onOp
             <ul className="flex flex-col gap-1">
               {issues.map((i, k) => (
                 <li key={k} className={"rounded-md border border-line p-1.5 " + (i.severity === "error" ? "text-danger" : i.severity === "info" ? "text-fg-subtle" : "")}>
-                  <span className="font-medium">{i.severity === "error" ? "Error" : i.severity === "warning" ? "Warning" : "Note"}: </span>{i.message}
+                  <span className="font-medium">{i.severity === "error" ? "Error" : i.severity === "warning" ? "Warning" : "Note"}: </span>{issueText(i, tr)}
                 </li>
               ))}
             </ul>
