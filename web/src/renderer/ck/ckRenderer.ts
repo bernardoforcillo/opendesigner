@@ -26,7 +26,8 @@ import { buildFx, type BuiltFx } from "@/animation/fx/apply";
 import { DISPLACE_SKSL } from "@/animation/fx/timeFx";
 import { makeLutShader, readHistogram } from "@/animation/fx/lutImage";
 import { fxRefKey } from "@/animation/fx/props";
-import type { FxEnv, FxPaintSpec, FxTextSpec } from "@/animation/fx/library";
+import { fxDef, resolveFx, type FxEnv, type FxPaintSpec, type FxTextSpec } from "@/animation/fx/library";
+import { FACE_POINTS } from "@/animation/fx/kernelsTrack";
 import { soundBuffer, soundOf } from "@/animation/audio/library";
 import { builtInPath } from "@/animation/fx/kernelsText";
 import { pathPointsFor } from "@/store/textPath";
@@ -598,7 +599,7 @@ export class CanvasKitRenderer {
     const track = (o: { delete(): void }) => f.garbage.push(o as never);
     // Effect tracks (animation/fx): their image filters wrap the node's own, their shaders are
     // drawn over the node inside its layer (endEffects).
-    const fx = buildFx(this.CK, n.animFx, track, n.animFxText, f.scene.id);
+    const fx = buildFx(this.CK, n.animFx, track, n.animFxText, f.scene.id, n.animFxDerived);
     let filter = this.effectsFilter(n.effects);
     if (fx?.filter) {
       // the classic effects first, then the animated ones on top of them
@@ -776,7 +777,10 @@ export class CanvasKitRenderer {
     const refId = n.animFxRefs?.[effect];
     const sound = soundOf(refId ? f.scene.nodes.get(refId) : undefined) ?? soundOf(n);
     const buffer = sound ? soundBuffer(sound.hash) : null;
-    return { timeMs: n.animTime ?? 0, sound: sound && buffer ? { buffer, startMs: sound.startMs } : null };
+    const faceDef = fxDef(FACE_POINTS);
+    const faceSrc = (refId ? f.scene.nodes.get(refId) : undefined) ?? n;
+    const faceGiven = faceSrc.animFx?.[FACE_POINTS];
+    return { timeMs: n.animTime ?? 0, sound: sound && buffer ? { buffer, startMs: sound.startMs } : null, face: faceDef && faceGiven ? resolveFx(faceDef, faceGiven) : null };
   }
 
   // Strokes the Paint effect draws (animation/fx/paint.ts): round-capped polylines smoothed through their midpoints, inside the node's layer.

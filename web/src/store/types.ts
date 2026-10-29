@@ -478,6 +478,8 @@ export interface NodeLite {
   animFxRefs?: Record<string, string>;
   // String parameters of the effects (animation/fx/props.ts): effectId -> paramId -> text.
   animFxText?: Record<string, Record<string, string>>;
+  // Values an effect derived from its own track over time (the manual trackers' smoothing, animation/fx/library.ts `derive`): effectId -> name -> value.
+  animFxDerived?: Record<string, Record<string, number>>;
   // The clip time (ms) at this node, for the effects that read it (the audio visualisers).
   animTime?: number;
   // Time effects (animation/fx/timeFx.ts): the node posed at other moments, in drawing order, with how to combine them.

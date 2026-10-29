@@ -170,7 +170,18 @@ const SET7: Case[] = [
   ["PS arbitrary map (curve lifts mids)", {}, { [A + "color.psarbitrarymap.amount"]: [100, 100] }, undefined, [fileOf("ec.color.psarbitrarymap", CURVES)]],
   ["LUT file missing: node unchanged", {}, {}, undefined, [fileOf("ec.utility.applylut", "dd".repeat(32))]],
 ];
-const SETS = [SET1, SET2, SET3, SET4, SET5, SET6, SET7];
+// the manual trackers: draw at 100 ms (pnpm fx-render 1 100 7) so the smoothing window (which leans on the start of the clip) moves the content
+const SET8: Case[] = [
+  ["stabilizer: point 20% -> 80%, smoothing", {}, { [A + "distort.warpstabilizer.trackX"]: [20, 80], [A + "distort.warpstabilizer.smoothness"]: [900, 900] }],
+  ["stabilizer: strength 50%, zoom 130%", {}, { [A + "distort.warpstabilizer.trackX"]: [20, 80], [A + "distort.warpstabilizer.smoothness"]: [900, 900], [A + "distort.warpstabilizer.strength"]: [50, 50], [A + "distort.warpstabilizer.zoom"]: [130, 130] }],
+  ["stabilizer: rotation + scale (2nd point)", {}, { [A + "distort.warpstabilizer.rotation"]: [1, 1], [A + "distort.warpstabilizer.track2Y"]: [20, 90], [A + "distort.warpstabilizer.smoothness"]: [900, 900] }],
+  ["pin: quad squeezed to a trapezoid", {}, { [A + "perspective.cameratracker.tlX"]: [20, 30], [A + "perspective.cameratracker.trX"]: [80, 70], [A + "perspective.cameratracker.showPoints"]: [1, 1] }],
+  ["pin: corners moving, smoothed", {}, { [A + "perspective.cameratracker.blX"]: [0, 40], [A + "perspective.cameratracker.brY"]: [100, 60], [A + "perspective.cameratracker.smoothness"]: [600, 600], [A + "perspective.cameratracker.showPoints"]: [1, 1] }],
+  ["face track points: default landmarks", {}, { [A + "utility.facetrackpoints.mesh"]: [1, 1] }],
+  ["face track points: moved, no mesh", {}, { [A + "utility.facetrackpoints.lip2Y"]: [74, 84], [A + "utility.facetrackpoints.rEyeY"]: [38, 30], [A + "utility.facetrackpoints.mesh"]: [0, 0], [A + "utility.facetrackpoints.size"]: [6, 6] }],
+  ["face measurements (own points)", {}, { [A + "utility.facetrackpoints.opacity"]: [0, 0], [A + "utility.facemeasurements.opacity"]: [100, 100], [A + "utility.facetrackpoints.lip2Y"]: [74, 86] }],
+];
+const SETS = [SET1, SET2, SET3, SET4, SET5, SET6, SET7, SET8];
 
 function build(CASES: Case[]): { scene: SceneState; anim: (t: number) => ReturnType<typeof sampleClip> } {
   const nodes: NodeLite[] = [];

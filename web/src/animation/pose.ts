@@ -139,6 +139,21 @@ export function poseScene(base: SceneState, anim: ReadonlyMap<string, NodeAnim>,
     if (!n) continue;
     const r = patchNode(base, n, a, time?.t);
     let next = r.next;
+    // Derived values (the manual trackers smooth what was keyframed by hand): the effect's own parameters at the moments around now.
+    if (time && a.fx && n.kind !== "group") {
+      for (const [eid, given] of Object.entries(a.fx)) {
+        const def = fxDef(eid);
+        if (!def?.derive) continue;
+        const at = (dt: number) => {
+          if (dt === 0) return resolveFx(def, given);
+          let m = sampled.get(dt);
+          if (!m) sampled.set(dt, (m = time.at(dt)));
+          return resolveFx(def, m.get(id)?.fx?.[eid]);
+        };
+        const d = def.derive(resolveFx(def, given), at, time.t);
+        next = { ...(next ?? n), animFxDerived: { ...(next ?? n).animFxDerived, [eid]: d } };
+      }
+    }
     if (r.scaled) scaled.add(id);
     if (r.drawing) hasDraw = true;
     // Time effects: the node posed at the other moments (never for a group, which draws nothing itself).

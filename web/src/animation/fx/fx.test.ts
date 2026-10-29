@@ -107,12 +107,12 @@ describe("drawing every effect with CanvasKit", () => {
     CK = await init({ locateFile: () => dir });
   }, 60_000);
 
-  const draw = (animFx: Record<string, Record<string, number>>, flat = true, text?: Record<string, Record<string, string>>) => {
+  const draw = (animFx: Record<string, Record<string, number>>, flat = true, text?: Record<string, Record<string, string>>, derived?: Record<string, Record<string, number>>, env?: import("@/animation/fx/library").FxEnv) => {
     const surface = CK.MakeSurface(64, 64)!;
     const sk = surface.getCanvas();
     sk.clear(CK.TRANSPARENT);
     const garbage: { delete(): void }[] = [];
-    const fx = buildFx(CK, animFx, (o) => garbage.push(o), text);
+    const fx = buildFx(CK, animFx, (o) => garbage.push(o), text, "", derived);
     const paint = new CK.Paint();
     if (fx?.filter) paint.setImageFilter(fx.filter);
     sk.saveLayer(paint, CK.XYWHRect(0, 0, 64, 64));
@@ -172,7 +172,7 @@ describe("drawing every effect with CanvasKit", () => {
     for (const { overlay, values } of fx?.overlays ?? []) {
       const e = CK.RuntimeEffect.Make(overlay.sksl, (err) => { throw new Error(err); });
       expect(e).not.toBeNull();
-      const shader = e!.makeShader([16, 16, 32, 32, ...overlay.uniforms(values)]);
+      const shader = e!.makeShader([16, 16, 32, 32, ...overlay.uniforms(values, env)]);
       const p = new CK.Paint();
       p.setShader(shader);
       p.setBlendMode(overlay.blend === "dstin" ? CK.BlendMode.DstIn : overlay.blend === "srcover" ? CK.BlendMode.SrcOver : CK.BlendMode.SrcATop);
@@ -191,6 +191,38 @@ describe("drawing every effect with CanvasKit", () => {
     expect(draw({ [id]: {} }).length).toBe(64 * 64 * 4);
     expect(draw({ [id]: Object.fromEntries(d.params.map((p) => [p.id, p.min])) }).length).toBe(64 * 64 * 4);
     expect(draw({ [id]: Object.fromEntries(d.params.map((p) => [p.id, p.max])) }).length).toBe(64 * 64 * 4);
+  });
+
+  it("manual tracking: the stabilizer cancels the shake, the pin warps onto the quad, the face points and measurements draw", () => {
+    // the node is the square 16..48. The tracked point is now at 60% but its smoothed path is at 50%: the content moves left by 10% of 32 px
+    const W = "ec.distort.warpstabilizer";
+    expect(at(draw({ [W]: { trackX: 60, trackY: 50 } }), 14, 32)[3]).toBe(0); // no smoothing derived: untouched
+    const st = draw({ [W]: { trackX: 60, trackY: 50 } }, true, undefined, { [W]: { sx: 50, sy: 50, s2x: 60, s2y: 50 } });
+    expect(at(st, 14, 32)[3]).toBe(255);
+    expect(at(st, 46, 32)[3]).toBe(0);
+    // zoom takes the edges out of view the other way
+    expect(at(draw({ [W]: { zoom: 200 } }), 20, 20)[3]).toBe(255);
+    // the pin: a smaller quad puts the node inside it
+    const PIN = "ec.perspective.cameratracker";
+    const pinned = draw({ [PIN]: { tlX: 25, tlY: 25, trX: 75, trY: 25, brX: 75, brY: 75, blX: 25, blY: 75 } });
+    expect(at(pinned, 18, 18)[3]).toBe(0);
+    expect(at(pinned, 32, 32)[3]).toBe(255);
+    expect(at(pinned, 26, 26)[3]).toBe(255); // inside the quad (24..40)
+    // a perspective quad (top edge narrower) leaves the top corners empty
+    const persp = draw({ [PIN]: { tlX: 20, tlY: 0, trX: 80, trY: 0, brX: 100, brY: 100, blX: 0, blY: 100 } });
+    expect(at(persp, 17, 17)[3]).toBe(0);
+    expect(at(persp, 32, 40)[3]).toBe(255);
+    // face points: a marker on the nose (50%, 55% of the box) and none far away
+    const F = FACE_POINTS;
+    const face = draw({ [F]: {} });
+    expect(at(face, 32, 34)[1]).toBeGreaterThan(150); // green over the node's red (204, 77, 51)
+    expect(at(face, 2, 2)[3]).toBe(0);
+    // measurements: the eye line is drawn when the layer's face is given and nothing without it
+    const M = "ec.utility.facemeasurements";
+    const faceVals = resolveFx(fxDef(F)!, {});
+    expect(at(draw({ [M]: {} }, true, undefined, undefined, { timeMs: 0, sound: null, face: null }), 32, 28)[0]).toBe(204); // untouched
+    const meas = draw({ [M]: { showGauges: 0 } }, true, undefined, undefined, { timeMs: 0, sound: null, face: faceVals });
+    expect(at(meas, 32, 28)[0]).toBeLessThan(120); // the eye line (cyan) at 38% of 32 px below 16 -> y 28
   });
 
   it("the blur spreads the square's edge; no effect leaves it sharp", () => {
@@ -388,7 +420,7 @@ describe("layer references", () => {
     const need = FX_LIBRARY.filter((d) => d.needsLayer).map((d) => d.id).sort();
     expect(need).toEqual([
       "ec.channel.blend", "ec.channel.calculations", "ec.channel.compoundarithmetic", "ec.channel.setchannels", "ec.channel.setmatte",
-      "ec.color.colorstabilizer", "ec.key.differencematte", "ec.key.innerouter", "ec.matte.objectmatte", "ec.matte.rotobrush", "ec.noise.matchgrain", "ec.perspective.ccenvironment",
+      "ec.color.colorstabilizer", "ec.key.differencematte", "ec.key.innerouter", "ec.matte.objectmatte", "ec.matte.rotobrush", "ec.noise.matchgrain", "ec.perspective.ccenvironment", "ec.utility.facemeasurements",
     ]);
   });
   it("reach the posed node as animFxRefs, merged across clips", () => {
@@ -610,5 +642,59 @@ describe("colour lookup files", () => {
       const lit = run("ec.color.psarbitrarymap", { amount: 100, keepLuma: 0 }, parseCurves(up)!, H("7"))!;
       expect(lit[1]).toBeGreaterThan(77 + 30);
     });
+  });
+});
+
+// The manual tracking effects (fx/kernelsTrack.ts): the corner-pin maths, the smoothing, and the shaders on a node of known shape.
+import { quadInverse, smoothed, measureFace, FACE_POINTS } from "@/animation/fx/kernelsTrack";
+describe("manual tracking", () => {
+  it("quadInverse maps the quad's corners back onto the unit square, for skewed and for plain quads", () => {
+    for (const quad of [[[0.2, 0.1], [0.9, 0.2], [0.8, 0.9], [0.1, 0.7]], [[0, 0], [1, 0], [1, 1], [0, 1]], [[0.25, 0.25], [0.75, 0.25], [0.75, 0.75], [0.25, 0.75]]] as [number, number][][]) {
+      const m = quadInverse(quad)!;
+      const at = ([x, y]: [number, number]) => { const w = m[6] * x + m[7] * y + m[8]; return [(m[0] * x + m[1] * y + m[2]) / w, (m[3] * x + m[4] * y + m[5]) / w, w]; };
+      quad.forEach((c, i) => {
+        const [u, v, w] = at(c);
+        expect(u).toBeCloseTo([0, 1, 1, 0][i], 6);
+        expect(v).toBeCloseTo([0, 0, 1, 1][i], 6);
+        expect(w).toBeGreaterThan(0);
+      });
+    }
+    expect(quadInverse([[0, 0], [0.5, 0.5], [1, 1], [0.2, 0.2]])).toBeNull(); // all on a line
+  });
+  it("smoothed averages a parameter over the window, and does nothing for a window of 0", () => {
+    const at = (dt: number) => ({ a: 10 + dt / 10, b: 5 });
+    expect(smoothed(["a", "b"], at, 400).a).toBeCloseTo(10, 6);
+    expect(smoothed(["a"], at, 0)).toEqual({});
+    const bumpy = (dt: number) => ({ a: dt === 0 ? 100 : 0 });
+    expect(smoothed(["a"], bumpy, 200).a).toBeCloseTo(100 / 9, 6); // one of nine samples is now
+  });
+  it("the pose step derives the smoothed track from the clip around the moment", () => {
+    const s = baseScene();
+    const scene = { ...s, nodes: nodesWith(s.nodes, { n: child("n", "A", 0, 0) }) };
+    const clip = { tracks: [{ nodeId: "n", prop: "fx.ec.distort.warpstabilizer.trackX", keyframes: [{ time: 0, value: 0, easing: "linear" }, { time: 500, value: 100, easing: "linear" }, { time: 1000, value: 0, easing: "linear" }] },
+      { nodeId: "n", prop: "fx.ec.distort.warpstabilizer.smoothness", keyframes: [{ time: 0, value: 300, easing: "linear" }] }] };
+    const at = (t: number) => poseScene(scene, sampleClip(clip, t), { t, at: (dt) => sampleClip(clip, t + dt) }).nodes.get("n")!;
+    const peak = at(500);
+    expect(peak.animFx?.["ec.distort.warpstabilizer"].trackX).toBe(100);
+    // the peak is cut down by smoothing: the average around it is lower than the peak itself
+    const sx = peak.animFxDerived?.["ec.distort.warpstabilizer"].sx;
+    expect(sx).toBeLessThan(100);
+    expect(sx).toBeGreaterThan(60);
+    // without the clip time there is nothing to derive from
+    const still = poseScene(scene, sampleClip(clip, 500)).nodes.get("n")!;
+    expect(still.animFxDerived).toBeUndefined();
+  });
+  it("measureFace reads the landmarks: neutral face, open mouth, rolled head, turned head", () => {
+    const def = fxDef(FACE_POINTS)!;
+    const neutral = resolveFx(def, {});
+    const [open0, eyes, brow, roll0, yaw0] = measureFace(neutral, 0.6);
+    expect(open0).toBeCloseTo(7 / 20 / 0.6, 3);
+    expect(eyes).toBeCloseTo(30 / 50, 3);
+    expect(brow).toBeGreaterThan(0);
+    expect(roll0).toBe(0);
+    expect(yaw0).toBe(0);
+    expect(measureFace(resolveFx(def, { lip2Y: 90 }), 0.6)[0]).toBe(1);
+    expect(measureFace(resolveFx(def, { rEyeY: 28 }), 0.6)[3]).toBeLessThan(0); // the right eye higher: rolled
+    expect(measureFace(resolveFx(def, { noseX: 60 }), 0.6)[4]).toBeGreaterThan(0.3);
   });
 });

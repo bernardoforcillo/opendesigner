@@ -227,7 +227,7 @@ track names it; parameters without a track keep their default. Values are finite
 clamps them to the parameter's range.
 
 - `web/src/animation/fx/catalog.ts`: all 307 EffectCraft effects (id, name, category), generated from its `docs/effects.md`.
-- `web/src/animation/fx/library.ts` + `kernels*.ts`: the 303 that are drawn or played, with EffectCraft's parameter names, ranges and
+- `web/src/animation/fx/library.ts` + `kernels*.ts`: all 307, drawn or played, with EffectCraft's parameter names, ranges and
   defaults where it has them. Each is one of four kinds:
   - **filter**: a CanvasKit image/colour filter over the node's pixels (blur, colour matrices, minimax, glow, offset);
   - **overlay**: an SkSL shader drawn over the node inside its layer (grain, fills, gradients, patterns, generators), or a
@@ -295,8 +295,7 @@ clamps them to the parameter's range.
   Order: kernels first (innermost), then the node's own effects and the animated image filters, then overlays.
 - Editor: **+ Effect** in the transport adds an effect (its first parameter as a track); **+ Property** then lists the other
   parameters of the effects the node already has.
-- Not drawn (4 of 307, still listed in the catalog so nothing is silently missing), and why:
-  - **tracking and camera data**: 3D Camera Tracker, Warp Stabilizer, Face Track Points, Face Measurements.
+- Every effect of the catalog is now drawn or played; some are manual versions of what EffectCraft computes (below).
   Where EffectCraft's version needs data this editor does not have, the ones that are drawn work on the node's own pixels
   instead: the 3D-channel effects take the node's luminance as depth and its colours as IDs, Stroke/Vegas/Stylize follow the
   node's alpha edge, Paint Bucket fills the colours that match the one at a point. The shatter, card, particle, hair, mercury,
@@ -311,6 +310,17 @@ clamps them to the parameter's range.
   tetrahedrally; the inverse direction inverts a 1D table by search and a cube by Newton's method on the CPU (cached). Until the
   file has arrived, or if it cannot be read, the node is drawn without the effect. Limits: 8-bit tables (no HDR range),
   cubes up to 65³, no `.csp`/`.spi1d`/`.look` files and no OCIO config (looks are files, not names).
+- **Tracking** (3D Camera Tracker, Warp Stabilizer, Face Track Points, Face Measurements) is done by hand: the editor has no video to
+  analyse, so the track is what you keyframe, as ordinary effect parameters in % of the node's box (`animation/fx/kernelsTrack.ts`).
+  Warp Stabilizer holds the node steady against the tracked point (and, with a second point, its rotation and scale): the point's
+  keyframes are averaged over Smoothness ms around now (`derive` in `fx/library.ts`, run by `animation/pose.ts`, kept in
+  `animFxDerived`) and the node is moved from where the point is to where its smoothed path is, with Strength and Zoom.
+  3D Camera Tracker is a plane pin: four tracked corners drive a perspective (homography) warp of the node, optionally smoothed,
+  with markers. Face Track Points holds 13 landmarks (eyes, brows, nose, mouth, chin, jaw, forehead) and draws them with their mesh.
+  Face Measurements reads those landmarks from the layer it names, or from its own node, and draws guide lines (eye line, mouth
+  width and opening, face width and height, brow raise) and five gauges (mouth opening, eye distance, brow raise, head roll,
+  head turn). Limits: no automatic analysis or solve (no 3D camera or point cloud), the face measurements assume the box is
+  roughly square, and the values are drawn, not exposed to other effects.
 - **Paint**: adding it opens a pad where the strokes are drawn with the pointer (brush colour and size, Undo, Clear). The strokes
   are the effect's string track `strokes` in a compact text form (`animation/fx/paint.ts`: size, colour, opacity and a simplified
   polyline in fractions of the node's box), so a few seconds of drawing fit the 2900-byte parameter; the pad says when it is full.

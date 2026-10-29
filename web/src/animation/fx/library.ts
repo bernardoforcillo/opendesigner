@@ -32,6 +32,8 @@ export type FxValues = Readonly<Record<string, number>>;
 export interface FxEnv {
   timeMs: number;
   sound: { buffer: AudioBuffer; startMs: number } | null;
+  /** The resolved parameters of the Face Track Points effect on the layer the effect names (or on its own node), if any (Face Measurements). */
+  face?: FxValues | null;
 }
 
 export interface FxOverlay {
@@ -163,6 +165,12 @@ export interface FxDef {
    * in track order, or generates one (Tone). It plays with the timeline (animation/audio/player.ts).
    */
   audio?: AudioFactory;
+  /**
+   * Values the effect works out from its OWN parameters at other moments (the manual trackers smooth what was keyframed by hand): `at(dt)`
+   * gives the resolved parameters at t + dt ms, `t` is now. The result is kept next to the sampled values (`animFxDerived`) and merged
+   * over them when the effect is built. Only runs where the clip time is known (the timeline and playback).
+   */
+  derive?: (v: FxValues, at: (dt: number) => FxValues, t: number) => Record<string, number>;
   /** The effect reads the clip time at its node (`node.animTime`, set by animation/pose.ts) through `FxEnv`. */
   needsTime?: true;
   /** The effect takes a second layer chosen in the editor (a `fx.<effect>.layer.<node>` track). */

@@ -36,6 +36,7 @@ export function buildFx(
   CK: CanvasKit, animFx: AnimFx | undefined, track: (o: { delete(): void }) => void,
   animText?: Readonly<Record<string, Readonly<Record<string, string>>>>,
   docId = "",
+  animDerived?: Readonly<Record<string, Readonly<Record<string, number>>>>,
 ): BuiltFx | null {
   if (!animFx) return null;
   let filter: ImageFilter | null = null;
@@ -46,7 +47,7 @@ export function buildFx(
   for (const [id, given] of Object.entries(animFx)) {
     const def = fxDef(id);
     if (!def) continue;
-    const values = resolveFx(def, given);
+    const values = animDerived?.[id] ? { ...resolveFx(def, given), ...animDerived[id] } : resolveFx(def, given);
     if (def.filter) filter = def.filter(CK, values, filter, track);
     if (def.overlay) overlays.push({ overlay: def.overlay(values), values, effect: id });
     const strings = resolveStrings(def, animText?.[id]);
