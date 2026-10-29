@@ -5,6 +5,7 @@ import { Tab, TabList, TabPanel, Tabs } from "react-aria-components";
 import { Banner, Icon } from "@/ui/ds";
 import { ToolDock } from "@/ui/shell/ToolDock";
 import { ControlPanel } from "@/ui/shell/ControlPanel";
+import { facingPartner, partnerSheet, pointOnFacingPage, useSpreadView } from "@/store/spread";
 import { StatusBar } from "@/ui/shell/StatusBar";
 import { ISLAND_CLS, TopBar } from "@/ui/shell/TopBar";
 import { usePanels } from "@/ui/shell/panels";
@@ -434,12 +435,16 @@ export function App() {
     const onPage = () => {
       const st = useScene.getState();
       if (st.currentPageId === shownPage) return;
+      const prev = shownPage;
       if (shownPage !== null) pageCameras.save(shownPage, st.camera);
       shownPage = st.currentPageId;
       force = true;
       if (st.scene && shownPage !== null && canvasRef.current) {
         const c = canvasRef.current;
-        st.setCamera(pageCameras.restore(st.scene, shownPage, c.clientWidth, c.clientHeight, st.camera));
+        // Within a spread the view stays where it is: the new page's origin is where the facing page was drawn.
+        const sp = prev !== null && useSpreadView.getState().on ? facingPartner(st.scene, prev) : null;
+        if (sp && sp.pageId === shownPage) st.setCamera({ ...st.camera, x: st.camera.x + sp.dx * st.camera.zoom });
+        else st.setCamera(pageCameras.restore(st.scene, shownPage, c.clientWidth, c.clientHeight, st.camera));
       }
     };
 
@@ -453,11 +458,13 @@ export function App() {
       // The posed scene when the timeline scrubs/plays/records, otherwise
       // the store's scene (same instance: no cost with the timeline idle).
       const scene = posedScene(true);
+      // The page that faces the one on screen, drawn beside it (store/spread.ts).
+      const spread = scene && useSpreadView.getState().on ? facingPartner(scene, useScene.getState().currentPageId) : null;
       if (canvas && scene) {
         resizeCanvasToDisplaySize(canvas);
         const ctx = canvas.getContext("2d");
         if (ctx && surface) {
-          const exact = surface.draw(scene, useScene.getState().camera, useScene.getState().currentPageId, force);
+          const exact = surface.draw(scene, useScene.getState().camera, useScene.getState().currentPageId, force, spread);
           force = false;
           if (settle) clearTimeout(settle);
           settle = exact
@@ -483,7 +490,7 @@ export function App() {
           // a geometry that changes every frame (and the animated scale is not in the
           // selection box). Paused or scrubbing they follow the posed geometry.
           const pageNow = scene.pages.find((p) => p.id === useScene.getState().currentPageId) ?? scene.pages[0];
-          drawOverlay(octx, scene, camera, useTimeline.getState().playing ? [] : selection, marquee, snapGuides, penPreview, linkPreview, pageNow ? { page: pageNow, settings: scene.settings, left: isLeftPage(scene, pageNow), guides: effectiveGuides(scene, pageNow) } : null);
+          drawOverlay(octx, scene, camera, useTimeline.getState().playing ? [] : selection, marquee, snapGuides, penPreview, linkPreview, pageNow ? { page: pageNow, settings: scene.settings, left: isLeftPage(scene, pageNow), guides: effectiveGuides(scene, pageNow), partner: spread ? partnerSheet(scene, spread) : undefined } : null);
           const peers = usePresence.getState().peers;
           if (Object.keys(peers).length > 0) {
             drawPeers(octx, scene, camera, peers, useScene.getState().currentPageId ?? null);
@@ -541,6 +548,7 @@ export function App() {
       useFacilitation.subscribe(invalidate),
       useFlowUi.subscribe(invalidate),
       useCommentsUi.subscribe(invalidate),
+      useSpreadView.subscribe(invalidate),
       // The playhead, the pose and the recording draft: the playback tick
       // is the only frame producer while animating, with the timeline idle nothing
       // arrives and the editor stays at zero frames.
@@ -806,6 +814,17 @@ export function App() {
             ref={canvasRef}
             style={{ cursor: (TOOLS[toolId] ?? selectTool).cursor }}
             className="absolute inset-0 block h-full w-full touch-none"
+            // A press on the facing page of a spread makes it the page on screen (its coordinates become
+            // the working ones, the view does not move), and then goes on to the tool as usual.
+            onPointerDownCapture={(e) => {
+              const st = useScene.getState();
+              if (!st.scene || e.button !== 0 || !useSpreadView.getState().on) return;
+              const sp = facingPartner(st.scene, st.currentPageId);
+              if (!sp) return;
+              const p = eventToCanvasPoint(e.currentTarget, e);
+              const world = screenToWorld(st.camera, p.x, p.y);
+              if (pointOnFacingPage(st.scene, st.currentPageId, sp, world)) st.setCurrentPage(sp.pageId);
+            }}
             // Right click: the menu of the node under the pointer (it becomes the selection unless it
             // already is part of it). Design mode, with write access, like every edit.
             onContextMenu={(e) => {

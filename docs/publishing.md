@@ -36,6 +36,8 @@ A publication opens in a page-layout shell instead of the design editor's: the s
 - **Dock** (right): Properties, Pages, Layers and Comments as tabs (there is no left panel).
 - **Status bar** (bottom, `StatusBar.tsx`): zoom, the page navigator (regular pages, numbered as `<#>` counts them) and the preflight verdict (`export/preflight.ts`: errors, warnings or "No errors").
 
+- **Spreads** (`store/spread.ts`): with *Facing pages* on (Page setup; the Book and Magazine templates have it), the canvas shows the page on screen **and the page it faces** side by side -- an open book -- with each page's master, sheet, margins, columns and baseline grid. The page on screen keeps its own coordinates (its origin stays at 0,0), so tools, snapping and the Control panel work unchanged; the facing page is drawn beside it (CPU and GPU renderers) and becomes the page on screen when you click it or move to it, with the view held still. The status bar's **Spread** toggle turns it on and off (a per-person view setting, not saved in the document) and the navigator names the pair ("2–3"). Moving to another page frames the whole spread.
+
 Design and Design × Development keep the floating tool dock, the left panel and the timeline.
 
 ### The templates
@@ -81,5 +83,7 @@ MCP: `set_document_settings`, `create_page` / `update_page` with the page-setup 
 Rules (same in Go and TS): number style is empty or one of `i I a A`; number start ≤ 100 000; slug 0 – 1000; at most 200 guides with |position| ≤ 100 000; hidden master item ids are non-empty.
 
 ## Not yet
+
+The facing page of a spread is drawn, not edited, until it becomes the page on screen: a marquee or drag cannot cross the spine, and text threads between facing pages are drawn but not followed across it.
 
 Slug is drawn but not yet exported (PDF/EPUB use the bleed box), the PDF/EPUB export does not lay facing pages out as spreads, and a fixed `Align to grid` for text that has no paragraph style.

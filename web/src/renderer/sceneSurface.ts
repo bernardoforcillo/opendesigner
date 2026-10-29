@@ -4,7 +4,7 @@ import type { SceneState } from "@/store/types";
 import { type ImageSource, resizeCanvasToDisplaySize } from "@/renderer/canvasRenderer";
 import { CanvasKitRenderer } from "@/renderer/ck/ckRenderer";
 import { FontBook, loadCanvasKit } from "@/renderer/ck/canvaskit";
-import { SceneLayerCache } from "@/renderer/layerCache";
+import { SceneLayerCache, type SpreadAt } from "@/renderer/layerCache";
 import { syncDocumentFonts } from "@/renderer/fontRegistry";
 import { fontFamiliesOnPage } from "@/renderer/pageFonts";
 
@@ -34,10 +34,10 @@ export class GpuSceneRenderer {
     return this.renderer.lost;
   }
 
-  draw(scene: SceneState, cam: Camera, pageId: string | null): void {
+  draw(scene: SceneState, cam: Camera, pageId: string | null, spread: SpreadAt | null = null): void {
     // The uploaded fonts: loaded into CanvasKit's own font book (it cannot see document.fonts).
     this.fonts.setDocumentFonts(scene.id, scene.fonts, fontFamiliesOnPage(scene, pageId));
-    this.renderer.draw(scene, cam, pageId);
+    this.renderer.draw(scene, cam, pageId, spread);
   }
 
   dispose(): void {
@@ -74,7 +74,7 @@ export class SceneSurface {
    * it is the reuse of an image (CPU only, see layerCache.ts) and the real frame
    * must be scheduled.
    */
-  draw(scene: SceneState, cam: Camera, pageId: string | null, force: boolean): boolean {
+  draw(scene: SceneState, cam: Camera, pageId: string | null, force: boolean, spread: SpreadAt | null = null): boolean {
     // The uploaded fonts of the document, as CSS fonts for the 2D canvas.
     syncDocumentFonts(scene.id, scene.fonts, fontFamiliesOnPage(scene, pageId));
     const choice: RendererChoice = useRenderer.getState().choice;
@@ -89,7 +89,7 @@ export class SceneSurface {
           this.fail("the WebGL context was lost");
         } else {
           try {
-            this.drawGpu(this.gpu, scene, cam, pageId);
+            this.drawGpu(this.gpu, scene, cam, pageId, spread);
             return true;
           } catch (e) {
             this.fail(e instanceof Error ? e.message : String(e));
@@ -102,21 +102,21 @@ export class SceneSurface {
       const st = useRenderer.getState().status;
       if (st === "gpu" || st === "loading") useRenderer.getState().setStatus("cpu");
     }
-    return this.drawCpu(scene, cam, pageId, force);
+    return this.drawCpu(scene, cam, pageId, force, spread);
   }
 
-  private drawCpu(scene: SceneState, cam: Camera, pageId: string | null, force: boolean): boolean {
+  private drawCpu(scene: SceneState, cam: Camera, pageId: string | null, force: boolean, spread: SpreadAt | null): boolean {
     this.glCanvas.style.display = "none";
     this.cpuCleared = false;
     const ctx = this.cpuCanvas.getContext("2d");
     if (!ctx) return true;
     const t0 = performance.now();
-    const exact = this.layers.draw(ctx, scene, cam, pageId, force);
+    const exact = this.layers.draw(ctx, scene, cam, pageId, force, spread);
     if (exact) this.report(performance.now() - t0);
     return exact;
   }
 
-  private drawGpu(gpu: GpuSceneRenderer, scene: SceneState, cam: Camera, pageId: string | null): void {
+  private drawGpu(gpu: GpuSceneRenderer, scene: SceneState, cam: Camera, pageId: string | null, spread: SpreadAt | null): void {
     // The 2D canvas sits on top and receives events: it must be left transparent.
     if (!this.cpuCleared) {
       const ctx = this.cpuCanvas.getContext("2d");
@@ -134,7 +134,7 @@ export class SceneSurface {
     this.glCanvas.style.display = "block";
     resizeCanvasToDisplaySize(this.glCanvas);
     const t0 = performance.now();
-    gpu.draw(scene, cam, pageId);
+    gpu.draw(scene, cam, pageId, spread);
     this.report(performance.now() - t0);
     if (useRenderer.getState().status !== "gpu") useRenderer.getState().setStatus("gpu");
   }

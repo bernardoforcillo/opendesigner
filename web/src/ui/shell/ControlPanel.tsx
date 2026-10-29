@@ -37,12 +37,12 @@ export function ControlPanel() {
     store.endGesture(numericOps(store.selection, field, value));
   }
 
-  const kind = summary ? (summary.kind === MIXED ? "Mixed" : String(summary.kind)) : null;
+  const kind = summary ? (summary.kind === MIXED ? "Mixed" : String(summary.kind).replace(/^./, (c) => c.toUpperCase())) : null;
   const what = !summary ? "Nothing selected" : summary.count > 1 ? `${summary.count} objects` : kind;
 
   return (
     <div role="group" aria-label="Control" className="flex h-10 shrink-0 items-center gap-2 border-b border-line bg-surface px-3">
-      <span className="w-28 shrink-0 truncate text-[12px] font-medium capitalize text-fg-muted">{what}</span>
+      <span className="w-28 shrink-0 truncate text-[12px] font-medium text-fg-muted">{what}</span>
       {fields.map((field) => {
         const v = summary ? summary[field.key as "x"] : NaN;
         return (

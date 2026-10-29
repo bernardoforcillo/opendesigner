@@ -117,7 +117,7 @@ export class CanvasKitRenderer {
     return this.surface;
   }
 
-  draw(scene: SceneState, cam: Camera, pageId: string | null): void {
+  draw(scene: SceneState, cam: Camera, pageId: string | null, spread: { pageId: string; dx: number } | null = null): void {
     const CK = this.CK;
     const { canvas } = this;
     const w = canvas.width;
@@ -145,6 +145,17 @@ export class CanvasKitRenderer {
     sk.translate(cam.x * dpr, cam.y * dpr);
     sk.scale(cam.zoom * dpr, cam.zoom * dpr);
     this.drawSiblings(sk, rootsOf(scene, index.children, pageId), index.children, new Set(), null, new Set(), true);
+    // The facing page of a spread (store/spread.ts): the same walk from its roots, under a shift, with the
+    // view shifted the other way so culling compares like with like.
+    if (spread) {
+      const f = this.frame;
+      sk.save();
+      sk.translate(spread.dx, 0);
+      this.frame = { ...f, view: f.view ? { ...f.view, x: f.view.x - spread.dx } : null };
+      this.drawSiblings(sk, rootsOf(scene, index.children, spread.pageId), index.children, new Set(), null, new Set(), true);
+      this.frame = f;
+      sk.restore();
+    }
     sk.restore();
     surface.flush();
 

@@ -356,7 +356,18 @@ function drawLayoutGrids(ctx: CanvasRenderingContext2D, state: SceneState, cam: 
 // THE SHEET of a sized page and its guides (store/docSettings.ts), editor-only like the layout grids:
 // the area outside the sheet is dimmed so the sheet reads as paper, the bleed is a dashed red outline,
 // the margins are magenta, the column edges violet, and the baseline grid light blue lines.
-export function drawPageSheet(ctx: CanvasRenderingContext2D, page: PageLite, settings: DocSettingsLite | undefined, cam: Camera, side: { left?: boolean; guides?: readonly GuideLite[] } = {}): void {
+//
+// With a spread (store/spread.ts) the facing page's sheet is drawn beside it, and the dimming leaves both uncovered.
+export interface SheetSide {
+  left?: boolean;
+  guides?: readonly GuideLite[];
+  /** The facing page of a spread, `dx` world units from this page's origin. */
+  partner?: { page: PageLite; dx: number; left?: boolean; guides?: readonly GuideLite[] };
+  /** Draw the sheet's lines without dimming the outside: the second sheet of a spread. */
+  noDim?: boolean;
+}
+
+export function drawPageSheet(ctx: CanvasRenderingContext2D, page: PageLite, settings: DocSettingsLite | undefined, cam: Camera, side: SheetSide = {}): void {
   const w = page.width ?? 0, h = page.height ?? 0;
   if (!(w > 0) || !(h > 0)) return;
   const dpr = devicePixelRatio();
@@ -369,7 +380,12 @@ export function drawPageSheet(ctx: CanvasRenderingContext2D, page: PageLite, set
   ctx.beginPath();
   ctx.rect(0, 0, viewW, viewH);
   ctx.rect(a.x, a.y, b.x - a.x, b.y - a.y);
-  ctx.fill("evenodd");
+  const pw = side.partner?.page.width ?? 0, ph = side.partner?.page.height ?? 0;
+  if (side.partner && pw > 0 && ph > 0) {
+    const pa = at(side.partner.dx, 0), pb = at(side.partner.dx + pw, ph);
+    ctx.rect(pa.x, pa.y, pb.x - pa.x, pb.y - pa.y);
+  }
+  if (!side.noDim) ctx.fill("evenodd");
   ctx.lineWidth = 1;
   ctx.strokeStyle = "rgba(90,90,100,0.7)";
   ctx.strokeRect(a.x + 0.5, a.y + 0.5, b.x - a.x, b.y - a.y);
@@ -431,6 +447,10 @@ export function drawPageSheet(ctx: CanvasRenderingContext2D, page: PageLite, set
     ctx.stroke();
   }
   ctx.restore();
+  if (side.partner && pw > 0 && ph > 0) {
+    drawPageSheet(ctx, side.partner.page, settings, { ...cam, x: cam.x + side.partner.dx * cam.zoom },
+      { left: side.partner.left, guides: side.partner.guides, noDim: true });
+  }
 }
 
 // THREAD PORTS of text frames (store/threads.ts), editor-only like the layout grids: a hollow square at the
@@ -500,7 +520,7 @@ export function drawOverlay(
   // The Link tool's rubber band, also PREVIEW: a dashed line from the node it starts from.
   link: { from: Bounds; x: number; y: number } | null = null,
   // The page on screen with its sheet (size, margins, columns, bleed) and the document's baseline grid.
-  sheet: { page: PageLite; settings?: DocSettingsLite; left?: boolean; guides?: readonly GuideLite[] } | null = null,
+  sheet: (SheetSide & { page: PageLite; settings?: DocSettingsLite }) | null = null,
 ): void {
   const { canvas } = ctx;
   const dpr = devicePixelRatio();
