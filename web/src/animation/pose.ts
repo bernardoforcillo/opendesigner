@@ -90,7 +90,7 @@ export interface TimeSource {
 }
 
 // The node with the animated values applied, or null if nothing changes. `scaled`/`draw` report what the scene needs to know.
-function patchNode(base: SceneState, n: NodeLite, a: NodeAnim): { next: NodeLite | null; scaled: boolean; drawing: boolean } {
+function patchNode(base: SceneState, n: NodeLite, a: NodeAnim, timeMs?: number): { next: NodeLite | null; scaled: boolean; drawing: boolean } {
   let next: NodeLite | null = null;
   let scaled = false, drawing = false;
   const patch = () => (next ??= { ...n });
@@ -107,6 +107,8 @@ function patchNode(base: SceneState, n: NodeLite, a: NodeAnim): { next: NodeLite
   if (a.fx) patch().animFx = mergeFx(n.animFx, a.fx);
   if (a.fxRefs) patch().animFxRefs = { ...n.animFxRefs, ...a.fxRefs };
   if (a.fxText) patch().animFxText = mergeText(n.animFxText, a.fxText);
+  // effects that read the clip time (the audio visualisers) get it
+  if (timeMs !== undefined && a.fx && Object.keys(a.fx).some((id) => fxDef(id)?.needsTime)) patch().animTime = timeMs;
   if (a.draw !== undefined && canDraw(n)) {
     patch().animDraw = a.draw;
     // at 1 the path is whole: the GPU renderer draws it normally, no CPU fallback
@@ -135,7 +137,7 @@ export function poseScene(base: SceneState, anim: ReadonlyMap<string, NodeAnim>,
   for (const [id, a] of anim) {
     const n = base.nodes.get(id);
     if (!n) continue;
-    const r = patchNode(base, n, a);
+    const r = patchNode(base, n, a, time?.t);
     let next = r.next;
     if (r.scaled) scaled.add(id);
     if (r.drawing) hasDraw = true;

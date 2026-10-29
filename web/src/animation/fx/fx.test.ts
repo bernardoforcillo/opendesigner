@@ -30,7 +30,7 @@ describe("the catalog", () => {
   it("gives every parameter a sane range and a default inside it", () => {
     for (const d of FX_LIBRARY) {
       expect(d.params.length, d.id).toBeGreaterThan(0);
-      expect([d.filter, d.overlay, d.kernel, d.time, d.text, d.carrier].filter(Boolean).length, `${d.id}: exactly one kind`).toBe(1);
+      expect([d.filter, d.overlay, d.kernel, d.time, d.text, d.audio, d.carrier].filter(Boolean).length, `${d.id}: exactly one kind`).toBe(1);
       for (const p of d.params) {
         expect(p.min, `${d.id}.${p.id}`).toBeLessThan(p.max);
         expect(p.default).toBeGreaterThanOrEqual(p.min);

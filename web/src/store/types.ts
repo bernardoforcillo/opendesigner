@@ -478,6 +478,8 @@ export interface NodeLite {
   animFxRefs?: Record<string, string>;
   // String parameters of the effects (animation/fx/props.ts): effectId -> paramId -> text.
   animFxText?: Record<string, Record<string, string>>;
+  // The clip time (ms) at this node, for the effects that read it (the audio visualisers).
+  animTime?: number;
   // Time effects (animation/fx/timeFx.ts): the node posed at other moments, in drawing order, with how to combine them.
   // `node` never carries an animEcho itself.
   animEcho?: { mode: "plus" | "screen" | "lighten" | "darken" | "over" | "difference" | "displace"; uniforms?: number[]; samples: { node: NodeLite; weight: number }[] };

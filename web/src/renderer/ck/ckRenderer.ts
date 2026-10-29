@@ -26,7 +26,8 @@ import { buildFx, type BuiltFx } from "@/animation/fx/apply";
 import { DISPLACE_SKSL } from "@/animation/fx/timeFx";
 import { makeLutShader, readHistogram } from "@/animation/fx/lutImage";
 import { fxRefKey } from "@/animation/fx/props";
-import type { FxTextSpec } from "@/animation/fx/library";
+import type { FxEnv, FxTextSpec } from "@/animation/fx/library";
+import { soundBuffer, soundOf } from "@/animation/audio/library";
 import { builtInPath } from "@/animation/fx/kernelsText";
 import { pathPointsFor } from "@/store/textPath";
 import { hasRealStroke, vectorStyleOf } from "@/renderer/vectorStyle";
@@ -743,10 +744,10 @@ export class CanvasKitRenderer {
     if (pending) {
       const CK = this.CK;
       const { box, reach } = pending;
-      for (const { overlay, values } of pending.fx.overlays) {
-        const effect = this.runtimeEffect(overlay.sksl);
-        if (!effect) continue;
-        const shader = effect.makeShader([box.x, box.y, box.width, box.height, ...overlay.uniforms(values)]);
+      for (const { overlay, values, effect } of pending.fx.overlays) {
+        const runtime = this.runtimeEffect(overlay.sksl);
+        if (!runtime) continue;
+        const shader = runtime.makeShader([box.x, box.y, box.width, box.height, ...overlay.uniforms(values, this.fxEnv(pending.node, effect))]);
         const paint = new CK.Paint();
         paint.setShader(shader);
         paint.setBlendMode(overlay.blend === "dstin" ? CK.BlendMode.DstIn : overlay.blend === "srcover" ? CK.BlendMode.SrcOver : CK.BlendMode.SrcATop);
@@ -757,6 +758,15 @@ export class CanvasKitRenderer {
       for (const t of pending.fx.texts) this.drawFxText(sk, pending.node, pending.box, t.spec, t.effect);
     }
     sk.restore();
+  }
+
+  // What an overlay may read besides its parameters: the clip time at the node and the sound of the layer it names (or its own).
+  private fxEnv(n: NodeLite, effect: string): FxEnv {
+    const f = this.frame as Frame;
+    const refId = n.animFxRefs?.[effect];
+    const sound = soundOf(refId ? f.scene.nodes.get(refId) : undefined) ?? soundOf(n);
+    const buffer = sound ? soundBuffer(sound.hash) : null;
+    return { timeMs: n.animTime ?? 0, sound: sound && buffer ? { buffer, startMs: sound.startMs } : null };
   }
 
   // Text an effect draws (animation/fx/kernelsText.ts): a text node built from the effect's spec, drawn as the document's own text.

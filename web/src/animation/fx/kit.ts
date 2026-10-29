@@ -1,7 +1,7 @@
 // BUILDING BLOCKS for the effects that read or generate pixels with SkSL (fx/kernels*.ts).
 // Type-only imports from library.ts: no runtime cycle.
 
-import type { FxDef, FxParam, FxValues } from "@/animation/fx/library";
+import type { FxDef, FxEnv, FxParam, FxValues } from "@/animation/fx/library";
 import type { Histogram } from "@/animation/fx/stats";
 
 export const P = (id: string, label: string, min: number, max: number, def: number, step = 1, unit?: string): FxParam => ({
@@ -80,16 +80,16 @@ export function kern(
  */
 export function over(
   id: string, params: readonly FxParam[], body: Body, blend: "srcatop" | "dstin" | "srcover" = "srcatop",
-  opts: { uniforms?: (v: FxValues) => number[]; outset?: (v: FxValues) => number; slots?: number; head?: string } = {},
+  opts: { uniforms?: (v: FxValues, env?: FxEnv) => number[]; outset?: (v: FxValues) => number; slots?: number; head?: string; needsTime?: true; needsLayer?: 1 | 2; layerOptional?: true } = {},
 ): FxDef {
   const slots = opts.slots ?? 12;
   const sksl = `${COMMON.replace("p[12]", `p[${slots}]`)}${opts.head ?? ""}\nhalf4 main(float2 xy) {\n${body}\n}`;
   const fill = (n: readonly number[]) => { const o = n.slice(0, slots); while (o.length < slots) o.push(0); return o; };
   return {
-    id, params, outset: opts.outset,
+    id, params, outset: opts.outset, needsTime: opts.needsTime, needsLayer: opts.needsLayer, layerOptional: opts.layerOptional,
     overlay: () => ({
       sksl, blend,
-      uniforms: (w) => fill(opts.uniforms ? opts.uniforms(w) : params.map((q) => w[q.id])),
+      uniforms: (w, env) => fill(opts.uniforms ? opts.uniforms(w, env) : params.map((q) => w[q.id])),
     }),
   };
 }

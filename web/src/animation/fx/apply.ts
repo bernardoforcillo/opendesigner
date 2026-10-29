@@ -22,7 +22,7 @@ export interface BuiltFx {
   /** The chain of the effects' image filters, in track order, or null. */
   filter: ImageFilter | null;
   /** The shader effects, in track order, each with its resolved uniforms. */
-  overlays: { overlay: FxOverlay; values: Record<string, number> }[];
+  overlays: { overlay: FxOverlay; values: Record<string, number>; effect: string }[];
   /** The effects that read the node's pixels, in track order (drawn offscreen first). */
   kernels: FxKernel[];
   /** The effects that draw text over the node, in track order (animation/fx/props.ts has their strings). */
@@ -43,7 +43,7 @@ export function buildFx(
     if (!def) continue;
     const values = resolveFx(def, given);
     if (def.filter) filter = def.filter(CK, values, filter, track);
-    if (def.overlay) overlays.push({ overlay: def.overlay(values), values });
+    if (def.overlay) overlays.push({ overlay: def.overlay(values), values, effect: id });
     if (def.kernel) kernels.push({ ...def.kernel(values), effect: id });
     if (def.text) texts.push({ spec: def.text(values, resolveStrings(def, animText?.[id])), effect: id });
   }

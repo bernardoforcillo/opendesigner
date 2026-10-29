@@ -337,3 +337,36 @@ func TestFontFilesAreAcceptedWithTheirOwnContentType(t *testing.T) {
 		}
 	}
 }
+
+func TestAudioFilesAreAcceptedWithTheirOwnContentType(t *testing.T) {
+	for want, head := range map[string]string{
+		"audio/wav":  "RIFF\x24\x08\x00\x00WAVEfmt ",
+		"audio/mpeg": "ID3\x04\x00rest",
+		"audio/ogg":  "OggS\x00\x02rest",
+		"audio/flac": "fLaC\x00\x00rest",
+		"audio/mp4":  "\x00\x00\x00\x20ftypM4A \x00\x00",
+	} {
+		if got := DetectImageType([]byte(head)); got != want {
+			t.Errorf("%q: got %q want %q", head[:4], got, want)
+		}
+	}
+	// a bare MPEG frame header (no ID3 tag): sync bits 0xFFFB, 0xFFF3, 0xFFF2
+	for _, b := range []byte{0xfb, 0xf3, 0xf2} {
+		if got := DetectImageType([]byte{0xff, b, 0x90, 0x00}); got != "audio/mpeg" {
+			t.Errorf("frame 0xff%02x: got %q want audio/mpeg", b, got)
+		}
+	}
+	// WebP and WAV share the RIFF header and must stay apart; a JPEG is not an MPEG frame
+	if got := DetectImageType([]byte("RIFF\x10\x00\x00\x00WEBPVP8 ")); got != "image/webp" {
+		t.Errorf("WebP: got %q", got)
+	}
+	if got := DetectImageType([]byte("\xff\xd8\xff\xe0")); got != "image/jpeg" {
+		t.Errorf("JPEG: got %q", got)
+	}
+	// nothing else that could run from the same origin
+	for _, head := range []string{"<!doctype html>", "<svg xmlns", "#!/bin/sh", "RIFF\x00\x00\x00\x00AVI LIST", "MZ\x90\x00"} {
+		if got := DetectImageType([]byte(head)); got != "" {
+			t.Errorf("%q must not be accepted, got %q", head, got)
+		}
+	}
+}

@@ -6,6 +6,7 @@ import type { NodeLite, SceneState } from "@/store/types";
 import { sampleClip } from "@/animation/engine";
 import { poseScene } from "@/animation/pose";
 import { fxStringProp } from "@/animation/fx/props";
+import { registerSound } from "@/animation/audio/library";
 
 // Draws EffectCraft effect tracks through the REAL pipeline (clip -> pose -> CanvasKitRenderer on WebGL), one node per
 // effect, so the offscreen kernels, layers, time effects and the lookup-table read-back can be looked at.
@@ -113,7 +114,31 @@ const SET5: Case[] = [
   ["text without a string track (default)", {}, { [A + "obsolete.basictext.size"]: [22, 22] }],
   ["text + blur chain", {}, { [A + "blur.gaussian.blurriness"]: [3, 3] }, undefined, [["ec.obsolete.basictext", "text", "Blurred"]]],
 ];
-const SETS = [SET1, SET2, SET3, SET4, SET5];
+// a sound for the audio visualisers: three tones, one rising, under a slow envelope
+const SOUND_HASH = "ab".repeat(32);
+{
+  const sr = 44100, n = sr * 3;
+  const ctx = new OfflineAudioContext(1, n, sr);
+  const b = ctx.createBuffer(1, n, sr);
+  const d = b.getChannelData(0);
+  for (let i = 0; i < n; i++) {
+    const t = i / sr;
+    d[i] = 0.35 * (0.6 + 0.4 * Math.sin(t * 5)) * (Math.sin(2 * Math.PI * (200 + 300 * t) * t) + 0.5 * Math.sin(2 * Math.PI * 1800 * t) + 0.25 * Math.sin(2 * Math.PI * 5200 * t));
+  }
+  registerSound(SOUND_HASH, b);
+}
+const withSound = { meta: { "audio.hash": SOUND_HASH } };
+const SET6: Case[] = [
+  ["spectrum bars (own sound)", withSound, { [A + "generate.audiospectrum.bands"]: [32, 32] }],
+  ["spectrum line", withSound, { [A + "generate.audiospectrum.style"]: [1, 1], [A + "generate.audiospectrum.bands"]: [48, 48] }],
+  ["spectrum dots, mirrored", withSound, { [A + "generate.audiospectrum.style"]: [2, 2], [A + "generate.audiospectrum.mirror"]: [1, 1], [A + "generate.audiospectrum.bands"]: [24, 24] }],
+  ["spectrum of a named layer", {}, {}, { effect: "ec.generate.audiospectrum", node: { ...withSound, fills: [] } }],
+  ["waveform line", withSound, { [A + "generate.audiowaveform.window"]: [60, 60] }],
+  ["waveform bars", withSound, { [A + "generate.audiowaveform.style"]: [1, 1], [A + "generate.audiowaveform.window"]: [120, 120] }],
+  ["waveform, animated over time", withSound, { [A + "generate.audiowaveform.thickness"]: [2, 4] }],
+  ["no sound: nothing drawn", {}, { [A + "generate.audiospectrum.bands"]: [32, 32] }],
+];
+const SETS = [SET1, SET2, SET3, SET4, SET5, SET6];
 
 function build(CASES: Case[]): { scene: SceneState; anim: (t: number) => ReturnType<typeof sampleClip> } {
   const nodes: NodeLite[] = [];

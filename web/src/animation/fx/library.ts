@@ -28,10 +28,16 @@ export interface FxParam {
 
 export type FxValues = Readonly<Record<string, number>>;
 
+/** What an overlay may need from outside the parameters: the clip time at the node, and the sound of the layer it names (the visualisers). */
+export interface FxEnv {
+  timeMs: number;
+  sound: { buffer: AudioBuffer; startMs: number } | null;
+}
+
 export interface FxOverlay {
   sksl: string;
   /** The values of `uniform float p[12]` (the box is passed separately). */
-  uniforms: (v: FxValues) => number[];
+  uniforms: (v: FxValues, env?: FxEnv) => number[];
   /** srcatop: only where the node has pixels; dstin: a mask over the node; srcover: drawn over everything, also beyond the node (particles, text). */
   blend: "srcatop" | "dstin" | "srcover";
 }
@@ -101,6 +107,20 @@ export interface FxTextSpec {
   path?: "layer" | { x: number; y: number }[];
 }
 
+/** One audio effect in a Web Audio graph (animation/audio/effects.ts). `update` follows the effect's animated parameters. */
+export interface AudioStage {
+  /** where the sound comes in (null for a generator) and goes out */
+  input: AudioNode | null;
+  output: AudioNode;
+  update(v: FxValues, now: number): void;
+  /** generators start their oscillators here */
+  start?(when: number): void;
+  dispose(): void;
+  /** the source is played backwards (Backwards) */
+  reverse?: boolean;
+}
+export type AudioFactory = (ctx: BaseAudioContext, v: FxValues) => AudioStage;
+
 export interface FxDef {
   id: string;
   params: readonly FxParam[];
@@ -123,6 +143,13 @@ export interface FxDef {
   text?: (v: FxValues, s: Readonly<Record<string, string>>) => FxTextSpec;
   /** With `text`: a layer can be named (the path to run along) but is not required. */
   layerOptional?: true;
+  /**
+   * An AUDIO effect: no pixels, it changes the sound of the node that carries one (meta `audio.hash`, animation/audio/library.ts),
+   * in track order, or generates one (Tone). It plays with the timeline (animation/audio/player.ts).
+   */
+  audio?: AudioFactory;
+  /** The effect reads the clip time at its node (`node.animTime`, set by animation/pose.ts) through `FxEnv`. */
+  needsTime?: true;
   /** The effect takes a second layer chosen in the editor (a `fx.<effect>.layer.<node>` track). */
   needsLayer?: 1 | 2;
   /** No pixels at all: the effect only carries values for expressions (EffectCraft's Expression Controls). */

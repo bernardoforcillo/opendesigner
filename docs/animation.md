@@ -227,7 +227,7 @@ track names it; parameters without a track keep their default. Values are finite
 clamps them to the parameter's range.
 
 - `web/src/animation/fx/catalog.ts`: all 307 EffectCraft effects (id, name, category), generated from its `docs/effects.md`.
-- `web/src/animation/fx/library.ts` + `kernels*.ts`: the 283 that are drawn, with EffectCraft's parameter names, ranges and
+- `web/src/animation/fx/library.ts` + `kernels*.ts`: the 298 that are drawn or played, with EffectCraft's parameter names, ranges and
   defaults where it has them. Each is one of four kinds:
   - **filter**: a CanvasKit image/colour filter over the node's pixels (blur, colour matrices, minimax, glow, offset);
   - **overlay**: an SkSL shader drawn over the node inside its layer (grain, fills, gradients, patterns, generators), or a
@@ -295,8 +295,7 @@ clamps them to the parameter's range.
   Order: kernels first (innermost), then the node's own effects and the animated image filters, then overlays.
 - Editor: **+ Effect** in the transport adds an effect (its first parameter as a track); **+ Property** then lists the other
   parameters of the effects the node already has.
-- Not drawn (24 of 307, still listed in the catalog so nothing is silently missing), and why:
-  - **audio** (13 effects plus Audio Spectrum and Audio Waveform): there is no audio engine in the editor;
+- Not drawn (9 of 307, still listed in the catalog so nothing is silently missing), and why:
   - **tracking and camera data**: 3D Camera Tracker, Warp Stabilizer, Face Track Points, Face Measurements;
   - **files**: Apply Color LUT, OCIO File and Look transforms, PS Arbitrary Map;
   - **recorded strokes**: Paint.
@@ -306,6 +305,13 @@ clamps them to the parameter's range.
   foam and wave effects are 2D, stateless approximations (every piece or particle is a function of its id and the animatable
   phase), not EffectCraft's simulations. Selective Color and Lumetri cover the basic controls, OCIO Color Space covers sRGB, linear
   Rec.709, ACEScg, Rec.2020 and Display P3, and a few legacy effects reuse their modern counterpart (`ALIASES` in `fx/library.ts`).
+- **Audio**: a sound is attached to a node (**Sound** in the transport; the file is uploaded as an asset and kept in the node's
+  `meta`: `audio.hash`, `audio.start` in ms, `audio.name`; the server accepts WAV, MP3, Ogg, FLAC and MP4/AAC). The 13 Audio
+  effects (`fx.ec.audio.*` tracks) form a Web Audio chain per node in track order; gate and compressor run as AudioWorklets built
+  from the pure functions in `animation/audio/dsp.ts`. Playback follows the timeline (play, pause, speed, playhead jumps) and
+  samples the clip to update the parameters. Audio Spectrum and Audio Waveform are drawn from the decoded buffer at the node's
+  animated time (give them the sound's layer with "on a layer"). Limits: scrubbing is silent, there is no audio in export or
+  Present, and no spatial audio. `pnpm audio-check` measures every effect on an offline render in Chromium.
 - Code export (HTML/React) and the 2D canvas renderer ignore effect tracks (the exporter warns).
 
 ## Limits (for now)

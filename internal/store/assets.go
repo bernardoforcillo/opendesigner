@@ -31,8 +31,8 @@ import (
 // problem.
 const MaxAssetSize = 32 << 20
 
-// sniffLen is enough to recognize the four allowed raster containers
-// (the longest prefix is WebP: 12 bytes). 512 like http.DetectContentType,
+// sniffLen is enough to recognize the allowed containers
+// (the longest prefix is 12 bytes: WebP, WAV, M4A). 512 like http.DetectContentType,
 // so a file shorter than that is still read in full.
 const sniffLen = 512
 
@@ -45,7 +45,7 @@ var (
 	ErrAssetHash = errors.New("store: malformed asset hash")
 	// ErrAssetDocID: the document id is not a safe path segment.
 	ErrAssetDocID = errors.New("store: unsafe document id")
-	// ErrAssetType: the bytes are not an image of a type the editor draws.
+	// ErrAssetType: the bytes are not an image, font or audio file of a type the editor uses.
 	ErrAssetType = errors.New("store: unsupported asset type")
 	// ErrAssetTooLarge: the asset exceeds MaxAssetSize.
 	ErrAssetTooLarge = errors.New("store: asset too large")
@@ -90,6 +90,25 @@ var imageTypes = []struct {
 	{prefix: []byte("OTTO"), contentType: "font/otf"},
 	{prefix: []byte("wOFF"), contentType: "font/woff"},
 	{prefix: []byte("wOF2"), contentType: "font/woff2"},
+	// Audio (the audio effects: a node can carry a sound that plays with the timeline). Same closed-allowlist logic as fonts and
+	// images: the type is read from the container's signature, never from the client, and the route serves it with nosniff, so an
+	// audio file is data the browser decodes and not a document it could run. WAV and WebP share the RIFF header, told apart
+	// by the form type at byte 8.
+	{
+		prefix:      []byte("RIFF\x00\x00\x00\x00WAVE"),
+		mask:        []byte("\xff\xff\xff\xff\x00\x00\x00\x00\xff\xff\xff\xff"),
+		contentType: "audio/wav",
+	},
+	{prefix: []byte("ID3"), contentType: "audio/mpeg"},
+	// an MPEG audio frame: 11 sync bits, then version/layer bits that are not "reserved"
+	{prefix: []byte("\xff\xe0"), mask: []byte("\xff\xe0"), contentType: "audio/mpeg"},
+	{prefix: []byte("OggS"), contentType: "audio/ogg"},
+	{prefix: []byte("fLaC"), contentType: "audio/flac"},
+	{
+		prefix:      []byte("\x00\x00\x00\x00ftypM4A "),
+		mask:        []byte("\x00\x00\x00\x00\xff\xff\xff\xff\xff\xff\xff\xff"),
+		contentType: "audio/mp4",
+	},
 }
 
 // DetectImageType returns the Content-Type of an asset's initial bytes, or ""
