@@ -57,6 +57,14 @@ var (
 	TrackProps   = []string{"opacity", "x", "y", "scale", "rotation", "draw"}
 )
 
+// fxPropRe is an effect-parameter track: `fx.<effectId>.<paramId>`, e.g.
+// `fx.ec.blur.gaussian.blurriness`. The effect ids are EffectCraft's (web/src/animation/fx);
+// the document only fixes the SHAPE, as web/src/animation/fx/props.ts does.
+var fxPropRe = regexp.MustCompile(`^fx\.ec\.[a-z0-9]+\.[a-z0-9]+\.[A-Za-z0-9]+$`)
+
+// ValidTrackProp reports whether prop is one of TrackProps or an effect parameter.
+func ValidTrackProp(prop string) bool { return inSet(TrackProps, prop) || fxPropRe.MatchString(prop) }
+
 func inSet(set []string, v string) bool {
 	for _, s := range set {
 		if s == v {
@@ -137,7 +145,7 @@ func validateClip(doc *opendesignerv1.Document, c *opendesignerv1.Clip) error {
 		if !ok {
 			return fmt.Errorf("%w: %q (clip %s track)", ErrNodeNotFound, t.GetNodeId(), id)
 		}
-		if !inSet(TrackProps, t.GetProp()) {
+		if !ValidTrackProp(t.GetProp()) {
 			return fmt.Errorf("%w: %q (clip %s)", ErrTrackProp, t.GetProp(), id)
 		}
 		k := key{t.GetNodeId(), t.GetProp()}

@@ -2,6 +2,9 @@ import type { ClipLite, KeyframeLite, NodeLite, SceneState, TrackLite } from "@/
 import { ancestorsOf } from "@/store/tree";
 import { sampleTrack, type TrackProp } from "@/animation/engine";
 import { canDraw } from "@/animation/pose";
+import { parseFxProp } from "@/animation/fx/props";
+import { fxDef, fxParam } from "@/animation/fx/library";
+import { FX_CATALOG } from "@/animation/fx/catalog";
 
 // THE TIMELINE LOGIC: PURE functions on the clip, with no DOM or store.
 //
@@ -30,11 +33,18 @@ export const sameKey = (a: KeyRef, b: KeyRef) => a.track === b.track && a.key ==
 /** Brings a value within the property's limits (opacity and draw in 0..1); NaN -> `fallback`. */
 export function clampValue(prop: string, v: number, fallback = 0): number {
   if (!Number.isFinite(v)) return fallback;
+  const fx = parseFxProp(prop);
+  if (fx) {
+    const par = fxParam(fx.effect, fx.param);
+    return par ? Math.min(par.max, Math.max(par.min, v)) : v;
+  }
   return prop === "opacity" || prop === "draw" ? Math.min(1, Math.max(0, v)) : v;
 }
 
 /** The BASE value of a node property (the one that holds without animation). */
 export function baseValueOf(n: Pick<NodeLite, "x" | "y" | "rotation" | "opacity">, prop: string): number {
+  const fx = parseFxProp(prop);
+  if (fx) return fxParam(fx.effect, fx.param)?.default ?? 0;
   switch (prop) {
     case "opacity": return n.opacity;
     case "x": return n.x;
@@ -57,6 +67,25 @@ export const PROP_LABEL: Record<string, string> = {
   opacity: "Opacity", x: "X", y: "Y", scale: "Scale", rotation: "Rotation", draw: "Draw",
 };
 export const PROP_UNIT: Record<string, string> = { opacity: "", x: "px", y: "px", scale: "×", rotation: "°", draw: "" };
+
+/** The label of a track property: the built-in ones, or "Effect name · Parameter" for `fx.*`. */
+export function propLabel(prop: string): string {
+  if (PROP_LABEL[prop]) return PROP_LABEL[prop];
+  const fx = parseFxProp(prop);
+  if (!fx) return prop;
+  const name = FX_CATALOG.find((e) => e.id === fx.effect)?.name ?? fx.effect;
+  return `${name} · ${fxParam(fx.effect, fx.param)?.label ?? fx.param}`;
+}
+
+export function propUnit(prop: string): string {
+  const fx = parseFxProp(prop);
+  return fx ? fxParam(fx.effect, fx.param)?.unit ?? "" : PROP_UNIT[prop] ?? "";
+}
+
+/** The effect-parameter tracks that can be added: every parameter of an effect, once the effect is in use. */
+export function fxPropsFor(effectId: string): string[] {
+  return fxDef(effectId)?.params.map((p) => `fx.${effectId}.${p.id}`) ?? [];
+}
 
 // --- the tracks ------------------------------------------------------------------
 

@@ -10,6 +10,8 @@ import {
   uniqueClipName, unwrapDegrees, valueAt, type KeyRef,
 } from "@/animation/timelineLogic";
 import { buildPreset, type PresetId } from "@/animation/presets";
+import { parseFxProp } from "@/animation/fx/props";
+import { fxParam } from "@/animation/fx/library";
 
 // THE TIMELINE STATE: VIEW state, like the camera and the selection -- it is not
 // document, it does not go over the network and does not enter undo. What is instead document
@@ -261,6 +263,11 @@ export function duplicateClipOp(scene: SceneState, id: string): void {
  * opens it -- with ONE SetClip. Nodes outside the clip's target are skipped
  * (a track outside the target is not exported). Returns how many tracks it added.
  */
+const isFxTrack = (prop: string): boolean => {
+  const fx = parseFxProp(prop);
+  return !!fx && fxParam(fx.effect, fx.param) !== undefined;
+};
+
 export function addPropertyTracks(scene: SceneState, nodeIds: readonly string[], prop: string): number {
   const tl = useTimeline.getState();
   const open = tl.clipId ? scene.clips[tl.clipId] : undefined;
@@ -270,7 +277,7 @@ export function addPropertyTracks(scene: SceneState, nodeIds: readonly string[],
   let added = 0;
   for (const id of nodeIds) {
     const n = scene.nodes.get(id);
-    if (!n || !isInside(scene, id, clip.targetId) || !propsFor(n).includes(prop as never)) continue;
+    if (!n || !isInside(scene, id, clip.targetId) || !(propsFor(n).includes(prop as never) || isFxTrack(prop))) continue;
     const next = addPropertyTrack(clip, n, prop);
     if (next !== clip) added++;
     clip = next;

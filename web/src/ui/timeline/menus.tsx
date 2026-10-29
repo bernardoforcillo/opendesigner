@@ -1,9 +1,12 @@
-import { Button as RacButton, Menu, MenuItem, MenuTrigger, Popover, Separator } from "react-aria-components";
+import { Button as RacButton, Header, Menu, MenuItem, MenuSection, MenuTrigger, Popover, Separator } from "react-aria-components";
 import { Icon } from "@/ui/ds";
 import { AnimIcon } from "@/ui/ds/anim-parts";
 import { useScene } from "@/store/store";
 import { useTimeline, addPropertyTracks, applyPreset } from "@/animation/timelineStore";
-import { PROP_LABEL, findTrack, isInside, propsFor } from "@/animation/timelineLogic";
+import { findTrack, fxPropsFor, isInside, propLabel, propsFor } from "@/animation/timelineLogic";
+import { parseFxProp } from "@/animation/fx/props";
+import { FX_CATALOG } from "@/animation/fx/catalog";
+import { fxDef, hasFx } from "@/animation/fx/library";
 import { PRESETS } from "@/animation/presets";
 
 // THE TWO MENUS that bring a layer into an animation: "+ Property" (one
@@ -28,7 +31,12 @@ export function AddPropertyMenu() {
   const node = nodes[0];
   const clip = scene && clipId ? scene.clips[clipId] : undefined;
   const outside = !!(scene && node && clip && !nodes.some((n) => n && isInside(scene, n.id, clip.targetId)));
-  const props = node ? propsFor(node) : [];
+  const props: string[] = node ? [...propsFor(node)] : [];
+  // The other parameters of the effects this node already has in the clip.
+  if (node && clip) {
+    const active = new Set(clip.tracks.filter((t) => t.nodeId === node.id).map((t) => parseFxProp(t.prop)?.effect).filter((e): e is string => !!e));
+    for (const id of active) props.push(...fxPropsFor(id));
+  }
 
   return (
     <MenuTrigger>
@@ -54,9 +62,9 @@ export function AddPropertyMenu() {
           {props.map((p) => {
             const have = !!(clip && node && findTrack(clip, node.id, p) >= 0);
             return (
-              <MenuItem key={p} id={p} isDisabled={outside || have} textValue={PROP_LABEL[p]} className={ITEM}>
+              <MenuItem key={p} id={p} isDisabled={outside || have} textValue={propLabel(p)} className={ITEM}>
                 <AnimIcon name="diamond" size={11} className="text-fg-subtle" />
-                {PROP_LABEL[p]}
+                {propLabel(p)}
                 {have && <span className="ml-auto text-[11px] text-fg-subtle">already animated</span>}
               </MenuItem>
             );
@@ -96,6 +104,53 @@ export function PresetMenu() {
         </Menu>
         <Separator className="mx-1 my-1 border-t border-line" />
         <p className="px-2 py-1 text-[11px] text-fg-subtle">Creates a new clip on the selected layer.</p>
+      </Popover>
+    </MenuTrigger>
+  );
+}
+
+const CATEGORIES = [...new Set(FX_CATALOG.map((e) => e.category))];
+export const FX_AVAILABLE = FX_CATALOG.filter((e) => hasFx(e.id)).length;
+
+/** "+ Effect": the EffectCraft effects, by category; the ones OpenDesigner can draw first. */
+export function AddEffectMenu() {
+  const scene = useScene((s) => s.scene);
+  const selection = useScene((s) => s.selection);
+  const node = scene && selection.length > 0 ? scene.nodes.get(selection[0]) : undefined;
+
+  return (
+    <MenuTrigger>
+      <RacButton aria-label="Add effect" isDisabled={!node} className={TRIGGER}>
+        <AnimIcon name="sliders" size={13} />
+        Effect
+      </RacButton>
+      <Popover placement="bottom start" offset={6} className={POPOVER}>
+        <Menu
+          aria-label="Effect to add"
+          className="max-h-[360px] overflow-y-auto outline-none"
+          onAction={(k) => {
+            const def = fxDef(String(k));
+            if (scene && def) addPropertyTracks(scene, selection, `fx.${def.id}.${def.params[0].id}`);
+          }}
+        >
+          {CATEGORIES.map((cat) => {
+            const items = FX_CATALOG.filter((e) => e.category === cat);
+            const ready = items.filter((e) => hasFx(e.id));
+            if (ready.length === 0) return null;
+            return (
+              <MenuSection key={cat}>
+                <Header className="px-2 pb-0.5 pt-1.5 text-[11px] font-semibold uppercase tracking-[0.06em] text-fg-subtle">{cat}</Header>
+                {ready.map((e) => (
+                  <MenuItem key={e.id} id={e.id} textValue={e.name} className={ITEM}>{e.name}</MenuItem>
+                ))}
+              </MenuSection>
+            );
+          })}
+        </Menu>
+        <Separator className="mx-1 my-1 border-t border-line" />
+        <p className="max-w-[240px] px-2 py-1 text-[11px] leading-snug text-fg-subtle">
+          {FX_AVAILABLE} of {FX_CATALOG.length} EffectCraft effects can be drawn here; add more parameters with + Property.
+        </p>
       </Popover>
     </MenuTrigger>
   );

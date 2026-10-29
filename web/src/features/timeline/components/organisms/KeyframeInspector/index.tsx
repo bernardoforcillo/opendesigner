@@ -4,7 +4,7 @@ import { useScene } from "@/store/store";
 import type { ClipLite } from "@/store/types";
 import { commitClip, useTimeline } from "@/animation/timelineStore";
 import {
-  PROP_LABEL, PROP_UNIT, deleteKeyframes, duplicateKeyframes, updateKeyframe, type KeyRef,
+  propLabel, propUnit, deleteKeyframes, duplicateKeyframes, updateKeyframe, type KeyRef,
 } from "@/animation/timelineLogic";
 import { EasingEditor } from "@/ui/timeline/EasingEditor";
 
@@ -47,7 +47,7 @@ export function KeyframeInspector({ clip, selection }: { clip: ClipLite; selecti
   const tr = clip.tracks[ref.track];
   const kf = tr.keyframes[ref.key];
   const node = scene?.nodes.get(tr.nodeId);
-  const unit = PROP_UNIT[tr.prop] ?? "";
+  const unit = propUnit(tr.prop);
   const edit = (patch: Partial<typeof kf>) => {
     const r = updateKeyframe(clip, ref, patch);
     commitClip(r.clip);
@@ -60,7 +60,7 @@ export function KeyframeInspector({ clip, selection }: { clip: ClipLite; selecti
       <div className="flex items-start gap-2">
         <div className="min-w-0 flex-1">
           <p className="truncate text-[13px] font-medium text-fg">{node?.name.trim() ? node.name : tr.nodeId}</p>
-          <p className="truncate text-[11px] text-fg-subtle">{PROP_LABEL[tr.prop] ?? tr.prop} · keyframe {ref.key + 1} di {tr.keyframes.length}</p>
+          <p className="truncate text-[11px] text-fg-subtle">{propLabel(tr.prop)} · keyframe {ref.key + 1} di {tr.keyframes.length}</p>
         </div>
         {actions}
       </div>

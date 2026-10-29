@@ -472,6 +472,8 @@ export interface NodeLite {
   animScale?: number;
   animPivot?: { x: number; y: number };
   animDraw?: number;
+  // Effect parameters sampled from `fx.*` tracks (animation/fx): effectId -> paramId -> value.
+  animFx?: Record<string, Record<string, number>>;
 }
 
 // What the renderer needs to know about a scene DERIVED from playback: which

@@ -5,6 +5,7 @@ import { bySiblingOrder, childIndexOf } from "@/store/tree";
 import { PEditor, PMap } from "@/store/nodeMap";
 import { deltaOf } from "@/store/sceneDelta";
 import type { NodeLite, SceneState } from "@/store/types";
+import { fxOutset } from "@/animation/fx/apply";
 
 // THE SCENE INDEX: what the renderer knows about the document and that does not change
 // as long as the document does not change.
@@ -73,7 +74,8 @@ export function sceneIndexOf(scene: SceneState): SceneIndex {
 // worldVisualAabbOfNode), shadow (offset + half the blur as deviation, ~3
 // tail deviations) and layer blur (~3 deviations).
 export function effectsOutset(n: NodeLite): number {
-  if (!n.effects) return 0;
+  const animated = fxOutset(n.animFx);
+  if (!n.effects) return animated;
   let out = 0;
   let shadow = 0;
   let blurSeen = false;
@@ -90,7 +92,7 @@ export function effectsOutset(n: NodeLite): number {
       out += Math.max(e.startRadius, e.endRadius) * 3;
     }
   }
-  return out + shadow;
+  return out + shadow + animated;
 }
 
 // Text is not clipped by its own box (renderer/text.ts::textPaintBounds),

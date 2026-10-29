@@ -3,6 +3,7 @@ import { recordDelta } from "@/store/sceneDelta";
 import { contentWorldBounds } from "@/store/groups";
 import { applyTransform, invertTransform, worldTransformOf } from "@/canvas/transform";
 import { sampleClip, type NodeAnim } from "@/animation/engine";
+import type { NodeFx } from "@/animation/fx/props";
 
 // THE POSED SCENE.
 //
@@ -28,11 +29,22 @@ export function canDraw(n: Pick<NodeLite, "kind">): boolean {
   return n.kind === "vector" || n.kind === "rect" || n.kind === "ellipse" || n.kind === "frame" || n.kind === "polygon" || n.kind === "star";
 }
 
+function mergeFx(dst: NodeFx | undefined, src: NodeFx): NodeFx {
+  const out: NodeFx = {};
+  for (const [id, v] of Object.entries(dst ?? {})) out[id] = { ...v };
+  for (const [id, v] of Object.entries(src)) out[id] = { ...out[id], ...v };
+  return out;
+}
+
 /** Merges `src` into `dst`: the properties of `src` win (later clips overwrite). */
 export function mergeAnim(dst: Map<string, NodeAnim>, src: ReadonlyMap<string, NodeAnim>): Map<string, NodeAnim> {
   for (const [id, a] of src) {
     const cur = dst.get(id);
-    if (cur) Object.assign(cur, a);
+    if (cur) {
+      const { fx, ...rest } = a;
+      Object.assign(cur, rest);
+      if (fx) cur.fx = mergeFx(cur.fx, fx);
+    }
     else dst.set(id, { ...a });
   }
   return dst;
@@ -82,6 +94,7 @@ export function poseScene(base: SceneState, anim: ReadonlyMap<string, NodeAnim>)
       if (n.kind === "group") p.animPivot = groupPivot(base, n, a);
       scaled.add(id);
     }
+    if (a.fx) patch().animFx = mergeFx(n.animFx, a.fx);
     if (a.draw !== undefined && canDraw(n)) {
       patch().animDraw = a.draw;
       // at 1 the path is whole: the GPU renderer draws it normally, no CPU fallback

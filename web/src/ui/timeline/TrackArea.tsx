@@ -6,7 +6,7 @@ import { useScene } from "@/store/store";
 import type { ClipLite } from "@/store/types";
 import { commitClip, useTimeline } from "@/animation/timelineStore";
 import {
-  PROP_LABEL, SNAP_MS, addKeyframe, dragDelta, formatTime, moveKeyframes, removeTrack,
+  propLabel, SNAP_MS, addKeyframe, dragDelta, formatTime, moveKeyframes, removeTrack,
   rulerTicks, sameKey, snapTime, valueAt, type KeyRef,
 } from "@/animation/timelineLogic";
 
@@ -243,17 +243,17 @@ export function TrackArea({ clip }: { clip: ClipLite }) {
                     <span className={`truncate font-medium ${nodeSelected ? "text-accent" : "text-fg"}`}>
                       {node ? (node.name.trim() !== "" ? node.name : node.kind) : "(deleted)"}
                     </span>
-                    <span className="shrink-0 text-fg-subtle">{PROP_LABEL[tr.prop] ?? tr.prop}</span>
+                    <span className="shrink-0 text-fg-subtle">{propLabel(tr.prop)}</span>
                   </RacButton>
                   <AnimIconButton
                     icon="diamondPlus"
-                    label={`Add a keyframe at the playhead on ${PROP_LABEL[tr.prop] ?? tr.prop}`}
+                    label={`Add a keyframe at the playhead on ${propLabel(tr.prop)}`}
                     size={22}
                     onPress={() => addAt(ti, Math.round(playhead))}
                   />
                   <AnimIconButton
                     icon="x"
-                    label={`Remove the ${PROP_LABEL[tr.prop] ?? tr.prop} track`}
+                    label={`Remove the ${propLabel(tr.prop)} track`}
                     size={22}
                     onPress={() => {
                       commitClip(removeTrack(clip, ti));
@@ -263,7 +263,7 @@ export function TrackArea({ clip }: { clip: ClipLite }) {
                 </div>
                 <div
                   role="group"
-                  aria-label={`${PROP_LABEL[tr.prop] ?? tr.prop} track of ${node?.name ?? tr.nodeId}`}
+                  aria-label={`${propLabel(tr.prop)} track of ${node?.name ?? tr.nodeId}`}
                   className="relative shrink-0 cursor-col-resize touch-none"
                   style={{ width: innerW }}
                   onPointerDown={(e) => {

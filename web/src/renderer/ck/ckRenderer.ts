@@ -1,5 +1,5 @@
 import type {
-  Canvas, CanvasKit, Font, GrDirectContext, Image as SkImage, ImageFilter, Paint, Path, Shader, Surface,
+  Canvas, CanvasKit, Font, GrDirectContext, Image as SkImage, ImageFilter, Paint, Path, RuntimeEffect, Shader, Surface,
 } from "canvaskit-wasm";
 import type { Camera } from "@/canvas/camera";
 import { type Bounds, boundsIntersect, boundsOfNode, inflateBounds, strokeOutsetOfNode } from "@/canvas/geometry";
@@ -21,6 +21,7 @@ import { GRADIENT_BITMAP_SIZE, angularStart, gradientBitmap } from "@/renderer/g
 import { VECTOR_STROKE_PX, inkIsBox, nodeCenter } from "@/renderer/shapes";
 import { decorationBars, fontSizeOf, hscaleOf, paragraphDecorations, piecesOfLine, piecesOfSegment, placeTextLines, trackedOffsets, type MeasureFor } from "@/renderer/text";
 import { FX_TILE, blurBands, overlayEffects, overlayTile, progressiveBlur, tileUnit, withBandBlur, withExpandedGlass } from "@/renderer/effectsFx";
+import { buildFx, type BuiltFx } from "@/animation/fx/apply";
 import { hasRealStroke, vectorStyleOf } from "@/renderer/vectorStyle";
 import type { FontBook } from "@/renderer/ck/canvaskit";
 
@@ -70,6 +71,9 @@ export class CanvasKitRenderer {
   private readonly fillP: Paint;
   private readonly strokeP: Paint;
   private frame: Frame | null = null;
+  // Effect-track layers opened by beginEffects and not yet closed (animation/fx), innermost last.
+  private readonly fxLayers: ({ fx: BuiltFx; box: Bounds; reach: Bounds } | null)[] = [];
+  private readonly runtimeEffects = new Map<string, RuntimeEffect | null>();
   private readonly skImages = new Map<HTMLImageElement, SkImage>();
   private widths = new Map<Font, Map<string, number>>();
   private textLines = new WeakMap<NodeLite, ReturnType<typeof placeTextLines>>();
@@ -315,13 +319,13 @@ export class CanvasKitRenderer {
         this.clipPolygon(sk, band.polygon);
         const layered = this.beginEffects(sk, withBandBlur(eff, pb, band.radius));
         drawBody();
-        if (layered) sk.restore();
+        if (layered) this.endEffects(sk);
         sk.restore();
       }
     } else {
       const layered = this.beginEffects(sk, eff);
       drawBody();
-      if (layered) sk.restore();
+      if (layered) this.endEffects(sk);
     }
     if (outline) this.drawInnerShadows(sk, eff, outline);
     if (outline || eff.kind === "image") this.drawOverlays(sk, eff, outline);
@@ -421,9 +425,19 @@ export class CanvasKitRenderer {
   // --- effects: a layer saved with a filter, for the whole node ---------------
 
   private beginEffects(sk: Canvas, n: NodeLite): boolean {
-    const filter = this.effectsFilter(n.effects);
+    const f = this.frame as Frame;
+    const track = (o: { delete(): void }) => f.garbage.push(o as never);
+    // Effect tracks (animation/fx): their image filters wrap the node's own, their shaders are
+    // drawn over the node inside its layer (endEffects).
+    const fx = buildFx(this.CK, n.animFx, track);
+    let filter = this.effectsFilter(n.effects);
+    if (fx?.filter) {
+      // the classic effects first, then the animated ones on top of them
+      filter = filter ? this.CK.ImageFilter.MakeCompose(fx.filter, filter) : fx.filter;
+      if (filter !== fx.filter) f.garbage.push(filter);
+    }
     const blend = n.blendMode ? this.blendModeOf(n.blendMode) : null;
-    if (!filter && !blend) return false;
+    if (!filter && !blend && !fx?.overlays.length) return false;
     const lp = new this.CK.Paint();
     if (filter) lp.setImageFilter(filter);
     if (blend) lp.setBlendMode(blend);
@@ -432,7 +446,39 @@ export class CanvasKitRenderer {
     const bounds = n.kind === "text" ? null : inflateBounds(boundsOfNode(n), effectsOutset(n) + strokeOutsetOfNode(n) + 1);
     sk.saveLayer(lp, bounds ? this.CK.XYWHRect(bounds.x, bounds.y, bounds.width, bounds.height) : null);
     lp.delete();
+    this.fxLayers.push(fx && fx.overlays.length > 0 && n.kind !== "group" ? { fx, box: boundsOfNode(n), reach: bounds ?? inflateBounds(boundsOfNode(n), 64) } : null);
     return true;
+  }
+
+  // Closes the layer opened by beginEffects: first the effects that are shaders (grain,
+  // gradients, wipes), drawn over the node's pixels, then the layer is composited.
+  private endEffects(sk: Canvas): void {
+    const pending = this.fxLayers.pop();
+    if (pending) {
+      const CK = this.CK;
+      const { box, reach } = pending;
+      for (const { overlay, values } of pending.fx.overlays) {
+        const effect = this.runtimeEffect(overlay.sksl);
+        if (!effect) continue;
+        const shader = effect.makeShader([box.x, box.y, box.width, box.height, ...overlay.uniforms(values)]);
+        const paint = new CK.Paint();
+        paint.setShader(shader);
+        paint.setBlendMode(overlay.blend === "dstin" ? CK.BlendMode.DstIn : CK.BlendMode.SrcATop);
+        sk.drawRect(CK.XYWHRect(reach.x, reach.y, reach.width, reach.height), paint);
+        paint.delete();
+        shader.delete();
+      }
+    }
+    sk.restore();
+  }
+
+  private runtimeEffect(src: string) {
+    let e = this.runtimeEffects.get(src);
+    if (e === undefined) {
+      e = this.CK.RuntimeEffect.Make(src, (err) => console.warn("[fx] SkSL error:", err)) ?? null;
+      this.runtimeEffects.set(src, e);
+    }
+    return e;
   }
 
   private blendModeOf(b: NonNullable<NodeLite["blendMode"]>) {

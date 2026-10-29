@@ -1,5 +1,5 @@
 import type { ClipLite, SceneState } from "@/store/types";
-import { CLIP_TRIGGERS, TRACK_PROPS, isValidEasing } from "@/animation/engine";
+import { CLIP_TRIGGERS, isTrackProp, isValidEasing } from "@/animation/engine";
 
 // Validation of a clip: EXACT parity with core.validateClip (Go, the authority).
 // Whoever uses it -- applyOp (to reject the op as the server would) and history
@@ -25,7 +25,7 @@ export function isValidClip(scene: Pick<SceneState, "nodes">, c: ClipLite): bool
   for (const t of c.tracks) {
     const n = scene.nodes.at(t.nodeId);
     if (!n) return false;
-    if (!(TRACK_PROPS as readonly string[]).includes(t.prop)) return false;
+    if (!isTrackProp(t.prop)) return false;
     // "\u0000" cannot appear in an id: a safe separator for the pair.
     const key = `${t.nodeId}\u0000${t.prop}`;
     if (seen.has(key)) return false;

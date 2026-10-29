@@ -11,6 +11,7 @@
 // with easingFn(spec) giving the curve of a single segment.
 
 import type { ClipLite, TrackLite } from "@/store/types";
+import { parseFxProp, type NodeFx } from "@/animation/fx/props";
 
 // The closed sets of the model: repeated in Go (core.TrackProps/ClipTriggers).
 export const TRACK_PROPS = ["opacity", "x", "y", "scale", "rotation", "draw"] as const;
@@ -155,7 +156,12 @@ export function sampleTrack(track: Pick<TrackLite, "keyframes">, tMs: number): n
   return a.value + (b.value - a.value) * cachedEasing(a.easing)((tMs - a.time) / span);
 }
 
-export interface NodeAnim { opacity?: number; x?: number; y?: number; scale?: number; rotation?: number; draw?: number }
+/** Parity with core.ValidTrackProp: the closed set, or an effect parameter (`fx.<effect>.<param>`). */
+export function isTrackProp(prop: string): boolean {
+  return (TRACK_PROPS as readonly string[]).includes(prop) || parseFxProp(prop) !== null;
+}
+
+export interface NodeAnim { opacity?: number; x?: number; y?: number; scale?: number; rotation?: number; draw?: number; fx?: NodeFx }
 
 /** Values of all the clip's tracks at time `tMs` (inside the clip): nodeId -> animated properties. */
 export function sampleClip(clip: Pick<ClipLite, "tracks">, tMs: number): Map<string, NodeAnim> {
@@ -165,7 +171,13 @@ export function sampleClip(clip: Pick<ClipLite, "tracks">, tMs: number): Map<str
     if (Number.isNaN(v)) continue;
     let a = out.get(tr.nodeId);
     if (!a) { a = {}; out.set(tr.nodeId, a); }
-    a[tr.prop as TrackProp] = v;
+    const fx = parseFxProp(tr.prop);
+    if (fx) {
+      const all = (a.fx ??= {});
+      (all[fx.effect] ??= {})[fx.param] = v;
+    } else {
+      a[tr.prop as TrackProp] = v;
+    }
   }
   return out;
 }

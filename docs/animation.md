@@ -217,6 +217,28 @@ A finished clip stays on its last value. Here too the frame loop runs only
 while a clip is running.
 
 
+## Effect tracks (EffectCraft)
+
+The motion panel can animate [EffectCraft](https://github.com/storytold/effectcraft)'s effects (MIT OR Apache-2.0,
+Copyright (c) 2026 ArtCraft Team and the EffectCraft contributors). An effect parameter is an ordinary track whose `prop` is
+`fx.<effectId>.<paramId>`, e.g. `fx.ec.blur.gaussian.blurriness`; the document model does not change (no proto field), and
+Go (`core.ValidTrackProp`) and TypeScript (`engine.ts::isTrackProp`) check the same shape. A node has an effect as soon as a
+track names it; parameters without a track keep their default. Values are finite and unbounded in the document; the editor
+clamps them to the parameter's range.
+
+- `web/src/animation/fx/catalog.ts`: all 307 EffectCraft effects (id, name, category), generated from its `docs/effects.md`.
+- `web/src/animation/fx/library.ts`: the ones that are drawn, with EffectCraft's parameter names, ranges and defaults.
+  Each is a CanvasKit image filter (`filter`: blur, colour correction, minimax, glow, offset...) or an SkSL shader drawn over
+  the node inside its layer (`overlay`: noise, fills, gradients, patterns, vignette, and the wipes, which keep the node where
+  the shader is opaque).
+- `pose.ts` writes the sampled values to the transient `NodeLite.animFx`; `ckRenderer.ts::beginEffects/endEffects` draws them.
+  They stack after the node's own effects (shadows, blurs), and shader effects are drawn before the layer's filter.
+- Editor: **+ Effect** in the transport adds an effect (its first parameter as a track); **+ Property** then lists the other
+  parameters of the effects the node already has.
+- Not drawn: the effects that need a pixel kernel CanvasKit has no filter for (keying, 3D, audio, time, simulation, paint,
+  OCIO, convolutions and displacement maps...). They stay in the catalog so nothing is silently missing.
+- Code export (HTML/React) and the 2D canvas renderer ignore effect tracks (the exporter warns).
+
 ## Limits (for now)
 
 - **No morph** between shapes: numeric properties are animated, not the points of a
