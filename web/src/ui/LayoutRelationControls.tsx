@@ -1,10 +1,14 @@
 import { useScene } from "@/store/store";
+import { currentT } from "@/i18n";
 import type { ConstraintLite, NodeLite } from "@/store/types";
 import { cls, Section } from "@/ui/ds";
 import { NumberField } from "@/ui/fields/NumberField";
 import { limitOf, limitOps, positioningOf, positioningOps, type LimitField } from "@/ui/layoutLimitOps";
 import { cellOf, cellOps, type CellField } from "@/ui/gridTrackOps";
 import { constraintOf, constraintOps, parentKind, sizingOf, sizingOps } from "@/ui/layoutRelationOps";
+
+// Names the shared controls cannot translate on their own (options, text nodes). See docs/localization.md.
+const tr = (key: string, vars?: Record<string, string | number>) => currentT().tx(key, vars);
 
 // CONSTRAINTS and SIZING of the selection, i.e. its relation to the parent frame:
 //   - a node in a frame WITHOUT auto layout has CONSTRAINTS: when the frame is resized, the
@@ -54,10 +58,10 @@ export function LayoutRelationControls() {
       const v = constraintOf(nodes, axis);
       return (
         <label key={axis} className="grid grid-cols-[5.5rem_1fr] items-center gap-2">
-          <span className={cls.label}>{label}</span>
-          <select aria-label={label} className={cls.select} value={v ?? "__mixed"}
+          <span className={cls.label}>{tr(label)}</span>
+          <select aria-label={tr(label)} className={cls.select} value={v ?? "__mixed"}
             onChange={(e) => run(constraintOps(scene, selection, axis, e.target.value as ConstraintLite))}>
-            {v === undefined && <option value="__mixed" disabled>Mixed</option>}
+            {v === undefined && <option value="__mixed" disabled>{tr("Mixed")}</option>}
             {options.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
           </select>
         </label>
@@ -70,23 +74,23 @@ export function LayoutRelationControls() {
   if (kind === "frame") {
     return (
       <>
-        <Section title="Constraints">{constraintRows()}</Section>
-        {ownLimits && <Section title="Size limits"><LimitFields nodes={nodes} /></Section>}
+        <Section title={tr("Constraints")}>{constraintRows()}</Section>
+        {ownLimits && <Section title={tr("Size limits")}><LimitFields nodes={nodes} /></Section>}
       </>
     );
   }
-  if (ownLimits) return <Section title="Size limits"><LimitFields nodes={nodes} /></Section>;
+  if (ownLimits) return <Section title={tr("Size limits")}><LimitFields nodes={nodes} /></Section>;
   if (kind === "autoLayout") {
     const row = (axis: "x" | "y", label: string) => {
       const v = sizingOf(nodes, axis);
       return (
         <label key={axis} className="grid grid-cols-[5.5rem_1fr] items-center gap-2">
-          <span className={cls.label}>{label}</span>
+          <span className={cls.label}>{tr(label)}</span>
           <select aria-label={`${label} sizing`} className={cls.select} value={v ?? "__mixed"}
             onChange={(e) => run(sizingOps(scene, selection, axis, e.target.value as "fixed" | "fill"))}>
-            {v === undefined && <option value="__mixed" disabled>Mixed</option>}
-            <option value="fixed">Fixed</option>
-            <option value="fill">Fill container</option>
+            {v === undefined && <option value="__mixed" disabled>{tr("Mixed")}</option>}
+            <option value="fixed">{tr("Fixed")}</option>
+            <option value="fill">{tr("Fill container")}</option>
           </select>
         </label>
       );
@@ -96,15 +100,15 @@ export function LayoutRelationControls() {
     const inGrid = nodes.every((n) => scene.nodes.at(n.parentId)?.autoLayout?.mode === "grid");
     return (
       <>
-        <Section title="Sizing">
+        <Section title={tr("Sizing")}>
           <div className="flex flex-col gap-1.5">
             <label className="grid grid-cols-[5.5rem_1fr] items-center gap-2">
-              <span className={cls.label}>Position</span>
-              <select aria-label="Layout position" className={cls.select} value={pos ?? "__mixed"}
+              <span className={cls.label}>{tr("Position")}</span>
+              <select aria-label={tr("Layout position")} className={cls.select} value={pos ?? "__mixed"}
                 onChange={(e) => run(positioningOps(scene, selection, e.target.value as "auto" | "absolute"))}>
-                {pos === undefined && <option value="__mixed" disabled>Mixed</option>}
-                <option value="auto">Auto (in the flow)</option>
-                <option value="absolute">Absolute</option>
+                {pos === undefined && <option value="__mixed" disabled>{tr("Mixed")}</option>}
+                <option value="auto">{tr("Auto (in the flow)")}</option>
+                <option value="absolute">{tr("Absolute")}</option>
               </select>
             </label>
             {pos === "absolute" ? constraintRows() : <>{row("x", "Width")}{row("y", "Height")}</>}
@@ -112,7 +116,7 @@ export function LayoutRelationControls() {
           </div>
         </Section>
         {inGrid && pos !== "absolute" && (
-          <Section title="Grid cell">
+          <Section title={tr("Grid cell")}>
             <div className="grid grid-cols-2 gap-1.5">
               {CELLS.map(({ field, label }) => (
                 <NumberField key={field} label={label} value={cellOf(nodes, field) ?? NaN} minValue={0}

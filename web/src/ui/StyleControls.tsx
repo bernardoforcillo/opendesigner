@@ -1,4 +1,5 @@
 import { useScene } from "@/store/store";
+import { currentT } from "@/i18n";
 import type { FillLite, NodeLite } from "@/store/types";
 import { Button, cls, Section } from "@/ui/ds";
 import { CHECKER } from "@/ui/ds/props-controls";
@@ -6,6 +7,9 @@ import {
   applyEffectStyleOps, applyPaintStyleOps, createEffectStyleOps, createPaintStyleOps, deleteEffectStyleOps, deletePaintStyleOps,
   paintStyleIdOf, type PaintTarget,
 } from "@/ui/styleOps";
+
+// Names the shared controls cannot translate on their own (options, text nodes). See docs/localization.md.
+const tr = (key: string, vars?: Record<string, string | number>) => currentT().tx(key, vars);
 
 // SHARED PAINT AND EFFECT STYLES in the properties panel (docs/shapes.md): pick a style from the document's list,
 // make a new one from what the node has, detach (the node keeps what was drawn) or delete. A node that uses a
@@ -51,7 +55,7 @@ export function PaintStyleControls({ target }: { target: PaintTarget }) {
   const sel = useSelected();
   if (!scene || !sel) return null;
   const styles = Object.values(scene.paintStyles).sort((a, b) => a.name.localeCompare(b.name));
-  const label = target === "fill" ? "Fill style" : "Stroke style";
+  const label = target === "fill" ? tr("Fill style") : tr("Stroke style");
   const current = same(sel.nodes.map((n) => paintStyleIdOf(n, target) ?? ""));
   const single = sel.nodes.length === 1 ? sel.nodes[0] : null;
   const attachedId = current !== MIXED && current !== "" ? current : null;
@@ -65,8 +69,8 @@ export function PaintStyleControls({ target }: { target: PaintTarget }) {
         aria-label={label} className={cls.select} value={current}
         onChange={(e) => run(applyPaintStyleOps(scene, sel.ids, target, e.target.value))}
       >
-        {current === MIXED && <option value={MIXED} disabled>Mixed</option>}
-        <option value="">No style</option>
+        {current === MIXED && <option value={MIXED} disabled>{tr("Mixed")}</option>}
+        <option value="">{tr("No style")}</option>
         {styles.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
       </select>
       {attached && (
@@ -109,14 +113,14 @@ export function EffectStyleControls() {
   const canMake = single && !attachedId && (single.effects?.length ?? 0) > 0;
   if (styles.length === 0 && !canMake) return null;
   return (
-    <Section title="Effect style">
+    <Section title={tr("Effect style")}>
       <div className="flex flex-col gap-1.5">
         <select
-          aria-label="Effect style" className={cls.select} value={current}
+          aria-label={tr("Effect style")} className={cls.select} value={current}
           onChange={(e) => run(applyEffectStyleOps(scene, sel.ids, e.target.value))}
         >
-          {current === MIXED && <option value={MIXED} disabled>Mixed</option>}
-          <option value="">No style</option>
+          {current === MIXED && <option value={MIXED} disabled>{tr("Mixed")}</option>}
+          <option value="">{tr("No style")}</option>
           {styles.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
         </select>
         <div className="flex flex-wrap gap-1.5">

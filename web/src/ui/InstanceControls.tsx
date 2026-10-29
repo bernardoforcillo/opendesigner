@@ -1,9 +1,13 @@
+import { currentT } from "@/i18n";
 import type { ReactNode } from "react";
 import { useScene } from "@/store/store";
 import { effectiveComponentId } from "@/store/components";
 import { cls, Section } from "@/ui/ds";
 import { chooseVariantOps, chosenOption, setPropertyValueOps, swapChoices } from "@/ui/componentOps";
 import { propertyValue } from "@/store/components";
+
+// Names the shared controls cannot translate on their own (options, text nodes). See docs/localization.md.
+const tr = (key: string, vars?: Record<string, string | number>) => currentT().tx(key, vars);
 
 // THE VARIANT AND PROPERTY CONTROLS of a selected component INSTANCE: one select per
 // axis of the component's set (switching variant swaps the master the instance shows)
@@ -33,7 +37,7 @@ export function InstanceControls() {
   if (!set && props.length === 0) return null;
 
   return (
-    <Section title="Component">
+    <Section title={tr("Component")}>
       <div className="flex flex-col gap-1.5">
         {set?.axes.map((a) => (
           <label key={a.name} className="grid grid-cols-[5.5rem_1fr] items-center gap-2">
@@ -60,7 +64,7 @@ export function InstanceControls() {
             // "" = the nested instance keeps its own component.
             return row(<select aria-label={p.name} className={cls.select} value={value}
               onChange={(e) => run(setPropertyValueOps(scene, n.id, p.name, e.target.value))}>
-              <option value="">Default</option>
+              <option value="">{tr("Default")}</option>
               {swapChoices(scene, effectiveComponentId(scene, n.instance!)).map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
             </select>);
           }

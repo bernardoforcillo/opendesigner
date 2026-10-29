@@ -1,9 +1,13 @@
 import { useState } from "react";
+import { currentT } from "@/i18n";
 import { Label, Radio, RadioGroup } from "react-aria-components";
 import { runExport, type ExportFormat, type ExportRequest } from "@/export/exportScene";
 import { EXPORT_SCALES, type ExportScale } from "@/export/png";
 import { Button } from "@/ui/ds";
 import { SEGMENT, SEGMENTED_TRACK } from "@/ui/ds/flow-parts";
+
+// Names the shared controls cannot translate on their own (options, text nodes). See docs/localization.md.
+const tr = (key: string, vars?: Record<string, string | number>) => currentT().tx(key, vars);
 
 // THE EXPORT SECTION in the properties panel.
 //
@@ -44,7 +48,7 @@ export function ExportSection({
         orientation="horizontal"
         className={ROW_CLASS}
       >
-        <Label className={ROW_LABEL_CLASS}>Format</Label>
+        <Label className={ROW_LABEL_CLASS}>{tr("Format")}</Label>
         <div className={SEGMENTED_TRACK}>
           {FORMATS.map((f) => (
             <Radio key={f.value} value={f.value} className={SEGMENT}>{f.label}</Radio>
@@ -61,7 +65,7 @@ export function ExportSection({
           orientation="horizontal"
           className={ROW_CLASS}
         >
-          <Label className={ROW_LABEL_CLASS}>Scale</Label>
+          <Label className={ROW_LABEL_CLASS}>{tr("Scale")}</Label>
           <div className={SEGMENTED_TRACK}>
             {EXPORT_SCALES.map((s) => (
               <Radio key={s} value={String(s)} className={SEGMENT}>{`${s}x`}</Radio>

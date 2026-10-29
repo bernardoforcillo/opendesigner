@@ -1,9 +1,13 @@
 import { useScene } from "@/store/store";
+import { currentT } from "@/i18n";
 import type { Op } from "@/gen/opendesigner/v1/opendesigner_pb";
 import type { LayoutGridLite } from "@/store/types";
 import { cls, IconButton, Section } from "@/ui/ds";
 import { NumberField } from "@/ui/fields/NumberField";
 import { addGridOps, editGridOps, removeGridOps } from "@/ui/layoutGridOps";
+
+// Names the shared controls cannot translate on their own (options, text nodes). See docs/localization.md.
+const tr = (key: string, vars?: Record<string, string | number>) => currentT().tx(key, vars);
 
 const lookup = (id: string) => useScene.getState().scene?.nodes.at(id);
 const KINDS: { value: LayoutGridLite["kind"]; label: string }[] = [
@@ -20,7 +24,7 @@ export function LayoutGridControls({ run }: { run: (build: (ids: readonly string
   const grids = frame.layoutGrids ?? [];
   return (
     <Section
-      title="Layout grid"
+      title={tr("Layout grid")}
       actions={<IconButton icon="plus" label="Add layout grid" size={24} onPress={() => run((ids) => addGridOps(ids, lookup, "columns"))} />}
     >
       <div className="flex flex-col gap-2">
@@ -28,14 +32,14 @@ export function LayoutGridControls({ run }: { run: (build: (ids: readonly string
           <div key={i} className="flex flex-col gap-1.5 rounded-lg border border-line p-2">
             <div className="flex h-6 items-center justify-between gap-2">
               <select
-                aria-label={`Grid ${i + 1} type`}
+                aria-label={tr("Grid {n} type", { n: i + 1 })}
                 className={cls.select}
                 value={g.kind}
                 onChange={(e) => run((ids) => editGridOps(ids, lookup, i, { kind: e.target.value as LayoutGridLite["kind"] }))}
               >
                 {KINDS.map((k) => <option key={k.value} value={k.value}>{k.label}</option>)}
               </select>
-              <IconButton icon="trash" label={`Remove grid ${i + 1}`} size={24} onPress={() => run((ids) => removeGridOps(ids, lookup, i))} />
+              <IconButton icon="trash" label={tr("Remove grid {n}", { n: i + 1 })} size={24} onPress={() => run((ids) => removeGridOps(ids, lookup, i))} />
             </div>
             <div className="grid grid-cols-2 gap-1.5">
               {g.kind === "grid" ? (

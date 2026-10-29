@@ -1,4 +1,5 @@
 import { useScene } from "@/store/store";
+import { currentT } from "@/i18n";
 import type { Op } from "@/gen/opendesigner/v1/opendesigner_pb";
 import type { NoiseModeLite } from "@/store/types";
 import { cls } from "@/ui/ds";
@@ -8,6 +9,9 @@ import {
   DEFAULT_NOISE, RAMP_DIRECTIONS, fxOf, glassOps, noiseOps, progressiveOf, progressiveOps, progressiveTargetOps, rampDirectionOf, textureOps,
   type RampDirection,
 } from "@/ui/effectFxOps";
+
+// Names the shared controls cannot translate on their own (options, text nodes). See docs/localization.md.
+const tr = (key: string, vars?: Record<string, string | number>) => currentT().tx(key, vars);
 
 const lookup = (id: string) => useScene.getState().scene?.nodes.at(id);
 
@@ -55,7 +59,7 @@ export function EffectsFxControls({ run }: { run: Run }) {
                 const d = RAMP_DIRECTIONS[e.target.value as RampDirection];
                 if (d) run((ids) => progressiveOps(ids, lookup, rampBackground, d));
               }}>
-              {rampDirectionOf(ramp) === "custom" && <option value="custom" disabled>Custom</option>}
+              {rampDirectionOf(ramp) === "custom" && <option value="custom" disabled>{tr("Custom")}</option>}
               <option value="down">Top to bottom</option>
               <option value="up">Bottom to top</option>
               <option value="right">Left to right</option>

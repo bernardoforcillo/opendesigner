@@ -1,4 +1,5 @@
 import { useRef, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
+import { useT } from "@/i18n";
 import { NumberField as AriaNumberField, Label, Input } from "react-aria-components";
 
 // GENERIC NUMERIC FIELD (Task 9): a value that is committed by typing (Enter
@@ -85,7 +86,7 @@ export interface NumberFieldProps {
 }
 
 export function NumberField({
-  label,
+  label: labelProp,
   value,
   onCommit,
   onScrub,
@@ -98,6 +99,8 @@ export function NumberField({
   isDisabled,
   placeholder,
 }: NumberFieldProps) {
+  const { tx } = useT();
+  const label = tx(labelProp);
   // State of the drag in progress. A ref and not a state: every pixel of
   // move must not re-render THIS component (the caller already does,
   // its own way, when onScrub updates the store). `started`

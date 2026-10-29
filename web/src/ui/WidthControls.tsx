@@ -1,9 +1,13 @@
 import { useScene } from "@/store/store";
+import { currentT } from "@/i18n";
 import type { Op } from "@/gen/opendesigner/v1/opendesigner_pb";
 import type { WidthPointLite } from "@/store/types";
 import { WIDTH_PRESETS, presetNameOf } from "@/vector/widthProfile";
 import { addWidthPointInGap, profileOf, removeWidthPoint, setWidthPoint, setWidthProfileOps, widthStrokeOf } from "@/vector/widthEdit";
 import { NumberField } from "@/ui/fields/NumberField";
+
+// Names the shared controls cannot translate on their own (options, text nodes). See docs/localization.md.
+const tr = (key: string, vars?: Record<string, string | number>) => currentT().tx(key, vars);
 
 const lookup = (id: string) => useScene.getState().scene?.nodes.at(id);
 type Run = (build: (ids: readonly string[]) => Op[]) => void;
@@ -42,7 +46,7 @@ export function WidthControls({ run }: { run: Run }) {
         <label className="flex items-center gap-2 text-[11px] text-fg-subtle">
         <span className="w-16 shrink-0">Profile</span>
         <select aria-label="Width profile" className={SELECT} value={name} onChange={(e) => write(WIDTH_PRESETS[e.target.value] ?? [])}>
-          {name === "custom" && <option value="custom">Custom</option>}
+          {name === "custom" && <option value="custom">{tr("Custom")}</option>}
           {PRESETS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
         </select>
       </label>

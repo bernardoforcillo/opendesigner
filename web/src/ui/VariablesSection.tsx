@@ -1,7 +1,11 @@
 import { useScene } from "@/store/store";
+import { currentT } from "@/i18n";
 import type { NodeLite, SceneState, VariableTypeLite } from "@/store/types";
 import { cls, Section } from "@/ui/ds";
 import { MIXED, bindingOps, boundVariable, modeOps, pinnedMode, variablesOfType } from "@/ui/variableOps";
+
+// Names the shared controls cannot translate on their own (options, text nodes). See docs/localization.md.
+const tr = (key: string, vars?: Record<string, string | number>) => currentT().tx(key, vars);
 
 // THE VARIABLES SECTION of the properties panel: binds a property of the
 // selection to a variable (design token) and pins a collection to a mode.
@@ -44,8 +48,8 @@ function Pick({ label, value, onChange, children }: {
 }) {
   return (
     <label className="grid grid-cols-[5.5rem_1fr] items-center gap-2">
-      <span className={cls.label}>{label}</span>
-      <select aria-label={label} className={cls.select} value={value} onChange={(e) => onChange(e.target.value)}>
+      <span className={cls.label}>{tr(label)}</span>
+      <select aria-label={tr(label)} className={cls.select} value={value} onChange={(e) => onChange(e.target.value)}>
         {children}
       </select>
     </label>
@@ -62,7 +66,7 @@ export function VariablesSection() {
   const hasVariables = Object.keys(scene.variables ?? {}).length > 0;
 
   return (
-    <Section title="Variables" count={nodes.reduce((n, node) => n + Object.keys(node.bindings ?? {}).length, 0) || undefined}>
+    <Section title={tr("Variables")} count={nodes.reduce((n, node) => n + Object.keys(node.bindings ?? {}).length, 0) || undefined}>
       {!hasVariables ? (
         <p className="text-[12px] text-fg-subtle">No variables yet. Create them from the document menu → Variables.</p>
       ) : (
@@ -79,7 +83,7 @@ export function VariablesSection() {
                 value={pinned === MIXED ? "__mixed" : (pinned ?? "")}
                 onChange={(v) => commit(modeOps(scene, ids, c.id, v === "" ? null : v))}
               >
-                {pinned === MIXED && <option value="__mixed" disabled>Mixed</option>}
+                {pinned === MIXED && <option value="__mixed" disabled>{tr("Mixed")}</option>}
                 <option value="">Inherit ({c.modes[0].name} by default)</option>
                 {c.modes.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
               </Pick>
@@ -99,8 +103,8 @@ function BindRow({ row, scene, ids }: { row: Row; scene: SceneState; ids: readon
   const value = bound === MIXED ? "__mixed" : (bound !== null && scene.variables[bound] ? bound : "");
   return (
     <Pick label={row.label} value={value} onChange={(v) => commit(bindingOps(scene, ids, row.key, v === "" ? null : v))}>
-      {bound === MIXED && <option value="__mixed" disabled>Mixed</option>}
-      <option value="">None</option>
+      {bound === MIXED && <option value="__mixed" disabled>{tr("Mixed")}</option>}
+      <option value="">{tr("None")}</option>
       {options.map((v) => (
         <option key={v.id} value={v.id}>{scene.collections[v.collectionId]?.name ?? "?"} / {v.name}</option>
       ))}

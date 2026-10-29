@@ -1,6 +1,10 @@
 import { useScene } from "@/store/store";
+import { currentT } from "@/i18n";
 import { connectorOf } from "@/vector/connector";
 import { connectOps, setConnectorOps, type ConnectorOptions } from "@/vector/connect";
+
+// Names the shared controls cannot translate on their own (options, text nodes). See docs/localization.md.
+const tr = (key: string, vars?: Record<string, string | number>) => currentT().tx(key, vars);
 
 const BTN = "h-7 flex-1 rounded-md px-2 text-[12px] text-fg-muted outline-none hover:bg-surface-3 hover:text-fg focus-visible:shadow-[var(--ring)]";
 
@@ -53,7 +57,7 @@ export function ConnectorControls() {
   }
   if (!pair) return null;
   return (
-    <div role="group" aria-label="Connect" className="flex shrink-0 items-center gap-0.5 border-b border-line px-2 py-1.5">
+    <div role="group" aria-label={tr("Connect")} className="flex shrink-0 items-center gap-0.5 border-b border-line px-2 py-1.5">
       <button type="button" className={BTN} onClick={() => runConnect()}>Connect with arrow</button>
       <button type="button" className={BTN} onClick={() => runConnect({ route: "elbow" })}>Elbow connector</button>
     </div>
