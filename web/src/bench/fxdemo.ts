@@ -21,7 +21,9 @@ const lowContrast = { fills: [{ r: 0, g: 0, b: 0, a: 1, gradient: { kind: "linea
   { color: { r: 0.32, g: 0.32, b: 0.34, a: 1 }, position: 0 }, { color: { r: 0.62, g: 0.6, b: 0.58, a: 1 }, position: 1 }] } }] };
 
 // [label, node overrides, tracks: prop -> [value at t0, value at t1]]
-type Case = [string, Partial<NodeLite>, Record<string, [number, number]>];
+// An optional 4th element makes a hidden second layer for the effect (`effect`) and points the case's node at it.
+type Layer = { effect: string; node: Partial<NodeLite>; dx?: number; dy?: number };
+type Case = [string, Partial<NodeLite>, Record<string, [number, number]>, Layer?];
 const SET1: Case[] = [
   ["blur", {}, { "fx.ec.blur.gaussian.blurriness": [12, 12] }],
   ["wave (kernel)", {}, { "fx.ec.distort.wavewarp.height": [8, 8], "fx.ec.distort.wavewarp.width": [40, 40] }],
@@ -59,15 +61,40 @@ const SET2: Case[] = [
   ["depth of field", {}, { [A + "3d.depthoffield.maxBlur"]: [10, 10], [A + "3d.depthoffield.focal"]: [0.5, 0.5] }],
   ["paint bucket", {}, { [A + "generate.paintbucket.x"]: [10, 10], [A + "generate.paintbucket.y"]: [10, 10], [A + "generate.paintbucket.tolerance"]: [25, 25] }],
 ];
-const SETS = [SET1, SET2];
+const green = [{ r: 0.2, g: 0.8, b: 0.3, a: 1 }];
+const SET3: Case[] = [
+  ["set matte (circle)", {}, {}, { effect: "ec.channel.setmatte", node: { kind: "ellipse", fills: green, width: 80, height: 80 }, dx: 10, dy: 10 }],
+  ["set matte inverted", {}, { [A + "channel.setmatte.invert"]: [1, 1] }, { effect: "ec.channel.setmatte", node: { kind: "ellipse", fills: green, width: 80, height: 80 }, dx: 10, dy: 10 }],
+  ["set matte, node rotated 30", { rotation: 30 }, {}, { effect: "ec.channel.setmatte", node: { kind: "ellipse", fills: green, width: 80, height: 80 }, dx: 10, dy: 10 }],
+  ["set matte, animated layer", {}, {}, { effect: "ec.channel.setmatte", node: { kind: "ellipse", fills: green, width: 60, height: 60 }, dx: -10, dy: 20 }],
+  ["blend 50%", {}, { [A + "channel.blend.ratio"]: [50, 50] }, { effect: "ec.channel.blend", node: { fills: green } }],
+  ["set channels", {}, { [A + "channel.setchannels.red"]: [6, 6], [A + "channel.setchannels.blue"]: [5, 5] }, { effect: "ec.channel.setchannels", node: { fills: green } }],
+  ["difference matte", {}, { [A + "key.differencematte.tolerance"]: [8, 8] }, { effect: "ec.key.differencematte", node: { cornerRadius: 14 } }],
+  ["object matte, feathered", {}, { [A + "matte.objectmatte.feather"]: [10, 10] }, { effect: "ec.matte.objectmatte", node: { kind: "ellipse", fills: green, width: 70, height: 70 }, dx: 15, dy: 15 }],
+  ["calculations (multiply)", {}, {}, { effect: "ec.channel.calculations", node: { fills: [{ r: 0.9, g: 0.9, b: 0.2, a: 1 }], kind: "ellipse" } }],
+  ["compound arithmetic (add)", {}, { [A + "channel.compoundarithmetic.op"]: [1, 1] }, { effect: "ec.channel.compoundarithmetic", node: { fills: [{ r: 0.1, g: 0.1, b: 0.4, a: 1 }] } }],
+  ["environment", {}, { [A + "perspective.ccenvironment.amount"]: [80, 80] }, { effect: "ec.perspective.ccenvironment", node: { fills: green, width: 140, height: 140 }, dx: -20, dy: -20 }],
+  ["color stabilizer", {}, { [A + "color.colorstabilizer.amount"]: [100, 100] }, { effect: "ec.color.colorstabilizer", node: { fills: green } }],
+  ["match grain", {}, { [A + "noise.matchgrain.amount"]: [100, 100] }, { effect: "ec.noise.matchgrain", node: { fills: green } }],
+  ["cc composite (original)", {}, { [A + "channel.cccomposite.composite"]: [1, 1], [A + "stylize.mosaic.h"]: [6, 6], [A + "stylize.mosaic.v"]: [6, 6] }],
+  ["layer is missing", {}, {}, { effect: "ec.channel.setmatte", node: { kind: "ellipse", fills: green, width: 80, height: 80 } }],
+  ["matte + blur chain", {}, { [A + "blur.gaussian.blurriness"]: [5, 5] }, { effect: "ec.channel.setmatte", node: { kind: "ellipse", fills: green, width: 80, height: 80 }, dx: 10, dy: 10 }],
+];
+const SETS = [SET1, SET2, SET3];
 
 function build(CASES: Case[]): { scene: SceneState; anim: (t: number) => ReturnType<typeof sampleClip> } {
   const nodes: NodeLite[] = [];
   const tracks: { nodeId: string; prop: string; keyframes: { time: number; value: number; easing: string }[] }[] = [];
-  CASES.forEach(([, over, tr], i) => {
+  CASES.forEach(([label, over, tr, layer], i) => {
     const id = `n${i}`;
     const col = i % 4, row = Math.floor(i / 4);
-    nodes.push(node(id, 40 + col * 290 + (over.width ? 0 : 0), 40 + row * 170, over));
+    nodes.push(node(id, 40 + col * 290, 40 + row * 170, over));
+    if (layer) {
+      // the second layer is hidden, as a matte layer usually is, and sits in the same row; "layer is missing" names a node that is not there
+      const rid = label === "layer is missing" ? "gone" : `r${i}`;
+      if (rid !== "gone") nodes.push(node(rid, 40 + col * 290 + (layer.dx ?? 0), 40 + row * 170 + (layer.dy ?? 0), { visible: false, ...layer.node }));
+      tracks.push({ nodeId: id, prop: `fx.${layer.effect}.layer.${rid}`, keyframes: [{ time: 0, value: 1, easing: "linear" }] });
+    }
     for (const [prop, [a, b]] of Object.entries(tr)) {
       const base = nodes[nodes.length - 1];
       const off = prop === "x" ? base.x : 0;

@@ -63,6 +63,14 @@ export interface FxKernel {
    * it (fx/stats.ts) and this builds the 256 x 2 lookup table the shader gets as its second child, `uniform shader lut`.
    */
   lut?: (h: Histogram) => Uint8Array;
+  /**
+   * A second image for the shader (`uniform shader other`, after `src`, and after `lut` if any): "layer" is the layer the node
+   * names in its `fx.<effect>.layer.<id>` track (an empty image if it names none or the node is gone), "original" is the node
+   * drawn without any of the kernels (CC Composite).
+   */
+  other?: "layer" | "original";
+  /** Set by buildFx: the effect this kernel belongs to (to find its layer reference). */
+  effect?: string;
 }
 
 export interface FxDef {
@@ -82,6 +90,8 @@ export interface FxDef {
    * current time in ms. Resolved by animation/pose.ts, which re-samples the clip; the renderer only combines them.
    */
   time?: (v: FxValues, t: number) => FxTime;
+  /** The effect takes a second layer chosen in the editor (a `fx.<effect>.layer.<node>` track). */
+  needsLayer?: true;
   /** No pixels at all: the effect only carries values for expressions (EffectCraft's Expression Controls). */
   carrier?: true;
   /** How far beyond the node's box the effect paints (world units). */

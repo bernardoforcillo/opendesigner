@@ -61,12 +61,13 @@ type Body = string;
 /** An effect that reads the node's pixels: `half4 main(float2 xy)` with `S(point)` sampling the node. */
 export function kern(
   id: string, params: readonly FxParam[], body: Body,
-  opts: { outset?: (v: FxValues) => number; uniforms?: (v: FxValues) => number[]; head?: string } = {},
+  opts: { outset?: (v: FxValues) => number; uniforms?: (v: FxValues) => number[]; head?: string; other?: "layer" | "original" } = {},
 ): FxDef {
-  const sksl = `${KHEAD}${opts.head ?? ""}\nhalf4 main(float2 xy) {\n${body}\n}`;
+  // `other` is the second image: the layer named by the effect, or the node as it was before the kernels
+  const sksl = `${KHEAD}${opts.other ? "uniform shader other;\nhalf4 O(float2 q) { return other.eval(q); }\n" : ""}${opts.head ?? ""}\nhalf4 main(float2 xy) {\n${body}\n}`;
   return {
-    id, params, outset: opts.outset,
-    kernel: (v) => ({ sksl, uniforms: pad(opts.uniforms ? opts.uniforms(v) : params.map((q) => v[q.id])) }),
+    id, params, outset: opts.outset, needsLayer: opts.other === "layer" ? true : undefined,
+    kernel: (v) => ({ sksl, uniforms: pad(opts.uniforms ? opts.uniforms(v) : params.map((q) => v[q.id])), other: opts.other }),
   };
 }
 

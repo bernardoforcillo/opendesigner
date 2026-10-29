@@ -474,6 +474,8 @@ export interface NodeLite {
   animDraw?: number;
   // Effect parameters sampled from `fx.*` tracks (animation/fx): effectId -> paramId -> value.
   animFx?: Record<string, Record<string, number>>;
+  // The second layer of the effects that use one (animation/fx/props.ts): effectId -> node id.
+  animFxRefs?: Record<string, string>;
   // Time effects (animation/fx/timeFx.ts): the node posed at other moments, in drawing order, with how to combine them.
   // `node` never carries an animEcho itself.
   animEcho?: { mode: "plus" | "screen" | "lighten" | "darken" | "over" | "difference" | "displace"; uniforms?: number[]; samples: { node: NodeLite; weight: number }[] };

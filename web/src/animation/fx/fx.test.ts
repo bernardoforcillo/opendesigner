@@ -8,10 +8,11 @@ import { invertHomography, unitSquareTo } from "@/animation/fx/kernelsDistort";
 import { FX_LIBRARY, fxDef, fxParam, hsv, resolveFx } from "@/animation/fx/library";
 import { makeLutShader, readHistogram } from "@/animation/fx/lutImage";
 import { buildFx, fxOutset } from "@/animation/fx/apply";
-import { fxProp, isFxProp, parseFxProp } from "@/animation/fx/props";
+import { fxLayerProp, fxProp, isFxProp, parseFxLayerProp, parseFxProp } from "@/animation/fx/props";
 import { isTrackProp, sampleClip } from "@/animation/engine";
+import { mergeAnim, poseScene } from "@/animation/pose";
 import { isValidClip } from "@/animation/validate";
-import { baseValueOf, clampValue, propLabel } from "@/animation/timelineLogic";
+import { addPropertyTrack, baseValueOf, clampValue, propLabel } from "@/animation/timelineLogic";
 import { baseScene, child } from "@/flow/testSupport";
 import { nodesWith } from "@/store/nodeMap";
 
@@ -139,6 +140,20 @@ describe("drawing every effect with CanvasKit", () => {
         const lut = makeLutShader(CK, k.lut(readHistogram(CK, img)!))!;
         children.push(lut.shader);
         garbage.push(lut.image, lut.shader);
+      }
+      // a second image for the kernels that take one: a grey square covering the left half of the node
+      if (k.other) {
+        const o = CK.MakeSurface(64, 64)!;
+        const oc = o.getCanvas();
+        oc.clear(CK.TRANSPARENT);
+        const op = new CK.Paint();
+        op.setColor(CK.Color4f(0.5, 0.5, 0.5, 1));
+        oc.drawRect(CK.XYWHRect(0, 0, 32, 64), op);
+        op.delete();
+        const oi = o.makeImageSnapshot();
+        const os = oi.makeShaderOptions(CK.TileMode.Decal, CK.TileMode.Decal, CK.FilterMode.Linear, CK.MipmapMode.None);
+        children.push(os);
+        garbage.push(o, oi, os);
       }
       const sh = eff!.makeShaderWithChildren([16, 16, 32, 32, ...k.uniforms], children);
       garbage.push(off, img, srcShader, sh, eff!);
@@ -270,6 +285,27 @@ describe("drawing every effect with CanvasKit", () => {
     expect(at(draw({ "ec.transition.cardwipe": { completion: 0 } }), 32, 32)[3]).toBe(255);
     expect(at(draw({ "ec.transition.cardwipe": { completion: 100, back: 0 } }), 32, 32)[3]).toBe(0);
   });
+  it("second-layer effects read the layer: set matte keeps the node where the layer is opaque, blend mixes the two", () => {
+    // the test layer is a grey square over the left half of the node, transparent on the right
+    const matte = draw({ "ec.channel.setmatte": { channel: 4, invert: 0, mode: 0, premultiply: 0, opacity: 100 } });
+    expect(at(matte, 20, 32)[3]).toBe(255);
+    expect(at(matte, 44, 32)[3]).toBe(0);
+    const inv = draw({ "ec.channel.setmatte": { channel: 4, invert: 1, mode: 0, premultiply: 0, opacity: 100 } });
+    expect(at(inv, 20, 32)[3]).toBe(0);
+    expect(at(inv, 44, 32)[3]).toBe(255);
+    // blend 100% on the left shows the grey layer instead of the node
+    const blend = at(draw({ "ec.channel.blend": { ratio: 100, mode: 0 } }), 20, 32);
+    expect(Math.abs(blend[0] - 128)).toBeLessThanOrEqual(3);
+    // set channels: red from the layer's green gives grey 128 on the left, 0 where the layer is empty
+    const sc = draw({ "ec.channel.setchannels": { red: 6, green: 1, blue: 2, alpha: 3, premultiply: 0 } });
+    expect(Math.abs(at(sc, 20, 32)[0] - 128)).toBeLessThanOrEqual(3);
+    expect(at(sc, 44, 32)[0]).toBe(0);
+    // difference matte: where the layer equals the node it is keyed out, where it differs it stays
+    const diff = draw({ "ec.key.differencematte": { tolerance: 5, softness: 0, blur: 0, view: 0, invert: 0, cleanup: 0 } });
+    expect(at(diff, 44, 32)[3]).toBe(255);
+    // cc composite: the node composited with its own original is unchanged
+    expect(at(draw({ "ec.channel.cccomposite": { composite: 0, rgbOnly: 0, opacity: 100 } }), 20, 32)[3]).toBe(255);
+  });
 });
 
 describe("text formatting", () => {
@@ -284,5 +320,47 @@ describe("text formatting", () => {
     expect(formatTimecode(3600, 30, 0)).toBe("01:00:00:00");
     expect(formatTimecode(61.5, 24, 1)).toBe("00:01:01");
     expect(formatTimecode(2, 25, 2)).toBe("50");
+  });
+});
+
+describe("layer references", () => {
+  it("are tracks named fx.<effect>.layer.<id>; parsed, valid and sampled", () => {
+    const prop = fxLayerProp("ec.channel.setmatte", "3f2a9c10-aa55");
+    expect(prop).toBe("fx.ec.channel.setmatte.layer.3f2a9c10-aa55");
+    expect(parseFxLayerProp(prop)).toEqual({ effect: "ec.channel.setmatte", layerId: "3f2a9c10-aa55" });
+    expect(parseFxProp(prop)).toBeNull();
+    expect(isFxProp(prop)).toBe(true);
+    expect(isTrackProp(prop)).toBe(true);
+    expect(isTrackProp("fx.ec.channel.setmatte.layer.")).toBe(false);
+    expect(isTrackProp("fx.ec.channel.setmatte.layer.a.b")).toBe(false);
+    const a = sampleClip({ tracks: [{ nodeId: "n", prop, keyframes: [{ time: 0, value: 1, easing: "linear" }] }] }, 100).get("n");
+    expect(a?.fxRefs).toEqual({ "ec.channel.setmatte": "3f2a9c10-aa55" });
+    expect(a?.fx).toEqual({ "ec.channel.setmatte": {} }); // naming a layer is enough to have the effect
+  });
+  it("the label names the layer and the base value is a constant", () => {
+    const prop = fxLayerProp("ec.channel.setmatte", "L1");
+    expect(propLabel(prop, (id) => (id === "L1" ? "Matte" : undefined))).toBe("Set Matte · Layer: Matte");
+    expect(propLabel(prop)).toBe("Set Matte · Layer: (missing)");
+    expect(baseValueOf({ x: 0, y: 0, rotation: 0, opacity: 1 }, prop)).toBe(1);
+  });
+  it("adding one makes a single constant keyframe; every effect that needs a layer says so", () => {
+    const clip = { id: "c", name: "c", duration: 1000, trigger: "enter", delay: 0, repeat: 0, yoyo: false, targetId: "n", tracks: [] };
+    const next = addPropertyTrack(clip, { id: "n", x: 0, y: 0, rotation: 0, opacity: 1 }, fxLayerProp("ec.channel.setmatte", "L"));
+    expect(next.tracks).toHaveLength(1);
+    expect(next.tracks[0].keyframes).toEqual([{ time: 0, value: 1, easing: "easeInOut" }]);
+    const need = FX_LIBRARY.filter((d) => d.needsLayer).map((d) => d.id).sort();
+    expect(need).toEqual([
+      "ec.channel.blend", "ec.channel.calculations", "ec.channel.compoundarithmetic", "ec.channel.setchannels", "ec.channel.setmatte",
+      "ec.color.colorstabilizer", "ec.key.differencematte", "ec.matte.objectmatte", "ec.noise.matchgrain", "ec.perspective.ccenvironment",
+    ]);
+  });
+  it("reach the posed node as animFxRefs, merged across clips", () => {
+    const s = baseScene();
+    const scene = { ...s, nodes: nodesWith(s.nodes, { n: child("n", "A", 0, 0), L: child("L", "B", 50, 0) }) };
+    const anim = sampleClip({ tracks: [{ nodeId: "n", prop: fxLayerProp("ec.key.differencematte", "L"), keyframes: [{ time: 0, value: 1, easing: "linear" }] }] }, 0);
+    const posed = poseScene(scene, anim);
+    expect(posed.nodes.at("n").animFxRefs).toEqual({ "ec.key.differencematte": "L" });
+    const merged = mergeAnim(new Map([["n", { fxRefs: { a: "1" } }]]), new Map([["n", { fxRefs: { b: "2" } }]]));
+    expect(merged.get("n")?.fxRefs).toEqual({ a: "1", b: "2" });
   });
 });

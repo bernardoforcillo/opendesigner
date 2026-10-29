@@ -3,7 +3,7 @@ import type {
 } from "canvaskit-wasm";
 import type { Camera } from "@/canvas/camera";
 import { type Bounds, boundsIntersect, boundsOfNode, inflateBounds, strokeOutsetOfNode, unionBounds } from "@/canvas/geometry";
-import { type Transform, localTransformOf } from "@/canvas/transform";
+import { type Transform, compose, invertTransform, localTransformOf, worldTransformOf } from "@/canvas/transform";
 import { instanceDescentLocal, instanceOverrideMap, resolveInstance } from "@/store/instances";
 import type { EffectLite, FillLite, GradientLite, InstanceOverrideLite, MeshLite, NodeLite, SceneState, StrokeLite, TextStyleLite } from "@/store/types";
 import { anchorPoint, inHandlePoint, outHandlePoint, subpathFills } from "@/store/vectorGeometry";
@@ -76,6 +76,8 @@ export class CanvasKitRenderer {
   private frame: Frame | null = null;
   // Effect-track layers opened by beginEffects and not yet closed (animation/fx), innermost last.
   private dpr = 1;
+  // Nodes whose second layer is being drawn: a layer that names this node back would loop.
+  private readonly layerStack = new Set<string>();
   private readonly fxLayers: ({ fx: BuiltFx; box: Bounds; reach: Bounds } | null)[] = [];
   private readonly runtimeEffects = new Map<string, RuntimeEffect | null>();
   private readonly skImages = new Map<HTMLImageElement, SkImage>();
@@ -527,6 +529,41 @@ export class CanvasKitRenderer {
     return true;
   }
 
+  // The layer an effect of `n` names (animation/fx/props.ts), drawn offscreen where the node's own picture is: the same local
+  // space as `src`, but placed so that it does not move or turn with the node (the node's rotation and scale are undone).
+  // The layer may be hidden: it is drawn anyway, it is a source and not part of the picture. null if it names none.
+  private layerShader(n: NodeLite, effect: string, capture: (body: (c: Canvas) => void) => Shader | null): Shader | null {
+    const refId = n.animFxRefs?.[effect];
+    const f = this.frame as Frame;
+    const ref = refId ? f.scene.nodes.get(refId) : undefined;
+    if (!refId || !ref || refId === n.id || this.layerStack.has(refId)) return null;
+    const index = sceneIndexOf(f.scene);
+    const there = worldTransformOf(f.scene, ref.parentId);
+    const here = invertTransform(worldTransformOf(f.scene, n.parentId));
+    const rotated = n.rotation % 360 !== 0;
+    const scaled = n.animScale !== undefined && n.animScale !== 1;
+    const center = n.animPivot ?? nodeCenter(n);
+    this.layerStack.add(n.id);
+    this.layerStack.add(refId);
+    try {
+      return capture((c) => {
+        // undo the node's own transform (rotate about its centre, then scale): the layer stays where it is on screen
+        if (scaled) {
+          const k = 1 / (n.animScale as number);
+          c.translate(center.x, center.y);
+          c.scale(k, k);
+          c.translate(-center.x, -center.y);
+        }
+        if (rotated) c.rotate(-n.rotation * DEG, center.x, center.y);
+        concat(c, compose(here, there));
+        this.drawSiblings(c, [{ ...ref, visible: true }], index.children, new Set(), null, new Set(), false);
+      });
+    } finally {
+      this.layerStack.delete(n.id);
+      this.layerStack.delete(refId);
+    }
+  }
+
   // The node's pixels inside the layer: drawn straight, or -- with effect kernels (animation/fx) -- drawn
   // OFFSCREEN and passed through each kernel's shader, which reads them as `src`.
   private drawLayerBody(sk: Canvas, n: NodeLite, layered: boolean, drawBody: (c: Canvas) => void): void {
@@ -543,6 +580,24 @@ export class CanvasKitRenderer {
     const w = Math.max(1, Math.ceil(reach.width * s)), h = Math.max(1, Math.ceil(reach.height * s));
     const rect = CK.XYWHRect(reach.x, reach.y, reach.width, reach.height);
     let paint: (c: Canvas) => void = drawBody;
+    const toLocal = [1 / s, 0, reach.x, 0, 1 / s, reach.y, 0, 0, 1];
+    // draws `body` into a fresh offscreen surface the size of `reach` and returns its image as a shader in the node's local space
+    const capture = (body: (c: Canvas) => void): Shader | null => {
+      const surface = CK.MakeRenderTarget(this.grCtx as GrDirectContext, w, h) ?? CK.MakeSurface(w, h);
+      if (!surface) return null;
+      const c = surface.getCanvas();
+      c.clear(CK.TRANSPARENT);
+      c.save();
+      c.scale(s, s);
+      c.translate(-reach.x, -reach.y);
+      body(c);
+      c.restore();
+      const img = surface.makeImageSnapshot();
+      const sh = img.makeShaderOptions(CK.TileMode.Decal, CK.TileMode.Decal, CK.FilterMode.Linear, CK.MipmapMode.None, toLocal);
+      f.garbage.push(surface, img, sh);
+      return sh;
+    };
+    let originalShader: Shader | null | undefined;
     for (const k of top.fx.kernels) {
       const effect = this.runtimeEffect(k.sksl);
       if (!effect) continue;
@@ -557,7 +612,7 @@ export class CanvasKitRenderer {
       c.restore();
       const img = surface.makeImageSnapshot();
       // image pixels -> the node's local space, so the kernel works in world units
-      const src = img.makeShaderOptions(CK.TileMode.Decal, CK.TileMode.Decal, CK.FilterMode.Linear, CK.MipmapMode.None, [1 / s, 0, reach.x, 0, 1 / s, reach.y, 0, 0, 1]);
+      const src = img.makeShaderOptions(CK.TileMode.Decal, CK.TileMode.Decal, CK.FilterMode.Linear, CK.MipmapMode.None, toLocal);
       // a kernel that looks at the whole node first (Auto Levels, Equalize): count the pixels it receives, build its lookup table
       const children = [src];
       if (k.lut) {
@@ -567,6 +622,17 @@ export class CanvasKitRenderer {
         children.push(lut.shader);
         f.garbage.push(lut.image, lut.shader);
       }
+      // a kernel with a second image: the node as it was before the kernels, or the layer it names
+      if (k.other === "original") {
+        if (originalShader === undefined) originalShader = capture(drawBody);
+        if (originalShader) children.push(originalShader);
+      } else if (k.other === "layer") {
+        // no layer named, or it is gone (deleted, or a loop): the effect does nothing, the node is not made to vanish
+        const sh = this.layerShader(n, k.effect ?? "", capture);
+        if (!sh) { f.garbage.push(surface, img, src); continue; }
+        children.push(sh);
+      }
+      if (k.other && children.length < (k.lut ? 3 : 2)) { f.garbage.push(surface, img, src); continue; }
       const shader = effect.makeShaderWithChildren([box.x, box.y, box.width, box.height, ...k.uniforms], children);
       f.garbage.push(surface, img, src, shader);
       paint = (target) => {

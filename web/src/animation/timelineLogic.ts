@@ -2,7 +2,7 @@ import type { ClipLite, KeyframeLite, NodeLite, SceneState, TrackLite } from "@/
 import { ancestorsOf } from "@/store/tree";
 import { sampleTrack, type TrackProp } from "@/animation/engine";
 import { canDraw } from "@/animation/pose";
-import { parseFxProp } from "@/animation/fx/props";
+import { parseFxLayerProp, parseFxProp } from "@/animation/fx/props";
 import { fxDef, fxParam } from "@/animation/fx/library";
 import { FX_CATALOG } from "@/animation/fx/catalog";
 
@@ -43,6 +43,7 @@ export function clampValue(prop: string, v: number, fallback = 0): number {
 
 /** The BASE value of a node property (the one that holds without animation). */
 export function baseValueOf(n: Pick<NodeLite, "x" | "y" | "rotation" | "opacity">, prop: string): number {
+  if (parseFxLayerProp(prop)) return 1;
   const fx = parseFxProp(prop);
   if (fx) return fxParam(fx.effect, fx.param)?.default ?? 0;
   switch (prop) {
@@ -69,8 +70,13 @@ export const PROP_LABEL: Record<string, string> = {
 export const PROP_UNIT: Record<string, string> = { opacity: "", x: "px", y: "px", scale: "×", rotation: "°", draw: "" };
 
 /** The label of a track property: the built-in ones, or "Effect name · Parameter" for `fx.*`. */
-export function propLabel(prop: string): string {
+export function propLabel(prop: string, layerName?: (id: string) => string | undefined): string {
   if (PROP_LABEL[prop]) return PROP_LABEL[prop];
+  const ref = parseFxLayerProp(prop);
+  if (ref) {
+    const name = FX_CATALOG.find((e) => e.id === ref.effect)?.name ?? ref.effect;
+    return `${name} · Layer: ${layerName?.(ref.layerId) ?? "(missing)"}`;
+  }
   const fx = parseFxProp(prop);
   if (!fx) return prop;
   const name = FX_CATALOG.find((e) => e.id === fx.effect)?.name ?? fx.effect;
@@ -122,6 +128,8 @@ export function addPropertyTrack(
   clip: ClipLite, node: Pick<NodeLite, "id" | "x" | "y" | "rotation" | "opacity">, prop: string,
 ): ClipLite {
   if (findTrack(clip, node.id, prop) >= 0) return clip;
+  // a layer reference is a constant: one keyframe, never animated
+  if (parseFxLayerProp(prop)) return addTrack(clip, node.id, prop, 1, 0);
   const v = baseValueOf(node, prop);
   const start = prop === "draw" ? 0 : v;
   const withStart = addTrack(clip, node.id, prop, start, 0);

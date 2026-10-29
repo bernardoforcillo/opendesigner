@@ -42,9 +42,10 @@ export function mergeAnim(dst: Map<string, NodeAnim>, src: ReadonlyMap<string, N
   for (const [id, a] of src) {
     const cur = dst.get(id);
     if (cur) {
-      const { fx, ...rest } = a;
+      const { fx, fxRefs, ...rest } = a;
       Object.assign(cur, rest);
       if (fx) cur.fx = mergeFx(cur.fx, fx);
+      if (fxRefs) cur.fxRefs = { ...cur.fxRefs, ...fxRefs };
     }
     else dst.set(id, { ...a });
   }
@@ -96,6 +97,7 @@ function patchNode(base: SceneState, n: NodeLite, a: NodeAnim): { next: NodeLite
     scaled = true;
   }
   if (a.fx) patch().animFx = mergeFx(n.animFx, a.fx);
+  if (a.fxRefs) patch().animFxRefs = { ...n.animFxRefs, ...a.fxRefs };
   if (a.draw !== undefined && canDraw(n)) {
     patch().animDraw = a.draw;
     // at 1 the path is whole: the GPU renderer draws it normally, no CPU fallback

@@ -60,7 +60,7 @@ export function KeyframeInspector({ clip, selection }: { clip: ClipLite; selecti
       <div className="flex items-start gap-2">
         <div className="min-w-0 flex-1">
           <p className="truncate text-[13px] font-medium text-fg">{node?.name.trim() ? node.name : tr.nodeId}</p>
-          <p className="truncate text-[11px] text-fg-subtle">{propLabel(tr.prop)} · keyframe {ref.key + 1} di {tr.keyframes.length}</p>
+          <p className="truncate text-[11px] text-fg-subtle">{propLabel(tr.prop, (id) => scene?.nodes.get(id)?.name)} · keyframe {ref.key + 1} di {tr.keyframes.length}</p>
         </div>
         {actions}
       </div>

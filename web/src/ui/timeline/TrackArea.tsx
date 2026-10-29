@@ -39,6 +39,7 @@ interface KfDrag {
 
 export function TrackArea({ clip }: { clip: ClipLite }) {
   const scene = useScene((s) => s.scene);
+  const layerName = (id: string) => scene?.nodes.get(id)?.name;
   const nodeSelection = useScene((s) => s.selection);
   const playhead = useTimeline((s) => s.playhead);
   const zoom = useTimeline((s) => s.zoom);
@@ -243,17 +244,17 @@ export function TrackArea({ clip }: { clip: ClipLite }) {
                     <span className={`truncate font-medium ${nodeSelected ? "text-accent" : "text-fg"}`}>
                       {node ? (node.name.trim() !== "" ? node.name : node.kind) : "(deleted)"}
                     </span>
-                    <span className="shrink-0 text-fg-subtle">{propLabel(tr.prop)}</span>
+                    <span className="shrink-0 text-fg-subtle">{propLabel(tr.prop, layerName)}</span>
                   </RacButton>
                   <AnimIconButton
                     icon="diamondPlus"
-                    label={`Add a keyframe at the playhead on ${propLabel(tr.prop)}`}
+                    label={`Add a keyframe at the playhead on ${propLabel(tr.prop, layerName)}`}
                     size={22}
                     onPress={() => addAt(ti, Math.round(playhead))}
                   />
                   <AnimIconButton
                     icon="x"
-                    label={`Remove the ${propLabel(tr.prop)} track`}
+                    label={`Remove the ${propLabel(tr.prop, layerName)} track`}
                     size={22}
                     onPress={() => {
                       commitClip(removeTrack(clip, ti));
@@ -263,7 +264,7 @@ export function TrackArea({ clip }: { clip: ClipLite }) {
                 </div>
                 <div
                   role="group"
-                  aria-label={`${propLabel(tr.prop)} track of ${node?.name ?? tr.nodeId}`}
+                  aria-label={`${propLabel(tr.prop, layerName)} track of ${node?.name ?? tr.nodeId}`}
                   className="relative shrink-0 cursor-col-resize touch-none"
                   style={{ width: innerW }}
                   onPointerDown={(e) => {

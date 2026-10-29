@@ -62,8 +62,14 @@ var (
 // the document only fixes the SHAPE, as web/src/animation/fx/props.ts does.
 var fxPropRe = regexp.MustCompile(`^fx\.ec\.[a-z0-9]+\.[a-z0-9]+\.[A-Za-z0-9]+$`)
 
-// ValidTrackProp reports whether prop is one of TrackProps or an effect parameter.
-func ValidTrackProp(prop string) bool { return inSet(TrackProps, prop) || fxPropRe.MatchString(prop) }
+// fxLayerPropRe is a layer reference of an effect that uses a second layer: `fx.<effectId>.layer.<nodeId>`. Only the shape is
+// checked: a reference to a node that does not exist (any more) is allowed, the effect then sees an empty layer.
+var fxLayerPropRe = regexp.MustCompile(`^fx\.ec\.[a-z0-9]+\.[a-z0-9]+\.layer\.[A-Za-z0-9_-]+$`)
+
+// ValidTrackProp reports whether prop is one of TrackProps, an effect parameter or an effect's layer reference.
+func ValidTrackProp(prop string) bool {
+	return inSet(TrackProps, prop) || fxPropRe.MatchString(prop) || fxLayerPropRe.MatchString(prop)
+}
 
 func inSet(set []string, v string) bool {
 	for _, s := range set {

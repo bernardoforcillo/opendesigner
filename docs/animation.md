@@ -227,7 +227,7 @@ track names it; parameters without a track keep their default. Values are finite
 clamps them to the parameter's range.
 
 - `web/src/animation/fx/catalog.ts`: all 307 EffectCraft effects (id, name, category), generated from its `docs/effects.md`.
-- `web/src/animation/fx/library.ts` + `kernels*.ts`: the 261 that are drawn, with EffectCraft's parameter names, ranges and
+- `web/src/animation/fx/library.ts` + `kernels*.ts`: the 272 that are drawn, with EffectCraft's parameter names, ranges and
   defaults where it has them. Each is one of four kinds:
   - **filter**: a CanvasKit image/colour filter over the node's pixels (blur, colour matrices, minimax, glow, offset);
   - **overlay**: an SkSL shader drawn over the node inside its layer (grain, fills, gradients, patterns, generators), or a
@@ -257,6 +257,14 @@ clamps them to the parameter's range.
     of shards or cards; for every output pixel the pieces that could cover it (3 cells around) are inverse-transformed and
     tested. Particle World, Particle Systems II and Particle Playground run 96 closed-form particles. Numbers and Timecode draw
     a 5x7 font in SkSL, the characters formatted on the CPU. These overlays use the `srcover` blend: they draw beyond the node.
+  - **second layer** (`fx/kernelsLayer.ts`): Set Matte, Set Channels, Blend, Calculations, Compound Arithmetic, Difference Matte,
+    Object Matte, Match Grain, Color Stabilizer and CC Environment take another layer of the document; CC Composite takes the node
+    as it was before the effects. The reference is a track of the node's clip named `fx.<effectId>.layer.<nodeId>` with one
+    constant keyframe (core.ValidTrackProp / `engine.ts::isTrackProp` check its shape; naming a layer is enough to have the effect),
+    so no model change is needed. The renderer draws the layer offscreen in the node's local space (`ckRenderer.ts::layerShader`):
+    the layer may be hidden, keeps its own effects and animation, is not moved or turned by the node's own rotation and scale, and a
+    loop (the layer names the node back) is cut. A layer that is gone, or none, makes the effect do nothing. In the editor,
+    **+ Effect** lists these with a "layer" submenu of the other nodes; the track row reads "Set Matte · Layer: <name>".
   - **carrier**: no pixels, only values for expressions (EffectCraft's Expression Controls, Grow Bounds).
 - `pnpm fx-render [zoom] [ms]` (web/) draws a node per effect through the real pipeline (clip -> pose -> `CanvasKitRenderer` on WebGL in
   headless Chromium) into `web/fx-out/`: the offscreen kernels, layers, time effects and lookup-table read-back, at any zoom.
@@ -267,10 +275,8 @@ clamps them to the parameter's range.
   Order: kernels first (innermost), then the node's own effects and the animated image filters, then overlays.
 - Editor: **+ Effect** in the transport adds an effect (its first parameter as a track); **+ Property** then lists the other
   parameters of the effects the node already has.
-- Not drawn (46 of 307, still listed in the catalog so nothing is silently missing), and why:
+- Not drawn (35 of 307, still listed in the catalog so nothing is silently missing), and why:
   - **audio** (13 effects plus Audio Spectrum and Audio Waveform): there is no audio engine in the editor;
-  - **a second layer**: Blend, CC Composite, Calculations, Compound Arithmetic, Set Channels, Set Matte, Difference Matte,
-    Match Grain (an effect parameter is a number, it cannot point at another layer);
   - **drawn masks or brush paths**: Liquify, Puppet, Reshape, Mesh Warp, Write-on, CC Glue Gun, Object Matte, Roto Brush, Mocha
     shape, Paint, Inner/Outer Key;
   - **tracking and camera data**: 3D Camera Tracker, Warp Stabilizer, Face Track Points, Face Measurements, CC Environment,

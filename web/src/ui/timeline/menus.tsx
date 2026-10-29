@@ -1,10 +1,10 @@
-import { Button as RacButton, Header, Menu, MenuItem, MenuSection, MenuTrigger, Popover, Separator } from "react-aria-components";
+import { Button as RacButton, Header, Menu, MenuItem, MenuSection, MenuTrigger, Popover, Separator, SubmenuTrigger } from "react-aria-components";
 import { Icon } from "@/ui/ds";
 import { AnimIcon } from "@/ui/ds/anim-parts";
 import { useScene } from "@/store/store";
 import { useTimeline, addPropertyTracks, applyPreset } from "@/animation/timelineStore";
 import { findTrack, fxPropsFor, isInside, propLabel, propsFor } from "@/animation/timelineLogic";
-import { parseFxProp } from "@/animation/fx/props";
+import { fxLayerProp, parseFxProp } from "@/animation/fx/props";
 import { FX_CATALOG } from "@/animation/fx/catalog";
 import { fxDef, hasFx } from "@/animation/fx/library";
 import { PRESETS } from "@/animation/presets";
@@ -117,6 +117,10 @@ export function AddEffectMenu() {
   const scene = useScene((s) => s.scene);
   const selection = useScene((s) => s.selection);
   const node = scene && selection.length > 0 ? scene.nodes.get(selection[0]) : undefined;
+  // the layers an effect can use as its second layer: every other node, in document order, named
+  const layers = scene && node
+    ? [...scene.nodes.values()].filter((n) => n.id !== node.id && n.kind !== "unknown").map((n) => ({ id: n.id, name: n.name.trim() !== "" ? n.name : n.kind })).sort((a, b) => a.name.localeCompare(b.name)).slice(0, 80)
+    : [];
 
   return (
     <MenuTrigger>
@@ -129,8 +133,12 @@ export function AddEffectMenu() {
           aria-label="Effect to add"
           className="max-h-[360px] overflow-y-auto outline-none"
           onAction={(k) => {
-            const def = fxDef(String(k));
-            if (scene && def) addPropertyTracks(scene, selection, `fx.${def.id}.${def.params[0].id}`);
+            // "layer:<effect>:<node>" is a layer picked for an effect that uses a second layer, otherwise "<effect>"
+            const [kind, effectId, layerId] = String(k).startsWith("layer:") ? String(k).split(":") : ["fx", String(k), ""];
+            const def = fxDef(kind === "layer" ? effectId : String(k));
+            if (!scene || !def) return;
+            const first = `fx.${def.id}.${def.params[0].id}`;
+            addPropertyTracks(scene, selection, kind === "layer" ? [fxLayerProp(def.id, layerId), first] : first);
           }}
         >
           {CATEGORIES.map((cat) => {
@@ -140,9 +148,26 @@ export function AddEffectMenu() {
             return (
               <MenuSection key={cat}>
                 <Header className="px-2 pb-0.5 pt-1.5 text-[11px] font-semibold uppercase tracking-[0.06em] text-fg-subtle">{cat}</Header>
-                {ready.map((e) => (
-                  <MenuItem key={e.id} id={e.id} textValue={e.name} className={ITEM}>{e.name}</MenuItem>
-                ))}
+                {ready.map((e) =>
+                  fxDef(e.id)?.needsLayer ? (
+                    <SubmenuTrigger key={e.id}>
+                      <MenuItem id={e.id} textValue={e.name} className={ITEM}>
+                        {e.name}
+                        <span className="ml-auto text-[11px] text-fg-subtle">layer ›</span>
+                      </MenuItem>
+                      <Popover className={POPOVER} offset={4}>
+                        <Menu aria-label={`Layer for ${e.name}`} className="max-h-[300px] overflow-y-auto outline-none">
+                          {layers.length === 0 && <MenuItem id="none" isDisabled textValue="No other layers" className={ITEM}>No other layers</MenuItem>}
+                          {layers.map((l) => (
+                            <MenuItem key={l.id} id={`layer:${e.id}:${l.id}`} textValue={l.name} className={ITEM}>{l.name}</MenuItem>
+                          ))}
+                        </Menu>
+                      </Popover>
+                    </SubmenuTrigger>
+                  ) : (
+                    <MenuItem key={e.id} id={e.id} textValue={e.name} className={ITEM}>{e.name}</MenuItem>
+                  ),
+                )}
               </MenuSection>
             );
           })}

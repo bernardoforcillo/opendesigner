@@ -38,7 +38,7 @@ export function buildFx(CK: CanvasKit, animFx: AnimFx | undefined, track: (o: { 
     const values = resolveFx(def, given);
     if (def.filter) filter = def.filter(CK, values, filter, track);
     if (def.overlay) overlays.push({ overlay: def.overlay(values), values });
-    if (def.kernel) kernels.push(def.kernel(values));
+    if (def.kernel) kernels.push({ ...def.kernel(values), effect: id });
   }
   return filter || overlays.length > 0 || kernels.length > 0 ? { filter, overlays, kernels } : null;
 }

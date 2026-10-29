@@ -12,7 +12,22 @@ export function parseFxProp(prop: string): { effect: string; param: string } | n
   return m ? { effect: m[1], param: m[2] } : null;
 }
 
-export const isFxProp = (prop: string): boolean => FX_RE.test(prop);
+export const isFxProp = (prop: string): boolean => FX_RE.test(prop) || FX_LAYER_RE.test(prop);
+
+// LAYER REFERENCES. An effect that uses a second layer (Set Matte, Blend, Difference Matte...) names it in a track of its own:
+// `fx.<effectId>.layer.<nodeId>`, with a single constant keyframe (value 1, it is never read). The reference is in the prop
+// because an effect parameter is only a number and the document has no other place for it without a model change. A reference
+// to a node that no longer exists simply makes the effect see an empty layer. Checked identically in Go.
+const FX_LAYER_RE = /^fx\.(ec\.[a-z0-9]+\.[a-z0-9]+)\.layer\.([A-Za-z0-9_-]+)$/;
+
+export const fxLayerProp = (effect: string, layerId: string): string => `fx.${effect}.layer.${layerId}`;
+
+export function parseFxLayerProp(prop: string): { effect: string; layerId: string } | null {
+  const m = FX_LAYER_RE.exec(prop);
+  return m ? { effect: m[1], layerId: m[2] } : null;
+}
 
 /** Sampled effect values of one node: effectId -> paramId -> value. */
 export type NodeFx = Record<string, Record<string, number>>;
+/** Sampled layer references of one node: effectId -> referenced node id. */
+export type NodeFxRefs = Record<string, string>;

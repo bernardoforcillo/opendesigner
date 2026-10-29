@@ -11,6 +11,7 @@ import { MORE3_FX } from "@/animation/fx/kernelsMore3";
 import { MORE2_FX } from "@/animation/fx/kernelsMore2";
 import { LAST_FX } from "@/animation/fx/kernelsLast";
 import { SIM_FX } from "@/animation/fx/kernelsSim";
+import { LAYER_FX } from "@/animation/fx/kernelsLayer";
 import { GEN_FX } from "@/animation/fx/kernelsGen";
 
-export const KERNEL_FX: readonly FxDef[] = [...DISTORT_FX, ...BLUR_FX, ...COLOR_FX, ...GEN_FX, ...TIME_FX, ...MORE_FX, ...MORE2_FX, ...MORE3_FX, ...LAST_FX, ...SIM_FX];
+export const KERNEL_FX: readonly FxDef[] = [...DISTORT_FX, ...BLUR_FX, ...COLOR_FX, ...GEN_FX, ...TIME_FX, ...MORE_FX, ...MORE2_FX, ...MORE3_FX, ...LAST_FX, ...SIM_FX, ...LAYER_FX];
