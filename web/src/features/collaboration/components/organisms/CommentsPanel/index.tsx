@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { useT } from "@/i18n";
 import { formatDate } from "@/i18n/format";
 import { useScene } from "@/store/store";
 import { useCommentsUi } from "@/store/commentsUi";
@@ -29,6 +30,7 @@ function when(sec: number): string {
 function Composer({
   placeholder, label, onSend, autoFocus,
 }: { placeholder: string; label: string; onSend: (text: string) => void; autoFocus?: boolean }) {
+  const { t: tr } = useT();
   const [text, setText] = useState("");
   const send = () => {
     const t = text.trim();
@@ -56,17 +58,18 @@ function Composer({
         onClick={send}
         className="h-7 self-end rounded-md bg-accent px-3 text-[12px] font-medium text-accent-fg outline-none disabled:opacity-40 focus-visible:shadow-[var(--ring)]"
       >
-        Send
+        {tr("Send")}
       </button>
     </div>
   );
 }
 
 function Message({ c }: { c: CommentLite }) {
+  const { t } = useT();
   return (
     <div className="flex flex-col gap-0.5">
       <div className="flex items-baseline gap-2">
-        <span className="text-[12px] font-semibold text-fg">{c.author || "Someone"}</span>
+        <span className="text-[12px] font-semibold text-fg">{c.author || t("Someone")}</span>
         <span className="text-[11px] text-fg-subtle">{when(c.createdAt)}</span>
       </div>
       <p className="whitespace-pre-wrap break-words text-[12px] text-fg-muted">{c.text}</p>
@@ -74,13 +77,14 @@ function Message({ c }: { c: CommentLite }) {
   );
 }
 
-function targetName(scene: SceneState, root: CommentLite, orphan: boolean): string {
-  if (orphan) return "deleted element";
+function targetName(scene: SceneState, root: CommentLite, orphan: boolean, t: ReturnType<typeof useT>["t"]): string {
+  if (orphan) return t("deleted element");
   if (root.nodeId !== "") return screenName(scene, root.nodeId);
-  return "page";
+  return t("page");
 }
 
 export function CommentsPanel() {
+  const { t, tn } = useT();
   const scene = useScene((s) => s.scene);
   const pageId = useScene((s) => s.currentPageId);
   const draft = useCommentsUi((c) => c.draft);
@@ -109,20 +113,20 @@ export function CommentsPanel() {
   return (
     <div className="flex h-full min-h-0 flex-col">
       <div className="flex shrink-0 items-center justify-between border-b border-line px-3 py-2 text-[11px] text-fg-subtle">
-        <span>{threads.length === 1 ? "1 thread" : `${threads.length} threads`}</span>
+        <span>{tn("{n} threads", threads.length)}</span>
         <label className="flex cursor-pointer items-center gap-1.5">
           <input type="checkbox" checked={showResolved} onChange={(e) => useCommentsUi.getState().setShowResolved(e.target.checked)} />
-          Show resolved
+          {t("Show resolved")}
         </label>
       </div>
       <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto p-2">
         {draft && (
           <div className="rounded-lg border border-accent p-2">
-            <Composer label="New comment" placeholder="Add a comment… (Ctrl+Enter to send)" autoFocus onSend={create} />
+            <Composer label={t("New comment")} placeholder={t("Add a comment… (Ctrl+Enter to send)")} autoFocus onSend={create} />
           </div>
         )}
         {visible.length === 0 && !draft && (
-          <EmptyState icon="comment" title="No comments" hint="Pick the comment tool (C) and click on the canvas to start a thread." />
+          <EmptyState icon="comment" title={t("No comments")} hint={t("Pick the comment tool (C) and click on the canvas to start a thread.")} />
         )}
         {visible.map(({ root, replies, orphan }) => {
           const open = root.id === activeId;
@@ -138,9 +142,7 @@ export function CommentsPanel() {
                 onClick={() => useCommentsUi.getState().setActive(open ? null : root.id)}
               >
                 <span className="text-[11px] text-fg-subtle">
-                  {targetName(scene, root, orphan)}
-                  {root.resolved && " · resolved"}
-                  {replies.length > 0 && ` · ${replies.length === 1 ? "1 reply" : `${replies.length} replies`}`}
+                  {[targetName(scene, root, orphan, t), root.resolved ? t("resolved") : "", replies.length > 0 ? tn("{n} replies", replies.length) : ""].filter(Boolean).join(" · ")}
                 </span>
                 <Message c={root} />
               </button>
@@ -152,8 +154,8 @@ export function CommentsPanel() {
                     </div>
                   ))}
                   <Composer
-                    label={`Reply to ${root.author || "thread"}`}
-                    placeholder="Reply…"
+                    label={t("Reply to {name}", { name: root.author || t("thread") })}
+                    placeholder={t("Reply…")}
                     onSend={(text) =>
                       send(makeSetCommentOp({
                         id: uuid(), parentId: root.id, nodeId: "", pageId: "", x: 0, y: 0,
@@ -167,10 +169,10 @@ export function CommentsPanel() {
                       onClick={() => send(makeSetCommentOp({ ...root, resolved: !root.resolved }))}
                       className="rounded-md px-2 py-1 text-[12px] text-fg-muted outline-none hover:bg-surface-3 hover:text-fg focus-visible:shadow-[var(--ring)]"
                     >
-                      {root.resolved ? "Reopen" : "Resolve"}
+                      {root.resolved ? t("Reopen") : t("Resolve")}
                     </button>
                     <IconButton
-                      icon="trash" label="Delete thread" size={24}
+                      icon="trash" label={t("Delete thread")} size={24}
                       onPress={() => { send(makeDeleteCommentOp(root.id)); useCommentsUi.getState().setActive(null); }}
                     />
                   </div>
@@ -179,7 +181,7 @@ export function CommentsPanel() {
             </div>
           );
         })}
-        {hiddenCount > 0 && <p className="px-1 text-[11px] text-fg-subtle">{hiddenCount} resolved hidden</p>}
+        {hiddenCount > 0 && <p className="px-1 text-[11px] text-fg-subtle">{tn("{n} resolved hidden", hiddenCount)}</p>}
       </div>
     </div>
   );
