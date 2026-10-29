@@ -3,6 +3,7 @@
 // CanvasKit objects, handing each one to `track` so the caller frees them with the frame.
 
 import type { CanvasKit, ImageFilter } from "canvaskit-wasm";
+import { ensureFxData } from "@/animation/fx/files";
 import { fxDef, resolveFx, resolveStrings, type FxKernel, type FxOverlay, type FxTextSpec } from "@/animation/fx/library";
 
 type AnimFx = Readonly<Record<string, Readonly<Record<string, number>>>>;
@@ -32,6 +33,7 @@ export interface BuiltFx {
 export function buildFx(
   CK: CanvasKit, animFx: AnimFx | undefined, track: (o: { delete(): void }) => void,
   animText?: Readonly<Record<string, Readonly<Record<string, string>>>>,
+  docId = "",
 ): BuiltFx | null {
   if (!animFx) return null;
   let filter: ImageFilter | null = null;
@@ -44,8 +46,10 @@ export function buildFx(
     const values = resolveFx(def, given);
     if (def.filter) filter = def.filter(CK, values, filter, track);
     if (def.overlay) overlays.push({ overlay: def.overlay(values), values, effect: id });
-    if (def.kernel) kernels.push({ ...def.kernel(values), effect: id });
-    if (def.text) texts.push({ spec: def.text(values, resolveStrings(def, animText?.[id])), effect: id });
+    const strings = resolveStrings(def, animText?.[id]);
+    for (const sp of def.strings ?? []) if (sp.file && strings[sp.id]) ensureFxData(docId, strings[sp.id]);
+    if (def.kernel) kernels.push({ ...def.kernel(values, strings), effect: id });
+    if (def.text) texts.push({ spec: def.text(values, strings), effect: id });
   }
   return filter || overlays.length > 0 || kernels.length > 0 || texts.length > 0 ? { filter, overlays, kernels, texts } : null;
 }

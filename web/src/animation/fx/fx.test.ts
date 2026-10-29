@@ -107,12 +107,12 @@ describe("drawing every effect with CanvasKit", () => {
     CK = await init({ locateFile: () => dir });
   }, 60_000);
 
-  const draw = (animFx: Record<string, Record<string, number>>, flat = true) => {
+  const draw = (animFx: Record<string, Record<string, number>>, flat = true, text?: Record<string, Record<string, string>>) => {
     const surface = CK.MakeSurface(64, 64)!;
     const sk = surface.getCanvas();
     sk.clear(CK.TRANSPARENT);
     const garbage: { delete(): void }[] = [];
-    const fx = buildFx(CK, animFx, (o) => garbage.push(o));
+    const fx = buildFx(CK, animFx, (o) => garbage.push(o), text);
     const paint = new CK.Paint();
     if (fx?.filter) paint.setImageFilter(fx.filter);
     sk.saveLayer(paint, CK.XYWHRect(0, 0, 64, 64));
@@ -128,6 +128,7 @@ describe("drawing every effect with CanvasKit", () => {
     };
     let current: ((c: import("canvaskit-wasm").Canvas) => void) | null = null;
     for (const k of fx?.kernels ?? []) {
+      if (k.skip) continue;
       const eff = CK.RuntimeEffect.Make(k.sksl, (err) => { throw new Error(err); });
       expect(eff).not.toBeNull();
       const off = CK.MakeSurface(64, 64)!;
@@ -141,6 +142,12 @@ describe("drawing every effect with CanvasKit", () => {
         const lut = makeLutShader(CK, k.lut(readHistogram(CK, img)!))!;
         children.push(lut.shader);
         garbage.push(lut.image, lut.shader);
+      }
+      if (k.image) {
+        const li = CK.MakeImage({ width: k.image.width, height: k.image.height, colorType: CK.ColorType.RGBA_8888, alphaType: CK.AlphaType.Opaque, colorSpace: CK.ColorSpace.SRGB }, k.image.bytes, k.image.width * 4)!;
+        const ls = li.makeShaderOptions(CK.TileMode.Clamp, CK.TileMode.Clamp, CK.FilterMode.Nearest, CK.MipmapMode.None);
+        children.push(ls);
+        garbage.push(li, ls);
       }
       // a second image for the kernels that take one: a grey square covering the left half of the node
       if (k.other) {
@@ -469,5 +476,139 @@ describe("string parameters", () => {
     expect(Math.hypot(arc[40].x, arc[40].y)).toBeCloseTo(0.4, 5);
     // an arc of 180 degrees from the top ends at the bottom
     expect(arc[arc.length - 1].y).toBeCloseTo(0.4, 2);
+  });
+});
+
+
+// The effects that read a file (fx/files.ts, fx/kernelsFiles.ts): parsers, then the real shaders over a node of known colour.
+import { parseCube, parse3dl, parseCdl, parseCurves, parseFxFile, registerFxData, packImage, invert1d, type FxData } from "@/animation/fx/files";
+
+describe("colour lookup files", () => {
+  const cube = (n: number, f: (r: number, g: number, b: number) => [number, number, number], extra = "") => {
+    const rows: string[] = [];
+    for (let b = 0; b < n; b++) for (let g = 0; g < n; g++) for (let r = 0; r < n; r++) rows.push(f(r / (n - 1), g / (n - 1), b / (n - 1)).join(" "));
+    return `TITLE "t"\n# c\nLUT_3D_SIZE ${n}\n${extra}${rows.join("\n")}\n`;
+  };
+
+  it("reads .cube cubes (red fastest) and 1D tables, and refuses malformed ones", () => {
+    const d = parseCube(cube(3, (r, g, b) => [b, g, r]))!;
+    expect(d.kind).toBe("lut3d");
+    expect(d.size).toBe(3);
+    // entry for r = 1, g = 0, b = 0 is the 2nd triple: (b, g, r) = (0, 0, 0.5)
+    expect(Array.from(d.table.slice(3, 6))).toEqual([0, 0, 0.5]);
+    const one = parseCube("LUT_1D_SIZE 2\nDOMAIN_MIN 0 0 0\n0 0 0\n1 1 1\n");
+    expect(one?.kind).toBe("lut1d"); // DOMAIN_MIN carries three numbers; the first is taken
+    expect(parseCube("LUT_1D_SIZE 3\n0 0 0\n0.5 0.5 0.5\n1 1 1\n")?.kind).toBe("lut1d");
+    expect(parseCube("LUT_3D_SIZE 2\n0 0 0\n")).toBeNull();
+    expect(parseCube("LUT_3D_SIZE 2\n0 0 0\n0 0 0\n0 0 0\n0 0 0\n0 0 0\n0 0 0\n0 0 0\nx y z\n")).toBeNull();
+    expect(parseCube("hello")).toBeNull();
+  });
+  it("reads .3dl (blue fastest, integer codes), ASC CDL xml and Photoshop curves", () => {
+    const rows: string[] = [];
+    for (let r = 0; r < 2; r++) for (let g = 0; g < 2; g++) for (let b = 0; b < 2; b++) rows.push(`${r * 1023} ${g * 1023} ${b * 1023}`);
+    const d3 = parse3dl(`0 1023\n${rows.join("\n")}\n`)!;
+    expect(d3.size).toBe(2);
+    expect(Array.from(d3.table.slice(3, 6))).toEqual([1, 0, 0]); // second entry (r = 1) in the red-fastest cube
+    const cdl = parseCdl("<ColorCorrection><SOPNode><Slope>2 1 1</Slope><Offset>0 0 0</Offset><Power>1 1 1</Power></SOPNode><SatNode><Saturation>0.5</Saturation></SatNode></ColorCorrection>")!;
+    expect(cdl.kind === "lut1d" && cdl.sat).toBe(0.5);
+    expect(cdl.kind === "lut1d" && cdl.table[(512 * 3)]).toBeCloseTo(1, 5); // red slope 2 at 0.5 -> 1
+    const acv = new Uint8Array([0, 4, 0, 1, 0, 2, 0, 0, 0, 0, 0, 255, 0, 128]); // one curve: (in 0 -> out 0), (in 128 -> out 255)
+    const c = parseCurves(acv)!;
+    expect(c.kind === "lut1d" && c.table[(128) * 3]).toBeGreaterThan(0.95);
+    expect(parseCurves(new Uint8Array([1, 2, 3]))).toBeNull();
+    expect(parseFxFile(new TextEncoder().encode("LUT_3D_SIZE 2"))).toBeNull(); // not wrapped: not ours
+  });
+  it("inverts a 1D table and packs cubes as size² x size", () => {
+    const d = parseCube("LUT_1D_SIZE 3\n0 0 0\n0.25 0.25 0.25\n1 1 1\n")! as Extract<FxData, { kind: "lut1d" }>;
+    const inv = invert1d(d);
+    expect(inv.table[3]).toBeCloseTo(2 / 3, 3); // the output 0.5 lies a third of the way from 0.25 (step 1) to 1 (step 2): (1 + 1/3) / 2
+    const img = packImage(parseCube(cube(4, (r, g, b) => [r, g, b]))!, false);
+    expect([img.width, img.height, img.bytes.length]).toEqual([16, 4, 16 * 4 * 4]);
+  });
+
+  describe("drawn", () => {
+    let CK2: CanvasKit;
+    beforeAll(async () => {
+      const require = createRequire(import.meta.url);
+      const init = require("canvaskit-wasm/bin/full/canvaskit.js") as (o: { locateFile: (f: string) => string }) => Promise<CanvasKit>;
+      CK2 = await init({ locateFile: () => require.resolve("canvaskit-wasm/bin/full/canvaskit.wasm") });
+    }, 60_000);
+
+    // the node is a flat (0.8, 0.3, 0.2) square; read its centre after the effect
+    const run = (effect: string, values: Record<string, number>, data: FxData | null, hash: string) => {
+      if (data) registerFxData(hash, data);
+      const surface = CK2.MakeSurface(64, 64)!;
+      const garbage: { delete(): void }[] = [];
+      const fx = buildFx(CK2, { [effect]: values }, (o) => garbage.push(o), { [effect]: { file: hash } })!;
+      let px: Uint8Array | null = null;
+      for (const k of fx.kernels) {
+        if (k.skip) { px = null; break; }
+        const eff = CK2.RuntimeEffect.Make(k.sksl, (e) => { throw new Error(e); })!;
+        const off = CK2.MakeSurface(64, 64)!;
+        const oc = off.getCanvas();
+        const bp = new CK2.Paint();
+        bp.setColor(CK2.Color4f(0.8, 0.3, 0.2, 1));
+        oc.drawRect(CK2.XYWHRect(16, 16, 32, 32), bp);
+        bp.delete();
+        const img = off.makeImageSnapshot();
+        const src = img.makeShaderOptions(CK2.TileMode.Decal, CK2.TileMode.Decal, CK2.FilterMode.Linear, CK2.MipmapMode.None);
+        const children = [src];
+        if (k.image) {
+          const li = CK2.MakeImage({ width: k.image.width, height: k.image.height, colorType: CK2.ColorType.RGBA_8888, alphaType: CK2.AlphaType.Opaque, colorSpace: CK2.ColorSpace.SRGB }, k.image.bytes, k.image.width * 4)!;
+          const ls = li.makeShaderOptions(CK2.TileMode.Clamp, CK2.TileMode.Clamp, CK2.FilterMode.Nearest, CK2.MipmapMode.None);
+          children.push(ls);
+          garbage.push(li, ls);
+        }
+        const sh = eff.makeShaderWithChildren([16, 16, 32, 32, ...k.uniforms], children);
+        const sk = surface.getCanvas();
+        const p = new CK2.Paint();
+        p.setShader(sh);
+        sk.drawRect(CK2.XYWHRect(0, 0, 64, 64), p);
+        p.delete();
+        garbage.push(off, img, src, sh, eff);
+        px = sk.readPixels(32, 32, { width: 1, height: 1, colorType: CK2.ColorType.RGBA_8888, alphaType: CK2.AlphaType.Unpremul, colorSpace: CK2.ColorSpace.SRGB }) as Uint8Array;
+      }
+      garbage.forEach((g) => g.delete());
+      surface.delete();
+      return px ? Array.from(px.slice(0, 3)) : null;
+    };
+    const near = (a: number[] | null, b: number[], tol = 4) => { expect(a).not.toBeNull(); a!.forEach((v, i) => expect(Math.abs(v - b[i])).toBeLessThanOrEqual(tol)); };
+    const H = (c: string) => c.repeat(64);
+
+    it("without its file the effect leaves the node alone", () => {
+      expect(run("ec.utility.applylut", {}, null, H("1"))).toBeNull();
+    });
+    it("a cube that swaps red and blue does so, in every interpolation", () => {
+      const d = parseCube(cube(17, (r, g, b) => [b, g, r]))!;
+      for (const interp of [0, 1, 2]) near(run("ec.utility.applylut", { amount: 100 }, d, H("2")), [51, 77, 204], 1 + 0 * interp);
+      for (const interp of [0, 2]) near(run("ec.color.ociofile", { interpolation: interp, direction: 0, amount: 100, linear: 0 }, d, H("2")), [51, 77, 204], 1);
+      near(run("ec.color.ociofile", { interpolation: 1, direction: 0, amount: 100, linear: 0 }, d, H("2")), [51, 77, 204], 16);
+    });
+    it("amount blends with the original, and the inverse of the swap is the swap", () => {
+      const d = parseCube(cube(17, (r, g, b) => [b, g, r]))!;
+      near(run("ec.utility.applylut", { amount: 0 }, d, H("2")), [204, 77, 51], 1);
+      near(run("ec.utility.applylut", { amount: 50 }, d, H("2")), [128, 77, 128], 2);
+      near(run("ec.color.ociofile", { interpolation: 0, direction: 1, amount: 100, linear: 0 }, d, H("2")), [51, 77, 204], 4);
+    });
+    it("a 1D invert table inverts; the inverse direction undoes a gamma table", () => {
+      const inv = parseCube("LUT_1D_SIZE 2\n1 1 1\n0 0 0\n")!;
+      near(run("ec.color.ociofile", { interpolation: 0, direction: 0, amount: 100, linear: 0 }, inv, H("3")), [51, 178, 204], 1);
+      const n = 64;
+      const gamma = parseCube(`LUT_1D_SIZE ${n}\n${Array.from({ length: n }, (_, i) => { const v = (i / (n - 1)) ** 2; return `${v} ${v} ${v}`; }).join("\n")}\n`)!;
+      near(run("ec.color.ociofile", { interpolation: 0, direction: 1, amount: 100, linear: 0 }, gamma, H("4")), [Math.round(Math.sqrt(0.8) * 255), Math.round(Math.sqrt(0.3) * 255), Math.round(Math.sqrt(0.2) * 255)], 4);
+    });
+    it("a CDL look changes the colour and the look's saturation can be turned down", () => {
+      const cdl = parseCdl("<Slope>0.5 0.5 0.5</Slope>")!;
+      near(run("ec.color.ociolook", { direction: 0, interpolation: 0, amount: 100, linear: 0, saturation: 100, keepLuma: 0 }, cdl, H("5")), [102, 38, 26], 2);
+      const grey = run("ec.color.ociolook", { direction: 0, interpolation: 0, amount: 100, linear: 0, saturation: 0, keepLuma: 0 }, cdl, H("5"))!;
+      expect(Math.max(...grey) - Math.min(...grey)).toBeLessThanOrEqual(2);
+    });
+    it("a curves file maps the channels: a curve that raises everything brightens, and the map can keep luminance", () => {
+      const acv = new Uint8Array([0, 4, 0, 1, 0, 2, 0, 0, 0, 0, 0, 255, 0, 255]); // (0 -> 0), (255 -> 255): identity
+      near(run("ec.color.psarbitrarymap", { amount: 100, keepLuma: 0 }, parseCurves(acv)!, H("6")), [204, 77, 51], 2);
+      const up = new Uint8Array([0, 4, 0, 1, 0, 3, 0, 0, 0, 0, 0, 200, 0, 128, 0, 255, 0, 255]); // 128 -> 200
+      const lit = run("ec.color.psarbitrarymap", { amount: 100, keepLuma: 0 }, parseCurves(up)!, H("7"))!;
+      expect(lit[1]).toBeGreaterThan(77 + 30);
+    });
   });
 });

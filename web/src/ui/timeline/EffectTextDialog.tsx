@@ -8,6 +8,8 @@ import { fxLayerProp, fxStringProp } from "@/animation/fx/props";
 import { fxDef, resolveStrings } from "@/animation/fx/library";
 import { FX_CATALOG } from "@/animation/fx/catalog";
 import { setStringParam, stringParamOf } from "@/animation/timelineLogic";
+import { parseFxFile, registerFxData, wrapFxFile } from "@/animation/fx/files";
+import { uploadAsset } from "@/rpc/assets";
 
 // THE TEXT OF AN EFFECT (Basic Text, Path Text): a string parameter cannot be a keyframe value, so it is typed here. Adding the
 // effect opens it; the pencil on the effect's text track in the timeline opens it again to change the text. See animation/fx/props.ts.
@@ -27,7 +29,29 @@ function Form({ target }: { target: Target }) {
     if (clip && target.nodeId) for (const s of strings) { const v = stringParamOf(clip, target.nodeId, target.effectId, s.id); if (v !== undefined) given[s.id] = v; }
     return resolveStrings(def!, given);
   });
+  const [note, setNote] = useState("");
+  const [busy, setBusy] = useState(false);
   const close = useEffectText((s) => s.close);
+  const pickFile = async (id: string, file: File | undefined) => {
+    const docId = useScene.getState().scene?.id;
+    if (!file || !docId) return;
+    setBusy(true);
+    setNote(`Reading ${file.name}…`);
+    try {
+      const wrapped = wrapFxFile(new Uint8Array(await file.arrayBuffer()));
+      const data = parseFxFile(wrapped);
+      if (!data) { setNote("The editor cannot read this file (.cube, .3dl, .cdl, .cc, .ccc, .acv or .amp)."); return; }
+      const ref = await uploadAsset(docId, new Blob([wrapped as BlobPart]));
+      registerFxData(ref.hash, data);
+      setValues((v) => ({ ...v, [id]: ref.hash }));
+      setNote(file.name);
+    } catch (e) {
+      setNote(e instanceof Error ? e.message : "Could not upload the file.");
+    } finally {
+      setBusy(false);
+    }
+  };
+  const missingFile = strings.some((s) => s.file && (values[s.id] ?? "") === "");
   const name = FX_CATALOG.find((e) => e.id === target.effectId)?.name ?? target.effectId;
 
   const apply = () => {
@@ -51,7 +75,13 @@ function Form({ target }: { target: Target }) {
   return (
     <Dialog aria-label={`${name} text`} className="flex flex-col gap-3 outline-none">
       <h2 className="text-[14px] font-semibold">{name}</h2>
-      {strings.map((s) => (
+      {strings.map((s) => s.file ? (
+        <label key={s.id} className="flex flex-col gap-1">
+          {s.label}
+          <input type="file" aria-label={s.label} accept={s.file} disabled={busy} className="text-[12px]" onChange={(e) => void pickFile(s.id, e.target.files?.[0])} />
+          <span role="status" className="text-[11px] text-fg-subtle">{note !== "" ? note : (values[s.id] ?? "") !== "" ? "A file is attached." : "No file yet: the node is drawn without the effect."}</span>
+        </label>
+      ) : (
         <label key={s.id} className="flex flex-col gap-1">
           {s.label}
           {s.multiline ? (
@@ -63,7 +93,7 @@ function Form({ target }: { target: Target }) {
       ))}
       <div className="flex justify-end gap-2">
         <Button onPress={close}>Cancel</Button>
-        <Button variant="primary" onPress={apply}>{target.mode === "add" ? "Add" : "Apply"}</Button>
+        <Button variant="primary" isDisabled={busy || (target.mode === "add" && missingFile)} onPress={apply}>{target.mode === "add" ? "Add" : "Apply"}</Button>
       </div>
     </Dialog>
   );

@@ -109,6 +109,10 @@ var imageTypes = []struct {
 		mask:        []byte("\x00\x00\x00\x00\xff\xff\xff\xff\xff\xff\xff\xff"),
 		contentType: "audio/mp4",
 	},
+	// Data files of the effects (colour lookup tables, curve maps: animation/fx/files.ts). A LUT is plain text with no signature of
+	// its own, so the editor wraps the file in this container ("ODFX" and a newline, then the bytes) and the server accepts only
+	// that: the allowlist stays closed, and what is served is opaque data (nosniff), never a document.
+	{prefix: []byte("ODFX\n"), contentType: "application/x-opendesigner-fx"},
 }
 
 // DetectImageType returns the Content-Type of an asset's initial bytes, or ""

@@ -370,3 +370,15 @@ func TestAudioFilesAreAcceptedWithTheirOwnContentType(t *testing.T) {
 		}
 	}
 }
+
+func TestEffectDataFilesNeedTheirContainer(t *testing.T) {
+	if got := DetectImageType([]byte("ODFX\nTITLE \"x\"\nLUT_3D_SIZE 2\n")); got != "application/x-opendesigner-fx" {
+		t.Errorf("wrapped LUT: got %q", got)
+	}
+	// plain text is still refused: only the wrapper opens the door
+	for _, head := range []string{"TITLE \"x\"\nLUT_3D_SIZE 2\n", "<html><script>", "ODFX no newline"} {
+		if got := DetectImageType([]byte(head)); got != "" {
+			t.Errorf("%q must not be accepted, got %q", head, got)
+		}
+	}
+}

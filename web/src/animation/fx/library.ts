@@ -77,12 +77,20 @@ export interface FxKernel {
   other?: "layer" | "original";
   /** With `other: "layer"`: also a second layer, `uniform shader other2` (the node's `fx.<effect>.layer2.<id>` track). */
   other2?: true;
+  /** A data image for the shader (`uniform shader img`, after `src` and `lut`): a colour lookup table from a file (fx/files.ts). */
+  image?: { width: number; height: number; bytes: Uint8Array };
+  /** The effect needs a file that is not here (yet): the node is drawn without it. */
+  skip?: true;
   /** Set by buildFx: the effect this kernel belongs to (to find its layer reference). */
   effect?: string;
 }
 
 /** A string parameter (animation/fx/props.ts stores its text in a track's name): not animated, edited in a dialog. */
-export interface FxStringParam { id: string; label: string; default: string; multiline?: boolean }
+export interface FxStringParam {
+  id: string; label: string; default: string; multiline?: boolean;
+  /** The string is the hash of an uploaded data file (fx/files.ts), chosen with a file picker that accepts these extensions. */
+  file?: string;
+}
 
 /**
  * Text an effect has drawn over the node with the editor's own fonts (renderer/ck draws it as a text node, so wrapping, kerning,
@@ -132,7 +140,7 @@ export interface FxDef {
    * `uniform shader src` (sampled in the node's local coordinates), producing the node's new pixels. This is what
    * distortions, convolutions, mosaics and keyers need. Several kernels chain, each reading the previous one.
    */
-  kernel?: (v: FxValues) => FxKernel;
+  kernel?: (v: FxValues, s: Readonly<Record<string, string>>) => FxKernel;
   /**
    * A TIME effect: draws the node as it is at other moments (echo, motion blur, posterize time...). `t` is the
    * current time in ms. Resolved by animation/pose.ts, which re-samples the clip; the renderer only combines them.

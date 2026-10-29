@@ -598,7 +598,7 @@ export class CanvasKitRenderer {
     const track = (o: { delete(): void }) => f.garbage.push(o as never);
     // Effect tracks (animation/fx): their image filters wrap the node's own, their shaders are
     // drawn over the node inside its layer (endEffects).
-    const fx = buildFx(this.CK, n.animFx, track, n.animFxText);
+    const fx = buildFx(this.CK, n.animFx, track, n.animFxText, f.scene.id);
     let filter = this.effectsFilter(n.effects);
     if (fx?.filter) {
       // the classic effects first, then the animated ones on top of them
@@ -689,6 +689,7 @@ export class CanvasKitRenderer {
     };
     let originalShader: Shader | null | undefined;
     for (const k of top.fx.kernels) {
+      if (k.skip) continue;
       const effect = this.runtimeEffect(k.sksl);
       if (!effect) continue;
       const surface = CK.MakeRenderTarget(this.grCtx as GrDirectContext, w, h) ?? CK.MakeSurface(w, h);
@@ -712,6 +713,14 @@ export class CanvasKitRenderer {
         children.push(lut.shader);
         f.garbage.push(lut.image, lut.shader);
       }
+      // a kernel with a lookup table from a file: a data image, sampled with pixel coordinates
+      if (k.image) {
+        const lutImg = CK.MakeImage({ width: k.image.width, height: k.image.height, colorType: CK.ColorType.RGBA_8888, alphaType: CK.AlphaType.Opaque, colorSpace: CK.ColorSpace.SRGB }, k.image.bytes, k.image.width * 4);
+        if (!lutImg) { f.garbage.push(surface, img, src); continue; }
+        const lutShader = lutImg.makeShaderOptions(CK.TileMode.Clamp, CK.TileMode.Clamp, CK.FilterMode.Nearest, CK.MipmapMode.None);
+        children.push(lutShader);
+        f.garbage.push(lutImg, lutShader);
+      }
       // a kernel with a second image: the node as it was before the kernels, or the layer it names
       if (k.other === "original") {
         if (originalShader === undefined) originalShader = capture(drawBody);
@@ -724,7 +733,7 @@ export class CanvasKitRenderer {
         children.push(sh);
         if (sh2) children.push(sh2);
       }
-      if (k.other && children.length < (k.lut ? 3 : 2) + (k.other2 ? 1 : 0)) { f.garbage.push(surface, img, src); continue; }
+      if (k.other && children.length < (k.lut ? 3 : 2) + (k.image ? 1 : 0) + (k.other2 ? 1 : 0)) { f.garbage.push(surface, img, src); continue; }
       const shader = effect.makeShaderWithChildren([box.x, box.y, box.width, box.height, ...k.uniforms], children);
       f.garbage.push(surface, img, src, shader);
       paint = (target) => {

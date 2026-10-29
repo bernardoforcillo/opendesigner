@@ -75,7 +75,9 @@ export function propLabel(prop: string, layerName?: (id: string) => string | und
   const str = parseFxStringProp(prop);
   if (str) {
     const name = FX_CATALOG.find((e) => e.id === str.effect)?.name ?? str.effect;
-    const label = fxDef(str.effect)?.strings?.find((x) => x.id === str.param)?.label ?? str.param;
+    const sp = fxDef(str.effect)?.strings?.find((x) => x.id === str.param);
+    const label = sp?.label ?? str.param;
+    if (sp?.file) return `${name} · ${label}: ${str.text === "" ? "(none)" : `file ${str.text.slice(0, 8)}`}`;
     const shown = str.text.replace(/\s+/g, " ");
     return `${name} · ${label}: "${shown.length > 24 ? `${shown.slice(0, 23)}…` : shown}"`;
   }

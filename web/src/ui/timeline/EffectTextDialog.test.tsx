@@ -10,6 +10,7 @@ import { nodesWith } from "@/store/nodeMap";
 import { parseFxStringProp } from "@/animation/fx/props";
 import { stringParamOf } from "@/animation/timelineLogic";
 import type { SceneState } from "@/store/types";
+import { fxData } from "@/animation/fx/files";
 
 // Adding an effect with text asks for the text first; editing it later replaces the track. One undo step each.
 const BASIC = "ec.obsolete.basictext";
@@ -80,5 +81,31 @@ describe("EffectTextDialog", () => {
     const clip = sc().clips.k;
     expect(stringParamOf(clip, "n", BASIC, "text")).toBe("second");
     expect(clip.tracks.filter((t) => parseFxStringProp(t.prop)?.param === "text")).toHaveLength(1);
+  });
+
+  it("a file effect: Add waits for a readable file, uploads it wrapped, and stores its hash", async () => {
+    const HASH = "e".repeat(64);
+    const sent: Blob[] = [];
+    const real = globalThis.fetch;
+    globalThis.fetch = (async (_u: unknown, init?: RequestInit) => { sent.push(init?.body as Blob); return new Response(JSON.stringify({ hash: HASH, size: 1, contentType: "application/x-opendesigner-fx" }), { status: 200 }); }) as typeof fetch;
+    try {
+      render(<EffectTextDialog />);
+      act(() => useEffectText.getState().open({ effectId: "ec.utility.applylut", mode: "add" }));
+      const add = await screen.findByRole("button", { name: "Add" });
+      expect(add).toBeDisabled();
+      const input = screen.getByLabelText(/Color LUT file/);
+      await userEvent.upload(input, new File(["not a lut"], "bad.cube"));
+      expect(await screen.findByText(/cannot read this file/)).toBeInTheDocument();
+      expect(sent).toHaveLength(0);
+      const cube = "LUT_3D_SIZE 2\n" + Array.from({ length: 8 }, (_, i) => `${i & 1} ${(i >> 1) & 1} ${(i >> 2) & 1}`).join("\n") + "\n";
+      await userEvent.upload(input, new File([cube], "id.cube"));
+      await screen.findByText("id.cube");
+      expect(sent).toHaveLength(1);
+      expect(fxData(HASH)?.kind).toBe("lut3d");
+      await userEvent.click(screen.getByRole("button", { name: "Add" }));
+      expect(stringParamOf(sc().clips.k, "n", "ec.utility.applylut", "file")).toBe(HASH);
+    } finally {
+      globalThis.fetch = real;
+    }
   });
 });

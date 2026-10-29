@@ -48,7 +48,7 @@ float hdist(float a, float b) { float d = abs(a - b); return min(d, 1.0 - d); }
 float lum(float3 c) { return dot(c, float3(0.2126, 0.7152, 0.0722)); }
 half4 tint(float3 c, float a) { return half4(half3(c * a), half(a)); }
 `;
-const KHEAD = `uniform shader src;\n${COMMON}
+export const KHEAD = `uniform shader src;\n${COMMON}
 half4 S(float2 q) { return src.eval(q); }
 // A Vogel spiral of n taps in the unit disk: ring(i, n) is the i-th offset.
 float2 ring(float i, float n) { float r = sqrt((i + 0.5) / n); float a = i * 2.39996323; return r * float2(cos(a), sin(a)); }
