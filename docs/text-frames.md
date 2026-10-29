@@ -8,6 +8,7 @@ Select text frames; the **Text** section of the properties panel has the thread 
 
 - **Thread frames** (two or more text frames selected): the text flows from the first selected frame into the next, in **selection order**. Text already in the later frames is appended to the first frame's story, so nothing is lost (one undo gives it all back).
 - **Add next frame** (one frame selected): creates an empty frame of the same size beside it, linked, and selects it.
+- **Drag the port**: with a single frame selected that flows into nothing, drag from the filled square at its bottom-right corner and release over another text frame to link them (the same as *Thread frames*; releasing anywhere else does nothing).
 - **Unlink after this frame**: cuts the chain there; the text stays with the first part.
 - The panel says which frame of the chain is selected (`Frame 2 of 3`) and `text left over` when the last frame cannot hold everything.
 
@@ -70,4 +71,4 @@ A style's *OpenType features* (`liga off, onum, ss01 2`: tags of four characters
 
 ## Not yet
 
-Dragging from a frame's port to link, a story editor, rotation of threaded frames and a different style per frame. Wrap follows the bounding box (no contour or "both sides"); footnotes are numbered continuously and cannot restart per page or break across pages; the footnote area height is an estimate; tables have no cell styles of their own; the index has one level (no sub-entries or cross references). The MCP tools set the wrap, text-path and heading-level fields (`set_node_meta`, `set_text_style`), but tables, the contents/index generators and find/change are editor commands. Generated code (`opendesigner export`) outputs each frame's own content, so a chain exports as its first frame holding the whole story.
+A story editor, rotation of threaded frames and a different style per frame. Wrap follows the bounding box (no contour or "both sides"); footnotes are numbered continuously and cannot restart per page or break across pages; the footnote area height is an estimate; tables have no cell styles of their own; the index has one level (no sub-entries or cross references). The MCP tools set the wrap, text-path and heading-level fields (`set_node_meta`, `set_text_style`), but tables, the contents/index generators and find/change are editor commands. Generated code (`opendesigner export`) outputs each frame's own content, so a chain exports as its first frame holding the whole story.
