@@ -6,6 +6,7 @@ import { withMeta } from "@/flow/meta";
 import { makeCreateNodeOp, makeSetPropsOp, uuid } from "@/tools/ops";
 import { resolveScene } from "@/store/variables";
 import { Button } from "@/ui/ds";
+import { MAX_COLUMNS, columnsOf, gutterOf, setColumnsOps } from "@/store/columns";
 
 // THREADED TEXT FRAMES in the properties panel's Text section (see store/threads.ts).
 //
@@ -72,8 +73,26 @@ export function ThreadControls() {
   const n = nodes[0];
   const hasNext = nextOf(scene, n) !== null;
   const info = status(n);
+  const cols = columnsOf(n);
+  const columnRow = headOf(scene, n.id) === n.id && (
+    <div className="flex items-center gap-1.5" role="group" aria-label="Columns">
+      <label className="text-[11px] text-fg-subtle" htmlFor="text-columns">Columns</label>
+      <select id="text-columns" className="h-6 rounded border border-border bg-bg px-1 text-[11px]" value={cols}
+        onChange={(e) => run(setColumnsOps(n, Number(e.target.value)))}>
+        {Array.from({ length: MAX_COLUMNS }, (_, i) => i + 1).map((c) => <option key={c} value={c}>{c}</option>)}
+      </select>
+      {cols > 1 && (
+        <>
+          <label className="text-[11px] text-fg-subtle" htmlFor="text-gutter">Gutter</label>
+          <input id="text-gutter" type="number" min={0} className="h-6 w-14 rounded border border-border bg-bg px-1 text-[11px]" value={gutterOf(n)}
+            onChange={(e) => run(setColumnsOps(n, cols, Number(e.target.value) || 0))} />
+        </>
+      )}
+    </div>
+  );
   return (
     <div className="flex flex-col gap-1.5" role="group" aria-label="Text thread">
+      {columnRow}
       {info && <p className="text-[11px] text-fg-subtle">{info}{headOf(scene, n.id) !== n.id ? " · edit the text in the first frame" : ""}</p>}
       {!hasNext && <Button onPress={() => addNext(n)} className="h-7 w-full">Add next frame</Button>}
       {hasNext && <Button onPress={() => run(unlinkOps(scene, n.id))} className="h-7 w-full">Unlink after this frame</Button>}

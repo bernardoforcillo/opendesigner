@@ -5,6 +5,7 @@ import { deriveBooleans } from "@/store/booleans";
 import { deriveConnectors } from "@/store/connectors";
 import { deriveMasters } from "@/store/masters";
 import { deriveThreads } from "@/store/threads";
+import { deriveColumns } from "@/store/columns";
 import { taggedOf } from "@/store/tagged";
 import { resolveTextStyleNode } from "@/store/typography";
 import { resolvePaintStylesNode, usesPaintStyle } from "@/store/paintStyles";
@@ -322,7 +323,7 @@ const resolved = new WeakMap<SceneState, SceneState>();
  */
 export function resolveScene(raw: SceneState): SceneState {
   // Threaded text flows last, over the final styles.
-  return deriveAnchored(deriveThreads(deriveTextPaths(deriveWrap(resolveBase(raw)))));
+  return deriveAnchored(deriveThreads(deriveColumns(deriveTextPaths(deriveWrap(resolveBase(raw))))));
 }
 
 function resolveBase(raw: SceneState): SceneState {
