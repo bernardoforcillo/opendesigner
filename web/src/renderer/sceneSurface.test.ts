@@ -38,10 +38,20 @@ vi.mock("@/renderer/layerCache", () => ({
 import { SceneSurface } from "@/renderer/sceneSurface";
 
 function canvases() {
-  const clear = vi.fn();
-  const cpu = { width: 800, height: 600, getContext: () => ({ clearRect: clear }) } as unknown as HTMLCanvasElement;
+  // The clear must run under the identity transform: clearRect is transformed, and the CPU
+  // drawing leaves its camera on the context. `transform` is what clearRect saw.
+  let transform = "camera";
+  const clear = vi.fn(() => { clearedUnder.push(transform); });
+  const clearedUnder: string[] = [];
+  const ctx = {
+    clearRect: clear,
+    save: () => {},
+    restore: () => { transform = "camera"; },
+    setTransform: () => { transform = "identity"; },
+  };
+  const cpu = { width: 800, height: 600, getContext: () => ctx } as unknown as HTMLCanvasElement;
   const gl = { width: 0, height: 0, clientWidth: 800, clientHeight: 600, style: { display: "none" } } as unknown as HTMLCanvasElement;
-  return { cpu, gl, clear };
+  return { cpu, gl, clear, clearedUnder };
 }
 const cam = { x: 0, y: 0, zoom: 1 };
 const images = { get: () => ({ status: "loading" as const, image: null }) };
@@ -66,7 +76,7 @@ describe("SceneSurface", () => {
   });
 
   it("choosing the GPU starts loading, meanwhile the CPU draws; then it switches to the GPU", async () => {
-    const { cpu, gl, clear } = canvases();
+    const { cpu, gl, clear, clearedUnder } = canvases();
     const invalidate = vi.fn();
     const surface = new SceneSurface(cpu, gl, images, invalidate);
     useRenderer.getState().setChoice("gpu");
@@ -83,6 +93,7 @@ describe("SceneSurface", () => {
     expect(cpuDraw).toHaveBeenCalledTimes(1); // the CPU did not draw again
     expect(gl.style.display).toBe("block");
     expect(clear).toHaveBeenCalledTimes(1); // the 2D canvas above stays transparent
+    expect(clearedUnder).toEqual(["identity"]); // not under the CPU camera: a partial clear left an old page on top
     expect(useRenderer.getState().status).toBe("gpu");
 
     // More frames: the 2D canvas is emptied only ONCE.

@@ -120,7 +120,15 @@ export class SceneSurface {
     // The 2D canvas sits on top and receives events: it must be left transparent.
     if (!this.cpuCleared) {
       const ctx = this.cpuCanvas.getContext("2d");
-      ctx?.clearRect(0, 0, this.cpuCanvas.width, this.cpuCanvas.height);
+      // The CPU drawing leaves its camera transform on the context, and clearRect is
+      // transformed: without the reset only part of the old frame was wiped, and the rest
+      // (an old page) stayed on top of the GPU's.
+      if (ctx) {
+        ctx.save();
+        ctx.setTransform(1, 0, 0, 1, 0, 0);
+        ctx.clearRect(0, 0, this.cpuCanvas.width, this.cpuCanvas.height);
+        ctx.restore();
+      }
       this.cpuCleared = true;
     }
     this.glCanvas.style.display = "block";
