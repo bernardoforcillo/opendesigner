@@ -4,12 +4,13 @@ import (
 	"fmt"
 	"math"
 	"regexp"
+	"sort"
 	"strings"
 	"unicode"
 )
 
 // Mermaid flowchart: nodes with five shapes, edges with three styles, labels,
-// direction. Everything else (subgraph, classDef, style, click…) is skipped
+// direction, subgraphs (nested). Everything else (classDef, style, click…) is skipped
 // line by line instead of rejecting the whole diagram.
 
 type fShape int
@@ -22,6 +23,7 @@ const (
 	fDiamond
 	fStart // filled dot (states)
 	fEnd   // dot with ring (states)
+	fNote  // a note: text on a yellow card, joined to what it is about by a dotted line
 )
 
 type fStyle int
@@ -45,10 +47,18 @@ type flowEdge struct {
 	ArrowStart bool
 }
 
+// flowGroup is a `subgraph ... end` block: a titled box around its nodes and any groups nested in it.
+type flowGroup struct {
+	ID, Title string
+	Parent    int   // index in flowchart.Groups, -1 at the top level
+	Members   []int // indices of the nodes that first appeared inside it
+}
+
 type flowchart struct {
-	Dir   Dir
-	Nodes []flowNode
-	Edges []flowEdge
+	Dir    Dir
+	Nodes  []flowNode
+	Edges  []flowEdge
+	Groups []flowGroup
 }
 
 const (
@@ -56,7 +66,23 @@ const (
 	MaxEdges = 400
 )
 
-var flowIgnored = regexp.MustCompile(`^(subgraph|end|classDef|class|style|linkStyle|click|direction|accTitle|accDescr|title)\b`)
+var flowIgnored = regexp.MustCompile(`^(classDef|class|style|linkStyle|click|direction|accTitle|accDescr|title)\b`)
+
+var (
+	reSubgraph = regexp.MustCompile(`^subgraph\b\s*(.*)$`)
+	reEnd      = regexp.MustCompile(`^end\s*$`)
+)
+
+// parseSubgraphHead reads what follows `subgraph`: `id`, `id [Title]`, `id["Title"]` or `"Title"`. The id of a
+// block with only a title is the title.
+func parseSubgraphHead(rest string) (id, title string) {
+	rest = strings.TrimSpace(rest)
+	if open := strings.IndexByte(rest, '['); open > 0 && strings.HasSuffix(rest, "]") {
+		return strings.TrimSpace(rest[:open]), unquote(rest[open+1 : len(rest)-1])
+	}
+	t := unquote(rest)
+	return t, t
+}
 
 var shapeDelims = []struct {
 	open, close string
@@ -272,6 +298,8 @@ func statements(line string) []string {
 func parseFlowchart(src string) (*flowchart, error) {
 	fc := &flowchart{Dir: DirTD}
 	idx := map[string]int{}
+	// open: the subgraphs being read, innermost last. A node belongs to the one it first appears in.
+	var open []int
 	touch := func(n *flowNode) error {
 		if i, ok := idx[n.ID]; ok {
 			if n.Shape != fRect || n.Label != n.ID {
@@ -284,6 +312,10 @@ func parseFlowchart(src string) (*flowchart, error) {
 		}
 		idx[n.ID] = len(fc.Nodes)
 		fc.Nodes = append(fc.Nodes, *n)
+		if len(open) > 0 {
+			g := &fc.Groups[open[len(open)-1]]
+			g.Members = append(g.Members, idx[n.ID])
+		}
 		return nil
 	}
 	sawHeader := false
@@ -296,6 +328,26 @@ func parseFlowchart(src string) (*flowchart, error) {
 			if m := reFlowHead.FindStringSubmatch(stmt); m != nil {
 				sawHeader = true
 				fc.Dir = parseDir(m[2])
+				continue
+			}
+			if m := reSubgraph.FindStringSubmatch(stmt); m != nil {
+				if len(fc.Groups) >= MaxNodes {
+					return nil, fmt.Errorf("too many subgraphs (maximum %d)", MaxNodes)
+				}
+				id, title := parseSubgraphHead(m[1])
+				parent := -1
+				if len(open) > 0 {
+					parent = open[len(open)-1]
+				}
+				fc.Groups = append(fc.Groups, flowGroup{ID: id, Title: title, Parent: parent})
+				open = append(open, len(fc.Groups)-1)
+				continue
+			}
+			if reEnd.MatchString(stmt) {
+				if len(open) == 0 {
+					return nil, fmt.Errorf(`"end" without a matching "subgraph"`)
+				}
+				open = open[:len(open)-1]
 				continue
 			}
 			if flowIgnored.MatchString(stmt) {
@@ -375,6 +427,9 @@ func parseFlowchart(src string) (*flowchart, error) {
 			}
 		}
 	}
+	if len(open) > 0 {
+		return nil, fmt.Errorf(`subgraph %q is not closed with "end"`, fc.Groups[open[len(open)-1]].Title)
+	}
 	if len(fc.Nodes) == 0 {
 		if sawHeader {
 			return nil, fmt.Errorf("the diagram has no nodes")
@@ -407,6 +462,8 @@ func flowSize(n flowNode) (w, h float64) {
 		return 20, 20
 	case fEnd:
 		return 26, 26
+	case fNote:
+		return math.Max(90, tw+24), math.Max(36, th+18)
 	}
 	return math.Max(80, tw+32), math.Max(44, th+22)
 }
@@ -504,6 +561,11 @@ func renderFlowchart(fc *flowchart) *Scene {
 		grow(x, y)
 		grow(x+w, y+h)
 	}
+	groupBoxes := fc.groupBoxes(nodeRect)
+	for _, g := range groupBoxes {
+		grow(g.x, g.y)
+		grow(g.x+g.w, g.y+g.h)
+	}
 	for i, e := range fc.Edges {
 		for _, p := range pe[i].pts {
 			grow(p.X, p.Y)
@@ -518,6 +580,13 @@ func renderFlowchart(fc *flowchart) *Scene {
 	sh := func(p Pt) Pt { return Pt{p.X + dx, p.Y + dy} }
 
 	sc := &Scene{W: maxX - minX + 2*margin, H: maxY - minY + 2*margin}
+	// The subgraphs go first, outermost first, so what they hold is drawn over them.
+	for _, g := range groupBoxes {
+		sc.add(
+			Box{X: g.x + dx, Y: g.y + dy, W: g.w, H: g.h, Shape: ShapeRect, Radius: 6, Fill: rgb(colGroupFill), Stroke: rgb(colGroupLine), StrokeW: 1, Name: name("Subgraph", fc.Groups[g.group].Title)},
+			Text{X: g.x + dx + 10, Y: g.y + dy + 6, W: g.w - 20, H: textH(fc.Groups[g.group].Title, fontSize), Content: fc.Groups[g.group].Title, Size: fontSize, Align: "left", Color: colInk, Name: name("Group title", fc.Groups[g.group].Title)},
+		)
+	}
 	for i, e := range fc.Edges {
 		pts := make([]Pt, len(pe[i].pts))
 		for k, p := range pe[i].pts {
@@ -549,6 +618,14 @@ func renderFlowchart(fc *flowchart) *Scene {
 		case fEnd:
 			sc.add(Box{X: x, Y: y, W: w, H: h, Shape: ShapeEllipse, Fill: rgb(colWhite), Stroke: rgb(colInk), StrokeW: 1.5, Name: "End"},
 				Box{X: x + 6, Y: y + 6, W: w - 12, H: h - 12, Shape: ShapeEllipse, Fill: rgb(colInk), Name: "End (center)"})
+			continue
+		}
+		if n.Shape == fNote {
+			th := textH(n.Label, fontSize)
+			sc.add(
+				Box{X: x, Y: y, W: w, H: h, Shape: ShapeRect, Radius: 3, Fill: rgb(colNote), Stroke: rgb(colNoteLine), StrokeW: 1, Name: "Note"},
+				Text{X: x + 10, Y: y + h/2 - th/2, W: w - 20, H: th, Content: n.Label, Size: fontSize, Align: "left", Color: colInk, Name: name("Note text", n.Label)},
+			)
 			continue
 		}
 		b := Box{X: x, Y: y, W: w, H: h, Fill: rgb(colNodeFill), Stroke: rgb(colNodeLine), StrokeW: 1.5, Name: nm}
@@ -628,4 +705,84 @@ func spreadParallel(n int, ends func(i int) (int, int), move func(i int, dx, dy 
 			move(i, nx*off, ny*off)
 		}
 	}
+}
+
+// --- subgraphs ------------------------------------------------------------------
+
+var (
+	colGroupFill = RGB{0.96, 0.97, 0.99}
+	colGroupLine = RGB{0.74, 0.78, 0.86}
+)
+
+const (
+	groupPad   = 18.0
+	groupTitle = 24.0
+)
+
+type groupBox struct {
+	group      int
+	depth      int
+	x, y, w, h float64
+}
+
+// groupBoxes is the box of every non-empty subgraph, outermost first: the union of the nodes it holds and of the
+// boxes of the subgraphs inside it, with a margin and a band for the title.
+//
+// The layered layout does not know about subgraphs, so a box is the bounding box of its members; a node that
+// does not belong to it but sits among them is drawn over it. That is rare for the diagrams people write by
+// hand (a subgraph is usually a run of related nodes), and is documented.
+func (fc *flowchart) groupBoxes(nodeRect func(i int) (x, y, w, h float64)) []groupBox {
+	if len(fc.Groups) == 0 {
+		return nil
+	}
+	type rect struct{ x0, y0, x1, y1 float64 }
+	boxes := make([]*rect, len(fc.Groups))
+	var visit func(g int) *rect
+	visit = func(g int) *rect {
+		if boxes[g] != nil {
+			return boxes[g]
+		}
+		r := &rect{math.Inf(1), math.Inf(1), math.Inf(-1), math.Inf(-1)}
+		take := func(x0, y0, x1, y1 float64) {
+			r.x0, r.y0 = math.Min(r.x0, x0), math.Min(r.y0, y0)
+			r.x1, r.y1 = math.Max(r.x1, x1), math.Max(r.y1, y1)
+		}
+		for _, m := range fc.Groups[g].Members {
+			x, y, w, h := nodeRect(m)
+			take(x, y, x+w, y+h)
+		}
+		for c := range fc.Groups {
+			if fc.Groups[c].Parent == g {
+				if cr := visit(c); !math.IsInf(cr.x0, 1) {
+					take(cr.x0, cr.y0, cr.x1, cr.y1)
+				}
+			}
+		}
+		if !math.IsInf(r.x0, 1) {
+			r.x0, r.y0, r.x1, r.y1 = r.x0-groupPad, r.y0-groupPad-groupTitle, r.x1+groupPad, r.y1+groupPad
+			// A title wider than its members widens the box.
+			if tw := textW(fc.Groups[g].Title, fontSize) + 20; r.x1-r.x0 < tw {
+				r.x1 = r.x0 + tw
+			}
+		}
+		boxes[g] = r
+		return r
+	}
+	depth := func(g int) int {
+		d := 0
+		for p := fc.Groups[g].Parent; p >= 0; p = fc.Groups[p].Parent {
+			d++
+		}
+		return d
+	}
+	var out []groupBox
+	for g := range fc.Groups {
+		r := visit(g)
+		if math.IsInf(r.x0, 1) {
+			continue
+		}
+		out = append(out, groupBox{group: g, depth: depth(g), x: r.x0, y: r.y0, w: r.x1 - r.x0, h: r.y1 - r.y0})
+	}
+	sort.SliceStable(out, func(i, j int) bool { return out[i].depth < out[j].depth })
+	return out
 }

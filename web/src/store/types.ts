@@ -472,6 +472,19 @@ export interface NodeLite {
   animScale?: number;
   animPivot?: { x: number; y: number };
   animDraw?: number;
+  // Effect parameters sampled from `fx.*` tracks (animation/fx): effectId -> paramId -> value.
+  animFx?: Record<string, Record<string, number>>;
+  // The second layer of the effects that use one (animation/fx/props.ts): effectId -> node id.
+  animFxRefs?: Record<string, string>;
+  // String parameters of the effects (animation/fx/props.ts): effectId -> paramId -> text.
+  animFxText?: Record<string, Record<string, string>>;
+  // Values an effect derived from its own track over time (the manual trackers' smoothing, animation/fx/library.ts `derive`): effectId -> name -> value.
+  animFxDerived?: Record<string, Record<string, number>>;
+  // The clip time (ms) at this node, for the effects that read it (the audio visualisers).
+  animTime?: number;
+  // Time effects (animation/fx/timeFx.ts): the node posed at other moments, in drawing order, with how to combine them.
+  // `node` never carries an animEcho itself.
+  animEcho?: { mode: "plus" | "screen" | "lighten" | "darken" | "over" | "difference" | "displace"; uniforms?: number[]; samples: { node: NodeLite; weight: number }[] };
 }
 
 // What the renderer needs to know about a scene DERIVED from playback: which

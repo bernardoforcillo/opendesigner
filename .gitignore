@@ -11,6 +11,7 @@ docs/superpowers/
 /.playwright-mcp/
 /.opendesigner-e2e/
 /web/parity-out/
+/web/fx-out/
 /web/export-parity-out/
 /web/svg-import-out/
 tmp/

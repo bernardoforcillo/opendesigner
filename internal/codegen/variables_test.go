@@ -220,3 +220,53 @@ func TestAutoLayoutWrapFillAndInstancesInTheExport(t *testing.T) {
 		t.Errorf("a filling child keeps its fixed size:\n%s", rule)
 	}
 }
+
+// TestCSSVariablesPerMode: with the option on, a bound fill keeps its value as a fallback but reads a custom
+// property, and the stylesheet defines that property once per mode; a subtree pinned to a mode carries the
+// attribute that selects it. Off (the default), the output is the literal of the active mode, as before.
+func TestCSSVariablesPerMode(t *testing.T) {
+	doc := themedDoc(t)
+	off := screenHTML(t, doc)
+	if strings.Contains(off, "var(--") || strings.Contains(off, "data-mode-") {
+		t.Fatalf("the default output must stay literal:\n%s", off)
+	}
+
+	out, err := codegen.Generate(doc, codegen.Options{Target: codegen.TargetHTML, CSSVariables: true}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	on := string(file(t, out, "screen.html"))
+	if !strings.Contains(on, "background-color: var(--theme-color-surface, #0f0);") {
+		t.Fatalf("the bound fill must read its custom property with the active value as fallback:\n%s", on)
+	}
+	if !strings.Contains(on, ":root{--theme-color-surface:#0f0;}") {
+		t.Errorf("the first mode goes on :root:\n%s", on)
+	}
+	if !strings.Contains(on, `[data-mode-theme="light"]{--theme-color-surface:#0f0;}`) || !strings.Contains(on, `[data-mode-theme="dark"]{--theme-color-surface:#00f;}`) {
+		t.Errorf("every mode gets a rule:\n%s", on)
+	}
+
+	// A screen pinned to dark carries the attribute and its fallback is the dark value.
+	apply(t, doc, &opendesignerv1.Op{Kind: &opendesignerv1.Op_SetProps{SetProps: &opendesignerv1.SetProperties{
+		Id: "scr", Patch: &opendesignerv1.Node{Modes: map[string]string{"theme": "dark"}},
+		Mask: &fieldmaskpb.FieldMask{Paths: []string{"modes"}}}}})
+	out, err = codegen.Generate(doc, codegen.Options{Target: codegen.TargetHTML, CSSVariables: true}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pinned := string(file(t, out, "screen.html"))
+	if !strings.Contains(pinned, `data-mode-theme="dark"`) || !strings.Contains(pinned, "var(--theme-color-surface, #00f)") {
+		t.Errorf("a pinned subtree carries its mode:\n%s", pinned)
+	}
+
+	// The other targets ignore the option.
+	react, err := codegen.Generate(doc, codegen.Options{Target: codegen.TargetReact, CSSVariables: true}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, f := range react.Files {
+		if strings.Contains(string(f.Content), "var(--theme") {
+			t.Errorf("%s: only the html target writes custom properties", f.Path)
+		}
+	}
+}

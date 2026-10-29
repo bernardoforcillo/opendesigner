@@ -77,7 +77,7 @@ describe("the publishing templates", () => {
     expect(scene.pages[1].isMaster).toBe(true);
     expect(scene.pages.filter((p) => p.masterId === scene.pages[1].id).map((p) => p.name)).toEqual(["Chapter 1", "Page 2", "Page 3"]);
     expect(scene.pages[2]).toMatchObject({ bleed: 9, marginLeft: 54 });
-    expect(scene.settings).toEqual({ vertical: "publishing", baselineIncrement: 16, baselineStart: 54 });
+    expect(scene.settings).toEqual({ vertical: "publishing", baselineIncrement: 16, baselineStart: 54, facingPages: true });
     expect(Object.values(scene.textStyles).map((d) => d.name).sort()).toEqual(["Body", "Body (first paragraph)", "Emphasis", "Folio", "Heading"]);
   });
 

@@ -33,7 +33,7 @@ type KeyframeIO struct {
 
 type TrackIO struct {
 	NodeId    string       `json:"nodeId" jsonschema:"id of the animated node (see list_nodes)"`
-	Prop      string       `json:"prop" jsonschema:"opacity (0..1) | x | y (absolute local coordinates of the node) | scale (multiplier, base 1) | rotation (absolute degrees) | draw (0..1: how much of the stroke is drawn; only vector, rect, ellipse, frame with a stroke)"`
+	Prop      string       `json:"prop" jsonschema:"opacity (0..1) | x | y (absolute local coordinates of the node) | scale (multiplier, base 1) | rotation (absolute degrees) | draw (0..1: how much of the stroke is drawn; only vector, rect, ellipse, frame with a stroke) | fx.<effectId>.<paramId> (an EffectCraft effect parameter, e.g. fx.ec.blur.gaussian.blurriness)"`
 	Keyframes []KeyframeIO `json:"keyframes" jsonschema:"at least one, ordered by time (equal times = jump)"`
 }
 
@@ -170,7 +170,7 @@ func clipErrHint(err error) string {
 	case errors.Is(err, core.ErrClipTrigger):
 		return "trigger must be one of " + strings.Join(core.ClipTriggers, ", ")
 	case errors.Is(err, core.ErrTrackProp):
-		return "prop must be one of " + strings.Join(core.TrackProps, ", ")
+		return "prop must be one of " + strings.Join(core.TrackProps, ", ") + ", or an effect parameter fx.<effect>.<param>"
 	case errors.Is(err, core.ErrTrackKeyframes):
 		return "every track needs at least one keyframe"
 	case errors.Is(err, core.ErrKeyframeTime):
@@ -267,7 +267,7 @@ func (s *Session) DeleteClip(ctx context.Context, in ClipIdInput) (SeqOutput, er
 
 type AnimateNodeInput struct {
 	NodeId   string   `json:"nodeId" jsonschema:"the node to animate"`
-	Prop     string   `json:"prop" jsonschema:"opacity | x | y | scale | rotation | draw"`
+	Prop     string   `json:"prop" jsonschema:"opacity | x | y | scale | rotation | draw | fx.<effectId>.<paramId>"`
 	From     *float64 `json:"from,omitempty" jsonschema:"initial value; omitted = the node's current value (opacity/x/y/rotation), 1 for scale, 0 for draw"`
 	To       *float64 `json:"to,omitempty" jsonschema:"final value; omitted only for draw (default 1)"`
 	Duration float64  `json:"duration,omitempty" jsonschema:"duration in ms (default 600)"`
@@ -320,7 +320,7 @@ func currentValue(n *opendesignerv1.Node, prop string) float64 {
 }
 
 func (s *Session) AnimateNode(ctx context.Context, in AnimateNodeInput) (AnimateNodeOutput, error) {
-	if !oneOf(in.Prop, core.TrackProps) {
+	if !core.ValidTrackProp(in.Prop) {
 		return AnimateNodeOutput{}, fmt.Errorf("animate_node: prop must be one of %s, not %q", strings.Join(core.TrackProps, ", "), in.Prop)
 	}
 	if in.Trigger != "" && !oneOf(in.Trigger, core.ClipTriggers) {

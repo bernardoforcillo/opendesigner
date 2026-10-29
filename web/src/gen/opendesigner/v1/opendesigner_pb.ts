@@ -7661,7 +7661,7 @@ export type RunJobRequest = Message<"opendesigner.v1.RunJobRequest"> & {
   docId: string;
 
   /**
-   * export_pdf | export_package | export_epub | export_epub_reflow | export_html | export_pptx | export_idml | export_png | export_svg | preflight | command
+   * export_pdf | export_package | export_epub | export_epub_reflow | export_html | export_html_text | export_pptx | export_idml | export_png | export_svg | preflight | command
    *
    * @generated from field: string kind = 2;
    */

@@ -128,4 +128,27 @@ describe("layout controls", () => {
     fireEvent.click(screen.getByRole("button", { name: "Delete column" }));
     expect(readTable(scene(), id)!.cols).toHaveLength(2);
   });
+  it("merges the selected cells of a table and splits the merged cell again", () => {
+    install([]);
+    const made = createTableOps(scene(), "page1", 0, 0, 2, 3)!;
+    made.ops.forEach((o) => new FakeSync().submit(o));
+    const id = made.selection[0];
+    const cells = readTable(scene(), id)!.cells;
+    useScene.setState({ selection: [cells.get("0,0")!.rect!.id, cells.get("0,1")!.rect!.id] });
+    const { unmount } = render(<TableControls />);
+    expect(screen.getByText("2 cells selected")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Merge cells" }));
+    expect(readTable(scene(), id)!.cells.size).toBe(5);
+    unmount();
+    useScene.setState({ selection: [readTable(scene(), id)!.cells.get("0,0")!.rect!.id] });
+    render(<TableControls />);
+    expect(screen.getByText(/merged, 1 × 2/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Split cell" }));
+    expect(readTable(scene(), id)!.cells.size).toBe(6);
+  });
+  it("shows nothing for a selection that is not cells of one table", () => {
+    install([node({ id: "a" }), node({ id: "b" })]);
+    useScene.setState({ selection: ["a", "b"] });
+    expect(render(<TableControls />).container).toBeEmptyDOMElement();
+  });
 });

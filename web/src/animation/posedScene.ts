@@ -32,7 +32,11 @@ export function posedScene(resolve = false): SceneState | null {
   const clip = tl.draftClip ?? scene.clips[tl.clipId];
   if (!clip) return scene;
   if (memo && memo.scene === scene && memo.clipRef === clip && memo.playhead === tl.playhead && memo.draft === tl.recordDraft) return memo.out;
-  const out = poseScene(scene, sampleWithDraft(clip, tl.playhead, tl.recordDraft));
+  // The time effects re-sample the open clip at other moments (the playhead is already time inside the clip).
+  const out = poseScene(scene, sampleWithDraft(clip, tl.playhead, tl.recordDraft), {
+    t: tl.playhead,
+    at: (dt) => sampleWithDraft(clip, Math.min(clip.duration, Math.max(0, tl.playhead + dt)), tl.recordDraft),
+  });
   memo = { scene, clipRef: clip, playhead: tl.playhead, draft: tl.recordDraft, out };
   return out;
 }

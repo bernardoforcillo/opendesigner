@@ -1,16 +1,17 @@
 import type {
-  Canvas, CanvasKit, Font, GrDirectContext, Image as SkImage, ImageFilter, Paint, Path, Shader, Surface,
+  Canvas, CanvasKit, Font, GrDirectContext, Image as SkImage, ImageFilter, Paint, Path, RuntimeEffect, Shader, Surface,
 } from "canvaskit-wasm";
 import type { Camera } from "@/canvas/camera";
-import { type Bounds, boundsIntersect, boundsOfNode, inflateBounds, strokeOutsetOfNode } from "@/canvas/geometry";
-import { type Transform, localTransformOf } from "@/canvas/transform";
+import { type Bounds, boundsIntersect, boundsOfNode, inflateBounds, strokeOutsetOfNode, unionBounds } from "@/canvas/geometry";
+import { type Transform, compose, invertTransform, localTransformOf, worldTransformOf } from "@/canvas/transform";
 import { instanceDescentLocal, instanceOverrideMap, resolveInstance } from "@/store/instances";
 import type { EffectLite, FillLite, GradientLite, InstanceOverrideLite, MeshLite, NodeLite, SceneState, StrokeLite, TextStyleLite } from "@/store/types";
 import { anchorPoint, inHandlePoint, outHandlePoint, subpathFills } from "@/store/vectorGeometry";
 import {
-  CLIP_MIN_PX, LOD_FLAT_PX, SKIP_SUBTREE_PX, type ImageSource, resolvedFill, rootsOf, withOverride,
+  CLIP_MIN_PX, FAST_BOX_PX, LOD_FLAT_PX, SKIP_SUBTREE_PX, type ImageSource, plainShape, resolvedFill, rootsOf, withOverride,
 } from "@/renderer/canvasRenderer";
 import { effectsOutset, sceneIndexOf } from "@/renderer/sceneIndex";
+import { HEAVY_MS } from "@/renderer/layerCache";
 import { MESH_BITMAP_SIZE, meshBitmap } from "@/renderer/mesh";
 import { outlineCommands, type PathCmd } from "@/renderer/shapeGeometry";
 import { hasArrowheads, strokeHeads } from "@/renderer/arrowheads";
@@ -21,6 +22,15 @@ import { GRADIENT_BITMAP_SIZE, angularStart, gradientBitmap } from "@/renderer/g
 import { VECTOR_STROKE_PX, inkIsBox, nodeCenter } from "@/renderer/shapes";
 import { decorationBars, fontSizeOf, hscaleOf, paragraphDecorations, piecesOfLine, piecesOfSegment, placeTextLines, trackedOffsets, type MeasureFor } from "@/renderer/text";
 import { FX_TILE, blurBands, overlayEffects, overlayTile, progressiveBlur, tileUnit, withBandBlur, withExpandedGlass } from "@/renderer/effectsFx";
+import { buildFx, type BuiltFx } from "@/animation/fx/apply";
+import { DISPLACE_SKSL } from "@/animation/fx/timeFx";
+import { makeLutShader, readHistogram } from "@/animation/fx/lutImage";
+import { fxRefKey } from "@/animation/fx/props";
+import { fxDef, resolveFx, type FxEnv, type FxPaintSpec, type FxTextSpec } from "@/animation/fx/library";
+import { FACE_POINTS } from "@/animation/fx/kernelsTrack";
+import { soundBuffer, soundOf } from "@/animation/audio/library";
+import { builtInPath } from "@/animation/fx/kernelsText";
+import { pathPointsFor } from "@/store/textPath";
 import { hasRealStroke, vectorStyleOf } from "@/renderer/vectorStyle";
 import type { FontBook } from "@/renderer/ck/canvaskit";
 
@@ -38,6 +48,7 @@ import type { FontBook } from "@/renderer/ck/canvaskit";
 //   - the inner/outer stroke clips with the exact outline, not with a
 //     widened rectangle.
 
+const pad12 = (n: readonly number[]): number[] => { const o = n.slice(0, 12); while (o.length < 12) o.push(0); return o; };
 const DEG = 1; // CanvasKit rotates in DEGREES, like the model.
 
 // An image's placeholder (colors of canvasRenderer.ts::PLACEHOLDER_*).
@@ -70,10 +81,27 @@ export class CanvasKitRenderer {
   private readonly fillP: Paint;
   private readonly strokeP: Paint;
   private frame: Frame | null = null;
+  // Effect-track layers opened by beginEffects and not yet closed (animation/fx), innermost last.
+  private dpr = 1;
+  // Nodes whose second layer is being drawn: a layer that names this node back would loop.
+  private readonly layerStack = new Set<string>();
+  private readonly fxLayers: ({ fx: BuiltFx; box: Bounds; reach: Bounds; node: NodeLite } | null)[] = [];
+  private readonly runtimeEffects = new Map<string, RuntimeEffect | null>();
   private readonly skImages = new Map<HTMLImageElement, SkImage>();
   private widths = new Map<Font, Map<string, number>>();
   private textLines = new WeakMap<NodeLite, ReturnType<typeof placeTextLines>>();
   lost = false;
+  /** The last frame's cost: `walkMs` is the JS walk plus the calls into CanvasKit, `flushMs` the submit to the GPU. */
+  readonly stats = { walkMs: 0, flushMs: 0 };
+  // Scratch arrays for the per-node calls that take a colour or a rectangle: CanvasKit copies them into the
+  // WASM heap on the call, so one array can be refilled for every node instead of allocating two per node.
+  // THE LAST HEAVY FRAME, kept as an image: while only the camera moves, it is drawn moved and scaled instead of
+  // walking the whole scene again (the 2D renderer does the same, see renderer/layerCache.ts). The walk is JS and
+  // WASM on the main thread, so on a big document it, not the GPU, is what a pan or a zoom waits for.
+  private snap: { img: SkImage; scene: SceneState; pageId: string | null; spread: string; w: number; h: number; cam: Camera } | null = null;
+  private lastCostMs = 0;
+  private readonly colorBuf = new Float32Array(4);
+  private readonly rectBuf = new Float32Array(4);
 
   constructor(
     private readonly CK: CanvasKit,
@@ -103,6 +131,7 @@ export class CanvasKitRenderer {
 
   /** The font measures changed (a weight arrived): the layout is redone. */
   fontsChanged(): void {
+    this.dropSnapshot();
     this.widths = new Map();
     this.textLines = new WeakMap();
   }
@@ -117,17 +146,40 @@ export class CanvasKitRenderer {
     return this.surface;
   }
 
-  draw(scene: SceneState, cam: Camera, pageId: string | null): void {
+  /**
+   * Draws the scene. Returns `true` when the frame is exact and `false` when it is the last heavy frame moved
+   * to the new camera (only the camera changed since it): the caller then schedules the real frame for when
+   * the movement ends. `force` skips the reuse.
+   */
+  draw(scene: SceneState, cam: Camera, pageId: string | null, spread: { pageId: string; dx: number } | null = null, force = false): boolean {
     const CK = this.CK;
     const { canvas } = this;
     const w = canvas.width;
     const h = canvas.height;
-    if (w <= 0 || h <= 0 || this.lost) return;
+    if (w <= 0 || h <= 0 || this.lost) return true;
+    const t0 = performance.now();
     const surface = this.ensureSurface(w, h);
     const sk = surface.getCanvas();
-    sk.clear(CK.TRANSPARENT);
-
     const dpr = canvas.clientWidth > 0 ? w / canvas.clientWidth : window.devicePixelRatio || 1;
+    this.dpr = dpr;
+
+    const spreadKey = spread ? `${spread.pageId}@${spread.dx}` : "";
+    const s = this.snap;
+    if (
+      !force && s && s.scene === scene && s.pageId === pageId && s.spread === spreadKey && s.w === w && s.h === h &&
+      (s.cam.x !== cam.x || s.cam.y !== cam.y || s.cam.zoom !== cam.zoom) && this.lastCostMs > HEAVY_MS
+    ) {
+      // The camera took the old frame to the new one: one image drawn under p1 = k * p0 + t, with k the zoom ratio.
+      const k = cam.zoom / s.cam.zoom;
+      const tx = (cam.x - s.cam.x * k) * dpr;
+      const ty = (cam.y - s.cam.y * k) * dpr;
+      sk.clear(CK.TRANSPARENT);
+      sk.drawImageRectOptions(s.img, CK.LTRBRect(0, 0, w, h), CK.LTRBRect(tx, ty, tx + w * k, ty + h * k), CK.FilterMode.Linear, CK.MipmapMode.None, null);
+      surface.flush();
+      return false;
+    }
+
+    sk.clear(CK.TRANSPARENT);
     const index = sceneIndexOf(scene);
     const px = 1 / (cam.zoom || 1);
     const cssW = w / dpr;
@@ -145,11 +197,39 @@ export class CanvasKitRenderer {
     sk.translate(cam.x * dpr, cam.y * dpr);
     sk.scale(cam.zoom * dpr, cam.zoom * dpr);
     this.drawSiblings(sk, rootsOf(scene, index.children, pageId), index.children, new Set(), null, new Set(), true);
+    // The facing page of a spread (store/spread.ts): the same walk from its roots, under a shift, with the
+    // view shifted the other way so culling compares like with like.
+    if (spread) {
+      const f = this.frame;
+      sk.save();
+      sk.translate(spread.dx, 0);
+      this.frame = { ...f, view: f.view ? { ...f.view, x: f.view.x - spread.dx } : null };
+      this.drawSiblings(sk, rootsOf(scene, index.children, spread.pageId), index.children, new Set(), null, new Set(), true);
+      this.frame = f;
+      sk.restore();
+    }
     sk.restore();
+    const t1 = performance.now();
     surface.flush();
+    this.stats.walkMs = t1 - t0;
+    this.stats.flushMs = performance.now() - t1;
+    this.lastCostMs = this.stats.walkMs + this.stats.flushMs;
 
     for (const g of this.frame.garbage) g.delete();
     this.frame = null;
+
+    // A heavy frame is kept for the camera moves that follow; a light one needs no help.
+    this.dropSnapshot();
+    if (this.lastCostMs > HEAVY_MS) {
+      const img = surface.makeImageSnapshot();
+      if (img) this.snap = { img, scene, pageId, spread: spreadKey, w, h, cam: { ...cam } };
+    }
+    return true;
+  }
+
+  private dropSnapshot(): void {
+    this.snap?.img.delete();
+    this.snap = null;
   }
 
   // --- traversal: same shape as canvasRenderer.ts::drawSiblings --------------
@@ -241,10 +321,95 @@ export class CanvasKitRenderer {
     sk.restore();
   }
 
+  // One flat-colour box (or oval) in the node's own rectangle, through the scratch arrays.
+  private flatRect(sk: Canvas, p: Paint, n: NodeLite, fill: FillLite, alpha: number, oval = false): void {
+    p.setShader(null);
+    p.setImageFilter(null);
+    const c = this.colorBuf;
+    c[0] = fill.r; c[1] = fill.g; c[2] = fill.b; c[3] = fill.a * alpha;
+    p.setColor(c);
+    const r = this.rectBuf;
+    r[0] = n.x; r[1] = n.y; r[2] = n.x + n.width; r[3] = n.y + n.height; // left, top, right, bottom: what CanvasKit's rect calls take
+    if (oval) sk.drawOval(r, p);
+    else sk.drawRect(r, p);
+  }
+
   // --- the node --------------------------------------------------------------
+
+  // Device pixels per local unit for an offscreen surface covering `reach`, capped so the surface stays reasonable.
+  private offscreenScale(reach: Bounds): number {
+    const f = this.frame as Frame;
+    const MAX = 4096;
+    return Math.min(Math.max(0.05, f.zoom * this.dpr), MAX / Math.max(1, reach.width), MAX / Math.max(1, reach.height));
+  }
+
+  // Time Displacement: the node posed at several moments is drawn offscreen, one image each, and a shader picks per
+  // pixel which one to show from the map (the node now, the last sample). See DISPLACE_SKSL.
+  private drawDisplaced(sk: Canvas, echo: NonNullable<NodeLite["animEcho"]>, reach: Bounds | null, overrides: ReadonlyMap<string, InstanceOverrideLite> | null): void {
+    const CK = this.CK;
+    const f = this.frame as Frame;
+    const area = reach ?? inflateBounds(boundsOfNode(echo.samples[echo.samples.length - 1].node), 64);
+    const effect = this.runtimeEffect(DISPLACE_SKSL);
+    if (!effect) return;
+    const s = this.offscreenScale(area);
+    const w = Math.max(1, Math.ceil(area.width * s)), h = Math.max(1, Math.ceil(area.height * s));
+    const toLocal = [1 / s, 0, area.x, 0, 1 / s, area.y, 0, 0, 1];
+    const shaders = echo.samples.map(({ node }) => {
+      const surface = CK.MakeRenderTarget(this.grCtx as GrDirectContext, w, h) ?? CK.MakeSurface(w, h);
+      if (!surface) return null;
+      const c = surface.getCanvas();
+      c.clear(CK.TRANSPARENT);
+      c.save();
+      c.scale(s, s);
+      c.translate(-area.x, -area.y);
+      this.drawNode(c, node, overrides);
+      c.restore();
+      const img = surface.makeImageSnapshot();
+      const sh = img.makeShaderOptions(CK.TileMode.Decal, CK.TileMode.Decal, CK.FilterMode.Linear, CK.MipmapMode.None, toLocal);
+      f.garbage.push(surface, img, sh);
+      return sh;
+    });
+    if (shaders.some((x) => x === null)) return;
+    const now = shaders[shaders.length - 1] as Shader;
+    const shader = effect.makeShaderWithChildren([0, 0, 0, 0, ...pad12(echo.uniforms ?? [])], [now, ...(shaders.slice(0, -1) as Shader[])]);
+    f.garbage.push(shader);
+    const p = new CK.Paint();
+    p.setShader(shader);
+    sk.drawRect(CK.XYWHRect(area.x, area.y, area.width, area.height), p);
+    p.delete();
+  }
+
+  // A node with a time effect (animation/fx/timeFx.ts): the node posed at several moments, each drawn as a layer
+  // with its weight, combined inside an isolated layer so they blend with each other and not with the backdrop.
+  private drawEchoes(sk: Canvas, n: NodeLite, echo: NonNullable<NodeLite["animEcho"]>, overrides: ReadonlyMap<string, InstanceOverrideLite> | null): void {
+    const CK = this.CK;
+    const BM = CK.BlendMode;
+    const mode = { plus: BM.Plus, screen: BM.Screen, lighten: BM.Lighten, darken: BM.Darken, over: BM.SrcOver, difference: BM.Difference, displace: BM.SrcOver }[echo.mode];
+    const reach = n.kind === "text" ? null : unionBounds(echo.samples.map(({ node }) =>
+      inflateBounds(boundsOfNode(node), Math.hypot(node.width, node.height) * 0.5 * (node.animScale ?? 1) + effectsOutset(node) + strokeOutsetOfNode(node) + 2)));
+    if (echo.mode === "displace") {
+      this.drawDisplaced(sk, echo, reach, overrides);
+      return;
+    }
+    sk.saveLayer(undefined, reach ? CK.XYWHRect(reach.x, reach.y, reach.width, reach.height) : null);
+    echo.samples.forEach(({ node, weight }, i) => {
+      const lp = new CK.Paint();
+      lp.setAlphaf(Math.min(1, Math.max(0, weight)));
+      lp.setBlendMode(i === 0 ? BM.SrcOver : mode);
+      sk.saveLayer(lp, reach ? CK.XYWHRect(reach.x, reach.y, reach.width, reach.height) : null);
+      lp.delete();
+      this.drawNode(sk, node, overrides);
+      sk.restore();
+    });
+    sk.restore();
+  }
 
   private drawNode(sk: Canvas, n: NodeLite, overrides: ReadonlyMap<string, InstanceOverrideLite> | null): void {
     if (n.kind === "group" || n.kind === "instance") return;
+    if (n.animEcho) {
+      this.drawEchoes(sk, n, n.animEcho, overrides);
+      return;
+    }
     const f = this.frame as Frame;
     const eff = withExpandedGlass(withOverride(n, overrides?.get(n.id)));
     if (inkIsBox(eff) && (eff.width <= 0 || eff.height <= 0)) return;
@@ -258,8 +423,17 @@ export class CanvasKitRenderer {
       const p = this.fillP;
       p.setShader(null);
       p.setImageFilter(null);
-      p.setColor(this.CK.Color4f(fill.r, fill.g, fill.b, fill.a * (eff.kind === "text" ? eff.opacity * 0.5 : eff.opacity)));
-      sk.drawRect(this.CK.XYWHRect(eff.x, eff.y, eff.width, eff.height), p);
+      this.flatRect(sk, p, eff, fill, eff.kind === "text" ? eff.opacity * 0.5 : eff.opacity);
+      return;
+    }
+
+    // THE FAST PATH (as in the 2D renderer): a box or an oval of one flat colour -- no stroke, effect, blend,
+    // rotation or animation -- is one colour set and one draw call, without the shape, paint and effect
+    // machinery below. Most of what fills a big page is that.
+    const plain = flatSize / f.px < FAST_BOX_PX ? plainShape(eff, f.px) : null;
+    if (plain !== null) {
+      if (eff.kind === "frame" && eff.fills.length === 0) return;
+      this.flatRect(sk, this.fillP, eff, resolvedFill(eff), eff.opacity, plain === "ellipse");
       return;
     }
 
@@ -291,20 +465,20 @@ export class CanvasKitRenderer {
       }
     }
 
-    const drawBody = () => {
+    const drawBody = (c: Canvas = sk) => {
       if (eff.kind === "text") {
-        this.drawText(sk, eff);
+        this.drawText(c, eff);
       } else if (eff.kind === "image") {
-        this.drawImage(sk, eff);
+        this.drawImage(c, eff);
       } else if (eff.kind === "vector") {
-        this.drawVector(sk, eff);
+        this.drawVector(c, eff);
       } else {
         const shape = this.shapeOf(eff);
         // A frame without a fill is transparent (the default gray belongs to shapes).
         if (!(eff.kind === "frame" && eff.fills.length === 0)) {
-          this.drawShape(sk, shape, this.fillPaint(resolvedFill(eff), eff, eff.opacity));
+          this.drawShape(c, shape, this.fillPaint(resolvedFill(eff), eff, eff.opacity));
         }
-        this.drawStrokes(sk, eff, shape);
+        this.drawStrokes(c, eff, shape);
       }
     };
     const pb = progressiveBlur(eff, false);
@@ -314,14 +488,14 @@ export class CanvasKitRenderer {
         sk.save();
         this.clipPolygon(sk, band.polygon);
         const layered = this.beginEffects(sk, withBandBlur(eff, pb, band.radius));
-        drawBody();
-        if (layered) sk.restore();
+        this.drawLayerBody(sk, eff, layered, drawBody);
+        if (layered) this.endEffects(sk);
         sk.restore();
       }
     } else {
       const layered = this.beginEffects(sk, eff);
-      drawBody();
-      if (layered) sk.restore();
+      this.drawLayerBody(sk, eff, layered, drawBody);
+      if (layered) this.endEffects(sk);
     }
     if (outline) this.drawInnerShadows(sk, eff, outline);
     if (outline || eff.kind === "image") this.drawOverlays(sk, eff, outline);
@@ -421,9 +595,19 @@ export class CanvasKitRenderer {
   // --- effects: a layer saved with a filter, for the whole node ---------------
 
   private beginEffects(sk: Canvas, n: NodeLite): boolean {
-    const filter = this.effectsFilter(n.effects);
+    const f = this.frame as Frame;
+    const track = (o: { delete(): void }) => f.garbage.push(o as never);
+    // Effect tracks (animation/fx): their image filters wrap the node's own, their shaders are
+    // drawn over the node inside its layer (endEffects).
+    const fx = buildFx(this.CK, n.animFx, track, n.animFxText, f.scene.id, n.animFxDerived);
+    let filter = this.effectsFilter(n.effects);
+    if (fx?.filter) {
+      // the classic effects first, then the animated ones on top of them
+      filter = filter ? this.CK.ImageFilter.MakeCompose(fx.filter, filter) : fx.filter;
+      if (filter !== fx.filter) f.garbage.push(filter);
+    }
     const blend = n.blendMode ? this.blendModeOf(n.blendMode) : null;
-    if (!filter && !blend) return false;
+    if (!filter && !blend && !fx?.overlays.length && !fx?.texts.length && !fx?.paints.length && !(fx?.kernels.length && n.kind !== "group")) return false;
     const lp = new this.CK.Paint();
     if (filter) lp.setImageFilter(filter);
     if (blend) lp.setBlendMode(blend);
@@ -432,7 +616,248 @@ export class CanvasKitRenderer {
     const bounds = n.kind === "text" ? null : inflateBounds(boundsOfNode(n), effectsOutset(n) + strokeOutsetOfNode(n) + 1);
     sk.saveLayer(lp, bounds ? this.CK.XYWHRect(bounds.x, bounds.y, bounds.width, bounds.height) : null);
     lp.delete();
+    this.fxLayers.push(fx && n.kind !== "group" ? { fx, box: boundsOfNode(n), reach: bounds ?? inflateBounds(boundsOfNode(n), 64), node: n } : null);
     return true;
+  }
+
+  // The layer an effect of `n` names (animation/fx/props.ts), drawn offscreen where the node's own picture is: the same local
+  // space as `src`, but placed so that it does not move or turn with the node (the node's rotation and scale are undone).
+  // The layer may be hidden: it is drawn anyway, it is a source and not part of the picture. null if it names none.
+  private layerShader(n: NodeLite, effect: string, capture: (body: (c: Canvas) => void) => Shader | null): Shader | null {
+    const refId = n.animFxRefs?.[effect];
+    const f = this.frame as Frame;
+    const ref = refId ? f.scene.nodes.get(refId) : undefined;
+    if (!refId || !ref || refId === n.id || this.layerStack.has(refId)) return null;
+    const index = sceneIndexOf(f.scene);
+    const there = worldTransformOf(f.scene, ref.parentId);
+    const here = invertTransform(worldTransformOf(f.scene, n.parentId));
+    const rotated = n.rotation % 360 !== 0;
+    const scaled = n.animScale !== undefined && n.animScale !== 1;
+    const center = n.animPivot ?? nodeCenter(n);
+    this.layerStack.add(n.id);
+    this.layerStack.add(refId);
+    try {
+      return capture((c) => {
+        // undo the node's own transform (rotate about its centre, then scale): the layer stays where it is on screen
+        if (scaled) {
+          const k = 1 / (n.animScale as number);
+          c.translate(center.x, center.y);
+          c.scale(k, k);
+          c.translate(-center.x, -center.y);
+        }
+        if (rotated) c.rotate(-n.rotation * DEG, center.x, center.y);
+        concat(c, compose(here, there));
+        this.drawSiblings(c, [{ ...ref, visible: true }], index.children, new Set(), null, new Set(), false);
+      });
+    } finally {
+      this.layerStack.delete(n.id);
+      this.layerStack.delete(refId);
+    }
+  }
+
+  // The node's pixels inside the layer: drawn straight, or -- with effect kernels (animation/fx) -- drawn
+  // OFFSCREEN and passed through each kernel's shader, which reads them as `src`.
+  private drawLayerBody(sk: Canvas, n: NodeLite, layered: boolean, drawBody: (c: Canvas) => void): void {
+    const top = layered ? this.fxLayers[this.fxLayers.length - 1] : null;
+    if (!top || top.fx.kernels.length === 0 || n.kind === "group") {
+      drawBody(sk);
+      return;
+    }
+    const CK = this.CK;
+    const f = this.frame as Frame;
+    const { box, reach } = top;
+    // device pixels per local unit, capped so the offscreen surface stays reasonable
+    const s = this.offscreenScale(reach);
+    const w = Math.max(1, Math.ceil(reach.width * s)), h = Math.max(1, Math.ceil(reach.height * s));
+    const rect = CK.XYWHRect(reach.x, reach.y, reach.width, reach.height);
+    let paint: (c: Canvas) => void = drawBody;
+    const toLocal = [1 / s, 0, reach.x, 0, 1 / s, reach.y, 0, 0, 1];
+    // draws `body` into a fresh offscreen surface the size of `reach` and returns its image as a shader in the node's local space
+    const capture = (body: (c: Canvas) => void): Shader | null => {
+      const surface = CK.MakeRenderTarget(this.grCtx as GrDirectContext, w, h) ?? CK.MakeSurface(w, h);
+      if (!surface) return null;
+      const c = surface.getCanvas();
+      c.clear(CK.TRANSPARENT);
+      c.save();
+      c.scale(s, s);
+      c.translate(-reach.x, -reach.y);
+      body(c);
+      c.restore();
+      const img = surface.makeImageSnapshot();
+      const sh = img.makeShaderOptions(CK.TileMode.Decal, CK.TileMode.Decal, CK.FilterMode.Linear, CK.MipmapMode.None, toLocal);
+      f.garbage.push(surface, img, sh);
+      return sh;
+    };
+    let originalShader: Shader | null | undefined;
+    for (const k of top.fx.kernels) {
+      if (k.skip) continue;
+      const effect = this.runtimeEffect(k.sksl);
+      if (!effect) continue;
+      const surface = CK.MakeRenderTarget(this.grCtx as GrDirectContext, w, h) ?? CK.MakeSurface(w, h);
+      if (!surface) break;
+      const c = surface.getCanvas();
+      c.clear(CK.TRANSPARENT);
+      c.save();
+      c.scale(s, s);
+      c.translate(-reach.x, -reach.y);
+      paint(c);
+      c.restore();
+      const img = surface.makeImageSnapshot();
+      // image pixels -> the node's local space, so the kernel works in world units
+      const src = img.makeShaderOptions(CK.TileMode.Decal, CK.TileMode.Decal, CK.FilterMode.Linear, CK.MipmapMode.None, toLocal);
+      // a kernel that looks at the whole node first (Auto Levels, Equalize): count the pixels it receives, build its lookup table
+      const children = [src];
+      if (k.lut) {
+        const hist = readHistogram(CK, img);
+        const lut = hist ? makeLutShader(CK, k.lut(hist)) : null;
+        if (!lut) { f.garbage.push(surface, img, src); continue; }
+        children.push(lut.shader);
+        f.garbage.push(lut.image, lut.shader);
+      }
+      // a kernel with a lookup table from a file: a data image, sampled with pixel coordinates
+      if (k.image) {
+        const lutImg = CK.MakeImage({ width: k.image.width, height: k.image.height, colorType: CK.ColorType.RGBA_8888, alphaType: CK.AlphaType.Opaque, colorSpace: CK.ColorSpace.SRGB }, k.image.bytes, k.image.width * 4);
+        if (!lutImg) { f.garbage.push(surface, img, src); continue; }
+        const lutShader = lutImg.makeShaderOptions(CK.TileMode.Clamp, CK.TileMode.Clamp, CK.FilterMode.Nearest, CK.MipmapMode.None);
+        children.push(lutShader);
+        f.garbage.push(lutImg, lutShader);
+      }
+      // a kernel with a second image: the node as it was before the kernels, or the layer it names
+      if (k.other === "original") {
+        if (originalShader === undefined) originalShader = capture(drawBody);
+        if (originalShader) children.push(originalShader);
+      } else if (k.other === "layer") {
+        // no layer named, or it is gone (deleted, or a loop): the effect does nothing, the node is not made to vanish
+        const sh = this.layerShader(n, fxRefKey(k.effect ?? "", 1), capture);
+        const sh2 = k.other2 ? this.layerShader(n, fxRefKey(k.effect ?? "", 2), capture) : null;
+        if (!sh || (k.other2 && !sh2)) { f.garbage.push(surface, img, src); continue; }
+        children.push(sh);
+        if (sh2) children.push(sh2);
+      }
+      if (k.other && children.length < (k.lut ? 3 : 2) + (k.image ? 1 : 0) + (k.other2 ? 1 : 0)) { f.garbage.push(surface, img, src); continue; }
+      const shader = effect.makeShaderWithChildren([box.x, box.y, box.width, box.height, ...k.uniforms], children);
+      f.garbage.push(surface, img, src, shader);
+      paint = (target) => {
+        const p = new CK.Paint();
+        p.setShader(shader);
+        target.drawRect(rect, p);
+        p.delete();
+      };
+    }
+    paint(sk);
+  }
+
+  // Closes the layer opened by beginEffects: first the effects that are shaders (grain,
+  // gradients, wipes), drawn over the node's pixels, then the layer is composited.
+  private endEffects(sk: Canvas): void {
+    const pending = this.fxLayers.pop();
+    if (pending) {
+      const CK = this.CK;
+      const { box, reach } = pending;
+      for (const { overlay, values, effect } of pending.fx.overlays) {
+        const runtime = this.runtimeEffect(overlay.sksl);
+        if (!runtime) continue;
+        const shader = runtime.makeShader([box.x, box.y, box.width, box.height, ...overlay.uniforms(values, this.fxEnv(pending.node, effect))]);
+        const paint = new CK.Paint();
+        paint.setShader(shader);
+        paint.setBlendMode(overlay.blend === "dstin" ? CK.BlendMode.DstIn : overlay.blend === "srcover" ? CK.BlendMode.SrcOver : CK.BlendMode.SrcATop);
+        sk.drawRect(CK.XYWHRect(reach.x, reach.y, reach.width, reach.height), paint);
+        paint.delete();
+        shader.delete();
+      }
+      for (const t of pending.fx.paints) this.drawFxPaint(sk, pending.box, t.spec);
+      for (const t of pending.fx.texts) this.drawFxText(sk, pending.node, pending.box, t.spec, t.effect);
+    }
+    sk.restore();
+  }
+
+  // What an overlay may read besides its parameters: the clip time at the node and the sound of the layer it names (or its own).
+  private fxEnv(n: NodeLite, effect: string): FxEnv {
+    const f = this.frame as Frame;
+    const refId = n.animFxRefs?.[effect];
+    const sound = soundOf(refId ? f.scene.nodes.get(refId) : undefined) ?? soundOf(n);
+    const buffer = sound ? soundBuffer(sound.hash) : null;
+    const faceDef = fxDef(FACE_POINTS);
+    const faceSrc = (refId ? f.scene.nodes.get(refId) : undefined) ?? n;
+    const faceGiven = faceSrc.animFx?.[FACE_POINTS];
+    return { timeMs: n.animTime ?? 0, sound: sound && buffer ? { buffer, startMs: sound.startMs } : null, face: faceDef && faceGiven ? resolveFx(faceDef, faceGiven) : null };
+  }
+
+  // Strokes the Paint effect draws (animation/fx/paint.ts): round-capped polylines smoothed through their midpoints, inside the node's layer.
+  private drawFxPaint(sk: Canvas, box: Bounds, spec: FxPaintSpec): void {
+    const CK = this.CK;
+    const u = Math.min(box.width, box.height);
+    for (const s of spec.strokes) {
+      if (s.points.length === 0) continue;
+      const pts = s.points.map((p) => ({ x: box.x + p.x * box.width, y: box.y + p.y * box.height }));
+      const path = new CK.PathBuilder();
+      path.moveTo(pts[0].x, pts[0].y);
+      if (pts.length === 1) path.lineTo(pts[0].x, pts[0].y);
+      else if (pts.length === 2) path.lineTo(pts[1].x, pts[1].y);
+      else {
+        for (let i = 1; i < pts.length - 1; i++) path.quadTo(pts[i].x, pts[i].y, (pts[i].x + pts[i + 1].x) / 2, (pts[i].y + pts[i + 1].y) / 2);
+        path.lineTo(pts[pts.length - 1].x, pts[pts.length - 1].y);
+      }
+      const paint = new CK.Paint();
+      const n = parseInt(s.color.slice(1), 16);
+      paint.setColor(CK.Color4f(((n >> 16) & 255) / 255, ((n >> 8) & 255) / 255, (n & 255) / 255, Math.max(0, Math.min(1, s.opacity * spec.opacity))));
+      paint.setStyle(CK.PaintStyle.Stroke);
+      paint.setStrokeCap(CK.StrokeCap.Round);
+      paint.setStrokeJoin(CK.StrokeJoin.Round);
+      paint.setStrokeWidth(Math.max(0.5, s.size * u));
+      paint.setAntiAlias(true);
+      const built: Path = path.detachAndDelete();
+      sk.drawPath(built, paint);
+      paint.delete();
+      built.delete();
+    }
+  }
+
+  // Text an effect draws (animation/fx/kernelsText.ts): a text node built from the effect's spec, drawn as the document's own text.
+  private drawFxText(sk: Canvas, n: NodeLite, box: Bounds, spec: FxTextSpec, effect: string): void {
+    if (spec.content === "") return;
+    let onPath: { x: number; y: number }[] | undefined;
+    if (spec.path === "layer") {
+      const f = this.frame as Frame;
+      const ref = n.animFxRefs?.[effect] ? f.scene.nodes.get(n.animFxRefs[effect]) : undefined;
+      if (ref && ref.kind === "vector" && (ref.vector?.subpaths[0]?.anchors.length ?? 0) >= 2) onPath = pathPointsFor(f.scene, ref, n);
+      else onPath = builtInPath(1, { radius: 0.38, sweep: 360, start: -90, amplitude: 0 }).map((p) => ({ x: box.x + box.width / 2 + p.x * Math.min(box.width, box.height), y: box.y + box.height / 2 + p.y * Math.min(box.width, box.height) }));
+    } else if (spec.path) {
+      const u = Math.min(box.width, box.height);
+      onPath = spec.path.map((p) => ({ x: box.x + box.width * spec.ax + p.x * u, y: box.y + box.height * spec.ay + p.y * u }));
+    }
+    const lines = spec.content.split("\n").length;
+    const size = spec.fontSize;
+    let x: number, y: number, width: number, height: number;
+    if (onPath && onPath.length >= 2) {
+      // as store/textPath.ts does: the box of the polyline, grown by the font size
+      const xs = onPath.map((p) => p.x), ys = onPath.map((p) => p.y);
+      x = Math.min(...xs) - size; y = Math.min(...ys) - size;
+      width = Math.max(...xs) - Math.min(...xs) + 2 * size; height = Math.max(...ys) - Math.min(...ys) + 2 * size;
+    } else {
+      width = Math.max(size, box.width * spec.width);
+      height = size * spec.lineHeight * lines;
+      x = box.x + box.width * spec.ax - width / 2;
+      y = box.y + box.height * spec.ay - height / 2;
+    }
+    const node: NodeLite = {
+      id: `${n.id}#fx-text`, parentId: n.parentId, orderKey: "a", name: "", visible: true, opacity: spec.opacity, x, y, width, height, rotation: 0,
+      strokes: [], kind: "text", cornerRadius: 0, clipsContent: false, fills: [spec.color],
+      text: {
+        content: spec.content, onPath,
+        style: { fontFamily: spec.fontFamily, fontSize: size, fontWeight: spec.fontWeight, lineHeight: spec.lineHeight, align: spec.align, letterSpacing: spec.letterSpacing },
+      },
+    };
+    this.drawText(sk, node);
+  }
+
+  private runtimeEffect(src: string) {
+    let e = this.runtimeEffects.get(src);
+    if (e === undefined) {
+      e = this.CK.RuntimeEffect.Make(src, (err) => console.warn("[fx] SkSL error:", err)) ?? null;
+      this.runtimeEffects.set(src, e);
+    }
+    return e;
   }
 
   private blendModeOf(b: NonNullable<NodeLite["blendMode"]>) {
@@ -985,6 +1410,7 @@ export class CanvasKitRenderer {
     this.skImages.clear();
     this.fillP.delete();
     this.strokeP.delete();
+    this.dropSnapshot();
     this.surface?.delete();
     this.surface = null;
     this.grCtx?.releaseResourcesAndAbandonContext();

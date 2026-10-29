@@ -11,15 +11,26 @@ the editor and MCP agents produce exactly the same diagram.
 | Flowchart | `flowchart TD` / `graph LR` | nodes in five shapes, solid, dashed or thick edges |
 | UML class | `classDiagram` | three-compartment classes, inheritance, composition, aggregation, association, dependency, realization |
 | UML sequence | `sequenceDiagram` | participants, messages, activations, notes, `loop`/`alt`/`opt`/`par` fragments |
-| UML state | `stateDiagram-v2` | states, transitions, start and end dot, choice |
+| UML state | `stateDiagram-v2` | states, transitions, start and end dot, choice, notes |
+| Entity-relationship | `erDiagram` | entities with typed attributes, relationships with their cardinalities |
 
-Other Mermaid types (ER, Gantt, …) are rejected with a message.
+Other Mermaid types (Gantt, pie, …) are rejected with a message.
 
 ## From the editor
 
 Document menu → **Diagram (Mermaid, UML)…**. The dialog has an example
 for each type. With a diagram selected the dialog opens on its text and
 **Update** redraws it in place (same name and position).
+
+## To Mermaid
+
+The other direction: the document's **flows** (docs/flows.md) come out as Mermaid text, from the CLI
+(`opendesigner flow mermaid [-doc ...] [-flow ID]`) or MCP (`export_mermaid`). A screen is a node (its `flow.kind`
+picks the shape: decision a diamond, start and end a pill, action rounded), a transition an edge labelled with its
+label -- or its trigger when that is not a plain click -- and its guard in brackets, with `auto` and `back`
+transitions dotted; several flows become one `subgraph` each. The text reads back as a diagram
+(`create_diagram`). A diagram drawn from Mermaid already carries its text in `meta` (`diagram.source`, in
+`list_diagrams`), so it exports as itself. `internal/flow/mermaid.go`.
 
 ## From MCP
 
@@ -42,6 +53,11 @@ not touch the document) and returns the nodes, ready to insert.
 **Flowchart.** `A[rectangle]`, `A(rounded)`, `A([pill])`, `A((circle))`,
 `A{decision}`; edges `-->`, `---`, `-.->`, `==>`, `<-->`, with text `-->|yes|` or
 `-- yes -->`; chains `A --> B --> C` and groups `A & B --> C`; `<br/>` wraps.
+`subgraph id [Title]` ... `end` draws a titled box around the nodes first written inside it, and they nest;
+the title may be `"Quoted"`, and a block with only a title uses it as its id. The layout does not know about
+subgraphs, so a box is the bounding box of its members: a node outside it that the layout happens to place among
+them is drawn over it (rare for hand-written diagrams). A subgraph without nodes draws nothing, and edges to a
+subgraph's own id are not supported (they would add a node of that name).
 
 **Classes.**
 
@@ -59,7 +75,8 @@ classDiagram
 
 Relations: `<|--` / `--|>` inheritance, `*--` composition, `o--`
 aggregation, `-->` association, `..>` dependency, `..|>` realization, `--` and
-`..` links; multiplicity in quotes and label after `:`. The one carrying
+`..` links; multiplicity in quotes and label after `:`. `note for Animal "text"` hangs a yellow note from a class on
+a dotted line and `note "text"` draws a free one (`\n` breaks a line). The one carrying
 the triangle or the diamond sits on top. A member with `(` is a method, the others are
 attributes; `Name~T~` becomes `Name<T>`.
 
@@ -73,10 +90,30 @@ attributes; `Name~T~` becomes `Name<T>`.
 **States.** `[*] --> A`, `A --> B : event`, `state "Long name" as X`,
 `state X <<choice>>`, `X : description`, `direction LR`. Composite states
 (`state X { … }`) are flattened: the inner transitions stay, the box
-does not.
+does not. `note right of A : text` (or `left of`, `top of`, `bottom of`; or the block form closed by `end note`)
+draws a note on a dotted line to the state; the side is not honoured, the layout places it.
+
+**Entities.**
+
+```
+erDiagram
+  CUSTOMER ||--o{ ORDER : places
+  CUSTOMER {
+    string name
+    string email PK, UK "the login"
+  }
+  ORDER["Purchase order"] {
+    int id PK
+  }
+```
+
+An entity is drawn like a class (its name over its attribute rows: `type name`, then `PK`, `FK` or `UK`, then a
+quoted comment). A relationship is a line with the cardinality at each end as text -- `||` is `1`, `|o` / `o|`
+`0..1`, `}|` / `|{` `1..*`, `}o` / `o{` `0..*` -- and `..` in place of `--` makes it dotted (non-identifying).
+The cardinalities are written as text, not as crow's-foot marks.
 
 Caps: 200 nodes, 400 edges, 60 participants, 2000 events, 64 KiB of text. The
-`subgraph`, `style`, `classDef`, `click` lines are ignored.
+`style`, `classDef`, `click` lines are ignored.
 
 ## Known limits
 
@@ -86,7 +123,7 @@ Caps: 200 nodes, 400 edges, 60 participants, 2000 events, 64 KiB of text. The
 - Text width is estimated (the server has no fonts): the boxes have a
   bit of extra room.
 - No dashing in the model: dashed lines are drawn as dashes.
-- No `subgraph`, notes in class and state diagrams, ER.
+- Composite states are flattened (no box); an ER relationship shows its cardinality as text.
 
 The flows between screens (specification and Playwright tests) are another thing: see
 `docs/flows.md`.

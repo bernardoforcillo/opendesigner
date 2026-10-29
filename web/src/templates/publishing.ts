@@ -139,7 +139,7 @@ export function buildBook(pageId: string, newId: IdGen): PublishingBuilt {
 
   return {
     nodes: p.b.nodes, flows: [], transitions: [], pages: p.pages, textStyles: st.all,
-    settings: { vertical: "publishing", baselineIncrement: 16, baselineStart: 54 },
+    settings: { vertical: "publishing", baselineIncrement: 16, baselineStart: 54, facingPages: true },
   };
 }
 
@@ -181,7 +181,7 @@ export function buildMagazine(pageId: string, newId: IdGen): PublishingBuilt {
 
   return {
     nodes: p.b.nodes, flows: [], transitions: [], pages: p.pages, textStyles: st.all,
-    settings: { vertical: "publishing", baselineIncrement: 14, baselineStart: 48 },
+    settings: { vertical: "publishing", baselineIncrement: 14, baselineStart: 48, facingPages: true },
   };
 }
 

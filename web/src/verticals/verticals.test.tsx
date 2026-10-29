@@ -9,6 +9,7 @@ vi.mock("@/rpc/client", () => ({ docClient: {} }));
 
 import { menuShows, modeFor, VERTICAL_DEFS, VERTICAL_LIST, verticalDef } from ".";
 import { DocMenu } from "@/ui/shell/DocMenu";
+import { ModeTabs } from "@/ui/shell/ModeTabs";
 import { TopBar } from "@/ui/shell/TopBar";
 import { useScene } from "@/store/store";
 import { useFlowUi } from "@/store/flowUi";
@@ -52,8 +53,14 @@ describe("vertical definitions", () => {
   });
 });
 
-describe("TopBar modes by vertical", () => {
-  const bar = () => render(<TopBar mode="design" presence={null} onNewDocument={() => {}} connection="connected" statusLabel="ok" />);
+describe("mode tabs by vertical", () => {
+  // Board, Design, Flows and Develop are the tabs at the top of the right panel; Publishing's one mode is in the top bar.
+  const bar = () => {
+    const publishing = useScene.getState().scene?.settings?.vertical === "publishing";
+    return render(publishing
+      ? <TopBar mode="design" presence={null} onNewDocument={() => {}} connection="connected" statusLabel="ok" />
+      : <ModeTabs />);
+  };
   const modes = () => screen.getAllByRole("radio").map((r) => r.textContent);
 
   it("product offers every mode", () => {

@@ -255,6 +255,10 @@ func (b *builder) planAnimations(screen *opendesignerv1.Node) {
 				b.warn("clip %q: track %s of %q is not inside the target %q: ignored (the clip only animates the target and its descendants)", label, t.GetProp(), nameOrID(d, n.GetId()), nameOrID(d, target.GetId()))
 				continue
 			}
+			if strings.HasPrefix(t.GetProp(), "fx.") {
+				b.warn("clip %q: effect track %s on %q has no code equivalent (effects are drawn by the editor and the prototype player only): ignored", label, t.GetProp(), nameOrID(d, n.GetId()))
+				continue
+			}
 			if t.GetProp() == "draw" {
 				if _, isVec := n.GetShape().(*opendesignerv1.Node_Vector); !isVec {
 					b.warn("clip %q: draw on %q, which is not a vector (the code draws rect/ellipse/frame as boxes, with no path): ignored", label, nameOrID(d, n.GetId()))

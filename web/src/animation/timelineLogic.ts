@@ -2,6 +2,9 @@ import type { ClipLite, KeyframeLite, NodeLite, SceneState, TrackLite } from "@/
 import { ancestorsOf } from "@/store/tree";
 import { sampleTrack, type TrackProp } from "@/animation/engine";
 import { canDraw } from "@/animation/pose";
+import { fxStringProp, parseFxLayerProp, parseFxProp, parseFxStringProp } from "@/animation/fx/props";
+import { fxDef, fxParam } from "@/animation/fx/library";
+import { FX_CATALOG } from "@/animation/fx/catalog";
 
 // THE TIMELINE LOGIC: PURE functions on the clip, with no DOM or store.
 //
@@ -30,11 +33,19 @@ export const sameKey = (a: KeyRef, b: KeyRef) => a.track === b.track && a.key ==
 /** Brings a value within the property's limits (opacity and draw in 0..1); NaN -> `fallback`. */
 export function clampValue(prop: string, v: number, fallback = 0): number {
   if (!Number.isFinite(v)) return fallback;
+  const fx = parseFxProp(prop);
+  if (fx) {
+    const par = fxParam(fx.effect, fx.param);
+    return par ? Math.min(par.max, Math.max(par.min, v)) : v;
+  }
   return prop === "opacity" || prop === "draw" ? Math.min(1, Math.max(0, v)) : v;
 }
 
 /** The BASE value of a node property (the one that holds without animation). */
 export function baseValueOf(n: Pick<NodeLite, "x" | "y" | "rotation" | "opacity">, prop: string): number {
+  if (parseFxLayerProp(prop) || parseFxStringProp(prop)) return 1;
+  const fx = parseFxProp(prop);
+  if (fx) return fxParam(fx.effect, fx.param)?.default ?? 0;
   switch (prop) {
     case "opacity": return n.opacity;
     case "x": return n.x;
@@ -57,6 +68,41 @@ export const PROP_LABEL: Record<string, string> = {
   opacity: "Opacity", x: "X", y: "Y", scale: "Scale", rotation: "Rotation", draw: "Draw",
 };
 export const PROP_UNIT: Record<string, string> = { opacity: "", x: "px", y: "px", scale: "×", rotation: "°", draw: "" };
+
+/** The label of a track property: the built-in ones, or "Effect name · Parameter" for `fx.*`. */
+export function propLabel(prop: string, layerName?: (id: string) => string | undefined): string {
+  if (PROP_LABEL[prop]) return PROP_LABEL[prop];
+  const str = parseFxStringProp(prop);
+  if (str) {
+    const name = FX_CATALOG.find((e) => e.id === str.effect)?.name ?? str.effect;
+    const sp = fxDef(str.effect)?.strings?.find((x) => x.id === str.param);
+    const label = sp?.label ?? str.param;
+    if (sp?.file) return `${name} · ${label}: ${str.text === "" ? "(none)" : `file ${str.text.slice(0, 8)}`}`;
+    const shown = str.text.replace(/\s+/g, " ");
+    return `${name} · ${label}: "${shown.length > 24 ? `${shown.slice(0, 23)}…` : shown}"`;
+  }
+  const ref = parseFxLayerProp(prop);
+  if (ref) {
+    const name = FX_CATALOG.find((e) => e.id === ref.effect)?.name ?? ref.effect;
+    const two = fxDef(ref.effect)?.needsLayer === 2;
+    const which = ref.slot > 1 ? "Outer layer" : two ? "Inner layer" : "Layer";
+    return `${name} · ${which}: ${layerName?.(ref.layerId) ?? "(missing)"}`;
+  }
+  const fx = parseFxProp(prop);
+  if (!fx) return prop;
+  const name = FX_CATALOG.find((e) => e.id === fx.effect)?.name ?? fx.effect;
+  return `${name} · ${fxParam(fx.effect, fx.param)?.label ?? fx.param}`;
+}
+
+export function propUnit(prop: string): string {
+  const fx = parseFxProp(prop);
+  return fx ? fxParam(fx.effect, fx.param)?.unit ?? "" : PROP_UNIT[prop] ?? "";
+}
+
+/** The effect-parameter tracks that can be added: every parameter of an effect, once the effect is in use. */
+export function fxPropsFor(effectId: string): string[] {
+  return fxDef(effectId)?.params.map((p) => `fx.${effectId}.${p.id}`) ?? [];
+}
 
 // --- the tracks ------------------------------------------------------------------
 
@@ -93,6 +139,8 @@ export function addPropertyTrack(
   clip: ClipLite, node: Pick<NodeLite, "id" | "x" | "y" | "rotation" | "opacity">, prop: string,
 ): ClipLite {
   if (findTrack(clip, node.id, prop) >= 0) return clip;
+  // a layer reference or a string is a constant: one keyframe, never animated
+  if (parseFxLayerProp(prop) || parseFxStringProp(prop)) return addTrack(clip, node.id, prop, 1, 0);
   const v = baseValueOf(node, prop);
   const start = prop === "draw" ? 0 : v;
   const withStart = addTrack(clip, node.id, prop, start, 0);
@@ -460,5 +508,30 @@ export function targetCandidates(scene: SceneState, include: string, limit = 300
   }
   const inc = scene.nodes.get(include);
   if (inc && !out.some((n) => n.id === include)) out.push(inc);
+  return out;
+}
+
+/**
+ * `clip` with the string parameter `param` of `effect` on `nodeId` set to `text`: an earlier track for it is replaced (the text is
+ * in the track's name, so it cannot be edited in place). Unchanged (same identity) if the text is already that.
+ */
+export function setStringParam(clip: ClipLite, nodeId: string, effect: string, param: string, text: string): ClipLite {
+  const mine = (t: TrackLite) => {
+    const s = parseFxStringProp(t.prop);
+    return t.nodeId === nodeId && !!s && s.effect === effect && s.param === param;
+  };
+  const prop = fxStringProp(effect, param, text);
+  if (clip.tracks.some((t) => mine(t) && t.prop === prop) && clip.tracks.filter(mine).length === 1) return clip;
+  const kept = clip.tracks.filter((t) => !mine(t));
+  return withTracks(clip, [...kept, { nodeId, prop, keyframes: [{ time: 0, value: 1, easing: DEFAULT_EASING }] }]);
+}
+
+/** The current text of a string parameter of `nodeId` in `clip` (the last track wins), or undefined. */
+export function stringParamOf(clip: ClipLite, nodeId: string, effect: string, param: string): string | undefined {
+  let out: string | undefined;
+  for (const t of clip.tracks) {
+    const s = t.nodeId === nodeId ? parseFxStringProp(t.prop) : null;
+    if (s && s.effect === effect && s.param === param) out = s.text;
+  }
   return out;
 }

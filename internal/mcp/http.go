@@ -101,6 +101,7 @@ func (h *httpMount) serverFor(req *http.Request) *mcp.Server {
 		},
 	})
 	RegisterTools(srv, sess)
+	RegisterAgentSurface(srv, sess)
 	h.logger.Printf("mcp session co-designing document %s as client %s", docID, sess.ClientID())
 	return srv
 }

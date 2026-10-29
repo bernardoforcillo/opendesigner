@@ -3,6 +3,7 @@ package core
 import (
 	"errors"
 	"math"
+	"strings"
 	"testing"
 
 	opendesignerv1 "github.com/bernardoforcillo/opendesigner/gen/opendesigner/v1"
@@ -72,6 +73,8 @@ func TestClipRejections(t *testing.T) {
 		{"ghost target", base(func(c *opendesignerv1.Clip) { c.TargetId = "ghost" }), ErrNodeNotFound},
 		{"ghost track node", base(func(c *opendesignerv1.Clip) { c.Tracks[0].NodeId = "ghost" }), ErrNodeNotFound},
 		{"unknown prop", base(func(c *opendesignerv1.Clip) { c.Tracks[0].Prop = "width" }), ErrTrackProp},
+		{"fx prop without a param", base(func(c *opendesignerv1.Clip) { c.Tracks[0].Prop = "fx.ec.blur.gaussian" }), ErrTrackProp},
+		{"fx prop with a bad effect id", base(func(c *opendesignerv1.Clip) { c.Tracks[0].Prop = "fx.blur.gaussian.blurriness" }), ErrTrackProp},
 		{"zero keyframes", base(func(c *opendesignerv1.Clip) { c.Tracks[0].Keyframes = nil }), ErrTrackKeyframes},
 		{"negative time", base(func(c *opendesignerv1.Clip) { c.Tracks[0].Keyframes = kfs(-1, 0, 500, 1) }), ErrKeyframeTime},
 		{"time beyond duration", base(func(c *opendesignerv1.Clip) { c.Tracks[0].Keyframes = kfs(0, 0, 501, 1) }), ErrKeyframeTime},
@@ -209,6 +212,19 @@ func TestValidEasing(t *testing.T) {
 	for _, s := range bad {
 		if ValidEasing(s) {
 			t.Errorf("%q should be rejected", s)
+		}
+	}
+}
+
+func TestValidTrackPropAcceptsEffectParameters(t *testing.T) {
+	for _, p := range []string{"opacity", "fx.ec.blur.gaussian.blurriness", "fx.ec.transition.linearwipe.completion", "fx.ec.channel.setmatte.layer.3f2a9c10-aa55-4d1e-9b7e-0c1d2e3f4a5b", "fx.ec.key.differencematte.layer.n_1", "fx.ec.key.innerouter.layer2.abc", "fx.ec.obsolete.basictext.str.text.SGVsbG8", "fx.ec.obsolete.basictext.str.font."} {
+		if !ValidTrackProp(p) {
+			t.Errorf("%q should be a valid track prop", p)
+		}
+	}
+	for _, p := range []string{"", "width", "fx.", "fx.ec.blur.gaussian.", "fx.ec.blur.gaussian.a.b", "fx.ec.Blur.gaussian.x", "xfx.ec.blur.gaussian.x", "fx.ec.channel.setmatte.layer.", "fx.ec.channel.setmatte.layer.a b", "fx.ec.channel.setmatte.layer.a.b", "fx.channel.setmatte.layer.a", "fx.ec.key.innerouter.layer1.abc", "fx.ec.key.innerouter.layer22.abc", "fx.ec.obsolete.basictext.str.text.a+b", "fx.ec.obsolete.basictext.str.text", "fx.ec.obsolete.basictext.str..SGVsbG8", "fx.ec.obsolete.basictext.str.text." + strings.Repeat("A", 4300)} {
+		if ValidTrackProp(p) {
+			t.Errorf("%q should not be a valid track prop", p)
 		}
 	}
 }

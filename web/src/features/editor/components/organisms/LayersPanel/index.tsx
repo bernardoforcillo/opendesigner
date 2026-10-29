@@ -93,6 +93,27 @@ export function visibleRows(
   return out;
 }
 
+/**
+ * The rows to show while FINDING layers: those whose name (or text) contains `query`, case-insensitively,
+ * and the containers that lead to them, so a match keeps its place in the tree. `rows` is the whole tree in
+ * pre-order with every container open; an empty query keeps all of it.
+ */
+export function filterRows(rows: readonly LayerRow[], query: string): LayerRow[] {
+  const q = query.trim().toLowerCase();
+  if (q === "") return [...rows];
+  const keep = new Set<number>();
+  const open: number[] = []; // the ancestors of the row being read, outermost first
+  rows.forEach((row, i) => {
+    while (open.length > 0 && rows[open[open.length - 1]].depth >= row.depth) open.pop();
+    if (row.node.name.toLowerCase().includes(q) || layerDisplayName(row.node).toLowerCase().includes(q)) {
+      keep.add(i);
+      for (const a of open) keep.add(a);
+    }
+    open.push(i);
+  });
+  return rows.filter((_, i) => keep.has(i));
+}
+
 // The outcome of a drop, computed from the row under the pointer. It is the heart of the
 // see-vs-select of the panel: the same geometry (the row hit) decides
 // what the drop DOES.
@@ -391,6 +412,10 @@ export function LayersPanel() {
   // The node whose row is showing the rename field, or null. Only one
   // at a time, by construction.
   const [renamingId, setRenamingId] = useState<string | null>(null);
+  // Find layers: what is typed in the search field. While it is not empty the tree is a filtered view (every
+  // container open, only what matches and the way to it); reordering and collapsing wait until it is cleared.
+  const [query, setQuery] = useState("");
+  const filtering = query.trim() !== "";
   // The COLLAPSED containers (default: all expanded). A Set of collapsed ids
   // only, so a freshly created container is born open without having to list
   // it. Local VIEW state: it is not an op and not an undo entry.
@@ -433,9 +458,14 @@ export function LayersPanel() {
   // is zero -- a short list would vanish. Virtualized rows have a fixed
   // height (ROW_HEIGHT): it is what lets it avoid measuring them one by one.
   const rows = useMemo(
-    () => (scene && index && currentPageId ? visibleRows(scene, currentPageId, isCollapsed, index.children) : []),
+    () => {
+      if (!(scene && index && currentPageId)) return [];
+      return filtering
+        ? filterRows(visibleRows(scene, currentPageId, () => false, index.children), query)
+        : visibleRows(scene, currentPageId, isCollapsed, index.children);
+    },
     // eslint-disable-next-line react-hooks/exhaustive-deps -- `structure` replaces scene/index
-    [structure, currentPageId, isCollapsed],
+    [structure, currentPageId, isCollapsed, query],
   );
 
   const virtualized = rows.length > VIRTUALIZE_AFTER_ROWS;
@@ -729,7 +759,7 @@ export function LayersPanel() {
                 that do not have one, a spacer of the same width,
                 so names and handles stay aligned across levels. A real
                 <button> (aria-expanded), reachable by keyboard. */}
-            {row.container && row.hasChildren ? (
+            {row.container && row.hasChildren && !filtering ? (
               <button
                 type="button"
                 aria-label={row.expanded ? `Collapse ${label}` : `Expand ${label}`}
@@ -758,6 +788,7 @@ export function LayersPanel() {
             <button
               type="button"
               aria-label={`Reorder ${label}`}
+              disabled={filtering}
               title="Drag to reorder or reparent (Alt+↑ / Alt+↓)"
               // As for the rename field: pointerdown for the normal
               // path, click for the "virtual" one (screen reader), so the
@@ -851,6 +882,18 @@ export function LayersPanel() {
 
   return (
     <div className="flex h-full flex-col text-[13px] text-fg">
+      <div className="flex h-9 shrink-0 items-center gap-1.5 border-b border-line px-3">
+        <Icon name="search" size={13} className="shrink-0 text-fg-subtle" />
+        <input
+          type="text"
+          aria-label="Find layers"
+          placeholder="Find layers"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          onKeyDown={(e) => { if (e.key === "Escape" && query !== "") { e.stopPropagation(); setQuery(""); } }}
+          className="min-w-0 flex-1 bg-transparent text-[13px] text-fg outline-none placeholder:text-fg-subtle"
+        />
+      </div>
       {/* The header appears ONLY with a selection: the title is already in
           the tab, and at rest those 36px are space for layers. */}
       {selection.length > 0 && (

@@ -1,7 +1,7 @@
 import { useScene } from "@/store/store";
 import { DEFAULT_WRAP_OFFSET, isWrapper, wrapOffsetOf, wrapOps } from "@/store/wrap";
 import { META_TEXT_PATH, textOnPathOps } from "@/store/textPath";
-import { addColumnOps, addRowOps, cellOf, deleteColumnOps, deleteRowOps, readTable, resizeTableOps, tableIdOf } from "@/tools/tableOps";
+import { addColumnOps, addRowOps, cellOf, deleteColumnOps, deleteRowOps, mergeCellsOps, readTable, resizeTableOps, selectionCellRange, spanOf, splitCellOps, tableIdOf } from "@/tools/tableOps";
 import { anchorOps, anchorsOf, releaseAnchorOps } from "@/store/anchored";
 import { Button } from "@/ui/ds";
 import { NumberField } from "@/ui/fields/NumberField";
@@ -104,15 +104,30 @@ export function AnchorControls() {
 export function TableControls() {
   const scene = useScene((s) => s.scene);
   const selection = useScene((s) => s.selection);
-  if (!scene || selection.length !== 1) return null;
+  if (!scene || selection.length === 0) return null;
+  // Several cells of one table: the one thing to do with them is merge them into one.
+  if (selection.length > 1) {
+    const range = selectionCellRange(scene, selection);
+    if (!range) return null;
+    const ops = mergeCellsOps(scene, range);
+    return (
+      <Box title="Table">
+        <p className="text-[12px] text-fg-subtle">{(range.r1 - range.r0 + 1) * (range.c1 - range.c0 + 1)} cells selected</p>
+        <Button isDisabled={ops.length === 0} onPress={() => run(ops)}>Merge cells</Button>
+        {ops.length === 0 && <p className="text-[12px] text-fg-subtle">A merged cell that sticks out of the block is in the way: select the whole of it, or split it first.</p>}
+      </Box>
+    );
+  }
   const tableId = tableIdOf(scene, selection[0]);
   const table = tableId ? readTable(scene, tableId) : null;
   if (!tableId || !table) return null;
   const cell = cellOf(scene, selection[0]);
   const [r, c] = cell ?? [table.rows.length - 1, table.cols.length - 1];
+  const [rs, cs] = cell ? spanOf(table.cells.get(`${r},${c}`)) : [1, 1];
   return (
     <Box title="Table">
-      <p className="text-[12px] text-fg-subtle">{table.rows.length} rows × {table.cols.length} columns{cell ? ` · cell ${r + 1}, ${c + 1}` : " · select a cell for row and column actions"}</p>
+      <p className="text-[12px] text-fg-subtle">{table.rows.length} rows × {table.cols.length} columns{cell ? ` · cell ${r + 1}, ${c + 1}${rs > 1 || cs > 1 ? ` (merged, ${rs} × ${cs})` : ""}` : " · select a cell for row and column actions"}</p>
+      {(rs > 1 || cs > 1) && <Button onPress={() => run(splitCellOps(scene, tableId, r, c))}>Split cell</Button>}
       <div className="grid grid-cols-2 gap-1.5">
         <Button isDisabled={!cell} onPress={() => run(addRowOps(scene, tableId, r - 1))}>Row above</Button>
         <Button isDisabled={!cell} onPress={() => run(addRowOps(scene, tableId, r))}>Row below</Button>

@@ -4,7 +4,7 @@ import type { SceneState } from "@/store/types";
 import { type ImageSource, resizeCanvasToDisplaySize } from "@/renderer/canvasRenderer";
 import { CanvasKitRenderer } from "@/renderer/ck/ckRenderer";
 import { FontBook, loadCanvasKit } from "@/renderer/ck/canvaskit";
-import { SceneLayerCache } from "@/renderer/layerCache";
+import { SceneLayerCache, type SpreadAt } from "@/renderer/layerCache";
 import { syncDocumentFonts } from "@/renderer/fontRegistry";
 import { fontFamiliesOnPage } from "@/renderer/pageFonts";
 
@@ -34,10 +34,11 @@ export class GpuSceneRenderer {
     return this.renderer.lost;
   }
 
-  draw(scene: SceneState, cam: Camera, pageId: string | null): void {
+  /** Draws; `false` when it is the last heavy frame moved to the new camera (see CanvasKitRenderer.draw). */
+  draw(scene: SceneState, cam: Camera, pageId: string | null, spread: SpreadAt | null = null, force = false): boolean {
     // The uploaded fonts: loaded into CanvasKit's own font book (it cannot see document.fonts).
     this.fonts.setDocumentFonts(scene.id, scene.fonts, fontFamiliesOnPage(scene, pageId));
-    this.renderer.draw(scene, cam, pageId);
+    return this.renderer.draw(scene, cam, pageId, spread, force) !== false;
   }
 
   dispose(): void {
@@ -71,10 +72,10 @@ export class SceneSurface {
 
   /**
    * Draws the scene with the chosen renderer. Returns `true` if the frame is exact, `false` if
-   * it is the reuse of an image (CPU only, see layerCache.ts) and the real frame
+   * it is the reuse of an image (layerCache.ts on the CPU, CanvasKitRenderer on the GPU) and the real frame
    * must be scheduled.
    */
-  draw(scene: SceneState, cam: Camera, pageId: string | null, force: boolean): boolean {
+  draw(scene: SceneState, cam: Camera, pageId: string | null, force: boolean, spread: SpreadAt | null = null): boolean {
     // The uploaded fonts of the document, as CSS fonts for the 2D canvas.
     syncDocumentFonts(scene.id, scene.fonts, fontFamiliesOnPage(scene, pageId));
     const choice: RendererChoice = useRenderer.getState().choice;
@@ -89,8 +90,7 @@ export class SceneSurface {
           this.fail("the WebGL context was lost");
         } else {
           try {
-            this.drawGpu(this.gpu, scene, cam, pageId);
-            return true;
+            return this.drawGpu(this.gpu, scene, cam, pageId, spread, force);
           } catch (e) {
             this.fail(e instanceof Error ? e.message : String(e));
           }
@@ -102,33 +102,42 @@ export class SceneSurface {
       const st = useRenderer.getState().status;
       if (st === "gpu" || st === "loading") useRenderer.getState().setStatus("cpu");
     }
-    return this.drawCpu(scene, cam, pageId, force);
+    return this.drawCpu(scene, cam, pageId, force, spread);
   }
 
-  private drawCpu(scene: SceneState, cam: Camera, pageId: string | null, force: boolean): boolean {
+  private drawCpu(scene: SceneState, cam: Camera, pageId: string | null, force: boolean, spread: SpreadAt | null): boolean {
     this.glCanvas.style.display = "none";
     this.cpuCleared = false;
     const ctx = this.cpuCanvas.getContext("2d");
     if (!ctx) return true;
     const t0 = performance.now();
-    const exact = this.layers.draw(ctx, scene, cam, pageId, force);
+    const exact = this.layers.draw(ctx, scene, cam, pageId, force, spread);
     if (exact) this.report(performance.now() - t0);
     return exact;
   }
 
-  private drawGpu(gpu: GpuSceneRenderer, scene: SceneState, cam: Camera, pageId: string | null): void {
+  private drawGpu(gpu: GpuSceneRenderer, scene: SceneState, cam: Camera, pageId: string | null, spread: SpreadAt | null, force: boolean): boolean {
     // The 2D canvas sits on top and receives events: it must be left transparent.
     if (!this.cpuCleared) {
       const ctx = this.cpuCanvas.getContext("2d");
-      ctx?.clearRect(0, 0, this.cpuCanvas.width, this.cpuCanvas.height);
+      // The CPU drawing leaves its camera transform on the context, and clearRect is
+      // transformed: without the reset only part of the old frame was wiped, and the rest
+      // (an old page) stayed on top of the GPU's.
+      if (ctx) {
+        ctx.save();
+        ctx.setTransform(1, 0, 0, 1, 0, 0);
+        ctx.clearRect(0, 0, this.cpuCanvas.width, this.cpuCanvas.height);
+        ctx.restore();
+      }
       this.cpuCleared = true;
     }
     this.glCanvas.style.display = "block";
     resizeCanvasToDisplaySize(this.glCanvas);
     const t0 = performance.now();
-    gpu.draw(scene, cam, pageId);
-    this.report(performance.now() - t0);
+    const exact = gpu.draw(scene, cam, pageId, spread, force);
+    if (exact) this.report(performance.now() - t0);
     if (useRenderer.getState().status !== "gpu") useRenderer.getState().setStatus("gpu");
+    return exact;
   }
 
   private startLoad(): void {

@@ -57,6 +57,27 @@ var (
 	TrackProps   = []string{"opacity", "x", "y", "scale", "rotation", "draw"}
 )
 
+// fxPropRe is an effect-parameter track: `fx.<effectId>.<paramId>`, e.g.
+// `fx.ec.blur.gaussian.blurriness`. The effect ids are EffectCraft's (web/src/animation/fx);
+// the document only fixes the SHAPE, as web/src/animation/fx/props.ts does.
+var fxPropRe = regexp.MustCompile(`^fx\.ec\.[a-z0-9]+\.[a-z0-9]+\.[A-Za-z0-9]+$`)
+
+// fxLayerPropRe is a layer reference of an effect that uses a second layer: `fx.<effectId>.layer.<nodeId>`. Only the shape is
+// checked: a reference to a node that does not exist (any more) is allowed, the effect then sees an empty layer.
+var fxLayerPropRe = regexp.MustCompile(`^fx\.ec\.[a-z0-9]+\.[a-z0-9]+\.layer[2-9]?\.[A-Za-z0-9_-]+$`)
+
+// fxStrPropRe is a string parameter of an effect: `fx.<effectId>.str.<paramId>.<text>`, the text in unpadded base64url (at most 4000
+// characters). It is never animated; a later track for the same parameter replaces an earlier one.
+var fxStrPropRe = regexp.MustCompile(`^fx\.ec\.[a-z0-9]+\.[a-z0-9]+\.str\.[A-Za-z0-9]+\.[A-Za-z0-9_-]*$`)
+
+// maxFxStrProp bounds a whole string-parameter prop (the text is encoded at 4/3 of its size).
+const maxFxStrProp = 4200
+
+// ValidTrackProp reports whether prop is one of TrackProps, an effect parameter, a layer reference or a string parameter.
+func ValidTrackProp(prop string) bool {
+	return inSet(TrackProps, prop) || fxPropRe.MatchString(prop) || fxLayerPropRe.MatchString(prop) || (len(prop) <= maxFxStrProp && fxStrPropRe.MatchString(prop))
+}
+
 func inSet(set []string, v string) bool {
 	for _, s := range set {
 		if s == v {
@@ -137,7 +158,7 @@ func validateClip(doc *opendesignerv1.Document, c *opendesignerv1.Clip) error {
 		if !ok {
 			return fmt.Errorf("%w: %q (clip %s track)", ErrNodeNotFound, t.GetNodeId(), id)
 		}
-		if !inSet(TrackProps, t.GetProp()) {
+		if !ValidTrackProp(t.GetProp()) {
 			return fmt.Errorf("%w: %q (clip %s)", ErrTrackProp, t.GetProp(), id)
 		}
 		k := key{t.GetNodeId(), t.GetProp()}

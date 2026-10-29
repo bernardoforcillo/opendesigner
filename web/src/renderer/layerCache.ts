@@ -22,12 +22,17 @@ import { drawScene } from "@/renderer/canvasRenderer";
 //
 // A light document never enters this path: it always draws exact.
 
+// The facing page drawn beside the one on screen (store/spread.ts), as drawScene takes it.
+export type SpreadAt = { pageId: string; dx: number };
+const sameSpread = (a: SpreadAt | null, b: SpreadAt | null) => a === b || (!!a && !!b && a.pageId === b.pageId && a.dx === b.dx);
+
 export const HEAVY_MS = 20;
 export const SETTLE_MS = 120;
 
 interface Snapshot {
   scene: SceneState;
   pageId: string | null;
+  spread: SpreadAt | null;
   width: number;
   height: number;
   cam: Camera;
@@ -50,10 +55,11 @@ export class SceneLayerCache {
     cam: Camera,
     pageId: string | null,
     force = false,
+    spread: SpreadAt | null = null,
   ): boolean {
     const canvas = ctx.canvas;
     const s = this.snap;
-    const sameWorld = !!s && s.scene === scene && s.pageId === pageId && s.width === canvas.width && s.height === canvas.height;
+    const sameWorld = !!s && s.scene === scene && s.pageId === pageId && sameSpread(s.spread, spread) && s.width === canvas.width && s.height === canvas.height;
     const cameraMoved = !!s && (s.cam.x !== cam.x || s.cam.y !== cam.y || s.cam.zoom !== cam.zoom);
 
     if (!force && sameWorld && cameraMoved && this.layer && this.lastCostMs > HEAVY_MS) {
@@ -62,12 +68,12 @@ export class SceneLayerCache {
     }
 
     const t0 = performance.now();
-    drawScene(ctx, scene, cam, pageId);
+    drawScene(ctx, scene, cam, { currentPageId: pageId, spread });
     this.lastCostMs = performance.now() - t0;
 
     if (this.lastCostMs > HEAVY_MS) {
       this.photograph(canvas);
-      this.snap = { scene, pageId, width: canvas.width, height: canvas.height, cam: { ...cam } };
+      this.snap = { scene, pageId, spread, width: canvas.width, height: canvas.height, cam: { ...cam } };
     } else {
       this.snap = null;
     }
