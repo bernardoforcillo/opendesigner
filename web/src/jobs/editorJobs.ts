@@ -76,6 +76,9 @@ export async function executeJob(kind: string, optionsJson: string, deps: Docume
       case "export_html":
         ok = await runDocumentExport("html", capture);
         break;
+      case "export_html_text":
+        ok = await runDocumentExport("html-text", capture);
+        break;
       case "export_epub_reflow":
         ok = await runDocumentExport("epub-reflow", capture);
         break;

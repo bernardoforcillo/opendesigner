@@ -12,7 +12,7 @@ import { pageImageAlts, pageReadingText } from "@/export/readingText";
 import { buildIdml } from "@/export/idml";
 import { buildPptx, type PptxImage } from "@/export/pptx";
 import { buildEpub, type EpubPage } from "@/export/epub";
-import { buildReflowEpub, type ReflowImage } from "@/export/epubReflow";
+import { buildReflowEpub, buildReflowHtml, type ReflowImage } from "@/export/epubReflow";
 import { dataUrlBytes } from "@/pdf/write/pdfImages";
 import { nodesToSvg, type MeasureText, type ResolveImageHref } from "@/export/svg";
 import { canvasToPngBlob, renderRegionToCanvas, type ExportScale } from "@/export/png";
@@ -379,7 +379,7 @@ export async function runExport(req: ExportRequest, deps: ExportDeps = {}): Prom
 // ---------------------------------------------------------------------------
 // THE WHOLE DOCUMENT: every page, as one PDF (print dialog) or one EPUB (file).
 
-export type DocumentExportFormat = "pdf" | "epub" | "epub-reflow" | "html" | "pptx" | "idml";
+export type DocumentExportFormat = "pdf" | "epub" | "epub-reflow" | "html" | "html-text" | "pptx" | "idml";
 
 export interface DocumentExportDeps extends ExportDeps {
   now?: () => Date;
@@ -396,7 +396,7 @@ function printDeps(deps: ExportDeps, measure: MeasureText) {
 
 /** The download name of a whole-document export (`<name>.epub`). */
 export function documentFileName(docName: string, format: DocumentExportFormat): string {
-  return exportFileName(docName, { format: "svg", scope: "page", scale: 1 }).replace(/\.svg$/, `.${format === "epub-reflow" ? "epub" : format}`);
+  return exportFileName(docName, { format: "svg", scope: "page", scale: 1 }).replace(/\.svg$/, `.${format === "epub-reflow" ? "epub" : format === "html-text" ? "html" : format}`);
 }
 
 /**
@@ -471,7 +471,7 @@ export async function runDocumentExport(
       return true;
     }
 
-    if (format === "epub-reflow") {
+    if (format === "epub-reflow" || format === "html-text") {
       // Stories flow as text: the RAW scene is read (footnote markers are still in the content), images by hash.
       const load = deps.loadAssetDataUrl ?? fetchAssetDataUrl;
       const images = new Map<string, ReflowImage>();
@@ -482,6 +482,11 @@ export async function runDocumentExport(
           if (d) images.set(hash, { bytes: d.bytes, mime: d.mime });
         } catch { /* an unreachable image is left out of the book */ }
       }));
+      if (format === "html-text") {
+        const html = buildReflowHtml(raw, { title: scene.name || FALLBACK_NAME, language: scene.settings?.book?.language, book: scene.settings?.book }, images);
+        (deps.download ?? downloadBlob)(new Blob([html], { type: "text/html" }), documentFileName(scene.name, "html").replace(/\.html$/, "-text.html"));
+        return true;
+      }
       const data = buildReflowEpub(raw, { title: scene.name || FALLBACK_NAME, identifier: `urn:opendesigner:${scene.id}`, modified: (deps.now?.() ?? new Date()).toISOString(), book: scene.settings?.book }, images);
       (deps.download ?? downloadBlob)(new Blob([data as BlobPart], { type: EPUB_MIME }), documentFileName(scene.name, "epub").replace(/\.epub$/, "-reflow.epub"));
       return true;

@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { inflateRawSync } from "node:zlib";
-import { buildReflowEpub } from "@/export/epubReflow";
+import { buildReflowEpub, buildReflowHtml } from "@/export/epubReflow";
 import { emptyScene } from "@/store/types";
 import type { NodeLite, SceneState } from "@/store/types";
 
@@ -112,5 +112,31 @@ describe("long-document tokens in the reflowable book", () => {
     expect(c).not.toContain("todo");
     expect(c).toContain('epub:type="noteref"');
     expect(c).toContain("the source");
+  });
+});
+
+describe("buildReflowHtml", () => {
+  it("is one standalone page: semantic headings, a linked contents list, the styles as CSS", () => {
+    const html = buildReflowHtml(book(), { title: "Book" }, new Map());
+    expect(html).toMatch(/^<!DOCTYPE html>/);
+    expect(html).toContain("<title>Book</title>");
+    expect(html).toMatch(/<h1 class="p1" id="h1">Chapter One<\/h1>/);
+    expect(html).toMatch(/<h2 class="p2" id="h2">Intro<\/h2>/);
+    expect(html).toContain('<nav role="doc-toc"');
+    expect(html).toContain('href="#h1"');
+    expect(html).toContain("<style>");
+    expect(html).not.toContain("epub:type");
+  });
+
+  it("inlines images as data URIs", () => {
+    const s = book();
+    const img: NodeLite = { id: "im", parentId: "page1", orderKey: "z", name: "Photo", visible: true, opacity: 1, x: 0, y: 100, width: 50, height: 50, rotation: 0, fills: [], strokes: [], kind: "image", cornerRadius: 0, clipsContent: false, image: { assetHash: "abc" } };
+    s.nodes = s.nodes.set("im", img);
+    const html = buildReflowHtml(s, { title: "Book" }, new Map([["abc", { bytes: new Uint8Array([1, 2, 3]), mime: "image/png" }]]));
+    expect(html).toContain('<img src="data:image/png;base64,AQID" alt="Photo"/>');
+  });
+
+  it("refuses a document with nothing to flow", () => {
+    expect(() => buildReflowHtml(emptyScene("d", "E"), { title: "E" }, new Map())).toThrow(/nothing to export/);
   });
 });

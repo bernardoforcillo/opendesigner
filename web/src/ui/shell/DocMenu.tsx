@@ -141,6 +141,7 @@ export function DocMenu({ onNewDocument }: { onNewDocument: () => void }) {
           else if (k === "page-setup") setPageSetupOpen(true);
           else if (k === "export-epub") void runDocumentExport("epub");
           else if (k === "export-epub-reflow") void runDocumentExport("epub-reflow");
+          else if (k === "export-html-text") void runDocumentExport("html-text");
           else if (k === "diagram") setDiagramOpen(true);
           else if (k === "variables") setVariablesOpen(true);
           else if (k === "fonts") setFontsOpen(true);
@@ -227,6 +228,11 @@ export function DocMenu({ onNewDocument }: { onNewDocument: () => void }) {
               {show("export-epub") && (
                 <MenuItem id="export-epub-reflow" className={ITEM}>
                   <Icon name="download" size={14} /> Export text as EPUB (reflowable)
+                </MenuItem>
+              )}
+              {show("export-epub") && (
+                <MenuItem id="export-html-text" className={ITEM}>
+                  <Icon name="download" size={14} /> Export text as HTML (reflowable)
                 </MenuItem>
               )}
               {show("page-setup") && (

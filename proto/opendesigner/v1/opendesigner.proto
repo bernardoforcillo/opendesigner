@@ -1821,7 +1821,7 @@ message EditorJob {
 message WatchJobsRequest { string doc_id = 1; string client_id = 2; }
 message RunJobRequest {
   string doc_id = 1;
-  string kind = 2;          // export_pdf | export_package | export_epub | export_epub_reflow | export_html | export_pptx | export_idml | export_png | export_svg | preflight | command
+  string kind = 2;          // export_pdf | export_package | export_epub | export_epub_reflow | export_html | export_html_text | export_pptx | export_idml | export_png | export_svg | preflight | command
   string options_json = 3;  // the kind's options, a JSON object
   uint32 timeout_seconds = 4; // 0 => 120
   bytes payload = 5;        // an input file for kinds that take one (command: place_image, import_pdf...)

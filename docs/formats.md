@@ -5,6 +5,7 @@ Menu *Document*; every one is also an MCP tool (they run in the open editor, see
 | Format | Direction | MCP | What is carried |
 |---|---|---|---|
 | HTML | export | `export_html` | one file, every page as inline SVG: text stays selectable, images embedded, fonts **not** embedded |
+| HTML (text) | export | `export_html` mode `text` | the stories as reflowable semantic HTML: headings, paragraphs, styles as CSS, a linked contents list, footnotes as `doc-footnote` notes, images inlined as data URIs; page geometry is not kept |
 | PowerPoint (.pptx) | export | `export_pptx` | one slide per page: rectangles (rounded), ellipses, vectors (bezier), text boxes (font, size, weight, italic, colour, alignment), PNG/JPEG images, solid and 2-stop linear gradients, strokes, opacity, rotation |
 | InDesign IDML | export | `export_idml` | one spread per page: rectangles, ovals, polygons (bezier), text frames with their story (font, size, bold/italic, colour, alignment, paragraph styles by name), RGB swatches |
 | InDesign IDML | import | `import_idml` | pages with their sizes (facing spreads split into pages), rectangles/ovals/polygons/lines (as vectors), text frames with story text, solid fills and strokes (CMYK converted naively), group and item transforms |
