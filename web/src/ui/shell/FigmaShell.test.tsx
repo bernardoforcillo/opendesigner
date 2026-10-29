@@ -4,6 +4,8 @@ import { render, screen, fireEvent, cleanup, within } from "@testing-library/rea
 import type { Op } from "@/gen/opendesigner/v1/opendesigner_pb";
 import { ModeTabs } from "@/ui/shell/ModeTabs";
 import { PagesList } from "@/ui/shell/PagesList";
+import { ShareHeader } from "@/ui/shell/ShareHeader";
+import { useShareDialog } from "@/store/dialogs";
 import { useFlowUi } from "@/store/flowUi";
 import { useScene } from "@/store/store";
 import { emptyScene, type SceneState } from "@/store/types";
@@ -68,5 +70,16 @@ describe("PagesList", () => {
     fireEvent.keyDown(field, { key: "Enter" });
     expect(useScene.getState().scene!.pages.find((p) => p.id === "page2")!.name).toBe("Preferences");
     expect(useScene.getState().undoStack).toHaveLength(1);
+  });
+});
+
+describe("ShareHeader", () => {
+  it("shows the people it is given and opens the Share dialog from the Share button", () => {
+    useShareDialog.getState().setOpen(false);
+    render(<ShareHeader presence={<span>who-is-here</span>} />);
+    expect(screen.getByText("who-is-here")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Share document" }));
+    expect(useShareDialog.getState().open).toBe(true);
+    useShareDialog.getState().setOpen(false);
   });
 });

@@ -10,6 +10,7 @@ import { facingPartner, partnerSheet, pointOnFacingPage, useSpreadView } from "@
 import { StatusBar } from "@/ui/shell/StatusBar";
 import { PagesList } from "@/ui/shell/PagesList";
 import { ModeTabs } from "@/ui/shell/ModeTabs";
+import { ShareHeader } from "@/ui/shell/ShareHeader";
 import { ZoomMenu } from "@/ui/shell/ZoomMenu";
 import { useVariablesDialog } from "@/store/dialogs";
 import { ActionsPalette } from "@/ui/shell/ActionsPalette";
@@ -663,6 +664,9 @@ export function App() {
   // document bar, a tabbed dock on the right and a status bar -- in place of the design editor's floating
   // tool dock and left panel. Same document, same canvas; only the chrome differs.
   const publishing = vertical === "publishing" && mode === "design";
+  // Who is here, with the nickname and the link: in the document bar for Publishing, at the top of the right panel
+  // (next to Share) in the design workspace.
+  const presenceBar = <PresenceBar compact nickname={nickname} onNickname={(n) => { nicknameRef.current = n; setNickname(n); presenceRef.current?.setNickname(n); }} />;
   const paletteActions = useMemo(
     () => buildPaletteActions({ tools: toolsForMode(mode, role), chooseTool, modes: verticalDef(vertical).modes, publishing }),
     // chooseTool is recreated every render but only writes a ref and a setState: the list is stable enough.
@@ -744,7 +748,7 @@ export function App() {
       )}
       {notice && <Banner tone="info" onClose={clearNotice}>{notice}</Banner>}
       {/* The document bar: a full-width island above the columns. */}
-      <TopBar mode={mode} presence={<PresenceBar compact nickname={nickname} onNickname={(n) => { nicknameRef.current = n; setNickname(n); presenceRef.current?.setNickname(n); }} />} onNewDocument={() => navigate(HOME_TEMPLATES_PATH)} connection={connection} statusLabel={statusLabel} />
+      <TopBar mode={mode} presence={vertical === "publishing" ? presenceBar : null} onNewDocument={() => navigate(HOME_TEMPLATES_PATH)} connection={connection} statusLabel={statusLabel} />
       {/* THE THREE COLUMNS: left panel, canvas in the middle, properties on the right.
           `min-h-0` on the row and `min-w-0` on the central column are not
           decorations: without them, a flex child NEVER shrinks below its own
@@ -906,6 +910,7 @@ export function App() {
           </aside>
         ) : (
         <aside aria-label={mode === "dev" ? "Ship" : "Properties"} className={`${rightOpen ? "flex" : "hidden"} ${mode === "dev" ? "w-72" : "w-64"} shrink-0 flex-col overflow-hidden ${ISLAND_CLS}`}>
+          <ShareHeader presence={presenceBar} />
           {/* The mode tabs and the zoom, at the top of the right panel as in a design tool. */}
           <div className="flex h-10 shrink-0 items-center gap-1 border-b border-line pl-1.5 pr-1.5">
             <ModeTabs />

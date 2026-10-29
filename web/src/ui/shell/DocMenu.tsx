@@ -15,7 +15,7 @@ import { runCommand } from "@/jobs/commands";
 import { runDocumentExport } from "@/export/exportScene";
 import { DiagramDialog } from "@/ui/DiagramDialog";
 import { VariablesDialog } from "@/ui/VariablesDialog";
-import { useVariablesDialog } from "@/store/dialogs";
+import { useShareDialog, useVariablesDialog } from "@/store/dialogs";
 import { FontsDialog } from "@/ui/FontsDialog";
 import { StylesDialog } from "@/ui/StylesDialog";
 import { PageSetupDialog } from "@/ui/PageSetupDialog";
@@ -77,7 +77,8 @@ export function DocMenu({ onNewDocument }: { onNewDocument: () => void }) {
   const [pageSetupOpen, setPageSetupOpen] = useState(false);
   const [versionsOpen, setVersionsOpen] = useState(false);
   const [pluginsOpen, setPluginsOpen] = useState(false);
-  const [shareOpen, setShareOpen] = useState(false);
+  const shareOpen = useShareDialog((s) => s.open);
+  const setShareOpen = useShareDialog((s) => s.setOpen);
   const [boardOpen, setBoardOpen] = useState(false);
   const [findOpen, setFindOpen] = useState(false);
   const [swatchesOpen, setSwatchesOpen] = useState(false);

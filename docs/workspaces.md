@@ -6,7 +6,7 @@ One editor, two workspaces. The document's vertical (docs/publishing.md) decides
 |---|---|---|
 | Shape | a design tool's: icon rail and panel on the left, canvas, mode tabs and properties on the right, floating tool bar | a page-layout app's: tool rail, Control panel, canvas, tabbed dock, status bar |
 | Left | **rail** (Layers, Components, Comments, Variables) and its panel; under Layers, the **Pages** list above the layer tree with **Find layers** | the tool rail |
-| Right | the **mode tabs** (Board, Design, Flows, Develop; only the open one shows its name) and the **zoom menu**, then Properties | the dock: Properties, Pages, Layers, Styles, Preflight, Comments |
+| Right | a **people row** (your avatar and the others, with the nickname and link in a popover, and a **Share** button that opens the Share dialog), then the **mode tabs** (Board, Design, Flows, Develop; only the open one shows its name) and the **zoom menu**, then Properties | the dock: Properties, Pages, Layers, Styles, Preflight, Comments |
 | Tools | floating bar at the bottom | vertical rail on the left |
 | Top | document menu, name, people, status | the same, plus the one mode (Layout), and under it the Control panel |
 | Bottom | -- | zoom field, Fit, page navigator, Spread, preflight verdict |
