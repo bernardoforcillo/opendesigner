@@ -5,6 +5,7 @@ import type { CanvasKit } from "canvaskit-wasm";
 import { FX_CATALOG } from "@/animation/fx/catalog";
 import { invertHomography, unitSquareTo } from "@/animation/fx/kernelsDistort";
 import { FX_LIBRARY, fxDef, fxParam, hsv, resolveFx } from "@/animation/fx/library";
+import { makeLutShader, readHistogram } from "@/animation/fx/lutImage";
 import { buildFx, fxOutset } from "@/animation/fx/apply";
 import { fxProp, isFxProp, parseFxProp } from "@/animation/fx/props";
 import { isTrackProp, sampleClip } from "@/animation/engine";
@@ -103,7 +104,7 @@ describe("drawing every effect with CanvasKit", () => {
     CK = await init({ locateFile: () => dir });
   }, 60_000);
 
-  const draw = (animFx: Record<string, Record<string, number>>) => {
+  const draw = (animFx: Record<string, Record<string, number>>, flat = true) => {
     const surface = CK.MakeSurface(64, 64)!;
     const sk = surface.getCanvas();
     sk.clear(CK.TRANSPARENT);
@@ -116,7 +117,9 @@ describe("drawing every effect with CanvasKit", () => {
     // kernels: the node is drawn offscreen and read through each SkSL shader, as ckRenderer.drawLayerBody does
     const bodyPaint = (c: import("canvaskit-wasm").Canvas) => {
       const bp = new CK.Paint();
-      bp.setColor(CK.Color4f(0.8, 0.3, 0.2, 1));
+      if (flat) bp.setColor(CK.Color4f(0.8, 0.3, 0.2, 1));
+      // a low-contrast horizontal ramp, grey 80..160
+      else bp.setShader(CK.Shader.MakeLinearGradient([16, 0], [48, 0], [CK.Color4f(80 / 255, 80 / 255, 80 / 255, 1), CK.Color4f(160 / 255, 160 / 255, 160 / 255, 1)], null, CK.TileMode.Clamp));
       c.drawRect(CK.XYWHRect(16, 16, 32, 32), bp);
       bp.delete();
     };
@@ -130,7 +133,13 @@ describe("drawing every effect with CanvasKit", () => {
       (current ?? bodyPaint)(oc);
       const img = off.makeImageSnapshot();
       const srcShader = img.makeShaderOptions(CK.TileMode.Decal, CK.TileMode.Decal, CK.FilterMode.Linear, CK.MipmapMode.None);
-      const sh = eff!.makeShaderWithChildren([16, 16, 32, 32, ...k.uniforms], [srcShader]);
+      const children = [srcShader];
+      if (k.lut) {
+        const lut = makeLutShader(CK, k.lut(readHistogram(CK, img)!))!;
+        children.push(lut.shader);
+        garbage.push(lut.image, lut.shader);
+      }
+      const sh = eff!.makeShaderWithChildren([16, 16, 32, 32, ...k.uniforms], children);
       garbage.push(off, img, srcShader, sh, eff!);
       current = (c) => { const kp = new CK.Paint(); kp.setShader(sh); c.drawRect(CK.XYWHRect(0, 0, 64, 64), kp); kp.delete(); };
     }
@@ -228,5 +237,22 @@ describe("drawing every effect with CanvasKit", () => {
     // a luma key that keys out darker than 255 removes the (mid-luma) square; one that keys out brighter keeps it
     expect(at(draw({ "ec.key.luma": { type: 1, threshold: 255, tolerance: 0, feather: 0 } }), 32, 32)[3]).toBe(0);
     expect(at(draw({ "ec.key.luma": { type: 0, threshold: 255, tolerance: 0, feather: 0 } }), 32, 32)[3]).toBe(255);
+  });
+
+  it("auto levels stretches a low-contrast ramp, equalize spreads it, a flat node is untouched", () => {
+    const before = draw({}, false);
+    expect(at(before, 17, 32)[0]).toBeGreaterThan(70);
+    expect(at(before, 46, 32)[0]).toBeLessThan(170);
+    const lv = draw({ "ec.color.autolevels": { blackClip: 0, whiteClip: 0, blend: 0 } }, false);
+    expect(at(lv, 17, 32)[0]).toBeLessThan(25);
+    expect(at(lv, 46, 32)[0]).toBeGreaterThan(230);
+    const eq = draw({ "ec.color.equalize": { method: 2, amount: 100 } }, false);
+    expect(at(eq, 17, 32)[0]).toBeLessThan(30);
+    expect(at(eq, 46, 32)[0]).toBeGreaterThan(225);
+    const ac = draw({ "ec.color.autocontrast": { blackClip: 0, whiteClip: 0, blend: 0 } }, false);
+    expect(at(ac, 46, 32)[0]).toBeGreaterThan(230);
+    expect(at(ac, 8, 8)[3]).toBe(0); // outside the node stays transparent
+    const flat = at(draw({ "ec.color.autolevels": { blackClip: 0, whiteClip: 0, blend: 0 } }), 32, 32);
+    expect(Math.abs(flat[0] - 204)).toBeLessThanOrEqual(2);
   });
 });

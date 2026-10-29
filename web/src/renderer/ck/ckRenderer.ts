@@ -23,6 +23,7 @@ import { decorationBars, fontSizeOf, hscaleOf, paragraphDecorations, piecesOfLin
 import { FX_TILE, blurBands, overlayEffects, overlayTile, progressiveBlur, tileUnit, withBandBlur, withExpandedGlass } from "@/renderer/effectsFx";
 import { buildFx, type BuiltFx } from "@/animation/fx/apply";
 import { DISPLACE_SKSL } from "@/animation/fx/timeFx";
+import { makeLutShader, readHistogram } from "@/animation/fx/lutImage";
 import { hasRealStroke, vectorStyleOf } from "@/renderer/vectorStyle";
 import type { FontBook } from "@/renderer/ck/canvaskit";
 
@@ -557,7 +558,16 @@ export class CanvasKitRenderer {
       const img = surface.makeImageSnapshot();
       // image pixels -> the node's local space, so the kernel works in world units
       const src = img.makeShaderOptions(CK.TileMode.Decal, CK.TileMode.Decal, CK.FilterMode.Linear, CK.MipmapMode.None, [1 / s, 0, reach.x, 0, 1 / s, reach.y, 0, 0, 1]);
-      const shader = effect.makeShaderWithChildren([box.x, box.y, box.width, box.height, ...k.uniforms], [src]);
+      // a kernel that looks at the whole node first (Auto Levels, Equalize): count the pixels it receives, build its lookup table
+      const children = [src];
+      if (k.lut) {
+        const hist = readHistogram(CK, img);
+        const lut = hist ? makeLutShader(CK, k.lut(hist)) : null;
+        if (!lut) { f.garbage.push(surface, img, src); continue; }
+        children.push(lut.shader);
+        f.garbage.push(lut.image, lut.shader);
+      }
+      const shader = effect.makeShaderWithChildren([box.x, box.y, box.width, box.height, ...k.uniforms], children);
       f.garbage.push(surface, img, src, shader);
       paint = (target) => {
         const p = new CK.Paint();

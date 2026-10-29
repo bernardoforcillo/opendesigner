@@ -3,7 +3,8 @@
 // LUT files, other layers, masks) only the part that works on the node's own pixels is implemented.
 
 import type { FxDef } from "@/animation/fx/library";
-import { P, carrier, kern } from "@/animation/fx/kit";
+import { P, carrier, kern, lutKern } from "@/animation/fx/kit";
+import { autoColorLut, autoContrastLut, autoLevelsLut, equalizeLut, type EqualizeMethod } from "@/animation/fx/stats";
 
 const HUE = (id: string, label: string, def: number) => P(id, label, 0, 360, def, 1, "°");
 
@@ -31,7 +32,19 @@ float3 gamutFromRec709(float3 c, float g) {
 }
 `;
 
+const CLIPS = [P("blackClip", "Black Clip", 0, 50, 0.1, 0.05, "%"), P("whiteClip", "White Clip", 0, 50, 0.1, 0.05, "%"), P("blend", "Blend With Original", 0, 100, 0, 1, "%")];
+const opts = (v: Record<string, number>) => ({ blackClip: v.blackClip, whiteClip: v.whiteClip, blend: 1 - v.blend / 100 });
+
 export const MORE3_FX: FxDef[] = [
+  // Whole-node statistics: the node is read back, counted, and mapped through a lookup table -------------------
+  lutKern("ec.color.autolevels", CLIPS, (v, h) => autoLevelsLut(h, opts(v))),
+  lutKern("ec.color.autocontrast", CLIPS, (v, h) => autoContrastLut(h, opts(v))),
+  lutKern("ec.color.autocolor", [...CLIPS, P("snapNeutral", "Snap Neutral Midtones", 0, 1, 1)], (v, h) => autoColorLut(h, { ...opts(v), snapNeutral: v.snapNeutral > 0.5 })),
+  lutKern("ec.color.equalize", [P("method", "Equalize (0 RGB, 1 Brightness, 2 Photoshop Style)", 0, 2, 2), P("amount", "Amount to Equalize", 0, 100, 100, 1, "%")],
+    (v, h) => equalizeLut(h, (["rgb", "brightness", "photoshop"] as EqualizeMethod[])[Math.round(v.method)], v.amount / 100),
+    (v) => (Math.round(v.method) === 0 ? 0 : 1)),
+
+
   // Colour management ---------------------------------------------------------------------------------
   kern("ec.color.ociocdl", [
     P("slopeR", "Slope Red", 0, 4, 1, 0.01), P("slopeG", "Slope Green", 0, 4, 1, 0.01), P("slopeB", "Slope Blue", 0, 4, 1, 0.01),

@@ -13,6 +13,7 @@
 // Everything here is PURE data plus builders: no DOM, no store.
 
 import type { CanvasKit, ColorFilter, ImageFilter } from "canvaskit-wasm";
+import type { Histogram } from "@/animation/fx/stats";
 import { KERNEL_FX } from "@/animation/fx/kernels";
 
 export interface FxParam {
@@ -56,6 +57,11 @@ export interface FxKernel {
   sksl: string;
   /** box (x, y, w, h) is prepended by the renderer; these fill `uniform float p[12]`. */
   uniforms: number[];
+  /**
+   * Effects that look at the whole node first (Auto Levels, Equalize): the renderer reads back a small copy of the node, counts
+   * it (fx/stats.ts) and this builds the 256 x 2 lookup table the shader gets as its second child, `uniform shader lut`.
+   */
+  lut?: (h: Histogram) => Uint8Array;
 }
 
 export interface FxDef {

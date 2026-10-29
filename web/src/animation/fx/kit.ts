@@ -2,6 +2,7 @@
 // Type-only imports from library.ts: no runtime cycle.
 
 import type { FxDef, FxParam, FxValues } from "@/animation/fx/library";
+import type { Histogram } from "@/animation/fx/stats";
 
 export const P = (id: string, label: string, min: number, max: number, def: number, step = 1, unit?: string): FxParam => ({
   id, label, min, max, step, default: def, unit,
@@ -92,3 +93,24 @@ export const carrier = (id: string, params: readonly FxParam[], outset?: (v: FxV
 
 /** A time effect (see timeFx.ts). */
 export const time = (id: string, params: readonly FxParam[], t: NonNullable<FxDef["time"]>): FxDef => ({ id, params, time: t });
+
+/**
+ * An effect that maps every channel through a lookup table computed from the node's own histogram.
+ * p[0] is the mode: 0 maps R, G and B each through their own curve, 1 maps the luma and scales the colour by the ratio.
+ */
+export function lutKern(
+  id: string, params: readonly FxParam[], build: (v: FxValues, h: Histogram) => Uint8Array, mode: (v: FxValues) => number = () => 0,
+): FxDef {
+  const sksl = `${KHEAD}uniform shader lut;
+half4 main(float2 xy) {
+  half4 c = S(xy); float3 u = unp(c); float3 o;
+  if (p[0] < 0.5) {
+    o = float3(lut.eval(float2(u.r * 255.0 + 0.5, 0.5)).r, lut.eval(float2(u.g * 255.0 + 0.5, 0.5)).g, lut.eval(float2(u.b * 255.0 + 0.5, 0.5)).b);
+  } else {
+    float l = lum(u); float nl = lut.eval(float2(l * 255.0 + 0.5, 1.5)).r;
+    o = l > 0.0 ? u * (nl / l) : float3(nl);
+  }
+  return pre(clamp(o, 0.0, 1.0), float(c.a));
+}`;
+  return { id, params, kernel: (v) => ({ sksl, uniforms: pad([mode(v)]), lut: (h) => build(v, h) }) };
+}

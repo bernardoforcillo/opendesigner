@@ -227,7 +227,7 @@ track names it; parameters without a track keep their default. Values are finite
 clamps them to the parameter's range.
 
 - `web/src/animation/fx/catalog.ts`: all 307 EffectCraft effects (id, name, category), generated from its `docs/effects.md`.
-- `web/src/animation/fx/library.ts` + `kernels*.ts`: the 219 that are drawn, with EffectCraft's parameter names, ranges and
+- `web/src/animation/fx/library.ts` + `kernels*.ts`: the 223 that are drawn, with EffectCraft's parameter names, ranges and
   defaults where it has them. Each is one of four kinds:
   - **filter**: a CanvasKit image/colour filter over the node's pixels (blur, colour matrices, minimax, glow, offset);
   - **overlay**: an SkSL shader drawn over the node inside its layer (grain, fills, gradients, patterns, generators), or a
@@ -246,6 +246,13 @@ clamps them to the parameter's range.
     spread over +-max displacement offscreen and a shader (`DISPLACE_SKSL`, 9 named children) picks, per pixel, the pose the
     map selects (the node now: luminance, alpha or a channel; 0.5 is no displacement), blending neighbouring poses.
     Limits: the node's own pixels only (its children are drawn once, as now) and the first time effect on a node wins.
+  - **kernel with statistics** (`fx/stats.ts`, `fx/lutImage.ts`, `kit.ts::lutKern`): Auto Levels, Auto Contrast, Auto Color and
+    Equalize look at the whole node first. The renderer reads back a copy of the node (at most 256 px), counts it by channel and
+    luma weighted by alpha, builds a 256 x 2 lookup table and hands it to the shader as a second child (`uniform shader lut`).
+    Auto Levels stretches each channel to its own clip points, Auto Contrast uses the luma's for all of them, Auto Color adds a
+    gamma per channel that pulls the mid-tones to neutral, Equalize maps through the cumulative distribution (RGB, brightness or
+    Photoshop style). The read-back runs every frame the effect is on screen, and EffectCraft's temporal smoothing and scene
+    detection are not implemented (each frame is analysed on its own, so a changing frame can make the levels flicker).
   - **carrier**: no pixels, only values for expressions (EffectCraft's Expression Controls, Grow Bounds).
 - `fx/kit.ts` has the SkSL helpers (`kern`, `over`, noise, hsv, `ring` taps). Every shader is compiled and drawn against the real
   CanvasKit by `fx/fx.test.ts`.
@@ -253,11 +260,10 @@ clamps them to the parameter's range.
   Order: kernels first (innermost), then the node's own effects and the animated image filters, then overlays.
 - Editor: **+ Effect** in the transport adds an effect (its first parameter as a track); **+ Property** then lists the other
   parameters of the effects the node already has.
-- Not drawn (88 of 307, still listed in the catalog so nothing is silently missing): audio (no audio engine here),
+- Not drawn (84 of 307, still listed in the catalog so nothing is silently missing): audio (no audio engine here),
   3D channels and depth, anything driven by other layers, masks or tracked data (set/combine matte effects, Roto Brush,
   Warp Stabilizer, face and camera tracking, paint/write-on/stroke), particle and physics simulation (Particle Playground,
-  Card Dance, Shatter, Foam...), mesh warps (Liquify, Puppet, Mesh Warp), OCIO files/looks/displays and LUTs, whole-image
-  statistics (Auto Color/Levels/Contrast, Equalize), text generators (Numbers, Timecode), Match/Remove Grain, Inner/Outer Key
+  Card Dance, Shatter, Foam...), mesh warps (Liquify, Puppet, Mesh Warp), OCIO files/looks/displays and LUTs, text generators (Numbers, Timecode), Match/Remove Grain, Inner/Outer Key
   and Key Cleaner. Some drawn effects are simplified: Selective Color and Lumetri cover the basic controls, OCIO Color Space
   covers sRGB, linear Rec.709, ACEScg, Rec.2020 and Display P3, the matte refinements work on the node's own alpha, and a
   few legacy effects reuse the behaviour of their modern counterpart (`ALIASES` in `fx/library.ts`).
