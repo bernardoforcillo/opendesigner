@@ -113,6 +113,9 @@ var imageTypes = []struct {
 	// its own, so the editor wraps the file in this container ("ODFX" and a newline, then the bytes) and the server accepts only
 	// that: the allowlist stays closed, and what is served is opaque data (nosniff), never a document.
 	{prefix: []byte("ODFX\n"), contentType: "application/x-opendesigner-fx"},
+	// An ICC colour profile (the document's output profile). A profile's own signature ("acsp") sits at byte 36, so it is
+	// wrapped like the effect files ("ODICC" and a newline, then the profile) and only that wrapper is accepted.
+	{prefix: []byte("ODICC\n"), contentType: "application/x-opendesigner-icc"},
 }
 
 // DetectImageType returns the Content-Type of an asset's initial bytes, or ""

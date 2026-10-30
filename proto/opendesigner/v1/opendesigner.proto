@@ -1187,6 +1187,10 @@ message DocSettings {
   // "generic") | "generic" | "phone" | "tablet" | "desktop" | "none". The document's choice; a person's own
   // pick in the player (kept in their browser) overrides it for them.
   string present_device = 10;
+  // The output profile ITSELF: the hash of the ICC profile file in the document's asset store (uploaded inside the
+  // "ODICC" container, internal/store/assets.go), "" = none. When set, RGB <-> CMYK conversions go through it and
+  // the PDF output intent embeds it; `icc_profile` stays the human-readable name (docs/color-management.md).
+  string icc_profile_asset = 11;
 }
 
 // A condition of conditional text. A name no condition defines counts as visible. Hidden text is left out of the

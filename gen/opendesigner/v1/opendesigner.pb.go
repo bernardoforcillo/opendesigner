@@ -7850,8 +7850,12 @@ type DocSettings struct {
 	// "generic") | "generic" | "phone" | "tablet" | "desktop" | "none". The document's choice; a person's own
 	// pick in the player (kept in their browser) overrides it for them.
 	PresentDevice string `protobuf:"bytes,10,opt,name=present_device,json=presentDevice,proto3" json:"present_device,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	// The output profile ITSELF: the hash of the ICC profile file in the document's asset store (uploaded inside the
+	// "ODICC" container, internal/store/assets.go), "" = none. When set, RGB <-> CMYK conversions go through it and
+	// the PDF output intent embeds it; `icc_profile` stays the human-readable name (docs/color-management.md).
+	IccProfileAsset string `protobuf:"bytes,11,opt,name=icc_profile_asset,json=iccProfileAsset,proto3" json:"icc_profile_asset,omitempty"`
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
 }
 
 func (x *DocSettings) Reset() {
@@ -7950,6 +7954,13 @@ func (x *DocSettings) GetTableStyles() []*TableStyle {
 func (x *DocSettings) GetPresentDevice() string {
 	if x != nil {
 		return x.PresentDevice
+	}
+	return ""
+}
+
+func (x *DocSettings) GetIccProfileAsset() string {
+	if x != nil {
+		return x.IccProfileAsset
 	}
 	return ""
 }
@@ -17081,7 +17092,7 @@ const file_opendesigner_v1_opendesigner_proto_rawDesc = "" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x12\x16\n" +
 	"\x06hidden\x18\x03 \x01(\bR\x06hidden\x12\x16\n" +
 	"\x06locked\x18\x04 \x01(\bR\x06locked\x12\x19\n" +
-	"\bno_print\x18\x05 \x01(\bR\anoPrint\"\xbc\x03\n" +
+	"\bno_print\x18\x05 \x01(\bR\anoPrint\"\xe8\x03\n" +
 	"\vDocSettings\x12\x1a\n" +
 	"\bvertical\x18\x01 \x01(\tR\bvertical\x12-\n" +
 	"\x12baseline_increment\x18\x02 \x01(\x01R\x11baselineIncrement\x12%\n" +
@@ -17097,7 +17108,8 @@ const file_opendesigner_v1_opendesigner_proto_rawDesc = "" +
 	"conditions\x12>\n" +
 	"\ftable_styles\x18\t \x03(\v2\x1b.opendesigner.v1.TableStyleR\vtableStyles\x12%\n" +
 	"\x0epresent_device\x18\n" +
-	" \x01(\tR\rpresentDevice\"=\n" +
+	" \x01(\tR\rpresentDevice\x12*\n" +
+	"\x11icc_profile_asset\x18\v \x01(\tR\x0ficcProfileAsset\"=\n" +
 	"\rTextCondition\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x18\n" +
 	"\avisible\x18\x02 \x01(\bR\avisible\"\xa3\x02\n" +
