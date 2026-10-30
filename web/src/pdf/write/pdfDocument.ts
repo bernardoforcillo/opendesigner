@@ -1,6 +1,7 @@
 import type { FontLite, NodeLite, SceneState } from "@/store/types";
 import type { Bounds } from "@/canvas/geometry";
 import type { MeasureText } from "@/renderer/text";
+import type { IccProfile } from "@/color/icc";
 import { PdfColors } from "@/pdf/write/pdfColor";
 import { PdfFonts } from "@/pdf/write/pdfFonts";
 import { effectivePpi, type PreparedImage } from "@/pdf/write/pdfImages";
@@ -12,8 +13,8 @@ import { PT, renderPage } from "@/pdf/write/pdfPage";
 //
 // HONEST SCOPE of "PDF/X". The file carries what a printer's checker looks for first -- a PDF/X
 // version in Info and XMP, TrimBox and BleedBox on every page, an OutputIntent naming the print
-// condition, every font embedded or flagged, CMYK/spot paints kept as such -- but NO ICC profile is
-// embedded (the editor does not apply one), so it is "PDF/X-ready", not validated PDF/X. A printer's
+// condition, every font embedded or flagged, CMYK/spot paints kept as such, and -- when the document carries
+// an ICC profile -- that profile embedded as the intent's DestOutputProfile. It is still "PDF/X-ready", not validated PDF/X. A printer's
 // preflight (or Acrobat) remains the judge; the in-app preflight lists what it can see.
 
 export type PdfXMode = "none" | "x1a" | "x3" | "x4";
@@ -47,6 +48,8 @@ export interface PdfBuild {
   pdfx?: PdfXMode;
   /** The ICC profile / print condition named in the output intent. */
   condition?: string;
+  /** The raw bytes of the document's ICC output profile, embedded as the output intent's DestOutputProfile; `managed` is its parsed form (CMYK only), used to convert RGB paints. */
+  profile?: { bytes: Uint8Array; components: 3 | 4; managed?: IccProfile | null };
   marks?: boolean;
   outline?: readonly PdfOutlineItem[];
   skip?: (n: NodeLite) => boolean;
@@ -104,7 +107,7 @@ export async function buildPdf(b: PdfBuild): Promise<{ bytes: Uint8Array; report
   const mode = b.pdfx ?? "none";
   const file = new PdfFile();
   const fonts = new PdfFonts(b.faces);
-  const colors = new PdfColors(b.scene, b.cmyk === true || mode === "x1a");
+  const colors = new PdfColors(b.scene, b.cmyk === true || mode === "x1a", b.profile?.managed ?? undefined);
   const imageObjs = new Map<string, number>();
   const root = file.alloc(), pagesNode = file.alloc(), info = file.alloc();
   const pageIds = b.pages.map(() => file.alloc());
@@ -209,8 +212,9 @@ export async function buildPdf(b: PdfBuild): Promise<{ bytes: Uint8Array; report
     tagged = `/MarkInfo<</Marked true>>/StructTreeRoot ${treeRoot} 0 R/Lang${pdfText(b.language || "en")}/ViewerPreferences<</DisplayDocTitle true>>`;
   }
 
-  const intent = mode === "none" ? "" :
-    `/OutputIntents[<</Type/OutputIntent/S/GTS_PDFX/OutputConditionIdentifier${pdfText(b.condition || "Custom")}/Info${pdfText(b.condition || "Custom")}/RegistryName(http://www.color.org)>>]`;
+  const profileId = b.profile ? file.stream(`/N ${b.profile.components}`, b.profile.bytes) : 0;
+  const intent = mode === "none" && !b.profile ? "" :
+    `/OutputIntents[<</Type/OutputIntent/S/GTS_PDFX/OutputConditionIdentifier${pdfText(b.condition || "Custom")}/Info${pdfText(b.condition || "Custom")}/RegistryName(http://www.color.org)${profileId ? `/DestOutputProfile ${profileId} 0 R` : ""}>>]`;
   const xmp = mode === "none" ? "" : `/Metadata ${file.stream(
     "/Type/Metadata/Subtype/XML",
     `<?xpacket begin="﻿" id="W5M0MpCehiHzreSzNTczkc9d"?><x:xmpmeta xmlns:x="adobe:ns:meta/"><rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"><rdf:Description rdf:about="" xmlns:pdfxid="http://www.npes.org/pdfx/ns/id/" xmlns:pdfx="http://ns.adobe.com/pdfx/1.3/" xmlns:dc="http://purl.org/dc/elements/1.1/"><pdfxid:GTS_PDFXVersion>${PDFX_NAME[mode]}</pdfxid:GTS_PDFXVersion><pdfx:GTS_PDFXVersion>${PDFX_NAME[mode]}</pdfx:GTS_PDFXVersion><dc:title>${escapeXml(b.title)}</dc:title></rdf:Description></rdf:RDF></x:xmpmeta><?xpacket end="w"?>`,

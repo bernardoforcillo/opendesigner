@@ -6,6 +6,7 @@ import { isRightPage, pageNumbers } from "@/store/pageNumbers";
 import { buildPdf, MARKS_MARGIN, type PdfLink, type PdfOutlineItem, type PdfPageSpec, type PdfReport, type PdfXMode } from "@/pdf/write/pdfDocument";
 import { dataUrlBytes, prepareImage, type PreparedImage, type Rasterize } from "@/pdf/write/pdfImages";
 import type { MeasureText } from "@/renderer/text";
+import { loadStoredProfile, type LoadedProfile } from "@/color/profileAsset";
 import { contributorNames } from "@/export/onix";
 import type { ExportRegion } from "@/export/region";
 
@@ -80,6 +81,17 @@ async function loadImages(nodes: readonly NodeLite[], docId: string, deps: Print
   const wanted = nodes.filter((n) => n.kind === "image" || n.fills[0]?.image);
   const missing = wanted.filter((n) => !images.has(n.kind === "image" ? n.image?.assetHash ?? "" : n.fills[0]!.image!.assetHash)).length;
   return { images, missing };
+}
+
+/** The document's ICC output profile (the stored asset), or null when it has none or the asset is gone: the export then keeps the plain conversion. */
+async function loadOutputProfile(scene: SceneState, deps: PrintPdfDeps): Promise<LoadedProfile | null> {
+  const hash = scene.settings?.iccProfileAsset;
+  if (!hash) return null;
+  try {
+    const uri = await deps.loadAssetDataUrl(scene.id, hash);
+    const data = uri === null ? null : dataUrlBytes(uri);
+    return loadStoredProfile(data ? data.bytes : null);
+  } catch { return null; }
 }
 
 async function loadFaces(fonts: Record<string, FontLite>, docId: string, deps: PrintPdfDeps) {
@@ -189,7 +201,7 @@ export async function buildDocumentPdf(
   if (specs.length === 0) return null;
 
   const allNodes = specs.flatMap((s) => s.nodes);
-  const [{ images, missing }, { faces, missing: missingFonts }] = await Promise.all([loadImages(allNodes, scene.id, deps), loadFaces(scene.fonts, scene.id, deps)]);
+  const [{ images, missing }, { faces, missing: missingFonts }, profile] = await Promise.all([loadImages(allNodes, scene.id, deps), loadFaces(scene.fonts, scene.id, deps), loadOutputProfile(scene, deps)]);
 
   if (opts.interactive !== false) addInteractivity(scene, specs, pageIndex, offsetOf);
   const outline: PdfOutlineItem[] = opts.interactive === false ? [] : headingsOf(scene).flatMap((h) => {
@@ -202,7 +214,7 @@ export async function buildDocumentPdf(
     pages: specs, images, faces, scene, measure: deps.measure,
     title: scene.settings?.book?.title || scene.name || "opendesigner", created: (deps.now?.() ?? new Date()),
     author: contributorNames(scene.settings?.book).join(", ") || undefined, subject: scene.settings?.book?.description,
-    cmyk: scene.settings?.colorMode === "cmyk", pdfx: opts.pdfx ?? "none", condition: scene.settings?.iccProfile,
+    cmyk: scene.settings?.colorMode === "cmyk", pdfx: opts.pdfx ?? "none", condition: scene.settings?.iccProfile || profile?.managed?.description || undefined, profile: profile ?? undefined,
     marks: opts.marks === true, outline, docId: scene.id, tagged: opts.tagged === true, language: scene.settings?.book?.language || undefined, headingOf: (n) => headingLevelOf(scene, n),
     skip: (n) => !!n.layerId && noPrint.has(n.layerId),
   });
@@ -241,12 +253,12 @@ function addInteractivity(scene: SceneState, specs: PdfPageSpec[], pageIndex: Ma
 /** A single region (a selection, or the page on screen) as a one-page PDF. */
 export async function buildRegionPdf(scene: SceneState, region: ExportRegion, deps: PrintPdfDeps): Promise<PrintPdfResult> {
   const noPrint = new Set(scene.layers.filter((l) => l.noPrint).map((l) => l.id));
-  const [{ images, missing }, { faces, missing: missingFonts }] = await Promise.all([loadImages(region.nodes, scene.id, deps), loadFaces(scene.fonts, scene.id, deps)]);
+  const [{ images, missing }, { faces, missing: missingFonts }, profile] = await Promise.all([loadImages(region.nodes, scene.id, deps), loadFaces(scene.fonts, scene.id, deps), loadOutputProfile(scene, deps)]);
   const { bytes, report } = await buildPdf({
     pages: [{ name: scene.name, media: region.bounds, trim: region.bounds, bleed: 0, nodes: region.nodes }],
     images, faces, scene, measure: deps.measure, title: scene.settings?.book?.title || scene.name || "opendesigner", created: deps.now?.() ?? new Date(),
     author: contributorNames(scene.settings?.book).join(", ") || undefined, subject: scene.settings?.book?.description,
-    cmyk: scene.settings?.colorMode === "cmyk", docId: scene.id, skip: (n) => !!n.layerId && noPrint.has(n.layerId),
+    profile: profile ?? undefined, cmyk: scene.settings?.colorMode === "cmyk", docId: scene.id, skip: (n) => !!n.layerId && noPrint.has(n.layerId),
   });
   return { bytes, report, missingImages: missing, missingFonts };
 }

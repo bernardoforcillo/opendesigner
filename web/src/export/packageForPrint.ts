@@ -83,7 +83,7 @@ export async function buildPackage(input: PackageInput, deps: PackageDeps): Prom
     `Created: ${input.now.toISOString()}`,
     "",
     `PDF: ${root}.pdf — ${r.pages} page${r.pages === 1 ? "" : "s"}, standard: ${r.pdfx === "none" ? "none" : r.pdfx.toUpperCase().replace("X", "X-")} (ready, not validated)`,
-    `Colour mode: ${scene.settings?.colorMode === "cmyk" ? "CMYK" : "RGB"}; output condition: ${scene.settings?.iccProfile || "none set"} (recorded, no profile embedded)`,
+    `Colour mode: ${scene.settings?.colorMode === "cmyk" ? "CMYK" : "RGB"}; output condition: ${scene.settings?.iccProfile || "none set"} (${scene.settings?.iccProfileAsset ? "profile embedded in the PDF" : "recorded, no profile embedded"})`,
     `Colours used in the PDF: ${[r.usesRgb ? "RGB" : "", r.usesCmyk ? "CMYK" : "", ...r.spots.map((s) => `spot ${s}`)].filter(Boolean).join(", ") || "none"}`,
     `Transparency: ${r.transparency ? "yes" : "no"}`,
     "",
