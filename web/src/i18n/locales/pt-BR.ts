@@ -562,4 +562,5 @@ export const ptBR: Record<MessageKey, Message> = {
   "Remove grid {n}": "Remover a grade {n}",
   "Margin": "Margem",
   "Grid opacity": "Opacidade da grade",
+  "Creep per sheet": "Deslocamento por folha",
 };

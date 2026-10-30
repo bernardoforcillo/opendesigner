@@ -344,6 +344,7 @@ const PLAIN = [
   "Bookmarks and links",
   "Tagged PDF (reading order, headings, alt text)",
   "Booklet: two pages per sheet side, saddle-stitch order",
+  "Creep per sheet",
   "No problems found in the document.",
   "Error",
   "Warning",

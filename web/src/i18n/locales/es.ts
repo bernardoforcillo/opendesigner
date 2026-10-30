@@ -562,4 +562,5 @@ export const es: Record<MessageKey, Message> = {
   "Remove grid {n}": "Quitar la cuadrícula {n}",
   "Margin": "Margen",
   "Grid opacity": "Opacidad de la cuadrícula",
+  "Creep per sheet": "Desplazamiento por pliego",
 };

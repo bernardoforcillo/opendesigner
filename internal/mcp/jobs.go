@@ -105,14 +105,15 @@ func (s *Session) runFileJob(ctx context.Context, tool, kind, outPath string, op
 
 // PrintOptionsIn are the options of a PDF for print (the editor's "Export PDF for print…" dialog).
 type PrintOptionsIn struct {
-	Standard    string `json:"standard,omitempty" jsonschema:"none (default) | x4 | x3 | x1a: PDF/X identification and output intent. X-1a forces CMYK and refuses transparency. 'Ready', not validated: no ICC profile is embedded"`
-	Bleed       *bool  `json:"bleed,omitempty" jsonschema:"each sheet with its page's bleed (set with update_page)"`
-	Marks       *bool  `json:"marks,omitempty" jsonschema:"crop marks and a page-information line outside the bleed"`
-	Slug        *bool  `json:"slug,omitempty" jsonschema:"include each page's slug area"`
-	Spreads     *bool  `json:"spreads,omitempty" jsonschema:"facing pages as one wide page per spread (needs facingPages in set_document_settings)"`
-	Interactive *bool  `json:"interactive,omitempty" jsonschema:"bookmarks from headings and link annotations (default true)"`
-	Booklet     *bool  `json:"booklet,omitempty" jsonschema:"booklet imposition: two pages per sheet side in saddle-stitch order (N-1|1, 2|N-2, ...), padded with blanks to a multiple of 4; overrides spreads"`
-	Tagged      *bool  `json:"tagged,omitempty" jsonschema:"tagged PDF: marked content and a structure tree (headings from outline-level styles, paragraphs, figures with alt text from the node's meta alt or name), document language from the book metadata. Not validated as PDF/UA"`
+	Standard    string   `json:"standard,omitempty" jsonschema:"none (default) | x4 | x3 | x1a: PDF/X identification and output intent. X-1a forces CMYK and refuses transparency. 'Ready', not validated: no ICC profile is embedded"`
+	Bleed       *bool    `json:"bleed,omitempty" jsonschema:"each sheet with its page's bleed (set with update_page)"`
+	Marks       *bool    `json:"marks,omitempty" jsonschema:"crop marks and a page-information line outside the bleed"`
+	Slug        *bool    `json:"slug,omitempty" jsonschema:"include each page's slug area"`
+	Spreads     *bool    `json:"spreads,omitempty" jsonschema:"facing pages as one wide page per spread (needs facingPages in set_document_settings)"`
+	Interactive *bool    `json:"interactive,omitempty" jsonschema:"bookmarks from headings and link annotations (default true)"`
+	Booklet     *bool    `json:"booklet,omitempty" jsonschema:"booklet imposition: two pages per sheet side in saddle-stitch order (N-1|1, 2|N-2, ...), padded with blanks to a multiple of 4; overrides spreads"`
+	Creep       *float64 `json:"creep,omitempty" jsonschema:"booklet creep, in px (world units): with booklet, each sheet nested inside the previous one moves its content this much further toward the spine (the outermost sheet does not move); >= 0"`
+	Tagged      *bool    `json:"tagged,omitempty" jsonschema:"tagged PDF: marked content and a structure tree (headings from outline-level styles, paragraphs, figures with alt text from the node's meta alt or name), document language from the book metadata. Not validated as PDF/UA"`
 }
 
 type ExportPdfInput struct {
@@ -129,6 +130,9 @@ func (in PrintOptionsIn) json() map[string]any {
 		if v != nil {
 			m[k] = *v
 		}
+	}
+	if in.Creep != nil {
+		m["creep"] = *in.Creep
 	}
 	return m
 }

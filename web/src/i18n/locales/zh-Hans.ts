@@ -562,4 +562,5 @@ export const zhHans: Record<MessageKey, Message> = {
   "Remove grid {n}": "移除网格 {n}",
   "Margin": "边距",
   "Grid opacity": "网格不透明度",
+  "Creep per sheet": "每张纸的推移量",
 };

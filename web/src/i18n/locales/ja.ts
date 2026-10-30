@@ -562,4 +562,5 @@ export const ja: Record<MessageKey, Message> = {
   "Remove grid {n}": "グリッド {n} を削除",
   "Margin": "マージン",
   "Grid opacity": "グリッドの不透明度",
+  "Creep per sheet": "用紙ごとのクリープ",
 };

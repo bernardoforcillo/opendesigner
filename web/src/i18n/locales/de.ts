@@ -562,4 +562,5 @@ export const de: Record<MessageKey, Message> = {
   "Remove grid {n}": "Raster {n} entfernen",
   "Margin": "Rand",
   "Grid opacity": "Rasterdeckkraft",
+  "Creep per sheet": "Verdrängung pro Bogen",
 };

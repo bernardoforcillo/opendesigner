@@ -28,6 +28,8 @@ export interface PrintPdfOptions {
   interactive?: boolean;
   /** Booklet imposition: two pages per sheet side in saddle-stitch order (padded with blanks to a multiple of 4); overrides `spreads`. */
   booklet?: boolean;
+  /** Booklet creep: how far (world units) each sheet nested inside the previous one moves its content toward the spine, to make up for the paper the fold pushes out. 0 = none. Needs `booklet`. */
+  creep?: number;
   /** Tagged PDF: marked content and a structure tree (headings, paragraphs, figures with alt text). */
   tagged?: boolean;
 }
@@ -137,6 +139,18 @@ export function bookletGroups(scene: SceneState): PageLite[][] {
 }
 
 /**
+ * Creep of the pages of one imposed side. The outermost sheet (index 0) does not move; every sheet nested inside it
+ * moves its content `creep` further toward the spine: the left page of a side to the right (+), the right page to
+ * the left (-). `side` is the index of the side in `bookletGroups` (two sides per sheet).
+ */
+export function creepShift(side: number, creep: number, position: "left" | "right"): number {
+  if (!(creep > 0)) return 0;
+  const sheet = Math.floor(side / 2);
+  if (sheet === 0) return 0; // not -0
+  return (position === "left" ? 1 : -1) * creep * sheet;
+}
+
+/**
  * The whole document as a PDF, or null when every page is empty. `regionOf(pageId, sheet)` returns the page's
  * region for a given sheet rectangle (null sheet = the bounds of what is drawn), as export/region.ts builds it.
  */
@@ -152,7 +166,8 @@ export async function buildDocumentPdf(
   const noPrint = new Set(scene.layers.filter((l) => l.noPrint).map((l) => l.id));
   const regions: ExportRegion[] = [];
 
-  for (const group of opts.booklet ? bookletGroups(scene) : groupPages(scene, opts.spreads === true)) {
+  const groups = opts.booklet ? bookletGroups(scene) : groupPages(scene, opts.spreads === true);
+  for (const [side, group] of groups.entries()) {
     const w = group.reduce((s, p) => s + (p.width ?? 0), 0);
     const h = Math.max(...group.map((p) => p.height ?? 0));
     const sized = group.every((p) => (p.width ?? 0) > 0 && (p.height ?? 0) > 0);
@@ -163,8 +178,9 @@ export async function buildDocumentPdf(
     let x = 0;
     const nodes: NodeLite[] = [];
     let trim: Bounds | null = sized ? { x: 0, y: 0, width: w, height: h } : null;
-    for (const p of group) {
+    for (const [slot, p] of group.entries()) {
       if (p.id.startsWith(BLANK_PAGE)) { x += p.width ?? 0; continue; }
+      const creepDx = opts.booklet ? creepShift(side, opts.creep ?? 0, slot === 0 ? "left" : "right") : 0;
       // An unbounded page is exported as what is drawn on it (its bounds become the trim).
       const probe = sized ? null : regionOf(p.id, null);
       if (!sized && !probe) continue;
@@ -172,7 +188,7 @@ export async function buildDocumentPdf(
       if (!region) continue;
       if (!sized) trim = probe!.bounds;
       regions.push(region);
-      nodes.push(...region.nodes.map((n) => shift(n, x)));
+      nodes.push(...region.nodes.map((n) => shift(n, x + creepDx)));
       offsetOf.set(p.id, x);
       pageIndex.set(p.id, specs.length);
       x += p.width ?? 0;

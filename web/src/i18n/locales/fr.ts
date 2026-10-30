@@ -563,4 +563,5 @@ export const fr: Record<MessageKey, Message> = {
   "Remove grid {n}": "Retirer la grille {n}",
   "Margin": "Marge",
   "Grid opacity": "Opacité de la grille",
+  "Creep per sheet": "Décalage (creep) par feuille",
 };
