@@ -8,6 +8,7 @@ export * from "@features/editor/components/organisms/LayersPanel";
 export * from "@features/editor/components/organisms/PageBar";
 export * from "@features/editor/components/organisms/TopBar";
 export * from "@features/editor/components/organisms/DocMenu";
+export * from "@features/editor/components/organisms/LibrariesDialog";
 export * from "@features/editor/components/organisms/TextEditorOverlay";
 
 // Molecules
