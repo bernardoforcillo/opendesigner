@@ -672,6 +672,7 @@ export function nodesToSvg(
   // MASKS: a mask node is not drawn; its outline becomes a <clipPath> and the nodes
   // above it under the same parent are wrapped in a <g clip-path>.
   const clipOf = new Map<string, string>();
+  const frameClips = new Map<string, string>();
   const body = nodes
     .map((n) => {
       if (n.isMask) {
@@ -683,9 +684,23 @@ export function nodesToSvg(
           return "";
         }
       }
-      const out = element(n, measure, href, defs);
+      let out = element(n, measure, href, defs);
       const clip = clipOf.get(n.parentId);
-      return out !== "" && clip ? `<g clip-path="url(#${clip})">${out}</g>` : out;
+      if (out !== "" && clip) out = `<g clip-path="url(#${clip})">${out}</g>`;
+      // Frames that clip their content: one nested <g> per frame around the node, innermost last (the clips intersect).
+      for (const c of [...(n.exportClips ?? [])].reverse()) {
+        if (out === "") break;
+        const key = `${c.x},${c.y},${c.width},${c.height},${c.rotation}`;
+        let id = frameClips.get(key);
+        if (id === undefined) {
+          id = `f${frameClips.size}`;
+          frameClips.set(key, id);
+          const turn = c.rotation % 360 === 0 ? null : attr("transform", `rotate(${fmt(c.rotation)} ${fmt(c.x + c.width / 2)} ${fmt(c.y + c.height / 2)})`);
+          defs.push(`<clipPath${attrs([attr("id", id)])}><rect${attrs([attr("x", c.x), attr("y", c.y), attr("width", c.width), attr("height", c.height), turn])}/></clipPath>`);
+        }
+        out = `<g clip-path="url(#${id})">${out}</g>`;
+      }
+      return out;
     })
     .filter((s) => s !== "")
     .map((s) => `  ${s}`)

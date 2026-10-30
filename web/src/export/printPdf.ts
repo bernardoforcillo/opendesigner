@@ -97,7 +97,7 @@ async function loadFaces(fonts: Record<string, FontLite>, docId: string, deps: P
   return { faces, missing };
 }
 
-const shift = (n: NodeLite, dx: number): NodeLite => (dx === 0 ? n : { ...n, x: n.x + dx });
+const shift = (n: NodeLite, dx: number): NodeLite => (dx === 0 ? n : { ...n, x: n.x + dx, ...(n.exportClips ? { exportClips: n.exportClips.map((c) => ({ ...c, x: c.x + dx })) } : {}) });
 
 export interface PageGroup { pages: PageLite[]; width: number; height: number }
 

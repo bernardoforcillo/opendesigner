@@ -355,7 +355,12 @@ export interface ComponentPropertyLite {
 export interface VariantAxisLite { name: string; options: string[] }
 export interface ComponentSetLite { id: string; name: string; axes: VariantAxisLite[] }
 
+/** A box in WORLD space (x, y, size, rotation in degrees around its centre): where a clipping frame cuts what is inside it. */
+export interface ClipBox { x: number; y: number; width: number; height: number; rotation: number }
+
 export interface NodeLite {
+  // DERIVED only (export/region.ts): the clipping frames around this node, outermost first, in world space. Only on export nodes.
+  exportClips?: readonly ClipBox[];
   // DERIVED only (store/masters.ts), never in a document: a copy of a master page's node drawn on a page that applies it.
   fromMaster?: boolean;
   // DERIVED only (store/threads.ts): the last frame of a text thread that has text left over.
