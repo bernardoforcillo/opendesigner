@@ -39,7 +39,6 @@ Legend: [x] done · [ ] to do
 - [x] Type extras: text case (upper, lower, title, small caps), super/subscript, bulleted and numbered lists with indent, OpenType feature string, vertical alignment and inset in text boxes (canvas, CanvasKit, SVG, CSS, panel, MCP); see docs/typography.md
 - [x] Horizontal text scale (a percentage on every text style: layout, canvas, CanvasKit, SVG, CSS, panel, MCP); see docs/typography.md
 - [x] Rich text honours the type extras: case, super/subscript, small caps and OpenType features per range, lists and indent per paragraph, inset and vertical alignment of the box; paragraph and character styles carry them; see docs/typography.md
-- [ ] Typography: letter spacing, decoration, case, per-range styling, kerning/shaping on the GPU
 - [x] Live boolean groups (union, subtract, intersect, exclude; flatten on demand), outline stroke, masks (canvas, GPU, SVG, code, hit-test); see docs/vector.md
 - [x] Presentation mode: the playable prototype (Present)
 - [x] Diagrams: flowchart and UML (class, sequence, state) from Mermaid text, computed by the server; editor (document menu) and MCP (`create_diagram`, `update_diagram`, `list_diagrams`), see docs/diagrams.md
@@ -129,11 +128,14 @@ Text
 
 Graphics and colour
 - [x] Linked images: file name and pixel size, effective resolution with a low-resolution warning, fitting from pixel size, relink, Links panel
-- [ ] Update-on-change from disk, image frames with fitting inside them
+- [x] Image frame fitting (`fit_frame`: fill, fit, tile, frame to content)
+- [ ] Linked images: update-on-change from disk (a browser cannot watch a file; relink is manual)
 - [x] Swatches (process CMYK, RGB, spot, tints that follow their base), CMYK document mode and a recorded output profile
-- [ ] Gradient swatches, overprint, profile-managed conversion
+- [x] Overprint (written to the PDF, Ink manager UI)
+- [ ] Gradient swatches and profile-managed conversion
 - [x] Object styles (fill, stroke, effects, opacity, corner radius, blend mode; based-on)
-- [ ] Nested frames, frame fitting
+- [x] Frame fitting (`fit_frame`)
+- [ ] Nested frames
 - [ ] Transparency flattening for print, blur and inner shadows in PDF output (opacity, blend modes and hard-edged drop shadows are written; blur is reported by the preflight)
 
 Output (docs/output.md)
@@ -187,7 +189,8 @@ Output (docs/output.md)
 - [x] MCP AI agent: `review_consistency` and `token_usage` tools, prompts `consistency_review`, `design_variants`, `token_cleanup`; see docs/mcp.md
 - [x] Design review: text contrast (WCAG), tap targets and token consistency, as a Develop panel and the `review_design` MCP tool; see docs/handoff.md
 - [ ] Generate screens from text or screenshot using the document's own components and tokens
-- [ ] Design, code and flow tests in one pipeline (prototype -> codegen -> Playwright)
+- [x] Playwright tests generated from flow paths (`opendesigner flow`, react and leptos targets)
+- [ ] One pipeline that runs prototype -> codegen -> Playwright end to end
 - [x] Git-versionable bundle format: `opendesigner pack` / `unpack` (one JSON file per node, stable bytes); see docs/handoff.md
 
 ## Object tools (block 8)
@@ -200,4 +203,5 @@ Output (docs/output.md)
 
 ## Platform (block 10)
 - [x] Ink manager (spot -> process, aliases, total ink), overprint in the PDF; CJK line breaking with kinsoku; Arabic shaping and bidi ordering in the PDF; `batch` and `list_editor_commands` (see docs/platform.md)
-- [ ] Paragraph direction, vertical writing, ruby, Indic/Thai shaping, separation preview, trapping, overprint preview
+- [x] Bidi and Arabic shaping in the PDF
+- [ ] Paragraph direction control, vertical writing, ruby, Indic/Thai shaping, separation preview, trapping, overprint preview
