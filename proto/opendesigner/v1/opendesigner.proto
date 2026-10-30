@@ -1551,7 +1551,40 @@ message OpenResponse { Document snapshot = 1; uint64 seq = 2; }
 message CreateDocumentRequest { string name = 1; string vertical = 2; }
 // updated_at (unix seconds, 0 = unknown), screens (top-level frames) and
 // flows are for the Home page: a document's card shows them without opening it.
-message DocInfo { string id = 1; string name = 2; int64 updated_at = 3; uint32 screens = 4; uint32 flows = 5; string vertical = 6; }
+message DocInfo { string id = 1; string name = 2; int64 updated_at = 3; uint32 screens = 4; uint32 flows = 5; string vertical = 6; bool library = 7; }
+
+// ---------- shared libraries ----------
+// A document can be PUBLISHED AS A LIBRARY (DocInfo.library, kept in the document's identity, not in its op-log).
+// What a library offers: its components, text / paint / effect / object styles and variable collections.
+// Another document IMPORTS what it needs: the server copies the items (and what they depend on: nested
+// components and the other members of a component set, the styles and variables a master uses, uploaded fonts
+// and images) into the importing document as ordinary ops, so the copy is editable, undoable and shared with
+// every collaborator. Items keep their ids: importing again updates styles, variables, sets and fonts in place,
+// while a component that is already there is left alone (its masters may have been edited since).
+enum LibraryItemKind {
+  LIBRARY_ITEM_KIND_UNSPECIFIED = 0;
+  LIBRARY_ITEM_KIND_COMPONENT = 1;
+  LIBRARY_ITEM_KIND_TEXT_STYLE = 2;
+  LIBRARY_ITEM_KIND_PAINT_STYLE = 3;
+  LIBRARY_ITEM_KIND_EFFECT_STYLE = 4;
+  LIBRARY_ITEM_KIND_OBJECT_STYLE = 5;
+  LIBRARY_ITEM_KIND_COLLECTION = 6;   // a variable collection, with all its variables
+}
+message LibraryItem { LibraryItemKind kind = 1; string id = 2; string name = 3; string group = 4; }
+message SetLibraryRequest { string doc_id = 1; bool library = 2; }
+message GetLibraryRequest { string doc_id = 1; }
+message GetLibraryResponse { DocInfo info = 1; repeated LibraryItem items = 2; }
+message ImportFromLibraryRequest {
+  string doc_id = 1;               // the document that receives the items
+  string library_doc_id = 2;
+  repeated LibraryItem items = 3;  // kind + id of what to import
+}
+message ImportFromLibraryResponse {
+  repeated LibraryItem imported = 1;  // everything written, dependencies included
+  repeated LibraryItem skipped = 2;   // components that were already in the document
+  string page_id = 3;                 // the page that holds the imported masters ("" when none)
+}
+
 message RenameDocumentRequest { string doc_id = 1; string name = 2; }
 message DeleteDocumentRequest { string doc_id = 1; }
 message DeleteDocumentResponse {}
@@ -1876,6 +1909,10 @@ service DocumentService {
   rpc MergeBranch(MergeBranchRequest) returns (MergeBranchResponse);
   rpc ListDocuments(ListDocumentsRequest) returns (ListDocumentsResponse);
   rpc CreateDocument(CreateDocumentRequest) returns (DocInfo);
+  // Shared libraries: publish a document as a library, read what it offers, import items into another document.
+  rpc SetLibrary(SetLibraryRequest) returns (DocInfo);
+  rpc GetLibrary(GetLibraryRequest) returns (GetLibraryResponse);
+  rpc ImportFromLibrary(ImportFromLibraryRequest) returns (ImportFromLibraryResponse);
   // Renames a document (meta.json + the hub's in-memory name).
   rpc RenameDocument(RenameDocumentRequest) returns (DocInfo);
   // Deletes a document by MOVING the bundle to <workspace>/.trash (never rm -rf).
