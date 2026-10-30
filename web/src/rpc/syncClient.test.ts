@@ -292,6 +292,36 @@ describe("SyncClient: confirmed/pending model", () => {
     await flush();
   });
 
+  it("stamps each submitted op with the last seq applied (base_seq)", async () => {
+    const { sync, stream } = await boot({ n1: rectNode("n1", 0, 0) });
+    stream.push(applied(1, OTHER, moveOp("op-them", "n1", 5, 0)));
+    await flush();
+    sync.submit(moveOp("op-mine", "n1", 9, 0));
+    await flush();
+    expect(rpc.submitOp.mock.calls[0][0].op.baseSeq).toBe(1n);
+    stream.close();
+    await flush();
+  });
+
+  it("converges on the winner when the server drops our losing property from the echo", async () => {
+    const { sync, stream } = await boot({ n1: rectNode("n1", 0, 0) });
+    sync.submit(moveOp("op-mine", "n1", 200, 7));
+    await flush();
+    expect(useScene.getState().scene!.nodes.at("n1")).toMatchObject({ x: 200, y: 7 });
+
+    // The other client's stamp won x: the hub recorded our op with only "y".
+    stream.push(applied(1, OTHER, moveOp("op-them", "n1", 100, 0)));
+    const echo = moveOp("op-mine", "n1", 200, 7);
+    if (echo.kind.case === "setProps" && echo.kind.value.mask) echo.kind.value.mask.paths = ["y"];
+    stream.push(applied(2, CLIENT, echo));
+    await flush();
+
+    expect(useScene.getState().pending).toHaveLength(0);
+    expect(useScene.getState().scene!.nodes.at("n1")).toMatchObject({ x: 100, y: 7 });
+    stream.close();
+    await flush();
+  });
+
   // --- death of the stream ---------------------------------------------------
   // Subscribe is the ONLY thing that advances the confirmed state and empties the queue
   // of in-flight ops: its death cannot stay invisible. Before this
