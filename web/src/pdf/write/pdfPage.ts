@@ -6,6 +6,7 @@ import { resolvedFill } from "@/renderer/canvasRenderer";
 import { hasRealStroke, vectorStyleOf } from "@/renderer/vectorStyle";
 import { meshBitmap } from "@/renderer/mesh";
 import { writeImage, type PreparedImage } from "@/pdf/write/pdfImages";
+import { effectBitmap, type FxBitmap, type FxShape, type FxSpec } from "@/pdf/write/pdfEffects";
 import { num, pdfName, type PdfFile } from "@/pdf/write/pdfFile";
 import type { PdfColors } from "@/pdf/write/pdfColor";
 import type { PdfFonts } from "@/pdf/write/pdfFonts";
@@ -18,8 +19,10 @@ import type { PdfFonts } from "@/pdf/write/pdfFonts";
 // text (placed by the same layout as the canvas, real fonts, real colour, decorations), images
 // (original JPEG/PNG bytes), linear and radial gradients (true shadings), mesh gradients (a small
 // bitmap), opacity and blend modes (ExtGState), masks (clip paths), CMYK and spot paints.
-// What does not: blur effects and inner shadows (a hard offset copy stands in for a drop shadow),
-// gradient stop transparency, per-glyph OpenType features. The preflight lists these.
+// Also carried over: gradient stop transparency (a luminosity soft mask built from the stops' alpha), and
+// blurred drop shadows, inner shadows and layer blur of rectangles and ellipses (a small bitmap, pdfEffects.ts).
+// What does not: those effects on vectors (a hard offset copy stands in for a drop shadow), background and
+// progressive blur, real transparency flattening for PDF/X-1a/X-3, per-glyph OpenType features. The preflight lists these.
 
 export const PT = 0.75;
 
@@ -164,7 +167,35 @@ function outline(n: NodeLite, forFill: boolean): string {
 
 // --- paints -----------------------------------------------------------------------------------------
 
-function shadingFor(pg: Page, n: NodeLite, g: GradientLite): string | null {
+/** A luminosity soft mask (ExtGState name) that gives the gradient's stops their alpha, or null when every stop is opaque. */
+function stopAlphaMask(pg: Page, n: NodeLite, g: GradientLite, sp: { x1: number; y1: number; x2: number; y2: number; len: number }): string | null {
+  const stops = [...g.stops].sort((a, b) => a.position - b.position);
+  if (stops.every((s) => s.color.a >= 1)) return null;
+  const fns: string[] = [], bounds: number[] = [], encode: string[] = [];
+  for (let i = 0; i < stops.length - 1; i++) {
+    fns.push(`${pg.d.file.add(`<</FunctionType 2/Domain[0 1]/C0[${num(stops[i]!.color.a)}]/C1[${num(stops[i + 1]!.color.a)}]/N 1>>`)} 0 R`);
+    if (i > 0) bounds.push(Math.min(1, Math.max(0, stops[i]!.position)));
+    encode.push("0 1");
+  }
+  const fn = stops.length === 2 ? fns[0]! : `${pg.d.file.add(`<</FunctionType 3/Domain[0 1]/Functions[${fns.join(" ")}]/Bounds[${bounds.map(num).join(" ")}]/Encode[${encode.join(" ")}]>>`)} 0 R`;
+  const { x1, y1, x2, y2, len } = sp;
+  const dict = g.kind === "linear"
+    ? `<</ShadingType 2/ColorSpace/DeviceGray/Coords[${num(x1)} ${num(y1)} ${num(x2)} ${num(y2)}]/Function ${fn}/Extend[true true]>>`
+    : `<</ShadingType 3/ColorSpace/DeviceGray/Coords[${num(x1)} ${num(y1)} 0 ${num(x1)} ${num(y1)} ${num(len)}]/Function ${fn}/Extend[true true]>>`;
+  const sh = pg.d.file.add(dict);
+  // The form covers the node's box generously: the gradient extends, the fill's own clip cuts it.
+  const m = Math.max(n.width, n.height) + 1;
+  const form = pg.d.file.stream(
+    `/Type/XObject/Subtype/Form/BBox[${num(n.x - m)} ${num(n.y - m)} ${num(n.x + n.width + m)} ${num(n.y + n.height + m)}]/Group<</S/Transparency/CS/DeviceGray>>/Resources<</Shading<</ShA ${sh} 0 R>>>>`,
+    "/ShA sh\n",
+  );
+  const name = `GM${pg.gstates.length + 1}`;
+  pg.gstates.push(`${pdfName(name)}<</Type/ExtGState/SMask<</Type/Mask/S/Luminosity/G ${form} 0 R>>>>`);
+  pg.transparency = true;
+  return name;
+}
+
+function shadingFor(pg: Page, n: NodeLite, g: GradientLite): { name: string; mask: string | null } | null {
   const x1 = n.x + g.x1 * n.width, y1 = n.y + g.y1 * n.height, x2 = n.x + g.x2 * n.width, y2 = n.y + g.y2 * n.height;
   const len = Math.hypot(x2 - x1, y2 - y1);
   if (!(len > 0) || g.stops.length < 2) return null;
@@ -184,7 +215,7 @@ function shadingFor(pg: Page, n: NodeLite, g: GradientLite): string | null {
     : `<</ShadingType 3/ColorSpace${space}/Coords[${num(x1)} ${num(y1)} 0 ${num(x1)} ${num(y1)} ${num(len)}]/Function ${fn}/Extend[true true]>>`;
   const name = `Sh${pg.shadings.length + 1}`;
   pg.shadings.push(`${pdfName(name)} ${pg.d.file.add(dict)} 0 R`);
-  return name;
+  return { name, mask: stopAlphaMask(pg, n, g, { x1, y1, x2, y2, len }) };
 }
 
 const cmykDoc = (pg: Page) => pg.d.colors.cmykDocument;
@@ -226,7 +257,7 @@ function paintFill(pg: Page, n: NodeLite, f: FillLite, slot: string, evenOdd: bo
   if (f.gradient) {
     const sh = shadingFor(pg, n, f.gradient);
     if (sh) {
-      pg.out.push(`q\n${path}${clip} n\n${pdfName(sh)} sh\nQ\n`);
+      pg.out.push(`q\n${path}${clip} n\n${sh.mask ? `${pdfName(sh.mask)} gs\n` : ""}${pdfName(sh.name)} sh\nQ\n`);
       return;
     }
   }
@@ -254,6 +285,29 @@ function strokeOps(pg: Page, n: NodeLite): string {
 
 // --- one node ---------------------------------------------------------------------------------------
 
+/** The closed-form outline of a node, for the effect bitmaps; null for vectors. */
+function fxShape(n: NodeLite): FxShape | null {
+  if (n.width <= 0 || n.height <= 0) return null;
+  if (n.kind === "ellipse") return { kind: "ellipse", w: n.width, h: n.height, r: 0 };
+  if (n.kind === "rect") return { kind: "rect", w: n.width, h: n.height, r: Math.min(n.cornerRadius, n.width / 2, n.height / 2) };
+  if (n.kind === "frame") return { kind: "rect", w: n.width, h: n.height, r: 0 };
+  return null;
+}
+
+/** Draws an effect bitmap (optionally clipped to `clip`, a path). False when there is nothing to draw. */
+function fxImage(pg: Page, n: NodeLite, shape: FxShape, spec: FxSpec, clip: string): boolean {
+  const bmp: FxBitmap | null = effectBitmap(shape, spec);
+  if (!bmp) return false;
+  const key = `fx:${n.id}:${spec.mode}:${shape.w}x${shape.h}:${shape.r}:${spec.sigma}:${spec.dx ?? 0},${spec.dy ?? 0}:${spec.color.r},${spec.color.g},${spec.color.b},${spec.color.a}`;
+  pg.d.images.set(key, { kind: "rgba", width: bmp.width, height: bmp.height, rgba: bmp.rgba });
+  const name = pg.image(key);
+  if (!name) return false;
+  pg.transparency = true;
+  const x = n.x + bmp.x, y = n.y + bmp.y;
+  pg.out.push(`q\n${clip ? `${clip}W n\n` : ""}${num(bmp.w)} 0 0 ${num(-bmp.h)} ${num(x)} ${num(y + bmp.h)} cm\n${pdfName(name)} Do\nQ\n`);
+  return true;
+}
+
 function drawShape(pg: Page, n: NodeLite): void {
   const fillable = !(n.kind === "frame" && n.fills.length === 0);
   const evenOdd = n.kind === "vector" ? (vectorStyleOf(n).fillRule ?? "evenodd") === "evenodd" : false;
@@ -261,18 +315,33 @@ function drawShape(pg: Page, n: NodeLite): void {
   const path = outline(n, true);
   const s = strokeOf(n);
   const shadow = n.effects?.find((e) => e.kind === "dropShadow");
+  const shape = fxShape(n);
   if (shadow && shadow.kind === "dropShadow" && path !== "") {
-    // PDF has no blur: a hard-edged offset copy at the shadow's colour and alpha stands in for it.
-    pg.out.push(`q\n${pg.gs(shadow.color.a, shadow.color.a)}1 0 0 1 ${num(shadow.offsetX)} ${num(shadow.offsetY)} cm\n`);
-    pg.out.push(pg.d.colors.rgbOps(shadow.color, false), path, evenOdd ? "f*\n" : "f\n", "Q\n");
-    pg.flattened.push(n.id);
+    const soft = shadow.blur > 0 && shape ? fxImage(pg, n, shape, { mode: "drop", color: shadow.color, dx: shadow.offsetX, dy: shadow.offsetY, sigma: shadow.blur / 2 }, "") : false;
+    if (!soft) {
+      // Not a plain rectangle or ellipse: a hard-edged offset copy at the shadow's colour and alpha stands in for the blur.
+      pg.out.push(`q\n${pg.gs(shadow.color.a, shadow.color.a)}1 0 0 1 ${num(shadow.offsetX)} ${num(shadow.offsetY)} cm\n`);
+      pg.out.push(pg.d.colors.rgbOps(shadow.color, false), path, evenOdd ? "f*\n" : "f\n", "Q\n");
+      if (shadow.blur > 0) pg.flattened.push(n.id);
+    }
   }
-  if (n.effects?.some((e) => e.kind === "layerBlur" || e.kind === "innerShadow" || e.kind === "backgroundBlur")) pg.flattened.push(n.id);
   const alpha = fillable && !f.gradient && !f.image && !f.mesh ? f.a : 1;
-  if (fillable && path !== "") {
+  const blur = n.effects?.find((e) => e.kind === "layerBlur" && e.radius > 0);
+  // Layer blur of a plain flat fill with no stroke is a blurred bitmap of the shape instead of the fill.
+  const blurredFill = blur?.kind === "layerBlur" && fillable && shape && !s && !f.gradient && !f.image && !f.mesh && path !== ""
+    && fxImage(pg, n, shape, { mode: "blur", color: { r: f.r, g: f.g, b: f.b, a: alpha }, sigma: blur.radius }, "");
+  if (blur && !blurredFill) pg.flattened.push(n.id);
+  if (fillable && path !== "" && !blurredFill) {
     pg.out.push(`q\n${pg.gs(alpha, 1)}`);
     paintFill(pg, n, f, "fills.0", evenOdd, path);
     pg.out.push("Q\n");
+  }
+  for (const e of n.effects ?? []) {
+    if (e.kind === "backgroundBlur") pg.flattened.push(n.id);
+    else if (e.kind === "innerShadow" && path !== "") {
+      const ok = shape && fxImage(pg, n, shape, { mode: "inner", color: e.color, dx: e.offsetX, dy: e.offsetY, sigma: e.blur / 2 }, outline(n, true));
+      if (!ok) pg.flattened.push(n.id);
+    }
   }
   if (s) {
     pg.out.push(`q\n${pg.gs(1, s.color.a)}${strokeOps(pg, n)}${outline(n, false)}S\nQ\n`);

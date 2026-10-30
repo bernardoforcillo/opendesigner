@@ -36,4 +36,8 @@ Downloads `<name>.epub` (EPUB 3, **fixed layout**; the reflowable export is in [
 
 Empty pages are skipped; if every page is empty nothing is exported and a notice says so.
 
+### Effects in the PDF
+
+`web/src/pdf/write/pdfEffects.ts` turns blur into a small RGBA bitmap (coverage rendered on a grid, three box-blur passes, tinted), because a PDF has no blur. Handled for rectangles, frames and ellipses: **drop shadow blur**, **inner shadow** (clipped to the shape) and **layer blur** of a flat, stroke-less fill. **Gradient transparency stops** become a luminosity soft mask built from the stops' alpha, so a fade-to-transparent gradient stays a true shading. Not carried: these effects on vectors and text (the hard offset copy remains and the preflight lists the node as flattened), background and progressive blur, and real transparency flattening for PDF/X-1a / X-3 (those still rely on the preflight warning).
+
 Code: `web/src/pdf/importPdf.ts`, `web/src/pdf/pdfToSvg.ts`, `web/src/pdf/sfnt.ts`, `web/src/export/epub.ts`, `web/src/export/zip.ts`, `web/src/pdf/write/*`, `web/src/export/printPdf.ts`, `runDocumentExport` in `web/src/export/exportScene.ts`.
