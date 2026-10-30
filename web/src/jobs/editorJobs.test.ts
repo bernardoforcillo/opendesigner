@@ -41,6 +41,13 @@ describe("executeJob", () => {
     expect(empty.message).toMatch(/nothing to export/);
   });
 
+  it("exports an EPS of a page", async () => {
+    const r = await executeJob("export_eps", '{"pageId":"p2"}', deps);
+    expect(r.ok).toBe(true);
+    expect(r.filename).toMatch(/\.eps$/);
+    expect(text(r)).toContain("%!PS-Adobe-3.0 EPSF-3.0");
+  });
+
   it("exports an SVG of a page chosen by id, without moving the editor", async () => {
     const r = await executeJob("export_svg", '{"pageId":"p2"}', deps);
     expect(r.ok).toBe(true);
