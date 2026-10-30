@@ -49,13 +49,32 @@ no-break space before `: ; ? !`; German uses formal address; Brazilian Portugues
 (arquivo, tela, você); Japanese is concise without です/ます and with full-width punctuation; Chinese uses
 full-width punctuation. Japanese and Chinese have no plural forms, so their plurals give only `other`.
 
+## Dates and numbers
+
+`i18n/format.ts` formats with the **interface language**, not the browser's: `formatDate(seconds, options)`,
+`formatNumber(n, options)` and `formatRelative(value, unit)` wrap `Intl` (formats are cached per language and options).
+The comment, version, share and Dev-mode dates and the Home's "Edited ..." line use them, and `relativeTime` (Home) says
+"hace 3 horas" in Spanish; in English it keeps its short wording ("3 hours ago"). Time labels on the animation timeline
+(`animation/timelineLogic.ts`) and the properties panel's percent field are still formatted for English / the browser.
+
 ## What is translated so far
 
 The top bar, the tool dock (labels, tooltips, undo/redo, Present), the document menu, the Home (headings,
 empty state, join field, document cards with plural counts) and the headings of the properties-panel
-sections (the `Section` component translates its title). Everything else is still English: dialogs,
+sections (the `Section` component translates its title), the Versions dialog (all but the merge-back section), the Share dialog, Insert table, the Comments panel, Page setup, Fonts, Variables, Styles, Find and change, Data merge, the Preflight panel (its messages included), the Export PDF dialog, Object styles, the Layers and Pages panels, the page bar, the properties panel header and common controls (segmented choices, align, text and stroke fields), and the per-section controls (auto layout, effects, styles, shapes, gradients, constraints, layout grids, export, variables) through the shared controls and the prototype player's controls. Everything else is still English: other dialogs,
 the layers panel, comments, prototype player, dev mode, notices, MCP and server messages. A string with no
 catalog entry shows as written, so the interface is never half-blank.
+
+## Shared controls translate themselves
+
+`NumberField`, `ColorField`, `IconButton`, the design system's `Button` (when its child is a plain string), `SegRadio` /
+`SegButtons` and `Section` look their label up in the catalog (`tx`), and show it as written when it has no entry. So a
+panel built from them is translated by adding its labels to the catalogs, with no change in the panel; the per-section
+controls of the properties panel (auto layout, effects, styles, shapes, gradients, constraints, grids, export, variables)
+work this way. What the primitives cannot reach (the text of `<option>`s, plain text nodes, labels built from a name) uses
+`tr(key, vars)` from `currentT()` in the file. Because the lookup is by English text, a **user-written string must not be
+passed as a label**: a layer called "Fill" would read "Relleno". Names that come from the document go in as children of a
+raw element, not as a label.
 
 ## Migrating more strings
 

@@ -207,6 +207,56 @@ var agentPrompts = []promptDef{
 		},
 	},
 	{
+		name: "consistency_review", desc: "Review the document for inconsistencies and tidy them up.",
+		args: []*mcp.PromptArgument{promptArg("fix", "yes to fix what is found, no to only report (default yes)", false)},
+		build: func(a func(string, string) string) string {
+			fix := strings.EqualFold(a("fix", "yes"), "yes")
+			steps := "4. Report each rule with the values you chose as the main one and what you left alone."
+			if fix {
+				steps = `4. For each group choose the main value (the most used one), then set the odd ones to it: set_properties for sizes, radii and colors, bind_variable when a token holds the color, set_text_style for unstyled text.
+5. Run review_consistency and review_design again; nothing you changed should be flagged. Report what you changed.`
+			}
+			return `Review the document for inconsistencies.
+
+1. review_design for contrast, tap targets and unbound tokens; note the errors, do not fix them yet.
+2. review_consistency for near-identical colors, sizes and radii and unstyled text.
+3. token_usage to see which tokens are unused and which colors deserve to become tokens (candidates).
+` + steps
+		},
+	},
+	{
+		name: "design_variants", desc: "Make alternative versions of a frame to compare.",
+		args: []*mcp.PromptArgument{
+			promptArg("node", "id of the frame to vary", true),
+			promptArg("count", "how many variants (default 3)", false),
+			promptArg("vary", "what to change: color, layout, type or all (default all)", false),
+		},
+		build: func(a func(string, string) string) string {
+			n, _ := strconv.Atoi(a("count", "3"))
+			if n <= 0 || n > 8 {
+				n = 3
+			}
+			return fmt.Sprintf(`Make %d variants of frame %s, changing: %s.
+
+1. get_node on the frame to see what it is made of; keep its size and its content.
+2. For each variant: duplicate_nodes the frame, then set_properties x and y so the copies sit in a row to the right of the original with an 80px gap. Name them "<name> A", "<name> B", ....
+3. Change each copy differently with set_properties, set_text_style or set_auto_layout (color: fills and strokes; layout: spacing, direction, alignment; type: font sizes and weights). Keep a variant on the document's tokens: prefer bind_variable to literal colors.
+4. review_design on the result; fix errors so every variant passes contrast and tap targets.
+5. Tell the person what differs between the variants, in one line each.`, n, a("node", ""), a("vary", "all"))
+		},
+	},
+	{
+		name: "token_cleanup", desc: "Turn repeated literal values into design tokens and remove unused ones.",
+		build: func(a func(string, string) string) string {
+			return `Tidy the design tokens.
+
+1. token_usage: note the candidates (colors used by value several times) and the unused tokens.
+2. For each candidate create a color variable (set_variable) in a collection that fits, and bind_variable every node that uses that color by value (review_design lists them as token findings once the variable exists).
+3. Delete variables and styles that token_usage lists as unused only if the person agrees: say what you would remove and why.
+4. token_usage and review_design again; report what changed.`
+		},
+	},
+	{
 		name: "watch_comments", desc: "Keep watching for new comments and handle each as it arrives.",
 		args: []*mcp.PromptArgument{promptArg("minutes", "how long to keep watching (default 5)", false)},
 		build: func(a func(string, string) string) string {

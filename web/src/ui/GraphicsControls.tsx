@@ -1,8 +1,12 @@
 import { useScene } from "@/store/store";
+import { currentT } from "@/i18n";
 import { applyObjectStyleOps, createObjectStyleOps, redefineObjectStyleOps, stylable } from "@/tools/objectStyles";
 import { layerOf, moveToLayerOps } from "@/tools/layers";
 import { effectivePpi, fitImageOps, pickImageFile, ppiStatus, relinkImage } from "@/tools/imageLinks";
 import { Button, cls } from "@/ui/ds";
+
+// Names the shared controls cannot translate on their own (options, text nodes). See docs/localization.md.
+const tr = (key: string, vars?: Record<string, string | number>) => currentT().tx(key, vars);
 
 // CONTROLS of the properties panel for shared looks and links:
 //  - Object style: apply a shared look to the selection, make one from it, redefine it;
@@ -42,7 +46,7 @@ export function ObjectStyleControls() {
     <Box title="Object style">
       <select aria-label="Object style" className={cls.select} value={value}
         onChange={(e) => run(applyObjectStyleOps(scene, selection, e.target.value === "" ? null : e.target.value))}>
-        {value === MIXED && <option value={MIXED} disabled>Mixed</option>}
+        {value === MIXED && <option value={MIXED} disabled>{tr("Mixed")}</option>}
         <option value="">No object style</option>
         {styles.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
       </select>
@@ -72,7 +76,7 @@ export function LayerControls() {
     <Box title="Layer">
       <select aria-label="Layer" className={cls.select} value={cur === undefined ? MIXED : (cur ?? "")}
         onChange={(e) => run(moveToLayerOps(scene, selection, e.target.value === "" ? null : e.target.value))}>
-        {cur === undefined && <option value={MIXED} disabled>Mixed</option>}
+        {cur === undefined && <option value={MIXED} disabled>{tr("Mixed")}</option>}
         <option value="">No layer</option>
         {scene.layers.map((l) => <option key={l.id} value={l.id}>{l.name}{l.hidden ? " (hidden)" : l.locked ? " (locked)" : ""}</option>)}
       </select>
@@ -90,7 +94,7 @@ export function ImageLinkControls() {
   const status = ppiStatus(ppi);
   const known = (n.image?.pixelWidth ?? 0) > 0;
   return (
-    <Box title="Link">
+    <Box title={tr("Link")}>
       <p className="truncate text-[12px]" title={n.image?.originalName}>{n.image?.originalName || "Unknown file"}</p>
       <p className="text-[12px] text-fg-subtle">
         {known ? `${n.image!.pixelWidth} × ${n.image!.pixelHeight} px` : "Size in pixels unknown"}

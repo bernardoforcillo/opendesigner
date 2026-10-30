@@ -1,4 +1,5 @@
 import { usePosedScene } from "@/animation/posedScene";
+import { useT } from "@/i18n";
 import { Fragment, useContext, useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { RefObject } from "react";
 import {
@@ -356,8 +357,9 @@ const MIXED_LABEL = "Mixed";
 function SliderValueText({
   inputRef, mixed, className,
 }: { inputRef: RefObject<HTMLInputElement | null>; mixed: boolean; className: string }) {
+  const { tx } = useT();
   const state = useContext(SliderStateContext);
-  const text = mixed ? MIXED_LABEL : (state?.getThumbValueLabel(0) ?? "");
+  const text = mixed ? tx(MIXED_LABEL) : (state?.getThumbValueLabel(0) ?? "");
   useLayoutEffect(() => {
     inputRef.current?.setAttribute("aria-valuetext", text);
   });
@@ -523,6 +525,7 @@ function OverrideTextField({
 }
 
 export function PropertiesPanel() {
+  const { t, tn, tx } = useT();
   // The values the panel shows are the ones that are seen: with the timeline
   // posed (scrubbing, recording) they are the sampled values. With the timeline idle it is
   // the store's scene, the same instance as before (animation/posedScene.ts).
@@ -699,12 +702,12 @@ export function PropertiesPanel() {
         {/* The title stays even when empty: it says WHERE you are, like the header
             of the other panels, when there is no name to show. */}
         <header className="flex h-12 shrink-0 items-center border-b border-line px-3">
-          <h2 className={cls.sectionTitle}>Properties</h2>
+          <h2 className={cls.sectionTitle}>{t("Properties")}</h2>
         </header>
         <EmptyState
           icon="select"
-          title="No selection"
-          hint="Select an element on the canvas or in the layers to read and edit its properties."
+          title={t("No selection")}
+          hint={t("Select an element on the canvas or in the layers to read and edit its properties.")}
         />
       </div>
     );
@@ -750,11 +753,11 @@ export function PropertiesPanel() {
   // The header: WHO is selected. A single node = its name and its type;
   // more nodes = the count and the common type (if any).
   const headerIcon: IconName = summary.kind === MIXED || nodes.length > 1 ? "layers" : KIND_ICON[summary.kind];
-  const headerTitle = nodes.length === 1 ? layerDisplayName(nodes[0]) : `${nodes.length} elements`;
+  const headerTitle = nodes.length === 1 ? layerDisplayName(nodes[0]) : tn("{n} elements", nodes.length);
   const headerHint =
     nodes.length > 1
-      ? (summary.kind === MIXED ? "Multiple selection" : `Multiple selection · ${KIND_LABEL[summary.kind]}`)
-      : (summary.kind === MIXED ? "" : KIND_LABEL[summary.kind]);
+      ? (summary.kind === MIXED ? t("Multiple selection") : t("Multiple selection · {kind}", { kind: tx(KIND_LABEL[summary.kind]) }))
+      : (summary.kind === MIXED ? "" : tx(KIND_LABEL[summary.kind]));
 
   return (
     <div className="flex h-full flex-col overflow-auto bg-surface text-[13px] text-fg">
@@ -779,7 +782,7 @@ export function PropertiesPanel() {
           selection's common bounding box): the bar appears from two nodes up and
           at rest does not steal 40px from the inspector. */}
       {selection.length >= 2 && (
-      <div role="group" aria-label="Align" className="flex shrink-0 items-center gap-0.5 border-b border-line px-2 py-1.5">
+      <div role="group" aria-label={t("Align")} className="flex shrink-0 items-center gap-0.5 border-b border-line px-2 py-1.5">
         {ALIGN_COMMANDS.map((c, i) => (
           <Fragment key={c.id}>
             {i === 4 && <span aria-hidden="true" className="mx-0.5 h-4 w-px shrink-0 bg-line" />}
@@ -796,8 +799,8 @@ export function PropertiesPanel() {
                 broken one. */}
             <button
               type="button"
-              aria-label={c.label}
-              title={c.label}
+              aria-label={tx(c.label)}
+              title={tx(c.label)}
               disabled={selection.length < minSelection(c.id)}
               className={ALIGN_BUTTON_CLASS}
               onClick={() => alignSelection(c.id)}
@@ -838,7 +841,7 @@ export function PropertiesPanel() {
               // an empty field with no other context would look emptied by
               // mistake, not "these nodes differ".
               value={summary[field.key] === MIXED ? NaN : (summary[field.key] as number)}
-              placeholder={summary[field.key] === MIXED ? MIXED_LABEL : undefined}
+              placeholder={summary[field.key] === MIXED ? tx(MIXED_LABEL) : undefined}
               onCommit={(v) => commit(field, v)}
               onScrub={(v) => scrub(field, v)}
               onScrubEnd={(v) => scrubEnd(field, v)}
@@ -854,7 +857,7 @@ export function PropertiesPanel() {
               label={CORNER_RADIUS_FIELD.label}
               minValue={CORNER_RADIUS_FIELD.minValue}
               value={summary.cornerRadius === MIXED ? NaN : (summary.cornerRadius as number)}
-              placeholder={summary.cornerRadius === MIXED ? MIXED_LABEL : undefined}
+              placeholder={summary.cornerRadius === MIXED ? tx(MIXED_LABEL) : undefined}
               onCommit={(v) => commit(CORNER_RADIUS_FIELD, v)}
               onScrub={(v) => scrub(CORNER_RADIUS_FIELD, v)}
               onScrubEnd={(v) => scrubEnd(CORNER_RADIUS_FIELD, v)}
@@ -937,10 +940,10 @@ export function PropertiesPanel() {
         <Section title="Text">
           <div className="flex flex-col gap-2">
             <NumberField
-              label="Size"
+              label={t("Size")}
               minValue={1}
               value={style.fontSize === MIXED ? NaN : (style.fontSize as number)}
-              placeholder={style.fontSize === MIXED ? MIXED_LABEL : undefined}
+              placeholder={style.fontSize === MIXED ? tx(MIXED_LABEL) : undefined}
               onCommit={(v) => runGesture((ids) => textStyleOps(ids, { fontSize: v }))}
               onScrub={(v) => scrubTextStyle({ fontSize: v })}
               onScrubEnd={(v) => scrubTextStyleEnd({ fontSize: v })}
@@ -984,7 +987,7 @@ export function PropertiesPanel() {
                 // show". Writing a color from there stays possible and
                 // assigns it to the whole selection, as for geometric fields.
                 value={boundFill !== undefined ? boundFill : fill}
-                placeholder={boundFill === null ? "Variables" : "None"}
+                placeholder={boundFill === null ? t("Variables") : t("None")}
                 isDisabled={boundFill !== undefined}
                 onCommit={(rgb) => runGesture((ids) => fillOps(ids, rgb))}
               />
@@ -998,7 +1001,7 @@ export function PropertiesPanel() {
             // MIXED: no single value to show, but writing a color
             // stays possible.
             value={null}
-            placeholder={MIXED_LABEL}
+            placeholder={tx(MIXED_LABEL)}
             onCommit={(rgb) => runGesture((ids) => fillOps(ids, rgb))}
           />
         )}
@@ -1021,7 +1024,7 @@ export function PropertiesPanel() {
               // a stroke is CREATED (see DEFAULT_STROKE).
               value={boundStroke !== undefined ? boundStroke : (stroke?.color ?? null)}
               isDisabled={boundStroke !== undefined || strokeStyled}
-              placeholder={boundStroke === null ? "Variables" : strokesMixed ? MIXED_LABEL : "None"}
+              placeholder={boundStroke === null ? t("Variables") : strokesMixed ? tx(MIXED_LABEL) : t("None")}
               // The color goes down BARE, without alpha: strokeOps puts it back
               // taking it from each node's stroke, exactly like
               // fillOps. Composing it here from `stroke` would read it from the SUMMARY
@@ -1030,14 +1033,14 @@ export function PropertiesPanel() {
               onCommit={(rgb) => runGesture((ids) => strokeOps(ids, { color: rgb }))}
             />
             <NumberField
-              label="Thickness"
+              label={t("Thickness")}
               // No stroke = weight 0, and 0 stays writable: it is the way to
               // turn off a stroke without removing it from the list (non-positive
               // weight = nothing drawn and no overhang in the bounds,
               // see canvas/geometry.ts::strokeOutset).
               minValue={0}
               value={strokesMixed ? NaN : (stroke?.weight ?? 0)}
-              placeholder={strokesMixed ? MIXED_LABEL : undefined}
+              placeholder={strokesMixed ? tx(MIXED_LABEL) : undefined}
               onCommit={(v) => runGesture((ids) => strokeOps(ids, { weight: v }))}
               onScrub={(v) => scrubStroke({ weight: v })}
               onScrubEnd={(v) => scrubStrokeEnd({ weight: v })}

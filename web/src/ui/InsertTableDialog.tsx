@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useT } from "@/i18n";
 import { Dialog, Modal, ModalOverlay } from "react-aria-components";
 import { useScene } from "@/store/store";
 import { MAX_TABLE_SIDE, createTableOps } from "@/tools/tableOps";
@@ -11,6 +12,7 @@ import { NumberField } from "@/ui/fields/NumberField";
 // rows and columns are edited from the properties panel while it is selected.
 
 export function InsertTableDialog({ isOpen, onOpenChange }: { isOpen: boolean; onOpenChange: (open: boolean) => void }) {
+  const { t } = useT();
   const [rows, setRows] = useState(4);
   const [cols, setCols] = useState(3);
   const [head, setHead] = useState(1);
@@ -35,19 +37,19 @@ export function InsertTableDialog({ isOpen, onOpenChange }: { isOpen: boolean; o
   return (
     <ModalOverlay isDismissable isOpen={isOpen} onOpenChange={onOpenChange} className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
       <Modal className="w-full max-w-[380px] rounded-xl bg-raised p-4 text-[13px] text-fg shadow-pop">
-        <Dialog aria-label="Insert table" className="flex flex-col gap-3 outline-none">
-          <h2 className="text-[14px] font-semibold">Insert table</h2>
+        <Dialog aria-label={t("Insert table")} className="flex flex-col gap-3 outline-none">
+          <h2 className="text-[14px] font-semibold">{t("Insert table")}</h2>
           <div className="grid grid-cols-3 gap-2">
-            <NumberField label="Rows" minValue={1} value={rows} onCommit={(v) => setRows(Math.round(v))} />
-            <NumberField label="Columns" minValue={1} value={cols} onCommit={(v) => setCols(Math.round(v))} />
-            <NumberField label="Header rows" minValue={0} value={head} onCommit={(v) => setHead(Math.round(v))} />
-            <NumberField label="Cell width" minValue={8} value={cellW} onCommit={setCellW} />
-            <NumberField label="Cell height" minValue={8} value={cellH} onCommit={setCellH} />
+            <NumberField label={t("Rows")} minValue={1} value={rows} onCommit={(v) => setRows(Math.round(v))} />
+            <NumberField label={t("Columns")} minValue={1} value={cols} onCommit={(v) => setCols(Math.round(v))} />
+            <NumberField label={t("Header rows")} minValue={0} value={head} onCommit={(v) => setHead(Math.round(v))} />
+            <NumberField label={t("Cell width")} minValue={8} value={cellW} onCommit={setCellW} />
+            <NumberField label={t("Cell height")} minValue={8} value={cellH} onCommit={setCellH} />
           </div>
-          {!valid && <p role="alert" className="text-danger">A table has 1 to {MAX_TABLE_SIDE} rows and columns.</p>}
+          {!valid && <p role="alert" className="text-danger">{t("A table has 1 to {n} rows and columns.", { n: MAX_TABLE_SIDE })}</p>}
           <div className="flex justify-end gap-2">
-            <Button variant="primary" isDisabled={!valid} onPress={insert}>Insert</Button>
-            <Button onPress={() => onOpenChange(false)}>Cancel</Button>
+            <Button variant="primary" isDisabled={!valid} onPress={insert}>{t("Insert")}</Button>
+            <Button onPress={() => onOpenChange(false)}>{t("Cancel")}</Button>
           </div>
         </Dialog>
       </Modal>

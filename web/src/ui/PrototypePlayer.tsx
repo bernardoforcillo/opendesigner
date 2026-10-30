@@ -1,4 +1,5 @@
 import { resolveScene } from "@/store/variables";
+import { useT } from "@/i18n";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Button as RacButton } from "react-aria-components";
 import { useScene } from "@/store/store";
@@ -18,7 +19,7 @@ import { makeSetDocSettingsOp } from "@/tools/ops";
 import { DEVICES, deviceById, deviceGeometry, type DeviceId } from "@/flow/devices";
 import "@/ui/ds/flow-stage.css";
 import {
-  back, backTo, canGoBack, follow, optionsFrom, startState, trail, varEntries,
+  applyVariants, back, backTo, canGoBack, closeOverlay, follow, restoreVariant, SET_VARIANT, isGestureTrigger, optionsFrom, startState, trail, varEntries,
   type Option, type ProtoState,
 } from "@/flow/prototype";
 
@@ -61,6 +62,7 @@ function optionLabel(scene: Parameters<typeof screenName>[0], o: Option): string
 }
 
 export function PrototypePlayer({ onClose }: { onClose: () => void }) {
+  const { t } = useT();
   const scene = useScene((s) => s.scene);
   const pageId = useScene((s) => s.currentPageId);
   const currentFlowId = useFlowUi((s) => s.currentFlowId);
@@ -68,6 +70,8 @@ export function PrototypePlayer({ onClose }: { onClose: () => void }) {
   const [state, setState] = useState<ProtoState | null>(() => (scene ? startState(scene, flow, pageId) : null));
   const [showVars, setShowVars] = useState(false);
   const stage = useRef<HTMLDivElement>(null);
+  const held = useRef(new Map<string, { id: string; before: Readonly<Record<string, string>> | undefined }>());
+  const dragFrom = useRef<{ id: string | null; x: number; y: number } | null>(null);
   const canvas = useRef<HTMLCanvasElement>(null);
   const [size, setSize] = useState({ w: 0, h: 0 });
   // It also redraws when an image arrives.
@@ -107,7 +111,7 @@ export function PrototypePlayer({ onClose }: { onClose: () => void }) {
     if (!auto) return;
     const id = setTimeout(() => navigateRef.current(auto), auto.transition.delayMs ?? 0);
     return () => clearTimeout(id);
-  }, [scene, flow?.id, state?.screenId]);
+  }, [scene, flow?.id, state?.screenId, state?.overlay]);
 
   // Esc closes. In capture and stopping propagation: no other global
   // listener (toolManager, selectTool) must react to an Esc that belongs to the prototype.
@@ -136,12 +140,23 @@ export function PrototypePlayer({ onClose }: { onClose: () => void }) {
 
   useEffect(() => imageCache.subscribe(() => setImgTick((n) => n + 1)), []);
 
-  const derived = useMemo(() => (scene && state ? sceneForScreen(resolveScene(scene), state.screenId) : null), [scene, state?.screenId]);
+  // The document as resolved, with the component variants the person switched to while playing.
+  const live = useMemo(() => (scene ? applyVariants(resolveScene(scene), state?.variants) : null), [scene, state?.variants]);
+  const derived = useMemo(() => (live && state ? sceneForScreen(live, state.screenId) : null), [live, state?.screenId]);
   const screenBox = useMemo(() => {
     const n = scene && state ? scene.nodes.at(state.screenId) : undefined;
     return scene && n ? worldBoundsOfNode(scene, n) : null;
   }, [scene, state?.screenId]);
   const cam = useMemo(() => (screenBox && size.w > 0 ? fitCamera(screenBox, size.w, size.h) : null), [screenBox, size]);
+  // The overlay: its screen is drawn over the one under it, centred on it. `shift` moves its world into the base screen's.
+  const overlayId = state?.overlay ?? null;
+  const overlay = useMemo(() => {
+    const n = scene && overlayId ? scene.nodes.at(overlayId) : undefined;
+    if (!scene || !n || !screenBox) return null;
+    const box = worldBoundsOfNode(scene, n);
+    const shift = { x: screenBox.x + screenBox.width / 2 - (box.x + box.width / 2), y: screenBox.y + screenBox.height / 2 - (box.y + box.height / 2) };
+    return { id: n.id, box, shift, scene: sceneForScreen(live ?? resolveScene(scene), n.id) };
+  }, [scene, live, overlayId, screenBox]);
 
   // The document's clips (enter/loop when the screen appears, hover and tap on the
   // target): frame loop only while one is running, see ui/protoAnim.ts.
@@ -152,8 +167,25 @@ export function PrototypePlayer({ onClose }: { onClose: () => void }) {
     if (!c || !derived || !cam || tx) return;
     resizeCanvasToDisplaySize(c);
     const ctx = c.getContext("2d");
-    if (ctx) drawScene(ctx, anim.pose(derived), cam, PROTO_PAGE_ID);
-  }, [derived, cam, size, imgTick, anim.pose, tx]);
+    if (!ctx) return;
+    drawScene(ctx, anim.pose(derived), cam, PROTO_PAGE_ID);
+    if (overlay?.scene) {
+      // Dim what is under the overlay, then draw the overlay itself (on its own canvas: drawScene clears what it draws on).
+      const off = document.createElement("canvas");
+      off.width = c.width;
+      off.height = c.height;
+      const octx = off.getContext("2d");
+      if (octx) {
+        drawScene(octx, overlay.scene, { ...cam, x: cam.x - overlay.shift.x * cam.zoom, y: cam.y - overlay.shift.y * cam.zoom }, PROTO_PAGE_ID);
+        ctx.save();
+        ctx.setTransform(1, 0, 0, 1, 0, 0);
+        ctx.fillStyle = "rgba(0,0,0,0.45)";
+        ctx.fillRect(0, 0, c.width, c.height);
+        ctx.drawImage(off, 0, 0);
+        ctx.restore();
+      }
+    }
+  }, [derived, cam, size, imgTick, anim.pose, tx, overlay]);
 
   // The transition: a frame loop for its duration. "smart" draws ONE interpolated scene; the
   // others draw the two screens on their own canvases and lay them over each other.
@@ -161,7 +193,7 @@ export function PrototypePlayer({ onClose }: { onClose: () => void }) {
     const c = canvas.current;
     if (!tx || !c || !scene || !state || !derived || !cam || !screenBox) { if (tx) setTx(null); return; }
     resizeCanvasToDisplaySize(c);
-    const resolved = resolveScene(scene);
+    const resolved = live ?? resolveScene(scene);
     const fromScene = sceneForScreen(resolved, tx.fromId);
     // The source screen sits elsewhere in the world: it gets the camera that frames IT.
     const fromRoot = scene.nodes.at(tx.fromId);
@@ -212,16 +244,53 @@ export function PrototypePlayer({ onClose }: { onClose: () => void }) {
 
   if (!scene) return null;
   const options = flow && state ? optionsFrom(scene, flow.id, state) : [];
+  // The hotspots of an open overlay sit in the overlay's own coordinates: this moves them over the screen it covers.
+  const hotShift = overlay?.shift ?? { x: 0, y: 0 };
   // A hotspot exists only if the element really has a box in the screen.
   const hotspots: { o: Option; box: Bounds }[] = [];
   const bar: Option[] = [];
   for (const o of options) {
     if (o.superseded) continue; // the other branch of an if / else on this hotspot applies instead
     const el = o.transition.elementId !== "" ? scene.nodes.at(o.transition.elementId) : undefined;
-    if (el && cam) hotspots.push({ o, box: worldBoundsOfNode(scene, el) });
+    if (el && cam) {
+      const b = worldBoundsOfNode(scene, el);
+      hotspots.push({ o, box: { ...b, x: b.x + hotShift.x, y: b.y + hotShift.y } });
+    }
     else bar.push(o);
   }
   const go = navigate;
+
+  // A component state change on hover or press lasts while the pointer is on the hotspot (or the button is down);
+  // `held` remembers what the instance showed before, to put it back.
+  function press(o: Option) {
+    const t = o.transition;
+    if (t.animation === SET_VARIANT && state) held.current.set(t.id, { id: t.elementId, before: state.variants?.[t.elementId] });
+    go(o);
+  }
+  function release(o: Option) {
+    const t = o.transition;
+    const h = held.current.get(t.id);
+    if (!h || (t.trigger !== "hover" && t.trigger !== "press")) return;
+    held.current.delete(t.id);
+    setState((s) => (s ? restoreVariant(s, h.id, h.before) : s));
+  }
+
+  // Drag: a press that moves far enough on the hotspot (or, for a drag with no element, anywhere on the screen).
+  const DRAG_PX = 24;
+  function dragMove(e: { clientX: number; clientY: number; buttons: number }, id: string | null) {
+    const d = dragFrom.current;
+    if (!d || d.id !== id || e.buttons === 0) return;
+    if (Math.hypot(e.clientX - d.x, e.clientY - d.y) < DRAG_PX) return;
+    dragFrom.current = null;
+    const o = options.find((x) => x.enabled && x.transition.trigger === "drag" && (id === null ? x.transition.elementId === "" : x.transition.id === id));
+    if (o) go(o);
+  }
+  // Scroll (or drag) on a transition with no element acts on the whole screen.
+  function screenGesture(trigger: "scroll", dy: number) {
+    if (dy === 0) return;
+    const o = options.find((x) => x.enabled && x.transition.trigger === trigger && x.transition.elementId === "");
+    if (o) go(o);
+  }
 
 
   const flowName = flow?.name ?? "";
@@ -245,7 +314,7 @@ export function PrototypePlayer({ onClose }: { onClose: () => void }) {
     <div
       role="dialog"
       aria-modal="true"
-      aria-label="Prototype"
+      aria-label={t("Prototype")}
       className="od-island-dark fixed inset-0 z-50 overflow-hidden bg-[radial-gradient(ellipse_at_50%_38%,var(--surface-2),var(--canvas)_72%)] text-[13px] text-fg"
     >
       {/* The stage: the screen at the center of the area above the dock. */}
@@ -264,7 +333,21 @@ export function PrototypePlayer({ onClose }: { onClose: () => void }) {
               aria-label={`Screen ${screenName(scene, state.screenId)}`}
               className="absolute inset-0 block h-full w-full"
               // A click that misses every hotspot flashes them: "where can I click?".
-              onClick={() => setFlashes((n) => n + 1)}
+              onClick={(e) => {
+                // Outside an open overlay closes it.
+                if (overlay && cam && state) {
+                  const r = e.currentTarget.getBoundingClientRect();
+                  const wx = (e.clientX - r.left - cam.x) / cam.zoom - overlay.shift.x, wy = (e.clientY - r.top - cam.y) / cam.zoom - overlay.shift.y;
+                  if (wx < overlay.box.x || wy < overlay.box.y || wx > overlay.box.x + overlay.box.width || wy > overlay.box.y + overlay.box.height) {
+                    setState(closeOverlay(state));
+                    return;
+                  }
+                }
+                setFlashes((n) => n + 1);
+              }}
+              onWheel={(e) => screenGesture("scroll", e.deltaY)}
+              onPointerDown={(e) => { dragFrom.current = { id: null, x: e.clientX, y: e.clientY }; }}
+              onPointerMove={(e) => dragMove(e, null)}
               style={
                 frame
                   ? {
@@ -285,7 +368,14 @@ export function PrototypePlayer({ onClose }: { onClose: () => void }) {
                     aria-label={optionLabel(scene, o)}
                     aria-disabled={!o.enabled}
                     title={o.enabled ? optionLabel(scene, o) : o.reason}
-                    onClick={() => go(o)}
+                    // A hover, drag or scroll hotspot is performed by that gesture; a keyboard activation (detail 0) still works.
+                    onClick={(e) => { if (isGestureTrigger(o.transition.trigger) && e.detail !== 0) return; go(o); }}
+                    onPointerEnter={() => { if (o.transition.trigger === "hover") press(o); }}
+                    onPointerLeave={() => release(o)}
+                    onPointerUp={() => release(o)}
+                    onPointerDown={(e) => { if (o.transition.trigger === "press") press(o); if (o.transition.trigger === "drag") { e.stopPropagation(); dragFrom.current = { id: o.transition.id, x: e.clientX, y: e.clientY }; } }}
+                    onPointerMove={(e) => dragMove(e, o.transition.id)}
+                    onWheel={(e) => { if (o.transition.trigger === "scroll" && e.deltaY !== 0) go(o); }}
                     style={{ left: x, top: y, width: box.width * cam.zoom, height: box.height * cam.zoom }}
                     className={
                       "absolute rounded-md border-2 outline-none transition-[background-color,border-color] duration-500 " +
@@ -306,7 +396,7 @@ export function PrototypePlayer({ onClose }: { onClose: () => void }) {
           </>
         ) : (
           <div className="flex h-full items-center justify-center px-8 text-center text-fg-muted">
-            No screen to present: add a top-level frame or set the flow's start.
+            {t("No screen to present: add a top-level frame or set the flow's start.")}
           </div>
         )}
       </div>
@@ -319,7 +409,7 @@ export function PrototypePlayer({ onClose }: { onClose: () => void }) {
           {flowName !== "" && <span className="max-w-[200px] truncate text-[12px] text-fg-muted">{flowName}</span>}
         </div>
         <div className="pointer-events-auto rounded-full bg-raised p-1 shadow-bar">
-          <IconButton icon="x" label="Close the prototype" shortcut="Esc" onPress={onClose} className="rounded-full" />
+          <IconButton icon="x" label={t("Close the prototype")} shortcut="Esc" onPress={onClose} className="rounded-full" />
         </div>
       </div>
 
@@ -332,7 +422,7 @@ export function PrototypePlayer({ onClose }: { onClose: () => void }) {
         >
           {state && bar.length === 0 && hotspots.length === 0 && (
             <span className="od-rise rounded-full bg-raised px-3 py-1.5 text-[12px] text-fg-muted shadow-bar">
-              End of the path: no exit from this screen.
+              {t("End of the path: no exit from this screen.")}
             </span>
           )}
           {bar.map((o) => (
@@ -366,11 +456,11 @@ export function PrototypePlayer({ onClose }: { onClose: () => void }) {
         <div className="pointer-events-auto relative flex h-11 max-w-full items-center gap-1 rounded-2xl bg-raised px-1.5 shadow-bar">
           <FlowIconButton
             icon="arrowLeft"
-            label="Back"
+            label={t("Back")}
             isDisabled={!state || !canGoBack(state)}
             onPress={() => { setTx(null); if (state) setState(back(state)); }}
           />
-          <FlowIconButton icon="restart" label="Restart" onPress={() => { setTx(null); setState(startState(scene, flow, pageId)); }} />
+          <FlowIconButton icon="restart" label={t("Restart")} onPress={() => { setTx(null); setState(startState(scene, flow, pageId)); }} />
           {state && (
             <nav
               aria-label="Path"
@@ -398,14 +488,14 @@ export function PrototypePlayer({ onClose }: { onClose: () => void }) {
           )}
           <FlowIconButton
             icon={pinned ? "eye" : "eyeOff"}
-            label="Show hotspots"
+            label={t("Show hotspots")}
             selected={pinned}
             onPress={() => { setPinned((v) => !v); setFlashes((n) => n + 1); }}
           />
           <label className="flex h-7 items-center gap-1 rounded-md px-1 text-fg-muted hover:bg-surface-3">
             <FlowIcon name="device" size={14} />
             <select
-              aria-label="Device frame"
+              aria-label={t("Device frame")}
               value={device}
               onChange={(e) => {
                 const id = deviceById(e.target.value).id;

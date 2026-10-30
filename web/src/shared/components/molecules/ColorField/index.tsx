@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { useT } from "@/i18n";
 import { ColorField as AriaColorField, Input, Label } from "react-aria-components";
 import type { Color } from "react-aria-components";
 import type { FillLite } from "@/store/types";
@@ -106,7 +107,9 @@ function HexInput({ placeholder }: { placeholder?: string }) {
   );
 }
 
-export function ColorField({ label, value, onCommit, showLabel = false, trailing, isDisabled, placeholder }: ColorFieldProps) {
+export function ColorField({ label: labelProp, value, onCommit, showLabel = false, trailing, isDisabled, placeholder }: ColorFieldProps) {
+  const { tx } = useT();
+  const label = tx(labelProp);
   const hex = value ? rgbToHex(value) : null;
   return (
     <AriaColorField

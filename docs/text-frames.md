@@ -8,6 +8,8 @@ Select text frames; the **Text** section of the properties panel has the thread 
 
 - **Thread frames** (two or more text frames selected): the text flows from the first selected frame into the next, in **selection order**. Text already in the later frames is appended to the first frame's story, so nothing is lost (one undo gives it all back).
 - **Add next frame** (one frame selected): creates an empty frame of the same size beside it, linked, and selects it.
+- **Drag the port**: with a single frame selected that flows into nothing, drag from the filled square at its bottom-right corner and release over another text frame to link them (the same as *Thread frames*; releasing anywhere else does nothing).
+- **Edit story…** opens the whole story of the chain in one field, however many frames it flows through (also for a single frame). Save writes it into the first frame as one undo step; character runs and paragraph styles stay with the text around the changes, a run that overlaps them is cut to what is left of it.
 - **Unlink after this frame**: cuts the chain there; the text stays with the first part.
 - The panel says which frame of the chain is selected (`Frame 2 of 3`) and `text left over` when the last frame cannot hold everything.
 
@@ -39,6 +41,10 @@ If a font loads after the layout was computed, the flow settles on the next chan
 - `unlink_text_frame { id }` cuts after a frame;
 - the links show as `text.next` in the nodes' `meta`; `set_text` on the first frame changes the story.
 
+## Columns in one frame
+
+Select a text frame and set **Columns** (1–8) and **Gutter** in the Text section. The frame's box is divided into equal columns and the story flows from one to the next, with the same rules as a threaded chain: formatted text, keep rules, wrap, and a red overset "+" at the last column's corner. Stored as `meta["text.columns"]` and `meta["text.gutter"]` (default 12); MCP `set_node_meta` sets them. It is **derived** (`store/columns.ts`): the frame becomes a chain of column-wide frames, the first being the frame itself and the others synthetic nodes that exist only in the drawn scene, so the canvas, export and prototype all see columns. A frame that is the follower of another ignores its columns; a columned frame can still link on to a further frame, which receives what the last column cannot hold. Limits: columns are equal width, and the whole box is one selection (the columns themselves are not separately selectable).
+
 ## Around and along things
 
 **Text wrap.** Select an object (not a text) and tick *Text flows around it* in the properties panel. The lines of the text frames that sit *below* the object (same parent, lower in the stacking order) are laid out beside it, on the wider side, and jump over it when neither side has room. *Gap* sets the space around it (default 6). Only the object's bounding box counts, rotation included; a rotated text frame is not wrapped, and threaded frames each wrap around their own objects. Stored as `meta["wrap.mode"] = "box"` and `meta["wrap.offset"]`.
@@ -66,4 +72,4 @@ A style's *OpenType features* (`liga off, onum, ss01 2`: tags of four characters
 
 ## Not yet
 
-Dragging from a frame's port to link, a story editor, rotation of threaded frames, a different style per frame and columns inside one frame (a frame of several columns is for now several linked frames). Wrap follows the bounding box (no contour or "both sides"); footnotes are numbered continuously and cannot restart per page or break across pages; the footnote area height is an estimate; tables have no cell styles of their own; the index has one level (no sub-entries or cross references). The MCP tools set the wrap, text-path and heading-level fields (`set_node_meta`, `set_text_style`), but tables, the contents/index generators and find/change are editor commands. Generated code (`opendesigner export`) outputs each frame's own content, so a chain exports as its first frame holding the whole story.
+Rotation of threaded frames and a different style per frame. Wrap follows the bounding box (no contour or "both sides"); footnotes are numbered continuously and cannot restart per page or break across pages; the footnote area height is an estimate; tables have no cell styles of their own; the index has one level (no sub-entries or cross references). The MCP tools set the wrap, text-path and heading-level fields (`set_node_meta`, `set_text_style`), but tables, the contents/index generators and find/change are editor commands. Generated code (`opendesigner export`) outputs each frame's own content, so a chain exports as its first frame holding the whole story.

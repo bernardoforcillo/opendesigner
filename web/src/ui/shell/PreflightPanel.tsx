@@ -1,4 +1,5 @@
 import { useScene } from "@/store/store";
+import { useT, type MessageKey, type Translator } from "@/i18n";
 import { usePreflight } from "@/ui/shell/preflightIssues";
 import type { PreflightIssue, Severity } from "@/export/preflight";
 
@@ -13,6 +14,12 @@ const GROUPS: readonly { severity: Severity; title: string; dot: string }[] = [
   { severity: "info", title: "Notes", dot: "bg-fg-subtle" },
 ];
 
+/** The issue's message in the interface language (the English `message` when it carries no template). */
+export function issueText(issue: PreflightIssue, tr: Translator): string {
+  if (!issue.key) return issue.message;
+  return issue.plural ? tr.tn(issue.key as MessageKey, Number(issue.args?.n ?? 0), issue.args) : tr.tx(issue.key, issue.args);
+}
+
 export function goToIssue(issue: PreflightIssue): void {
   const st = useScene.getState();
   if (issue.pageId && issue.pageId !== st.currentPageId) st.setCurrentPage(issue.pageId);
@@ -20,22 +27,24 @@ export function goToIssue(issue: PreflightIssue): void {
 }
 
 export function PreflightPanel() {
+  const tr = useT();
+  const { t, tx } = tr;
   const issues = usePreflight();
   return (
-    <div role="region" aria-label="Preflight" className="flex h-full flex-col overflow-y-auto">
+    <div role="region" aria-label={t("Preflight")} className="flex h-full flex-col overflow-y-auto">
       {issues.length === 0 ? (
         <div className="flex flex-col items-center gap-1 px-4 py-10 text-center">
           <span className="h-2.5 w-2.5 rounded-full bg-ok" aria-hidden="true" />
-          <p className="text-[13px] font-medium text-fg">No errors</p>
-          <p className="text-[12px] text-fg-subtle">Nothing to fix before you export.</p>
+          <p className="text-[13px] font-medium text-fg">{t("No errors")}</p>
+          <p className="text-[12px] text-fg-subtle">{t("Nothing to fix before you export.")}</p>
         </div>
       ) : (
         GROUPS.map(({ severity, title, dot }) => {
           const rows = issues.filter((i) => i.severity === severity);
           if (rows.length === 0) return null;
           return (
-            <section key={severity} aria-label={title} className="border-b border-line py-1">
-              <h3 className="px-3 pb-1 pt-2 font-mono text-[10px] font-semibold uppercase tracking-[0.06em] text-fg-subtle">{title} · {rows.length}</h3>
+            <section key={severity} aria-label={tx(title)} className="border-b border-line py-1">
+              <h3 className="px-3 pb-1 pt-2 font-mono text-[10px] font-semibold uppercase tracking-[0.06em] text-fg-subtle">{tx(title)} · {rows.length}</h3>
               <ul>
                 {rows.map((issue, i) => (
                   <li key={`${issue.code}-${issue.nodeId ?? issue.pageId ?? ""}-${i}`}>
@@ -45,7 +54,7 @@ export function PreflightPanel() {
                       className="flex w-full items-start gap-2 px-3 py-1.5 text-left text-[12px] text-fg outline-none hover:bg-surface-3 focus-visible:shadow-[var(--ring)]"
                     >
                       <span className={`mt-1.5 h-2 w-2 shrink-0 rounded-full ${dot}`} aria-hidden="true" />
-                      <span className="min-w-0 flex-1">{issue.message}</span>
+                      <span className="min-w-0 flex-1">{issueText(issue, tr)}</span>
                     </button>
                   </li>
                 ))}

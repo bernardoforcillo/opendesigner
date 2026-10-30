@@ -15,11 +15,18 @@ export { truthy };
 
 export type Vars = Readonly<Record<string, string>>;
 
-export interface ProtoStep { screenId: string; vars: Vars; via: string }
+/** Variant choices the person made in the player: instance id -> the variant (axis -> option) it shows. */
+export type VariantChoices = Readonly<Record<string, Readonly<Record<string, string>>>>;
+
+export interface ProtoStep { screenId: string; vars: Vars; via: string; overlay?: string; variants?: VariantChoices }
 
 export interface ProtoState {
   screenId: string;
   vars: Vars;
+  /** The screen open as an OVERLAY over `screenId` (a transition with the `overlay` animation), if any. */
+  overlay?: string;
+  /** Component instances switched to another variant by a `set-variant` transition. */
+  variants?: VariantChoices;
   /** The PREVIOUS states (the oldest first): "back" returns to them. */
   history: readonly ProtoStep[];
 }
@@ -265,8 +272,10 @@ export function guardFor(scene: SceneState, state: ProtoState, t: TransitionLite
  */
 export function optionsFrom(scene: SceneState, flowId: string, state: ProtoState): Option[] {
   const out: Option[] = [];
+  // With an overlay open, it is the overlay that answers: the screen under it is inert.
+  const from = state.overlay ?? state.screenId;
   for (const t of Object.values(scene.transitions)) {
-    if (t.flowId !== flowId || t.fromId !== state.screenId) continue;
+    if (t.flowId !== flowId || t.fromId !== from) continue;
     // A vanished target is not reachable: it is not offered as clickable.
     if (!scene.nodes.has(t.toId)) {
       out.push({ transition: t, enabled: false, reason: "The destination screen no longer exists" });
@@ -298,12 +307,73 @@ export function optionsFrom(scene: SceneState, flowId: string, state: ProtoState
 export function follow(scene: SceneState, state: ProtoState, t: TransitionLite): ProtoState {
   if (!scene.nodes.has(t.toId)) return state;
   if (!guardFor(scene, state, t).ok) return state;
-  return {
-    screenId: t.toId,
-    vars: applyEffect(state.vars, t.effect),
-    history: [...state.history, { screenId: state.screenId, vars: state.vars, via: t.id }],
+  const vars = applyEffect(state.vars, t.effect);
+  // A component state change: the instance shows another variant; the screen, the path and Back are untouched.
+  if (t.animation === SET_VARIANT) {
+    const choice = variantOf(scene, t.toId);
+    if (!choice || t.elementId === "") return state;
+    return { ...state, vars, variants: { ...(state.variants ?? {}), [t.elementId]: choice } };
+  }
+  const step: ProtoStep = {
+    screenId: state.screenId, vars: state.vars, via: t.id,
+    ...(state.overlay ? { overlay: state.overlay } : {}), ...(state.variants ? { variants: state.variants } : {}),
   };
+  // Open as an overlay: the current screen stays, the target is shown over it.
+  if (t.animation === OVERLAY) return { screenId: state.screenId, overlay: t.toId, vars, history: [...state.history, step] };
+  return { screenId: t.toId, vars, history: [...state.history, step] };
 }
+
+/**
+ * The `Transition.animation` of a component state change: the instance `element_id` (inside the screen) is shown as the
+ * variant whose master is `to_id`. It does not leave the screen; with the `hover` and `press` triggers the player puts
+ * the instance back when the pointer leaves or is released.
+ */
+export const SET_VARIANT = "set-variant";
+
+/** The variant (axis -> option) of the component whose master is node `rootId`, or null. */
+export function variantOf(scene: SceneState, rootId: string): Record<string, string> | null {
+  for (const c of Object.values(scene.components)) if (c.rootNodeId === rootId && c.setId && c.variant) return { ...c.variant };
+  return null;
+}
+
+/** `scene` with the instances drawn as the variants chosen in the player (the same scene when there are none). */
+export function applyVariants(scene: SceneState, choices: VariantChoices | undefined): SceneState {
+  const ids = choices ? Object.keys(choices) : [];
+  if (ids.length === 0) return scene;
+  let edit: ReturnType<SceneState["nodes"]["edit"]> | null = null;
+  for (const id of ids) {
+    const n = scene.nodes.at(id);
+    if (!n?.instance) continue;
+    (edit ??= scene.nodes.edit()).set(id, { ...n, instance: { ...n.instance, variantProps: { ...(n.instance.variantProps ?? {}), ...choices![id] } } });
+  }
+  return edit ? { ...scene, nodes: edit.done() } : scene;
+}
+
+/** Puts instance `id` back to what it showed before (`before`: its choice then, undefined = the document's own). */
+export function restoreVariant(state: ProtoState, id: string, before: Readonly<Record<string, string>> | undefined): ProtoState {
+  const cur = { ...(state.variants ?? {}) };
+  if (before) cur[id] = before;
+  else delete cur[id];
+  const { variants: _v, ...rest } = state;
+  void _v;
+  return Object.keys(cur).length > 0 ? { ...rest, variants: cur } : rest;
+}
+
+/** The `Transition.animation` that opens the target over the current screen instead of replacing it. */
+export const OVERLAY = "overlay";
+
+/** Closes the overlay (a click outside it) without leaving the screen under it; the variables stay as they are. */
+export function closeOverlay(state: ProtoState): ProtoState {
+  if (!state.overlay) return state;
+  const { overlay: _o, ...rest } = state;
+  void _o;
+  return rest;
+}
+
+/** The triggers the player performs on a hotspot by a gesture other than a click. */
+export const GESTURE_TRIGGERS = ["hover", "press", "drag", "scroll"] as const;
+export type GestureTrigger = (typeof GESTURE_TRIGGERS)[number];
+export const isGestureTrigger = (t: string): t is GestureTrigger => (GESTURE_TRIGGERS as readonly string[]).includes(t);
 
 export function canGoBack(state: ProtoState): boolean {
   return state.history.length > 0;
@@ -313,14 +383,14 @@ export function canGoBack(state: ProtoState): boolean {
 export function back(state: ProtoState): ProtoState {
   const prev = state.history[state.history.length - 1];
   if (!prev) return state;
-  return { screenId: prev.screenId, vars: prev.vars, history: state.history.slice(0, -1) };
+  return { screenId: prev.screenId, vars: prev.vars, ...(prev.overlay ? { overlay: prev.overlay } : {}), ...(prev.variants ? { variants: prev.variants } : {}), history: state.history.slice(0, -1) };
 }
 
 /** Goes back to screen number `index` of the path (0 = the first): the click on a breadcrumb. */
 export function backTo(state: ProtoState, index: number): ProtoState {
   if (index < 0 || index >= state.history.length) return state;
   const at = state.history[index];
-  return { screenId: at.screenId, vars: at.vars, history: state.history.slice(0, index) };
+  return { screenId: at.screenId, vars: at.vars, ...(at.overlay ? { overlay: at.overlay } : {}), ...(at.variants ? { variants: at.variants } : {}), history: state.history.slice(0, index) };
 }
 
 /** The path taken: the screens visited in order, up to the current one. */

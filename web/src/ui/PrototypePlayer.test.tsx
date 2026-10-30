@@ -345,3 +345,85 @@ describe("PrototypePlayer: device frames and hotspot hints", () => {
     }
   });
 });
+
+describe("PrototypePlayer gestures", () => {
+  const withTrigger = (trigger: string, extra: Record<string, unknown> = {}) =>
+    install(withFlows(baseScene(), [flowOf("f1", "A", "Main")], [transition("t1", "f1", "A", "B", { label: "Go", elementId: "btn", trigger, ...extra })]));
+  const path = () => screen.getByRole("navigation", { name: "Path" });
+
+  it("a hover hotspot follows when the pointer enters it, and not on a mouse click", () => {
+    withTrigger("hover");
+    render(<PrototypePlayer onClose={() => {}} />);
+    const hot = screen.getByRole("button", { name: "Go" });
+    fireEvent.click(hot, { detail: 1 });
+    expect(path()).not.toHaveTextContent("B");
+    fireEvent.pointerEnter(hot);
+    expect(path()).toHaveTextContent("B");
+  });
+
+  it("a drag hotspot follows once the press has moved far enough", () => {
+    withTrigger("drag");
+    render(<PrototypePlayer onClose={() => {}} />);
+    const hot = screen.getByRole("button", { name: "Go" });
+    fireEvent.pointerDown(hot, { clientX: 100, clientY: 100 });
+    fireEvent.pointerMove(hot, { clientX: 105, clientY: 100, buttons: 1 });
+    expect(path()).not.toHaveTextContent("B");
+    fireEvent.pointerMove(hot, { clientX: 160, clientY: 100, buttons: 1 });
+    expect(path()).toHaveTextContent("B");
+  });
+
+  it("a scroll hotspot follows on the wheel", () => {
+    withTrigger("scroll");
+    render(<PrototypePlayer onClose={() => {}} />);
+    fireEvent.wheel(screen.getByRole("button", { name: "Go" }), { deltaY: 40 });
+    expect(path()).toHaveTextContent("B");
+  });
+
+  it("the keyboard still activates a gesture hotspot", () => {
+    withTrigger("hover");
+    render(<PrototypePlayer onClose={() => {}} />);
+    fireEvent.click(screen.getByRole("button", { name: "Go" }), { detail: 0 });
+    expect(path()).toHaveTextContent("B");
+  });
+
+  it("an overlay opens over the screen, which stays in the path; outside it closes", () => {
+    install(withFlows(baseScene(), [flowOf("f1", "A", "Main")], [
+      transition("t1", "f1", "A", "B", { label: "Menu", animation: "overlay" }),
+      transition("t2", "f1", "B", "C", { label: "Inside" }),
+    ]));
+    const fake = { save() {}, restore() {}, setTransform() {}, fillRect() {}, drawImage() {} };
+    vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue(fake as never);
+    render(<PrototypePlayer onClose={() => {}} />);
+    fireEvent.click(screen.getByRole("button", { name: /Menu/ }));
+    expect(path()).toHaveTextContent("A");
+    expect(path()).not.toHaveTextContent("B");
+    expect(screen.getByRole("button", { name: /Inside/ })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Menu/ })).toBeNull();
+    // the drawing got the overlay's screen too
+    expect(vi.mocked(renderer.drawScene).mock.calls.length).toBeGreaterThan(1);
+  });
+
+  it("a hover variant change shows while the pointer is on the hotspot, and is undone when it leaves", () => {
+    const b = baseScene();
+    const m = (id: string) => ({ ...b.nodes.at("btn")!, id, parentId: "components", kind: "group" as const });
+    const scene = withFlows(
+      { ...b, nodes: b.nodes.set("btn", { ...b.nodes.at("btn")!, instance: { componentId: "c1", overrides: [] } }).set("m1", m("m1")).set("m2", m("m2")) },
+      [flowOf("f1", "A", "Main")],
+      [transition("v", "f1", "A", "m2", { label: "Hover", elementId: "btn", trigger: "hover", animation: "set-variant" })],
+    );
+    scene.components = {
+      c1: { rootNodeId: "m1", name: "B", setId: "s", variant: { State: "default" }, properties: [] },
+      c2: { rootNodeId: "m2", name: "B hover", setId: "s", variant: { State: "hover" }, properties: [] },
+    };
+    install(scene);
+    render(<PrototypePlayer onClose={() => {}} />);
+    const lastBtn = () => vi.mocked(renderer.drawScene).mock.calls.at(-1)![1].nodes.at("btn")!.instance?.variantProps;
+    const hot = screen.getByRole("button", { name: "Hover" });
+    expect(lastBtn()).toBeUndefined();
+    fireEvent.pointerEnter(hot);
+    expect(lastBtn()).toEqual({ State: "hover" });
+    fireEvent.pointerLeave(hot);
+    expect(lastBtn() ?? {}).toEqual({});
+    expect(screen.getByRole("navigation", { name: "Path" })).toHaveTextContent("A");
+  });
+});

@@ -1,10 +1,14 @@
 import { useScene } from "@/store/store";
+import { currentT } from "@/i18n";
 import { DEFAULT_WRAP_OFFSET, isWrapper, wrapOffsetOf, wrapOps } from "@/store/wrap";
 import { META_TEXT_PATH, textOnPathOps } from "@/store/textPath";
 import { addColumnOps, addRowOps, cellOf, deleteColumnOps, deleteRowOps, mergeCellsOps, readTable, resizeTableOps, selectionCellRange, spanOf, splitCellOps, tableIdOf } from "@/tools/tableOps";
 import { anchorOps, anchorsOf, releaseAnchorOps } from "@/store/anchored";
 import { Button } from "@/ui/ds";
 import { NumberField } from "@/ui/fields/NumberField";
+
+// Names the shared controls cannot translate on their own (options, text nodes). See docs/localization.md.
+const tr = (key: string, vars?: Record<string, string | number>) => currentT().tx(key, vars);
 
 // CONTROLS of the properties panel for the layout of text around and along things:
 //  - Text wrap: an object that text flows around (store/wrap.ts);
@@ -111,7 +115,7 @@ export function TableControls() {
     if (!range) return null;
     const ops = mergeCellsOps(scene, range);
     return (
-      <Box title="Table">
+      <Box title={tr("Table")}>
         <p className="text-[12px] text-fg-subtle">{(range.r1 - range.r0 + 1) * (range.c1 - range.c0 + 1)} cells selected</p>
         <Button isDisabled={ops.length === 0} onPress={() => run(ops)}>Merge cells</Button>
         {ops.length === 0 && <p className="text-[12px] text-fg-subtle">A merged cell that sticks out of the block is in the way: select the whole of it, or split it first.</p>}
@@ -125,7 +129,7 @@ export function TableControls() {
   const [r, c] = cell ?? [table.rows.length - 1, table.cols.length - 1];
   const [rs, cs] = cell ? spanOf(table.cells.get(`${r},${c}`)) : [1, 1];
   return (
-    <Box title="Table">
+    <Box title={tr("Table")}>
       <p className="text-[12px] text-fg-subtle">{table.rows.length} rows × {table.cols.length} columns{cell ? ` · cell ${r + 1}, ${c + 1}${rs > 1 || cs > 1 ? ` (merged, ${rs} × ${cs})` : ""}` : " · select a cell for row and column actions"}</p>
       {(rs > 1 || cs > 1) && <Button onPress={() => run(splitCellOps(scene, tableId, r, c))}>Split cell</Button>}
       <div className="grid grid-cols-2 gap-1.5">

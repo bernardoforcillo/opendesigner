@@ -4,6 +4,7 @@ import { Icon } from "@/ui/ds";
 import { pathForDoc, relativeTime } from "@/home/route";
 import { useAppNavigate } from "@/home/nav";
 import { useT } from "@/i18n";
+import { formatDate } from "@/i18n/format";
 
 // A DOCUMENT'S CARD in the Home. The whole card is a REAL link (`/doc/<id>`):
 // it opens with a click, with Enter, in a new tab with the middle button, and
@@ -103,7 +104,7 @@ export function DocCard({
         <div className="px-3 pb-3 pt-2.5">
           {renaming ? <div className="h-[18px]" /> : <h3 className="truncate text-[13px] font-semibold text-fg">{doc.name}</h3>}
           <p className="mt-0.5 truncate text-[12px] text-fg-subtle">
-            <span title={doc.updatedAt ? new Date(doc.updatedAt * 1000).toLocaleString("en-US") : undefined}>Edited {relativeTime(doc.updatedAt, now)}</span>
+            <span title={doc.updatedAt ? formatDate(doc.updatedAt, { dateStyle: "medium", timeStyle: "short" }) : undefined}>{t("Edited {when}", { when: relativeTime(doc.updatedAt, now) })}</span>
           </p>
           <p className="truncate text-[12px] text-fg-muted">
             {doc.vertical === "publishing" || doc.vertical === "design" ? <span className="mr-1.5 rounded-sm bg-surface-3 px-1 font-mono text-[10px] font-semibold uppercase text-fg-muted">{doc.vertical}</span> : null}

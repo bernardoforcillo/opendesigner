@@ -244,11 +244,11 @@ describe("FlowPanel: transitions", () => {
     expect(onWindow).not.toHaveBeenCalled();
   });
 
-  it("the trigger is a select with click/submit/auto/key/back", () => {
+  it("the trigger is a select with click/hover/press/drag/scroll/submit/auto/key/back", () => {
     render(<FlowPanel />);
     fireEvent.click(screen.getByRole("button", { name: "Transition B to C" }));
     const sel = screen.getByRole("combobox", { name: "Trigger" });
-    expect(within(sel).getAllByRole("option").map((o) => (o as HTMLOptionElement).value)).toEqual(["click", "submit", "auto", "key", "back"]);
+    expect(within(sel).getAllByRole("option").map((o) => (o as HTMLOptionElement).value)).toEqual(["click", "hover", "press", "drag", "scroll", "submit", "auto", "key", "back"]);
     fireEvent.change(sel, { target: { value: "submit" } });
     expect(useScene.getState().scene!.transitions.t2.trigger).toBe("submit");
   });

@@ -47,6 +47,7 @@ const VARIANT: Record<Variant, string> = {
 export function Button({
   variant = "secondary", icon, children, className = "", ...props
 }: ButtonProps & { variant?: Variant; icon?: IconName; className?: string; children?: ReactNode }) {
+  const { tx } = useT();
   return (
     <RacButton
       {...props}
@@ -54,7 +55,7 @@ export function Button({
         `transition-colors disabled:opacity-40 ${FOCUS} ${VARIANT[variant]} ${className}`}
     >
       {icon && <Icon name={icon} size={14} />}
-      {children}
+      {typeof children === "string" ? tx(children) : children}
     </RacButton>
   );
 }
@@ -67,6 +68,8 @@ export function IconButton({
   icon: IconName; label: string; shortcut?: string; selected?: boolean; tone?: "default" | "flow"; size?: number; className?: string;
 }) {
   const on = tone === "flow" ? "bg-flow text-white" : "bg-accent text-accent-fg";
+  const { tx } = useT();
+  label = tx(label);
   return (
     <TooltipTrigger delay={350} closeDelay={0}>
       <RacButton

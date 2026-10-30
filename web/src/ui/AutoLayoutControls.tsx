@@ -1,4 +1,5 @@
 import { useScene } from "@/store/store";
+import { currentT } from "@/i18n";
 import type { Op } from "@/gen/opendesigner/v1/opendesigner_pb";
 import type { LayoutAlignLite } from "@/store/types";
 import { wrapSelectionInFrame } from "@/tools/wrapFrame";
@@ -8,6 +9,9 @@ import { NumberField } from "@/ui/fields/NumberField";
 import { autoLayoutOps } from "@/ui/autoLayoutOps";
 import { withTrackAdded, withTrackChanged, type GridAxis } from "@/ui/gridTrackOps";
 import type { AutoLayoutLite } from "@/store/types";
+
+// Names the shared controls cannot translate on their own (options, text nodes). See docs/localization.md.
+const tr = (key: string, vars?: Record<string, string | number>) => currentT().tx(key, vars);
 
 const lookup = (id: string) => useScene.getState().scene?.nodes.at(id);
 
@@ -56,7 +60,7 @@ function TrackList({ axis, al, patch }: { axis: GridAxis; al: AutoLayoutLite; pa
     <div className="flex flex-col gap-1">
       <div className="flex items-center justify-between">
         <span className="text-[11px] font-medium text-fg-subtle">{title}s</span>
-        <IconButton icon="plus" label={`Add ${title.toLowerCase()}`} size={24} onPress={() => patch({ [axis]: withTrackAdded(al, axis) })} />
+        <IconButton icon="plus" label={axis === "columns" ? tr("Add column") : tr("Add row")} size={24} onPress={() => patch({ [axis]: withTrackAdded(al, axis) })} />
       </div>
       {tracks.map((t, i) => (
         <div key={i} className="grid grid-cols-[1fr_1fr_auto] items-end gap-1.5">
@@ -66,9 +70,9 @@ function TrackList({ axis, al, patch }: { axis: GridAxis; al: AutoLayoutLite; pa
               aria-label={`${title} ${i + 1} kind`} className={cls.select} value={t.kind}
               onChange={(e) => patch({ [axis]: withTrackChanged(al, axis, i, { kind: e.target.value as "fixed" | "hug" | "fr", size: e.target.value === "fr" ? 1 : t.size }) })}
             >
-              <option value="fixed">Fixed</option>
-              <option value="hug">Hug</option>
-              <option value="fr">Fraction</option>
+              <option value="fixed">{tr("Fixed")}</option>
+              <option value="hug">{tr("Hug")}</option>
+              <option value="fr">{tr("Fraction")}</option>
             </select>
           </label>
           {t.kind === "hug" ? <span /> : (
@@ -77,7 +81,7 @@ function TrackList({ axis, al, patch }: { axis: GridAxis; al: AutoLayoutLite; pa
               onCommit={(v) => patch({ [axis]: withTrackChanged(al, axis, i, { size: v }) })}
             />
           )}
-          <IconButton icon="minus" label={`Remove ${title.toLowerCase()} ${i + 1}`} size={24} onPress={() => patch({ [axis]: withTrackChanged(al, axis, i, null) })} />
+          <IconButton icon="minus" label={tr(axis === "columns" ? "Remove column {n}" : "Remove row {n}", { n: i + 1 })} size={24} onPress={() => patch({ [axis]: withTrackChanged(al, axis, i, null) })} />
         </div>
       ))}
     </div>
@@ -99,7 +103,7 @@ export function AutoLayoutControls({ run }: { run: (build: (ids: readonly string
   const patch: RunAutoLayout = (p) => run((ids) => autoLayoutOps(ids, lookup, p));
   return (
     <Section
-      title="Auto layout"
+      title={tr("Auto layout")}
       bare={al === undefined}
       actions={
         al === undefined ? (
@@ -188,14 +192,14 @@ export function AutoLayoutControls({ run }: { run: (build: (ids: readonly string
                 type="checkbox" className={checkbox} checked={al.hugWidth}
                 onChange={(e) => run((ids) => autoLayoutOps(ids, lookup, { hugWidth: e.target.checked }))}
               />
-              Hug width
+              {tr("Hug width")}
             </label>
             <label className="flex cursor-pointer items-center gap-1.5">
               <input
                 type="checkbox" className={checkbox} checked={al.hugHeight}
                 onChange={(e) => run((ids) => autoLayoutOps(ids, lookup, { hugHeight: e.target.checked }))}
               />
-              Hug height
+              {tr("Hug height")}
             </label>
           </div>
         </div>
@@ -212,7 +216,7 @@ export function AutoLayoutControls({ run }: { run: (build: (ids: readonly string
 export function WrapInAutoLayoutButton() {
   return (
     <Section
-      title="Auto layout"
+      title={tr("Auto layout")}
       bare
       actions={
         <IconButton

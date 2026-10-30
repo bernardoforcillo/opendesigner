@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useT } from "@/i18n";
 import { Dialog, Modal, ModalOverlay } from "react-aria-components";
 import { useScene } from "@/store/store";
 import { isValidPageSetup, PAGE_PRESETS, setupOf } from "@/store/docSettings";
@@ -45,6 +46,7 @@ function presetOf(w: number, h: number): string {
 }
 
 export function PageSetupDialog({ isOpen, onOpenChange }: { isOpen: boolean; onOpenChange: (open: boolean) => void }) {
+  const { t } = useT();
   const scene = useScene((s) => s.scene);
   const currentPageId = useScene((s) => s.currentPageId);
   const page = isOpen ? scene?.pages?.find((p) => p.id === currentPageId) ?? scene?.pages?.[0] : undefined;
@@ -102,61 +104,60 @@ export function PageSetupDialog({ isOpen, onOpenChange }: { isOpen: boolean; onO
   return (
     <ModalOverlay isDismissable isOpen={isOpen} onOpenChange={onOpenChange} className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
       <Modal className="max-h-[85vh] w-full max-w-[520px] overflow-auto rounded-xl bg-raised p-4 text-[13px] text-fg shadow-pop">
-        <Dialog aria-label="Page setup" className="flex flex-col gap-3 outline-none">
-          <h2 className="text-[14px] font-semibold">Page setup · {page.name || "Page"}</h2>
+        <Dialog aria-label={t("Page setup")} className="flex flex-col gap-3 outline-none">
+          <h2 className="text-[14px] font-semibold">{t("Page setup · {name}", { name: page.name || t("Page") })}</h2>
           <p className="text-fg-subtle">
-            A page with a size is a sheet of paper: it is drawn with its margins, columns and bleed, things snap to them, and PDF and EPUB
-            export it as that sheet. Size 0 is an unbounded canvas. Units are points (1/72 in).
+            {t("A page with a size is a sheet of paper: it is drawn with its margins, columns and bleed, things snap to them, and PDF and EPUB export it as that sheet. Size 0 is an unbounded canvas. Units are points (1/72 in).")}
           </p>
 
           <div className="grid grid-cols-[1fr_auto] items-center gap-2">
-            <select aria-label="Page size" className={cls.select} value={preset}
+            <select aria-label={t("Page size")} className={cls.select} value={preset}
               onChange={(e) => {
                 const p = PAGE_PRESETS.find((x) => x.id === e.target.value);
                 if (e.target.value === "none") set({ width: 0, height: 0 });
                 else if (p) set(landscape ? { width: p.height, height: p.width } : { width: p.width, height: p.height });
               }}>
-              <option value="none">No size (unbounded canvas)</option>
-              {preset === "custom" && setup.width > 0 && <option value="custom">Custom</option>}
+              <option value="none">{t("No size (unbounded canvas)")}</option>
+              {preset === "custom" && setup.width > 0 && <option value="custom">{t("Custom")}</option>}
               {PAGE_PRESETS.map((p) => <option key={p.id} value={p.id}>{p.name} ({p.width} × {p.height})</option>)}
             </select>
             <Button aria-pressed={landscape} isDisabled={setup.width === 0 || setup.height === 0} onPress={() => set({ width: setup.height, height: setup.width })}>
-              {landscape ? "Landscape" : "Portrait"}
+              {landscape ? t("Landscape") : t("Portrait")}
             </Button>
           </div>
           <div className="grid grid-cols-2 gap-2">
-            <NumberField label="Width" minValue={0} value={setup.width} onCommit={(v) => set({ width: v })} />
-            <NumberField label="Height" minValue={0} value={setup.height} onCommit={(v) => set({ height: v })} />
+            <NumberField label={t("Width")} minValue={0} value={setup.width} onCommit={(v) => set({ width: v })} />
+            <NumberField label={t("Height")} minValue={0} value={setup.height} onCommit={(v) => set({ height: v })} />
           </div>
 
-          <span className={cls.label}>Margins</span>
+          <span className={cls.label}>{t("Margins")}</span>
           <div className="grid grid-cols-4 gap-2">
-            <NumberField label="Top" minValue={0} value={setup.marginTop} onCommit={(v) => set({ marginTop: v })} />
-            <NumberField label={facing ? "Outside" : "Right"} minValue={0} value={setup.marginRight} onCommit={(v) => set({ marginRight: v })} />
-            <NumberField label="Bottom" minValue={0} value={setup.marginBottom} onCommit={(v) => set({ marginBottom: v })} />
-            <NumberField label={facing ? "Inside" : "Left"} minValue={0} value={setup.marginLeft} onCommit={(v) => set({ marginLeft: v })} />
+            <NumberField label={t("Top")} minValue={0} value={setup.marginTop} onCommit={(v) => set({ marginTop: v })} />
+            <NumberField label={facing ? t("Outside") : t("Right")} minValue={0} value={setup.marginRight} onCommit={(v) => set({ marginRight: v })} />
+            <NumberField label={t("Bottom")} minValue={0} value={setup.marginBottom} onCommit={(v) => set({ marginBottom: v })} />
+            <NumberField label={facing ? t("Inside") : t("Left")} minValue={0} value={setup.marginLeft} onCommit={(v) => set({ marginLeft: v })} />
           </div>
           <label className="flex items-center gap-1.5">
-            <input type="checkbox" checked={facing} onChange={(e) => setFacing(e.target.checked)} /> Facing pages (odd pages on the right, inside and outside margins)
+            <input type="checkbox" checked={facing} onChange={(e) => setFacing(e.target.checked)} /> {t("Facing pages (odd pages on the right, inside and outside margins)")}
           </label>
 
-          <span className={cls.label}>Columns and bleed</span>
+          <span className={cls.label}>{t("Columns and bleed")}</span>
           <div className="grid grid-cols-3 gap-2">
-            <NumberField label="Columns" minValue={0} value={setup.columns} onCommit={(v) => set({ columns: Math.round(v) })} />
-            <NumberField label="Gutter" minValue={0} value={setup.gutter} onCommit={(v) => set({ gutter: v })} />
-            <NumberField label="Bleed" minValue={0} value={setup.bleed} onCommit={(v) => set({ bleed: v })} />
+            <NumberField label={t("Columns")} minValue={0} value={setup.columns} onCommit={(v) => set({ columns: Math.round(v) })} />
+            <NumberField label={t("Gutter")} minValue={0} value={setup.gutter} onCommit={(v) => set({ gutter: v })} />
+            <NumberField label={t("Bleed")} minValue={0} value={setup.bleed} onCommit={(v) => set({ bleed: v })} />
           </div>
-          <NumberField label="Slug" minValue={0} value={setup.slug} onCommit={(v) => set({ slug: v })} />
+          <NumberField label={t("Slug")} minValue={0} value={setup.slug} onCommit={(v) => set({ slug: v })} />
 
           {!page.isMaster && (
             <>
-              <span className={cls.label}>Numbering (this page)</span>
+              <span className={cls.label}>{t("Numbering (this page)")}</span>
               <label className="flex items-center gap-1.5">
-                <input type="checkbox" checked={structure.sectionStart} onChange={(e) => setStructure((x) => ({ ...x, sectionStart: e.target.checked }))} /> Start a new section here
+                <input type="checkbox" checked={structure.sectionStart} onChange={(e) => setStructure((x) => ({ ...x, sectionStart: e.target.checked }))} /> {t("Start a new section here")}
               </label>
               <div className="grid grid-cols-2 gap-2">
-                <NumberField label="Start at" minValue={0} value={structure.numberStart} onCommit={(v) => setStructure((x) => ({ ...x, numberStart: Math.round(v) }))} />
-                <select aria-label="Number style" className={cls.select} value={structure.numberStyle}
+                <NumberField label={t("Start at")} minValue={0} value={structure.numberStart} onCommit={(v) => setStructure((x) => ({ ...x, numberStart: Math.round(v) }))} />
+                <select aria-label={t("Number style")} className={cls.select} value={structure.numberStyle}
                   onChange={(e) => setStructure((x) => ({ ...x, numberStyle: e.target.value as NumberStyle | "" }))}>
                   <option value="">1, 2, 3</option><option value="i">i, ii, iii</option><option value="I">I, II, III</option>
                   <option value="a">a, b, c</option><option value="A">A, B, C</option>
@@ -164,30 +165,30 @@ export function PageSetupDialog({ isOpen, onOpenChange }: { isOpen: boolean; onO
               </div>
             </>
           )}
-          <span className={cls.label}>Guides (this page; in points, comma separated)</span>
+          <span className={cls.label}>{t("Guides (this page; in points, comma separated)")}</span>
           <div className="grid grid-cols-2 gap-2">
-            <input aria-label="Vertical guides" placeholder="Vertical: 40, 300" className={cls.input} value={structure.vguides} onChange={(e) => setStructure((x) => ({ ...x, vguides: e.target.value }))} />
-            <input aria-label="Horizontal guides" placeholder="Horizontal: 80" className={cls.input} value={structure.hguides} onChange={(e) => setStructure((x) => ({ ...x, hguides: e.target.value }))} />
+            <input aria-label={t("Vertical guides")} placeholder={t("Vertical: 40, 300")} className={cls.input} value={structure.vguides} onChange={(e) => setStructure((x) => ({ ...x, vguides: e.target.value }))} />
+            <input aria-label={t("Horizontal guides")} placeholder={t("Horizontal: 80")} className={cls.input} value={structure.hguides} onChange={(e) => setStructure((x) => ({ ...x, hguides: e.target.value }))} />
           </div>
 
-          <span className={cls.label}>Baseline grid (the whole document)</span>
+          <span className={cls.label}>{t("Baseline grid (the whole document)")}</span>
           <div className="grid grid-cols-2 gap-2">
-            <NumberField label="Every" minValue={0} value={baselineIncrement} onCommit={setBaselineIncrement} />
-            <NumberField label="Start" minValue={0} value={baselineStart} onCommit={setBaselineStart} />
+            <NumberField label={t("Every")} minValue={0} value={baselineIncrement} onCommit={setBaselineIncrement} />
+            <NumberField label={t("Start")} minValue={0} value={baselineStart} onCommit={setBaselineStart} />
           </div>
 
-          <div role="radiogroup" aria-label="Apply to" className="flex gap-4">
-            {([["page", "This page"], ["all", `All ${scene.pages.length} pages (masters too)`]] as const).map(([id, label]) => (
+          <div role="radiogroup" aria-label={t("Apply to")} className="flex gap-4">
+            {([["page", t("This page")], ["all", t("All {n} pages (masters too)", { n: scene.pages.length })]] as const).map(([id, label]) => (
               <label key={id} className="flex items-center gap-1.5">
                 <input type="radio" name="scope" checked={scope === id} onChange={() => setScope(id)} /> {label}
               </label>
             ))}
           </div>
 
-          {!valid && <p role="alert" className="text-danger">These values do not fit: margins must leave room on the sheet, and columns with their gutters must fit between the margins.</p>}
+          {!valid && <p role="alert" className="text-danger">{t("These values do not fit: margins must leave room on the sheet, and columns with their gutters must fit between the margins.")}</p>}
           <div className="flex justify-end gap-2">
-            <Button variant="primary" isDisabled={!valid} onPress={apply}>Apply</Button>
-            <Button onPress={() => onOpenChange(false)}>Cancel</Button>
+            <Button variant="primary" isDisabled={!valid} onPress={apply}>{t("Apply")}</Button>
+            <Button onPress={() => onOpenChange(false)}>{t("Cancel")}</Button>
           </div>
         </Dialog>
       </Modal>

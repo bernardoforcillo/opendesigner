@@ -233,3 +233,32 @@ func isToolLike(w string) bool {
 	}
 	return true
 }
+
+func TestConsistencyAndTokenUsageTools(t *testing.T) {
+	cs := agentClient(t)
+	frame := nodeID(t, call(t, cs, "create_node", map[string]any{"type": "frame", "width": 300, "height": 200}))
+	for i := 0; i < 2; i++ {
+		nodeID(t, call(t, cs, "create_node", map[string]any{"type": "text", "parentId": frame, "text": "Body", "fontSize": 16, "width": 100, "height": 20}))
+	}
+	nodeID(t, call(t, cs, "create_node", map[string]any{"type": "text", "parentId": frame, "text": "Body", "fontSize": 15, "width": 100, "height": 20}))
+
+	res := call(t, cs, "review_consistency", nil)
+	if res.IsError {
+		t.Fatal(errText(res))
+	}
+	b, _ := json.Marshal(res.StructuredContent)
+	if !strings.Contains(string(b), `"near-size"`) {
+		t.Errorf("the 15px text should be one step from 16: %s", b)
+	}
+
+	res = call(t, cs, "token_usage", nil)
+	if res.IsError {
+		t.Fatal(errText(res))
+	}
+	b, _ = json.Marshal(res.StructuredContent)
+	for _, key := range []string{`"variables"`, `"unused"`, `"candidates"`} {
+		if !strings.Contains(string(b), key) {
+			t.Errorf("token_usage has no %s: %s", key, b)
+		}
+	}
+}

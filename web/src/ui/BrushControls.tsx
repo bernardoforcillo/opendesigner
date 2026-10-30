@@ -1,9 +1,13 @@
 import { useScene } from "@/store/store";
+import { currentT } from "@/i18n";
 import type { Op } from "@/gen/opendesigner/v1/opendesigner_pb";
 import type { BrushLite, BrushTipLite } from "@/store/types";
 import { BRUSH_PRESETS, BRUSH_TIPS, brushPresetName } from "@/vector/brushSpec";
 import { brushStrokeOf, setBrushOps } from "@/vector/brushEdit";
 import { NumberField } from "@/ui/fields/NumberField";
+
+// Names the shared controls cannot translate on their own (options, text nodes). See docs/localization.md.
+const tr = (key: string, vars?: Record<string, string | number>) => currentT().tx(key, vars);
 
 const lookup = (id: string) => useScene.getState().scene?.nodes.at(id);
 type Run = (build: (ids: readonly string[]) => Op[]) => void;
@@ -47,7 +51,7 @@ export function BrushControls({ run }: { run: Run }) {
           aria-label="Brush preset" className={SELECT} value={name}
           onChange={(e) => write(e.target.value === "none" ? undefined : BRUSH_PRESETS[e.target.value])}
         >
-          {name === "custom" && <option value="custom">Custom</option>}
+          {name === "custom" && <option value="custom">{tr("Custom")}</option>}
           {PRESETS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
         </select>
       </label>

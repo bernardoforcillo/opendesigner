@@ -51,7 +51,8 @@ Legend: [x] done · [ ] to do
 - [x] .fig variables: collections with modes, color / number / string / boolean variables, aliases and the layer bindings and pinned modes; what cannot bind is reported (synthetic files only; docs/handoff.md, docs/variables.md)
 - [x] .fig import robustness tests on generated files: truncation at every length, bit flips, junk, hostile counts (no real file was available)
 - [x] Prototyping: animated transitions between frames (dissolve, slide, push, smart animate) with duration and easing, and `auto` transitions after a delay; see docs/flows.md
-- [ ] Prototyping: hover and drag interactions, overlays, scroll, component state changes in the player
+- [x] Prototyping: hover, drag and scroll triggers, overlays in the player; see docs/flows.md
+- [x] Prototyping: component state changes (`set-variant` transitions: variants on hover / press / click) in the player; see docs/flows.md
 - [x] Present: device frames (generic, phone, tablet, desktop browser, none) and hotspot hints (flash on a missed click, a "Show hotspots" toggle); see docs/flows.md
 - [x] Present device frame as a document setting (`DocSettings.present_device`, `set_document_settings`, "Make default" in the player), the person's pick kept as an override; see docs/flows.md
 - [x] Prototype variables with expressions (`count = count + 1`, `count >= 3 || paid`) and an `else` guard for if / else on a hotspot; see docs/flows.md
@@ -105,9 +106,9 @@ Pages and structure
 - [x] Layers shared across pages (hide, lock, keep out of print); see docs/graphics-colour.md
 
 Text
-- [ ] Text frames with columns, inset and vertical alignment
+- [x] Text frames with columns, inset and vertical alignment (columns and gutter in the Text section; docs/text-frames.md)
 - [x] Threaded frames (text flows from one frame to the next, across pages), overset indicator; thread/unlink/add next frame, MCP (`thread_text_frames`); see docs/text-frames.md
-- [ ] Threading by dragging from a frame's port, a story editor, columns in a single frame
+- [x] Threading by dragging from a frame's port, a story editor (docs/text-frames.md)
 - [x] Paragraph styles and character styles (based-on, next style, space before/after, indents), underline and strikethrough, editor pickers, MCP (`format_text`); see docs/rich-text.md
 - [x] Nested styles, colour in styles, bullets and numbering, tabs (with leaders); see docs/rich-text.md
 - [x] Baseline grid (document setting, drawn on the page, snap target) and paragraphs that align to it; see docs/rich-text.md
@@ -172,7 +173,8 @@ Output (docs/output.md)
 - [x] Tokens in and out: W3C Design Tokens (DTCG) JSON and CSS custom properties, with modes; import of a DTCG file as collections (variables dialog); see docs/handoff.md
 - [ ] Syncing components with the code
 - [x] Localization layer: typed catalogs, live language switch, language from the browser or the document menu / Home, plurals; menus, tool dock, Home and panel headings translated into es, fr, de, it, pt-BR, ja, zh-Hans (machine drafts); see docs/localization.md
-- [ ] Localization: translate the remaining dialogs and panels, review the drafts with native speakers, dates and numbers by locale
+- [x] Localization: dates, numbers and relative times by interface language (docs/localization.md)
+- [ ] Localization: translate the remaining dialogs and panels (Versions, Share, Insert table, Comments, Page setup, Fonts, Variables, Styles, Find and change, Data merge, Preflight, Export PDF, Object styles, Layers and Pages panels, the page bar, the properties panel (frame, segmented controls and the per-section controls) and the prototype player are done), review the drafts with native speakers
 
 ## 4. Performance
 - [x] Invalidation-driven rendering, incremental scene index, discarding what is not visible, levels of detail, image reuse during pan/zoom; test bench on 20,000 nodes (see docs/performance.md)
@@ -182,7 +184,7 @@ Output (docs/output.md)
 - [x] Persistent data structures for the scene (`store/nodeMap.ts`: a persistent 256-bucket map, an edit copies the touched buckets; the server's `core.ApplyShared` is copy-on-write; docs/performance.md)
 
 ## 5. Differentiators
-- [ ] MCP AI agent: consistency reviews, variants, token usage
+- [x] MCP AI agent: `review_consistency` and `token_usage` tools, prompts `consistency_review`, `design_variants`, `token_cleanup`; see docs/mcp.md
 - [x] Design review: text contrast (WCAG), tap targets and token consistency, as a Develop panel and the `review_design` MCP tool; see docs/handoff.md
 - [ ] Generate screens from text or screenshot using the document's own components and tokens
 - [ ] Design, code and flow tests in one pipeline (prototype -> codegen -> Playwright)

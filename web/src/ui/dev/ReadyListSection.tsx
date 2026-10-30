@@ -1,4 +1,5 @@
 import { useMemo } from "react";
+import { formatDate } from "@/i18n/format";
 import { useScene } from "@/store/store";
 import { annotationsInside, categoryColor, readyFrames } from "@/store/devMode";
 import { screenOf } from "@/flow/screens";
@@ -10,7 +11,7 @@ import { Badge, cls } from "@/ui/ds";
 // selection, so the code view shows its file and Ship shows its status, annotations and
 // "Compare changes". A frame deleted since it was marked is listed as missing.
 
-const when = (sec: number) => (sec ? new Date(sec * 1000).toLocaleDateString(undefined, { month: "short", day: "numeric" }) : "");
+const when = (sec: number) => (sec ? formatDate(sec, { month: "short", day: "numeric" }) : "");
 
 function focusFrame(id: string): void {
   const st = useScene.getState();

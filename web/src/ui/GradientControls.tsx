@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { currentT } from "@/i18n";
 import { useRef, useState } from "react";
 import { useScene } from "@/store/store";
 import { uploadAsset } from "@/rpc/assets";
@@ -11,6 +12,9 @@ import {
   addGradientStopOps, imagePaintOps, fillKindOf, type PaintTarget, fillKindOps, gradientAngleOf, gradientAngleOps, gradientStopOps,
   gradientStopPositionOps, removeGradientStopOps, type FillKind, meshPointOps, meshSizeOps,
 } from "@/ui/gradientOps";
+
+// Names the shared controls cannot translate on their own (options, text nodes). See docs/localization.md.
+const tr = (key: string, vars?: Record<string, string | number>) => currentT().tx(key, vars);
 
 const KINDS: { value: FillKind; label: string }[] = [
   { value: "solid", label: "Solid" },
@@ -97,9 +101,9 @@ export function GradientControls({
             value={fill.image.mode}
             onChange={(e) => run((ids) => imagePaintOps(ids, lookup, { mode: e.target.value as "fill" | "fit" | "tile" }, target))}
           >
-            <option value="fill">Fill</option>
-            <option value="fit">Fit</option>
-            <option value="tile">Tile</option>
+            <option value="fill">{tr("Fill")}</option>
+            <option value="fit">{tr("Fit")}</option>
+            <option value="tile">{tr("Tile")}</option>
           </select>
           <button type="button" className="h-7 rounded-md px-2 text-[12px] text-fg-muted hover:bg-surface-3" onClick={() => fileInput.current?.click()}>Replace…</button>
         </div>
@@ -134,13 +138,13 @@ export function GradientControls({
           {g.stops.map((st, i) => (
             <StopRow
               key={i}
-              label={i === 0 ? "From" : i === last ? "To" : `Stop ${i + 1}`}
+              label={i === 0 ? "From" : i === last ? "To" : tr("Stop {n}", { n: i + 1 })}
               position={st.position}
               onPosition={(v) => run((ids) => gradientStopPositionOps(ids, lookup, i, v / 100, target))}
               onRemove={last > 1 ? () => run((ids) => removeGradientStopOps(ids, lookup, i, target)) : undefined}
             >
               <ColorField
-                label={i === 0 ? "From" : i === last ? "To" : `Stop ${i + 1}`}
+                label={i === 0 ? "From" : i === last ? "To" : tr("Stop {n}", { n: i + 1 })}
                 value={st.color}
                 onCommit={(rgb) => run((ids) => gradientStopOps(ids, lookup, i, rgb, target))}
               />
@@ -199,8 +203,8 @@ function MeshEditor({ fill, run, target }: { fill: FillLite; run: (build: (ids: 
   const sizes = [2, 3, 4, 5, 6];
   const pick = (label: string, value: number, set: (v: number) => void) => (
     <label className="flex items-center gap-1 text-[12px] text-fg-muted">
-      {label}
-      <select aria-label={label} className="h-7 rounded-md border border-line bg-surface px-1 text-[12px]" value={value} onChange={(e) => set(Number(e.target.value))}>
+      {tr(label)}
+      <select aria-label={tr(label)} className="h-7 rounded-md border border-line bg-surface px-1 text-[12px]" value={value} onChange={(e) => set(Number(e.target.value))}>
         {sizes.map((s) => <option key={s} value={s}>{s}</option>)}
       </select>
     </label>
@@ -214,7 +218,7 @@ function MeshEditor({ fill, run, target }: { fill: FillLite; run: (build: (ids: 
       <div role="group" aria-label="Mesh points" className="grid gap-1" style={{ gridTemplateColumns: `repeat(${m.cols}, minmax(0, 1fr))` }}>
         {m.colors.map((c, i) => (
           <input
-            key={i} type="color" aria-label={`Mesh point ${Math.floor(i / m.cols) + 1},${(i % m.cols) + 1}`}
+            key={i} type="color" aria-label={tr("Mesh point {r},{c}", { r: Math.floor(i / m.cols) + 1, c: (i % m.cols) + 1 })}
             value={hex(c)}
             onChange={(e) => run((ids) => meshPointOps(ids, lookup, i, fromHex(e.target.value), target))}
             className="h-7 w-full cursor-pointer rounded border border-line bg-transparent p-0"

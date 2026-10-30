@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import {
-  applyEffect, back, backTo, canGoBack, entryScreen, evalGuard, follow, optionsFrom, parseEffect, startState,
+  applyEffect, back, backTo, canGoBack, applyVariants, closeOverlay, isGestureTrigger, restoreVariant, entryScreen, evalGuard, follow, optionsFrom, parseEffect, startState,
   trail, truthy, varEntries,
 } from "@/flow/prototype";
 import { baseScene, flowOf, transition, withFlows } from "@/flow/testSupport";
@@ -164,5 +164,94 @@ describe("navigazione", () => {
 
   it("varEntries sorts by name", () => {
     expect(varEntries({ b: "2", a: "1" })).toEqual([["a", "1"], ["b", "2"]]);
+  });
+});
+
+describe("overlays", () => {
+  const sc = () => withFlows(baseScene(), [flowOf("f1", "A")], [
+    transition("o", "f1", "A", "B", { animation: "overlay", effect: "open=1" }),
+    transition("x", "f1", "B", "C", { label: "Next" }),
+  ]);
+  const o = (t: string) => sc().transitions[t];
+
+  it("opens the target over the screen, which stays", () => {
+    const s = sc();
+    const st = follow(s, startState(s, null, null)!, o("o"));
+    expect(st.screenId).toBe("A");
+    expect(st.overlay).toBe("B");
+    expect(st.vars.open).toBe("1");
+  });
+
+  it("answers with the overlay's own exits while it is open", () => {
+    const s = sc();
+    const st = follow(s, startState(s, null, null)!, o("o"));
+    expect(optionsFrom(s, "f1", st).map((x) => x.transition.id)).toEqual(["x"]);
+  });
+
+  it("an exit of the overlay leaves the overlay and goes to the target", () => {
+    const s = sc();
+    const st = follow(s, follow(s, startState(s, null, null)!, o("o")), o("x"));
+    expect(st.screenId).toBe("C");
+    expect(st.overlay).toBeUndefined();
+  });
+
+  it("closing keeps the screen and the variables; back restores the overlay", () => {
+    const s = sc();
+    const open = follow(s, startState(s, null, null)!, o("o"));
+    expect(closeOverlay(open)).toMatchObject({ screenId: "A", vars: { open: "1" } });
+    expect(closeOverlay(open).overlay).toBeUndefined();
+    const next = follow(s, open, o("x"));
+    expect(back(next).overlay).toBe("B");
+    expect(back(open).overlay).toBeUndefined();
+  });
+
+  it("knows the gesture triggers", () => {
+    expect(["hover", "drag", "scroll"].every(isGestureTrigger)).toBe(true);
+    expect(isGestureTrigger("click")).toBe(false);
+  });
+});
+
+describe("component state changes", () => {
+  const sc = () => {
+    const b = baseScene();
+    const m = (id: string) => ({ ...b.nodes.at("btn")!, id, parentId: "components", kind: "group" as const });
+    const scene = withFlows(
+      { ...b, nodes: b.nodes.set("btn", { ...b.nodes.at("btn")!, instance: { componentId: "c1", overrides: [] } }).set("m1", m("m1")).set("m2", m("m2")) },
+      [flowOf("f1", "A")],
+      [transition("v", "f1", "A", "m2", { elementId: "btn", trigger: "hover", animation: "set-variant", effect: "hot=1" })],
+    );
+    scene.componentSets = { s: { id: "s", name: "Button", axes: [{ name: "State", options: ["default", "hover"] }] } };
+    scene.components = {
+      c1: { rootNodeId: "m1", name: "Button", setId: "s", variant: { State: "default" }, properties: [] },
+      c2: { rootNodeId: "m2", name: "Button hover", setId: "s", variant: { State: "hover" }, properties: [] },
+    };
+    return scene;
+  };
+
+  it("switches the instance's variant without leaving the screen or adding a step to the path", () => {
+    const s = sc();
+    const st = follow(s, startState(s, null, null)!, s.transitions.v);
+    expect(st.screenId).toBe("A");
+    expect(st.variants).toEqual({ btn: { State: "hover" } });
+    expect(st.vars.hot).toBe("1");
+    expect(st.history).toHaveLength(0);
+  });
+
+  it("draws the chosen variant on the instance, and puts it back", () => {
+    const s = sc();
+    const st = follow(s, startState(s, null, null)!, s.transitions.v);
+    expect(applyVariants(s, st.variants).nodes.at("btn")!.instance!.variantProps).toEqual({ State: "hover" });
+    expect(applyVariants(s, undefined)).toBe(s);
+    const back = restoreVariant(st, "btn", undefined);
+    expect(back.variants).toBeUndefined();
+    expect(restoreVariant(st, "btn", { State: "pressed" }).variants).toEqual({ btn: { State: "pressed" } });
+  });
+
+  it("Back returns to the variants of the earlier step", () => {
+    const s = sc();
+    s.transitions.go = transition("go", "f1", "A", "B");
+    const withVariant = follow(s, startState(s, null, null)!, s.transitions.v);
+    const moved = follow(s, withVariant, s.transitions.go);
+    expect(back(moved).variants).toEqual({ btn: { State: "hover" } });
   });
 });

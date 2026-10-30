@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { useT } from "@/i18n";
 import { Dialog, Modal, ModalOverlay } from "react-aria-components";
 import { useScene } from "@/store/store";
 import { findAll, replaceOps, type FindOptions } from "@/store/findReplace";
@@ -17,6 +18,7 @@ function run(ops: Ops) {
 }
 
 export function FindReplaceDialog({ isOpen, onOpenChange }: { isOpen: boolean; onOpenChange: (open: boolean) => void }) {
+  const { t, tn } = useT();
   const scene = useScene((s) => s.scene);
   const [query, setQuery] = useState("");
   const [replacement, setReplacement] = useState("");
@@ -40,18 +42,18 @@ export function FindReplaceDialog({ isOpen, onOpenChange }: { isOpen: boolean; o
     st.setCurrentPage(m.pageId);
     st.setSelection([m.nodeId]);
   }
-  const pageName = (id: string) => scene.pages.find((p) => p.id === id)?.name || "Page";
+  const pageName = (id: string) => scene.pages.find((p) => p.id === id)?.name || t("Page");
 
   return (
     <ModalOverlay isDismissable isOpen={isOpen} onOpenChange={onOpenChange} className="fixed inset-0 z-50 flex items-start justify-center bg-black/30 p-4 pt-[10vh]">
       <Modal className="max-h-[80vh] w-full max-w-[520px] overflow-auto rounded-xl bg-raised p-4 text-[13px] text-fg shadow-pop">
-        <Dialog aria-label="Find and change" className="flex flex-col gap-3 outline-none">
-          <h2 className="text-[14px] font-semibold">Find and change</h2>
-          <input aria-label="Find" autoFocus className={cls.input} value={query} placeholder="Find" onChange={(e) => { setQuery(e.target.value); setAt(0); }}
+        <Dialog aria-label={t("Find and change")} className="flex flex-col gap-3 outline-none">
+          <h2 className="text-[14px] font-semibold">{t("Find and change")}</h2>
+          <input aria-label={t("Find")} autoFocus className={cls.input} value={query} placeholder={t("Find")} onChange={(e) => { setQuery(e.target.value); setAt(0); }}
             onKeyDown={(e) => { if (e.key === "Enter") go(e.shiftKey ? at - 1 : at + 1); }} />
-          <input aria-label="Change to" className={cls.input} value={replacement} placeholder={regex ? "Change to (use $1 for groups)" : "Change to"} onChange={(e) => setReplacement(e.target.value)} />
+          <input aria-label={t("Change to")} className={cls.input} value={replacement} placeholder={regex ? t("Change to (use $1 for groups)") : t("Change to")} onChange={(e) => setReplacement(e.target.value)} />
           <div className="flex flex-wrap gap-4">
-            {([["Match case", matchCase, setMatchCase], ["Whole word", wholeWord, setWholeWord], ["Regular expression", regex, setRegex]] as const).map(([label, value, set]) => (
+            {([[t("Match case"), matchCase, setMatchCase], [t("Whole word"), wholeWord, setWholeWord], [t("Regular expression"), regex, setRegex]] as const).map(([label, value, set]) => (
               <label key={label} className="flex items-center gap-1.5">
                 <input type="checkbox" aria-label={label} checked={value} onChange={(e) => { set(e.target.checked); setAt(0); }} /> {label}
               </label>
@@ -59,9 +61,9 @@ export function FindReplaceDialog({ isOpen, onOpenChange }: { isOpen: boolean; o
           </div>
           {error && <p role="alert" className="text-danger">{error}</p>}
           <p aria-live="polite" className="text-fg-subtle">
-            {query === "" ? "Type what to look for." : matches.length === 0 ? "No match." : `${matches.length}${matches.length >= 5000 ? "+" : ""} ${matches.length === 1 ? "match" : "matches"}${current ? ` — ${Math.min(at, matches.length - 1) + 1} of ${matches.length}` : ""}`}
+            {query === "" ? t("Type what to look for.") : matches.length === 0 ? t("No match.") : `${matches.length >= 5000 ? t("More than {n} matches", { n: 5000 }) : tn("{n} matches", matches.length)}${current ? ` — ${t("{i} of {n}", { i: Math.min(at, matches.length - 1) + 1, n: matches.length })}` : ""}`}
           </p>
-          <ul aria-label="Matches" className="max-h-[200px] overflow-auto">
+          <ul aria-label={t("Matches")} className="max-h-[200px] overflow-auto">
             {matches.slice(0, 200).map((m, i) => (
               <li key={`${m.nodeId}:${m.start}`}>
                 <button type="button" aria-current={i === at ? "true" : undefined}
@@ -73,11 +75,11 @@ export function FindReplaceDialog({ isOpen, onOpenChange }: { isOpen: boolean; o
             ))}
           </ul>
           <div className="flex flex-wrap justify-end gap-2">
-            <Button isDisabled={matches.length === 0} onPress={() => go(at - 1)}>Previous</Button>
-            <Button isDisabled={matches.length === 0} onPress={() => go(at + 1)}>Next</Button>
-            <Button isDisabled={!current} onPress={() => { if (current) run(replaceOps(scene, [current], opts, replacement)); }}>Change</Button>
-            <Button variant="primary" isDisabled={matches.length === 0} onPress={() => run(replaceOps(scene, matches, opts, replacement))}>Change all</Button>
-            <Button onPress={() => onOpenChange(false)}>Done</Button>
+            <Button isDisabled={matches.length === 0} onPress={() => go(at - 1)}>{t("Previous")}</Button>
+            <Button isDisabled={matches.length === 0} onPress={() => go(at + 1)}>{t("Next")}</Button>
+            <Button isDisabled={!current} onPress={() => { if (current) run(replaceOps(scene, [current], opts, replacement)); }}>{t("Change")}</Button>
+            <Button variant="primary" isDisabled={matches.length === 0} onPress={() => run(replaceOps(scene, matches, opts, replacement))}>{t("Change all")}</Button>
+            <Button onPress={() => onOpenChange(false)}>{t("Done")}</Button>
           </div>
         </Dialog>
       </Modal>

@@ -1,4 +1,5 @@
 import { useScene } from "@/store/store";
+import { currentT } from "@/i18n";
 import type { Op } from "@/gen/opendesigner/v1/opendesigner_pb";
 import { BLEND_MODES, type BlendModeLite } from "@/store/types";
 import { cls, IconButton, Section } from "@/ui/ds";
@@ -9,6 +10,9 @@ import {
   addShadowOps, backgroundBlurOf, backgroundBlurOps, blendModeOps, blurOf, blurOps, editShadowOps, removeEffectOps,
   shadowsOf,
 } from "@/ui/effectOps";
+
+// Names the shared controls cannot translate on their own (options, text nodes). See docs/localization.md.
+const tr = (key: string, vars?: Record<string, string | number>) => currentT().tx(key, vars);
 
 const lookup = (id: string) => useScene.getState().scene?.nodes.at(id);
 
@@ -28,7 +32,7 @@ export function EffectsControls({ run }: { run: (build: (ids: readonly string[])
 
   return (
     <Section
-      title="Effects"
+      title={tr("Effects")}
       actions={
         <>
           <button
@@ -50,7 +54,7 @@ export function EffectsControls({ run }: { run: (build: (ids: readonly string[])
             <div className="flex h-6 items-center justify-between">
               <span className="text-[12px] font-medium text-fg">{shadow.kind === "innerShadow" ? "Inner shadow" : "Drop shadow"}</span>
               <IconButton
-                icon="trash" label={shadows.length > 1 ? `Remove shadow ${index + 1}` : "Remove shadow"} size={24}
+                icon="trash" label={shadows.length > 1 ? tr("Remove shadow {n}", { n: index + 1 }) : tr("Remove shadow")} size={24}
                 onPress={() => run((ids) => removeEffectOps(ids, lookup, index))}
               />
             </div>
@@ -89,12 +93,12 @@ export function EffectsControls({ run }: { run: (build: (ids: readonly string[])
         <label className="flex items-center gap-2 text-[11px] text-fg-subtle">
           <span className="w-16 shrink-0">Blend</span>
           <select
-            aria-label="Blend mode"
+            aria-label={tr("Blend mode")}
             className={cls.select}
             value={first?.blendMode ?? ""}
             onChange={(e) => run((ids) => blendModeOps(ids, lookup, (e.target.value || undefined) as BlendModeLite | undefined))}
           >
-            <option value="">Normal</option>
+            <option value="">{tr("Normal")}</option>
             {BLEND_MODES.map((m) => (
               <option key={m} value={m}>{m.replace(/-/g, " ").replace(/^./, (c) => c.toUpperCase())}</option>
             ))}

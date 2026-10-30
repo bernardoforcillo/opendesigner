@@ -1,8 +1,11 @@
 import { useScene } from "@/store/store";
+import { currentT } from "@/i18n";
 import { makeSetPropsOp } from "@/tools/ops";
 import { canOutlineStroke, outlineStrokeOps } from "@/vector/outlineStroke";
 import { flattenGroupOps, isBooleanSource, liveBooleanOps, setBooleanOpOps, BOOLEAN_NAMES, type BooleanOp } from "@/vector/boolean";
 import { booleanOpOf } from "@/vector/regions";
+
+const tr = (key: string, vars?: Record<string, string | number>) => currentT().tx(key, vars);
 
 const OPS: BooleanOp[] = ["union", "subtract", "intersect", "exclude"];
 
@@ -121,7 +124,7 @@ export function BooleanControls() {
           </button>
         ))}
         <button type="button" className="ml-1 h-7 rounded-md px-2 text-[12px] text-fg-muted outline-none hover:bg-surface-3 hover:text-fg focus-visible:shadow-[var(--ring)]" onClick={runFlatten}>
-          Flatten
+          {tr("Flatten")}
         </button>
       </div>
     );
@@ -131,11 +134,11 @@ export function BooleanControls() {
     return (
       <div role="group" aria-label="Vector tools" className="flex shrink-0 items-center gap-0.5 border-b border-line px-2 py-1.5">
         <button type="button" aria-pressed={maskable === "on"} className={`${btn} ${maskable === "on" ? "bg-surface-3 text-fg" : ""}`} onClick={toggleMask}>
-          Use as mask
+          {tr("Use as mask")}
         </button>
         {outlinable && (
           <button type="button" className={btn} onClick={runOutlineStroke}>
-            Outline stroke
+            {tr("Outline stroke")}
           </button>
         )}
       </div>

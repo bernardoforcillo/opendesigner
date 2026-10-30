@@ -38,7 +38,7 @@ hotspot.
 | Field | Meaning |
 |---|---|
 | `label` | text of the triggering element (e.g. the "Sign in" button) |
-| `trigger` | `click` (default), `submit`, `auto`, `key`, `back` or free text. With `key` the `label` is the key to press |
+| `trigger` | `click` (default), `hover`, `drag`, `scroll`, `submit`, `auto`, `key`, `back` or free text. With `key` the `label` is the key to press. See "Gestures and overlays in the player" |
 | `element_id` | optional: the node INSIDE `from` that triggers (the hotspot) |
 | `guard` | condition under which the edge can be taken: free text ("cart not empty"), or a condition the player evaluates (`user=guest`, `count >= 3`, `else`; see "Variables, expressions and if / else in the player") |
 | `effect` | what the edge changes: free text ("order created"), or assignments the player runs (`cart=full; count = count + 1`) |
@@ -257,3 +257,13 @@ A nested "if inside an action" would still need the transition to carry a list o
 **Two levels.** The document carries a default (`DocSettings.present_device`, empty = generic), so a prototype opens in the frame its author meant for everyone who plays it. A person's own pick in the bar is remembered in this browser (`od.protoDevice`) and overrides the document's for them; *Reset* (shown when the pick differs from the document's) goes back to following the document, and *Make default* (shown when the frame on screen differs from the document's) writes it into the document as one undo step and drops the personal override. Over MCP: `set_document_settings { presentDevice }` (`generic`, `phone`, `tablet`, `desktop` or `none`; an unknown device is refused by the server) and `get_document` reports `presentDevice`. It is a document setting, not a per-flow one: all flows of a document open in the same frame unless a person chose another.
 
 **Hotspot hints.** The clickable areas flash when a screen appears. Clicking anywhere else on the screen flashes them again ("where can I click?"), and **Show hotspots** in the bottom bar keeps them lit until turned off.
+
+## Gestures and overlays in the player
+
+- **`hover`**: a hotspot (the transition has an `element_id`) is followed when the pointer enters it.
+- **`drag`**: followed when a press on the hotspot moves 24 px or more. With no `element_id` the drag works anywhere on the screen.
+- **`scroll`**: followed by the mouse wheel over the hotspot, or anywhere on the screen when there is no `element_id`.
+- A hover, drag or scroll transition with no element is also in the bottom bar as a button, and a hotspot of these triggers can still be activated from the keyboard (Enter / Space).
+- **Overlays**: a transition whose `animation` is `overlay` opens `to_id` *over* the current screen, centred on it, with the screen dimmed. The screen under it stays (and in the path); while the overlay is open only its own exits apply, and a click outside it closes it. Taking an exit of the overlay leaves the overlay and goes to that exit's target. Back reopens the overlay it came from. The `effect` of the opening transition runs. `set_transition` takes `animation: "overlay"` and the Flows panel lists it as "Open as overlay".
+
+- **Component state changes**: a transition with `animation: "set-variant"` makes the instance `element_id` (a component instance on the screen) show another variant: `to_id` is the master of that variant (a component's root node, from the component set). It never leaves the screen, adds no step to the path (Back is unaffected), and runs its `effect`. With the `hover` trigger the variant shows while the pointer is on the instance; with `press` while the button is down; with `click` (or anything else) it stays until the prototype restarts or Back goes to an earlier step. Because it is not a step of the journey, set-variant transitions are left out of the flow analysis (no unreachable or dead-end screens from the masters), and `element_id` is required. Only the variants are switched: property values and overrides of the instance stay.
