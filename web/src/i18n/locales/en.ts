@@ -544,6 +544,8 @@ const PLAIN = [
   // Panel section headings
   "Size limits", "Variables", "Transitions", "Stroke", "Sizing", "Paths", "Override", "Layout", "Instance",
   "Fill", "Export", "Effect style", "Current flow", "Corners", "Constraints", "Component", "Arc", "Appearance",
+  // Books
+  "Books", "New book", "Edit book", "Delete book", "Several documents that share styles and one page count.", "No books yet", "Book name", "Chapters", "Add a chapter…", "Remove chapter", "Move chapter up", "Move chapter down", "Style source", "First page number", "Save", "Bring into line", "Chapter missing", "Starts at page {n}", "Out of step", "In step", "Could not read the books ({error}).", "Delete “{name}”? The documents stay.",
 ] as const;
 
 const PLURALS = {
@@ -562,6 +564,9 @@ const PLURALS = {
   "Used by {n} objects": { one: "Used by {n} object", other: "Used by {n} objects" },
   "{n} selected": { one: "{n} selected", other: "{n} selected" },
   "{n} elements": { one: "{n} element", other: "{n} elements" },
+  "{n} chapters": { one: "{n} chapter", other: "{n} chapters" },
+  "{n} pages": { one: "{n} page", other: "{n} pages" },
+  "{n} styles behind": { one: "{n} style behind", other: "{n} styles behind" },
 } satisfies Record<string, PluralForms>;
 
 /** Every key of the interface; the other catalogs are typed `Record<MessageKey, Message>`. */
