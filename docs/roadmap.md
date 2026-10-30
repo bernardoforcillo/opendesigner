@@ -129,7 +129,6 @@ Text
 Graphics and colour
 - [x] Linked images: file name and pixel size, effective resolution with a low-resolution warning, fitting from pixel size, relink, Links panel
 - [x] Image frame fitting (`fit_frame`: fill, fit, tile, frame to content)
-- [ ] Linked images: update-on-change from disk (a browser cannot watch a file; relink is manual)
 - [x] Swatches (process CMYK, RGB, spot, tints that follow their base), CMYK document mode and a recorded output profile
 - [x] Overprint (written to the PDF, Ink manager UI)
 - [ ] Gradient swatches and profile-managed conversion
@@ -161,7 +160,6 @@ Output (docs/output.md)
 - [x] Review and merge of a branch back into its source (three-way, conflicts flagged; docs/collaboration.md)
 - [ ] Property-level merge in REAL TIME (CRDT or equivalent) instead of last-write-wins (the branch merge is property-level; live edits are still last-write-wins)
 - [x] Permissions without accounts: share links with view / comment / edit / owner roles, enforced by the server (optional; open stays the default); per-person accounts are not there
-- [ ] Optional relay/cloud for use beyond the LAN, still self-hostable (what exists: HTTPS and an admin token for exposing your own server; a NAT-crossing relay is not built)
 
 ## 3. Handoff and ecosystem
 - [x] Dev mode: CSS/Tailwind/React and measurements (size, position, gaps to parent and siblings of the selection, in the Ship panel)
@@ -199,7 +197,7 @@ Output (docs/output.md)
 
 ## Formats (block 9)
 - [x] HTML, PowerPoint and IDML export; IDML import; place Word, RTF and Excel; tagged PDF; booklet imposition (see docs/formats.md; all over MCP)
-- [ ] INDD (not feasible), images in IDML/PPTX-other-types, PDF/UA validation, creep for booklets
+- [ ] images in IDML/PPTX-other-types, PDF/UA validation, creep for booklets
 
 ## Platform (block 10)
 - [x] Ink manager (spot -> process, aliases, total ink), overprint in the PDF; CJK line breaking with kinsoku; Arabic shaping and bidi ordering in the PDF; `batch` and `list_editor_commands` (see docs/platform.md)
