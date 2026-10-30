@@ -28,6 +28,16 @@ func (b *Bundle) SetName(name string) error {
 	return b.writeMetaLocked(m)
 }
 
+// SetLibrary publishes the document as a shared library (or withdraws it) and makes that durable
+// in meta.json, through the Bundle for the same reason as SetName.
+func (b *Bundle) SetLibrary(on bool) error {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	m := b.meta
+	m.Library = on
+	return b.writeMetaLocked(m)
+}
+
 // ModTime is the document's "real" last modification: the most recent of
 // meta.json (updated on every snapshot), snapshot.pb and the oplog file
 // (touched on every operation). UpdatedAt alone would stay frozen until the

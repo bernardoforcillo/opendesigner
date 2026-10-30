@@ -207,7 +207,22 @@ func (h *Hub) Submit(clientID string, op *opendesignerv1.Op) (*opendesignerv1.Op
 	// in. See writeMu for why this is not h.mu.
 	h.writeMu.Lock()
 	defer h.writeMu.Unlock()
+	return h.applyLocked(clientID, op)
+}
 
+// submitLocked applies ops one after the other with writeMu already held by the caller, which is how a
+// multi-op change (a library import) is planned against the state it is applied to.
+func (h *Hub) submitLocked(clientID string, ops []*opendesignerv1.Op) error {
+	for _, op := range ops {
+		if _, err := h.applyLocked(clientID, op); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// applyLocked is Submit's body; writeMu must be held.
+func (h *Hub) applyLocked(clientID string, op *opendesignerv1.Op) (*opendesignerv1.OpRecord, error) {
 	// h.doc and h.seq are written only by a Submit, so writeMu already pins
 	// them for the rest of this call; h.mu is taken for the read itself so a
 	// concurrent reader never sees a torn (doc, seq) pair -- and so the two

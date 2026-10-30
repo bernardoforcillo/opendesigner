@@ -207,7 +207,7 @@ func requiredRole(name string, msg any) (docID string, need role, ok bool) {
 	docID = d.GetDocId()
 	switch name {
 	case "OpenDocument", "Subscribe", "WatchPresence", "UpdatePresence", "WatchJobs", "RunJob", "CompleteJob", "AnalyzeFlows", "ExportCode", "ListVersions",
-		"ReviewDesign", "GetBranchOrigin", "GetAccess", "CompareReady":
+		"ReviewDesign", "GetBranchOrigin", "GetAccess", "CompareReady", "GetLibrary":
 		return docID, roleView, true
 	case "SubmitOp":
 		if r, ok := msg.(*opendesignerv1.SubmitOpRequest); ok {
@@ -217,7 +217,7 @@ func requiredRole(name string, msg any) (docID string, need role, ok bool) {
 			}
 		}
 		return docID, roleEdit, true
-	case "CreateVersion", "DeleteVersion", "BranchDocument", "RenameDocument", "ReviewMerge", "MergeBranch", "ImportFig":
+	case "CreateVersion", "DeleteVersion", "BranchDocument", "RenameDocument", "ReviewMerge", "MergeBranch", "ImportFig", "ImportFromLibrary":
 		return docID, roleEdit, true
 	case "DeleteDocument", "DisableAccess", "CreateShareLink", "RevokeShareLink", "EnableAccess":
 		return docID, roleOwner, true
@@ -245,6 +245,12 @@ func (m *Manager) authorize(procedure string, msg any, c caller) error {
 		return connect.NewError(connect.CodePermissionDenied, errors.New("only the machine running the server (or its admin token) can protect a document"))
 	}
 	if have >= need {
+		// An import reads the library document and writes the other: view rights on the library too.
+		if r, isImport := msg.(*opendesignerv1.ImportFromLibraryRequest); isImport {
+			if lr, _ := m.roleFor(r.GetLibraryDocId(), c); lr < roleView {
+				return connect.NewError(connect.CodePermissionDenied, errors.New("importing needs view access to the library document too"))
+			}
+		}
 		// A merge reads one document and writes another: edit rights on the original too.
 		if name == "MergeBranch" || name == "ReviewMerge" {
 			if o, err := m.BranchOrigin(docID); err == nil && o.GetIsBranch() && o.GetSourceExists() {

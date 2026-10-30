@@ -45,6 +45,10 @@ type Meta struct {
 	Name      string    `json:"name"`
 	CreatedAt time.Time `json:"createdAt"`
 	UpdatedAt time.Time `json:"updatedAt"`
+	// Library: the document is published as a shared library, other documents can import its
+	// components, styles and variables. It is part of the identity, not of the content, so it
+	// is not in the op-log and not undoable.
+	Library bool `json:"library,omitempty"`
 }
 
 func (b *Bundle) metaPath() string { return filepath.Join(b.dir, metaFileName) }
