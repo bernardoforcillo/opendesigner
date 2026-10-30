@@ -66,6 +66,39 @@ describe("SwatchesDialog", () => {
   });
 });
 
+describe("SwatchesDialog: ICC profile and gradient swatches", () => {
+  beforeEach(() => install([node({ id: "a" })]));
+  const open = () => render(<SwatchesDialog isOpen onOpenChange={() => {}} />);
+  const hash = "ab".repeat(32);
+
+  it("offers to load a profile, says the conversion is plain without one, and removes a loaded one", () => {
+    open();
+    expect(screen.getByRole("button", { name: "Load ICC profile" })).toBeInTheDocument();
+    expect(screen.getByText(/plain device one: load your printer's ICC profile/)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Remove ICC profile" })).toBeNull();
+    act(() => useScene.getState().setScene({ ...scene(), settings: { colorMode: "cmyk", iccProfile: "Coated", iccProfileAsset: hash } }));
+    expect(screen.getByText(/embedded in the PDF, but its tables cannot be read here/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Remove ICC profile" }));
+    expect(scene().settings).toEqual({ colorMode: "cmyk", iccProfile: "Coated" });
+  });
+
+  it("makes a gradient swatch from two swatches, applies it to the fill and deletes it", () => {
+    open();
+    fireEvent.click(screen.getByRole("button", { name: "New swatch" }));
+    fireEvent.click(screen.getByRole("button", { name: "New swatch" }));
+    fireEvent.click(screen.getByRole("button", { name: "New gradient" }));
+    const styles = () => Object.values(scene().paintStyles);
+    expect(styles()).toHaveLength(1);
+    expect(styles()[0]!.paints[0]!.gradient!.stops).toHaveLength(2);
+    expect(screen.getByRole("list", { name: "Gradient swatches" })).toBeInTheDocument();
+    act(() => useScene.setState({ selection: ["a"] }));
+    fireEvent.click(screen.getAllByRole("button", { name: "Use for fill" }).at(-1)!);
+    expect(scene().nodes.get("a")!.fillStyleId).toBe(styles()[0]!.id);
+    fireEvent.click(screen.getAllByRole("button", { name: "Delete" }).at(-1)!); // the gradient's is the last one on the page
+    expect(styles()).toHaveLength(0);
+  });
+});
+
 describe("ObjectStylesDialog and controls", () => {
   beforeEach(() => install([node({ id: "a", opacity: 0.5, cornerRadius: 4 }), node({ id: "b" })]));
 

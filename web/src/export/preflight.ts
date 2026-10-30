@@ -90,7 +90,9 @@ export function preflightScene(scene: SceneState, opts: PreflightOptions = {}, m
   if (scene.layers.some((l) => l.hidden)) out.push({ severity: "info", code: "hidden-layer", ...msg("Hidden layers are not exported.") });
 
   if (x && scene.settings?.colorMode !== "cmyk" && (opts.pdfx === "x1a")) {
-    out.push({ severity: "info", code: "convert-cmyk", ...msg(`PDF/X-1a is CMYK only: RGB colours are converted ${scene.settings?.iccProfileAsset ? "through the document's ICC profile" : "with the plain device conversion (no ICC profile is set)"}.`) });
+    out.push({ severity: "info", code: "convert-cmyk", ...msg(scene.settings?.iccProfileAsset
+      ? "PDF/X-1a is CMYK only: RGB colours are converted through the document's ICC profile."
+      : "PDF/X-1a is CMYK only: RGB colours are converted with the plain device conversion (no ICC profile is applied).") });
   }
   if (x && !scene.settings?.iccProfile && !scene.settings?.iccProfileAsset) {
     out.push({ severity: "warning", code: "no-condition", ...msg('No output condition (ICC profile name) is set in Swatches and colour mode; the output intent will read "Custom".') });

@@ -1,5 +1,6 @@
 import type { Op } from "@/gen/opendesigner/v1/opendesigner_pb";
-import { cmykToRgb, type Cmyk, type Rgb } from "@/color/cmyk";
+import type { Cmyk, Rgb } from "@/color/cmyk";
+import { activeConverter } from "@/color/activeProfile";
 import { cmykField, swatchCmyk, swatchColor, swatchesOf, tintCmyk, tintRgb } from "@/store/graphics";
 import type { SceneState, VariableLite } from "@/store/types";
 import { bindingOps } from "@/ui/variableOps";
@@ -43,7 +44,7 @@ function build(scene: SceneState, id: string, collectionId: string, mode: string
     const baseCmyk = swatchCmyk(base);
     cmyk = baseCmyk ? tintCmyk(baseCmyk, spec.tint!) : null;
     tint = { tintOf: base.id, tint: spec.tint };
-  } else if (cmyk) rgb = cmykToRgb(cmyk);
+  } else if (cmyk) rgb = activeConverter().cmykToRgb(cmyk); // through the document's ICC profile when one is loaded
   return {
     id, collectionId, name: spec.name, type: "color", values: { [mode]: { ...rgb, a: 1 } }, swatch: true,
     ...(cmyk ? { cmyk: cmykField(cmyk) } : {}),
