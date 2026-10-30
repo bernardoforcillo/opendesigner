@@ -47,7 +47,7 @@ describe("preflightScene", () => {
 });
 
 describe("preflightReport", () => {
-  const base: PdfReport = { pages: 1, pdfx: "none", substitutedFonts: [], missingGlyphs: [], embeddedFonts: 0, spots: [], usesRgb: false, usesCmyk: false, transparency: false, flattened: [], lowResolution: [] };
+  const base: PdfReport = { pages: 1, pdfx: "none", substitutedFonts: [], missingGlyphs: [], embeddedFonts: 0, spots: [], usesRgb: false, usesCmyk: false, transparency: false, flattened: [], lowResolution: [], fontBytesSaved: 0, validation: { pdfx: null, pdfua: { standard: "PDF/UA-1", checks: [], conformant: false } } };
   it("reports resolution, transparency and RGB against the chosen mode", () => {
     const r = { ...base, transparency: true, usesRgb: true, lowResolution: [{ page: "One", hash: "h", ppi: 72 }], flattened: ["n"] };
     const x1a = preflightReport(r, { pdfx: "x1a" });
