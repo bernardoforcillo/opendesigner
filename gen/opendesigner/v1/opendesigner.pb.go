@@ -9548,6 +9548,13 @@ type Op struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	OpId  string                 `protobuf:"bytes,1,opt,name=op_id,json=opId,proto3" json:"op_id,omitempty"`
 	DocId string                 `protobuf:"bytes,2,opt,name=doc_id,json=docId,proto3" json:"doc_id,omitempty"`
+	// Highest oplog seq the submitting client had applied when it made the op. The hub
+	// uses it, with client_id, as the Lamport-style stamp of a per-property LWW register
+	// (internal/server/propversions.go): of two CONCURRENT writes to the same property the
+	// one with the higher (base_seq, client_id) wins whatever order they arrive in; the
+	// loser's path is dropped from the broadcast record. 0 = unknown (agents, merges):
+	// treated as having seen everything, i.e. plain arrival order.
+	BaseSeq uint64 `protobuf:"varint,3,opt,name=base_seq,json=baseSeq,proto3" json:"base_seq,omitempty"`
 	// Types that are valid to be assigned to Kind:
 	//
 	//	*Op_CreateNode
@@ -9645,6 +9652,13 @@ func (x *Op) GetDocId() string {
 		return x.DocId
 	}
 	return ""
+}
+
+func (x *Op) GetBaseSeq() uint64 {
+	if x != nil {
+		return x.BaseSeq
+	}
+	return 0
 }
 
 func (x *Op) GetKind() isOp_Kind {
@@ -17214,10 +17228,11 @@ const file_opendesigner_v1_opendesigner_proto_rawDesc = "" +
 	"\x04clip\x18\x01 \x01(\v2\x15.opendesigner.v1.ClipR\x04clip\"\x1c\n" +
 	"\n" +
 	"DeleteClip\x12\x0e\n" +
-	"\x02id\x18\x01 \x01(\tR\x02id\"\xf0\x1b\n" +
+	"\x02id\x18\x01 \x01(\tR\x02id\"\x8b\x1c\n" +
 	"\x02Op\x12\x13\n" +
 	"\x05op_id\x18\x01 \x01(\tR\x04opId\x12\x15\n" +
-	"\x06doc_id\x18\x02 \x01(\tR\x05docId\x12>\n" +
+	"\x06doc_id\x18\x02 \x01(\tR\x05docId\x12\x19\n" +
+	"\bbase_seq\x18\x03 \x01(\x04R\abaseSeq\x12>\n" +
 	"\vcreate_node\x18\n" +
 	" \x01(\v2\x1b.opendesigner.v1.CreateNodeH\x00R\n" +
 	"createNode\x12=\n" +

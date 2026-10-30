@@ -1357,6 +1357,13 @@ message DeleteClip { string id = 1; }
 message Op {
   string op_id = 1;
   string doc_id = 2;
+  // Highest oplog seq the submitting client had applied when it made the op. The hub
+  // uses it, with client_id, as the Lamport-style stamp of a per-property LWW register
+  // (internal/server/propversions.go): of two CONCURRENT writes to the same property the
+  // one with the higher (base_seq, client_id) wins whatever order they arrive in; the
+  // loser's path is dropped from the broadcast record. 0 = unknown (agents, merges):
+  // treated as having seen everything, i.e. plain arrival order.
+  uint64 base_seq = 3;
   oneof kind {
     CreateNode    create_node = 10;
     SetProperties set_props   = 11;
