@@ -47,6 +47,8 @@ const TOOL_BTN = (selected: boolean, flow: boolean) =>
 const TOOLTIP_CLS = "z-50 flex items-center gap-2 rounded-md bg-fg px-2 py-1 text-[12px] font-medium text-surface shadow-pop";
 
 const SEP = <span className="mx-1 h-5 w-px shrink-0 bg-line" />;
+// The rail's separator: the same mark, lying down.
+const SEP_RAIL = <span className="my-1 h-px w-5 shrink-0 bg-line" />;
 
 // The dock gathers EVERYTHING used with the HAND on the canvas: history,
 // tools (shapes grouped), Animation and Present in flows -- a
@@ -54,12 +56,18 @@ const SEP = <span className="mx-1 h-5 w-px shrink-0 bg-line" />;
 // which instead carries document identity, mode, people and status.
 // Export is in neither: it lives in the properties panel, where
 // it appears only with a selection (see PropertiesPanel.tsx::ExportSection).
+//
+// `variant="rail"` is the same tools as a vertical column (the Publishing workspace's tool panel, as
+// in a page-layout app): it takes its place in the layout instead of floating over the canvas, has no
+// Animation button (a publication has no timeline), and its tooltips and shape menu open to the right.
 export function ToolDock({
-  tools, toolId, onChoose, mode,
+  tools, toolId, onChoose, mode, variant = "dock",
 }: {
   tools: readonly { id: ToolId; label: string }[]; toolId: ToolId; onChoose: (id: ToolId) => void;
-  mode: EditorMode;
+  mode: EditorMode; variant?: "dock" | "rail";
 }) {
+  const rail = variant === "rail";
+  const sep = rail ? SEP_RAIL : SEP;
   const i18n = useT();
   const canUndo = useScene((s) => s.undoStack.length > 0);
   const canRedo = useScene((s) => s.redoStack.length > 0);
@@ -101,12 +109,12 @@ export function ToolDock({
 
   const renderTool = (t: { id: ToolId; label: string }, i: number) => (
     <span key={t.id} className="flex items-center">
-      {(t.id === "hand" || (t.id === "connect" && i > 0)) && i > 0 && SEP}
+      {(t.id === "hand" || (t.id === "connect" && i > 0)) && i > 0 && sep}
       <TooltipTrigger delay={300} closeDelay={0}>
         <ToggleButton id={t.id} aria-label={i18n.tx(t.label)} className={({ isSelected }) => TOOL_BTN(isSelected, t.id === "connect")}>
           <Icon name={ICON[t.id] ?? "select"} size={18} />
         </ToggleButton>
-        <Tooltip offset={10} className={TOOLTIP_CLS}>
+        <Tooltip offset={10} placement={rail ? "right" : "top"} className={TOOLTIP_CLS}>
           {i18n.tx(t.label)}
           {TOOL_KEYS[t.id] && <Kbd inverted>{TOOL_KEYS[t.id]}</Kbd>}
         </Tooltip>
@@ -121,16 +129,16 @@ export function ToolDock({
     if (SHAPE_IDS.includes(t.id)) {
       if (i === shapeIndex && shapeTool) {
         ordered.push(
-          <span key="shapes" className="flex items-center">
+          <span key="shapes" className={rail ? "relative flex items-center" : "flex items-center"}>
             {renderTool(shapeTool, n++)}
             <MenuTrigger>
               <RacButton
                 aria-label={i18n.t("More shapes")}
-                className="-ml-1 flex h-9 w-4 items-center justify-center rounded-md text-fg-subtle outline-none hover:bg-surface-3 hover:text-fg focus-visible:shadow-[var(--ring)]"
+                className={rail ? "absolute -right-0.5 bottom-0 flex h-3 w-3 items-center justify-center rounded-sm text-fg-subtle outline-none hover:bg-surface-3 hover:text-fg focus-visible:shadow-[var(--ring)]" : "-ml-1 flex h-9 w-4 items-center justify-center rounded-md text-fg-subtle outline-none hover:bg-surface-3 hover:text-fg focus-visible:shadow-[var(--ring)]"}
               >
                 <Icon name="chevronUp" size={10} />
               </RacButton>
-              <Popover placement="top" offset={10} className="z-50 min-w-[170px] rounded-lg bg-raised p-1 text-[12px] text-fg shadow-pop">
+              <Popover placement={rail ? "right top" : "top"} offset={10} className="z-50 min-w-[170px] rounded-lg bg-raised p-1 text-[12px] text-fg shadow-pop">
                 <Menu className="outline-none" onAction={(k) => choose(k as ToolId)}>
                   {shapes.map((s) => (
                     <MenuItem key={s.id} id={s.id} className="flex cursor-default items-center gap-2 rounded-md px-2 py-1.5 outline-none data-[focused]:bg-surface-3 data-[hovered]:bg-surface-3">
@@ -154,25 +162,33 @@ export function ToolDock({
     <div
       role="toolbar"
       aria-label={i18n.t("Tools")}
-      className="absolute bottom-4 left-1/2 z-20 flex max-w-[calc(100%-1.5rem)] -translate-x-1/2 items-center gap-0.5 overflow-x-auto rounded-lg border border-line-strong bg-raised p-1 shadow-bar"
+      aria-orientation={rail ? "vertical" : "horizontal"}
+      className={rail
+        ? "flex h-full w-12 shrink-0 flex-col items-center gap-0.5 overflow-y-auto border-r border-line bg-surface p-1.5"
+        : "absolute bottom-4 left-1/2 z-20 flex max-w-[calc(100%-1.5rem)] -translate-x-1/2 items-center gap-0.5 overflow-x-auto rounded-lg border border-line-strong bg-raised p-1 shadow-bar"}
     >
-      {mode === "design" && (
+      {!rail && mode === "design" && (
         <AnimIconButton icon="timeline" label={i18n.t("Animation")} shortcut="M" size={32} selected={timelineOpen} onPress={() => useTimeline.getState().toggleOpen()} />
       )}
-      {SEP}
-      <IconButton icon="undo" label={i18n.t("Undo")} shortcut="⌘Z" size={32} isDisabled={!canUndo} onPress={() => useScene.getState().undo()} />
-      <IconButton icon="redo" label={i18n.t("Redo")} shortcut="⇧⌘Z" size={32} isDisabled={!canRedo} onPress={() => useScene.getState().redo()} />
-      {SEP}
+      {!rail && SEP}
+      {/* In the rail the history sits at the bottom, under the tools. */}
+      <span className={rail ? "order-last mt-auto flex flex-col items-center gap-0.5" : "contents"}>
+        {rail && SEP_RAIL}
+        <IconButton icon="undo" label={i18n.t("Undo")} shortcut="⌘Z" size={32} isDisabled={!canUndo} onPress={() => useScene.getState().undo()} />
+        <IconButton icon="redo" label={i18n.t("Redo")} shortcut="⇧⌘Z" size={32} isDisabled={!canRedo} onPress={() => useScene.getState().redo()} />
+      </span>
+      {!rail && SEP}
       <ToggleButtonGroup
         selectionMode="single"
         disallowEmptySelection
         selectedKeys={[SHAPE_IDS.includes(toolId) ? activeShape : toolId]}
-        className="flex items-center gap-0.5"
+        className={rail ? "flex flex-col items-center gap-0.5" : "flex items-center gap-0.5"}
+        orientation={rail ? "vertical" : "horizontal"}
         onSelectionChange={(keys) => choose((keys.values().next().value as ToolId | undefined) ?? "select")}
       >
         {ordered}
       </ToggleButtonGroup>
-      {SEP}
+      {!rail && SEP}
       {mode === "flows" && (
         <Button variant="flow" icon="play" aria-label={i18n.t("Present")} className="mr-0.5 h-9" onPress={() => useFlowUi.getState().setPresenting(true)}>
           {i18n.t("Present")}
