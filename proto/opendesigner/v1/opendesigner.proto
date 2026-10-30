@@ -1558,6 +1558,43 @@ message DeleteDocumentResponse {}
 message ListDocumentsRequest {}
 message ListDocumentsResponse { repeated DocInfo docs = 1; }
 
+// ---------- books ----------
+// A BOOK groups several documents (the chapters, in reading order) so that they share styles and one page
+// count. It is an entity of the workspace, not a part of any document: it lives next to the documents and
+// only names them. Syncing a book (SyncBook) copies the text, paint, effect and object styles of the
+// style source into every other chapter and numbers the chapters one after the other (the first page of each
+// starts at the number after the last page of the one before). Documents stay editable on their own.
+message Book {
+  string id = 1;
+  string name = 2;
+  repeated string doc_ids = 3;     // the chapters, in order; each at most once
+  string style_source_id = 4;      // the chapter whose styles are the book's; empty = the first
+  uint32 start_number = 5;         // number of the first page of the first chapter; 0 = 1
+  int64 updated_at = 6;            // unix seconds, set by the server
+}
+// One chapter as the book sees it. first_page_number is where its numbering starts (the book's start plus the
+// pages of the chapters before); pages counts the pages that are not masters. missing: the document is gone.
+message BookChapter {
+  string doc_id = 1;
+  string name = 2;
+  uint32 pages = 3;
+  uint32 first_page_number = 4;
+  bool missing = 5;
+  bool numbered = 6;               // the document's first page already starts at first_page_number
+  uint32 styles_behind = 7;        // styles of the source that this chapter lacks or has different
+}
+message ListBooksRequest {}
+message ListBooksResponse { repeated Book books = 1; }
+message GetBookRequest { string book_id = 1; }
+message GetBookResponse { Book book = 1; repeated BookChapter chapters = 2; }
+// Creates the book when book.id is empty, otherwise replaces the book with that id.
+message SaveBookRequest { Book book = 1; }
+message DeleteBookRequest { string book_id = 1; }
+message DeleteBookResponse {}
+// styles / numbering: what to bring into line (both false = both). All or nothing.
+message SyncBookRequest { string book_id = 1; bool styles = 2; bool numbering = 3; }
+message SyncBookResponse { repeated BookChapter chapters = 1; uint32 styles_applied = 2; uint32 numbering_applied = 3; }
+
 // The live channel is split into two RPCs instead of a bidirectional stream:
 // browsers' `fetch` does not support streaming request bodies, so a bidi is not
 // reachable from the editor. A unary upstream + a server-stream downstream give
@@ -1905,4 +1942,10 @@ service DocumentService {
   // Draws a diagram (flowchart, UML classes, UML sequence, UML states) from
   // Mermaid text. Pure and stateless: see RenderDiagramRequest.
   rpc RenderDiagram(RenderDiagramRequest) returns (RenderDiagramResponse);
+  // Books: several documents with shared styles and continuous page numbering (docs/book.md).
+  rpc ListBooks(ListBooksRequest) returns (ListBooksResponse);
+  rpc GetBook(GetBookRequest) returns (GetBookResponse);
+  rpc SaveBook(SaveBookRequest) returns (Book);
+  rpc DeleteBook(DeleteBookRequest) returns (DeleteBookResponse);
+  rpc SyncBook(SyncBookRequest) returns (SyncBookResponse);
 }

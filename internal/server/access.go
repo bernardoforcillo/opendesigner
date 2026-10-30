@@ -229,6 +229,9 @@ func requiredRole(name string, msg any) (docID string, need role, ok bool) {
 // authorize checks one request. It returns the error to send, or nil.
 func (m *Manager) authorize(procedure string, msg any, c caller) error {
 	name := procedure[strings.LastIndex(procedure, "/")+1:]
+	if handled, err := m.authorizeBook(name, msg, c); handled {
+		return err
+	}
 	docID, need, ok := requiredRole(name, msg)
 	if !ok || docID == "" {
 		return nil

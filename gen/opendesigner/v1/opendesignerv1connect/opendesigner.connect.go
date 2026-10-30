@@ -125,6 +125,20 @@ const (
 	// DocumentServiceRenderDiagramProcedure is the fully-qualified name of the DocumentService's
 	// RenderDiagram RPC.
 	DocumentServiceRenderDiagramProcedure = "/opendesigner.v1.DocumentService/RenderDiagram"
+	// DocumentServiceListBooksProcedure is the fully-qualified name of the DocumentService's ListBooks
+	// RPC.
+	DocumentServiceListBooksProcedure = "/opendesigner.v1.DocumentService/ListBooks"
+	// DocumentServiceGetBookProcedure is the fully-qualified name of the DocumentService's GetBook RPC.
+	DocumentServiceGetBookProcedure = "/opendesigner.v1.DocumentService/GetBook"
+	// DocumentServiceSaveBookProcedure is the fully-qualified name of the DocumentService's SaveBook
+	// RPC.
+	DocumentServiceSaveBookProcedure = "/opendesigner.v1.DocumentService/SaveBook"
+	// DocumentServiceDeleteBookProcedure is the fully-qualified name of the DocumentService's
+	// DeleteBook RPC.
+	DocumentServiceDeleteBookProcedure = "/opendesigner.v1.DocumentService/DeleteBook"
+	// DocumentServiceSyncBookProcedure is the fully-qualified name of the DocumentService's SyncBook
+	// RPC.
+	DocumentServiceSyncBookProcedure = "/opendesigner.v1.DocumentService/SyncBook"
 )
 
 // DocumentServiceClient is a client for the opendesigner.v1.DocumentService service.
@@ -183,6 +197,12 @@ type DocumentServiceClient interface {
 	// Draws a diagram (flowchart, UML classes, UML sequence, UML states) from
 	// Mermaid text. Pure and stateless: see RenderDiagramRequest.
 	RenderDiagram(context.Context, *connect.Request[v1.RenderDiagramRequest]) (*connect.Response[v1.RenderDiagramResponse], error)
+	// Books: several documents with shared styles and continuous page numbering (docs/book.md).
+	ListBooks(context.Context, *connect.Request[v1.ListBooksRequest]) (*connect.Response[v1.ListBooksResponse], error)
+	GetBook(context.Context, *connect.Request[v1.GetBookRequest]) (*connect.Response[v1.GetBookResponse], error)
+	SaveBook(context.Context, *connect.Request[v1.SaveBookRequest]) (*connect.Response[v1.Book], error)
+	DeleteBook(context.Context, *connect.Request[v1.DeleteBookRequest]) (*connect.Response[v1.DeleteBookResponse], error)
+	SyncBook(context.Context, *connect.Request[v1.SyncBookRequest]) (*connect.Response[v1.SyncBookResponse], error)
 }
 
 // NewDocumentServiceClient constructs a client for the opendesigner.v1.DocumentService service. By
@@ -382,6 +402,36 @@ func NewDocumentServiceClient(httpClient connect.HTTPClient, baseURL string, opt
 			connect.WithSchema(documentServiceMethods.ByName("RenderDiagram")),
 			connect.WithClientOptions(opts...),
 		),
+		listBooks: connect.NewClient[v1.ListBooksRequest, v1.ListBooksResponse](
+			httpClient,
+			baseURL+DocumentServiceListBooksProcedure,
+			connect.WithSchema(documentServiceMethods.ByName("ListBooks")),
+			connect.WithClientOptions(opts...),
+		),
+		getBook: connect.NewClient[v1.GetBookRequest, v1.GetBookResponse](
+			httpClient,
+			baseURL+DocumentServiceGetBookProcedure,
+			connect.WithSchema(documentServiceMethods.ByName("GetBook")),
+			connect.WithClientOptions(opts...),
+		),
+		saveBook: connect.NewClient[v1.SaveBookRequest, v1.Book](
+			httpClient,
+			baseURL+DocumentServiceSaveBookProcedure,
+			connect.WithSchema(documentServiceMethods.ByName("SaveBook")),
+			connect.WithClientOptions(opts...),
+		),
+		deleteBook: connect.NewClient[v1.DeleteBookRequest, v1.DeleteBookResponse](
+			httpClient,
+			baseURL+DocumentServiceDeleteBookProcedure,
+			connect.WithSchema(documentServiceMethods.ByName("DeleteBook")),
+			connect.WithClientOptions(opts...),
+		),
+		syncBook: connect.NewClient[v1.SyncBookRequest, v1.SyncBookResponse](
+			httpClient,
+			baseURL+DocumentServiceSyncBookProcedure,
+			connect.WithSchema(documentServiceMethods.ByName("SyncBook")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
@@ -418,6 +468,11 @@ type documentServiceClient struct {
 	analyzeFlows    *connect.Client[v1.AnalyzeFlowsRequest, v1.AnalyzeFlowsResponse]
 	exportCode      *connect.Client[v1.ExportCodeRequest, v1.ExportCodeResponse]
 	renderDiagram   *connect.Client[v1.RenderDiagramRequest, v1.RenderDiagramResponse]
+	listBooks       *connect.Client[v1.ListBooksRequest, v1.ListBooksResponse]
+	getBook         *connect.Client[v1.GetBookRequest, v1.GetBookResponse]
+	saveBook        *connect.Client[v1.SaveBookRequest, v1.Book]
+	deleteBook      *connect.Client[v1.DeleteBookRequest, v1.DeleteBookResponse]
+	syncBook        *connect.Client[v1.SyncBookRequest, v1.SyncBookResponse]
 }
 
 // RenderBoard calls opendesigner.v1.DocumentService.RenderBoard.
@@ -575,6 +630,31 @@ func (c *documentServiceClient) RenderDiagram(ctx context.Context, req *connect.
 	return c.renderDiagram.CallUnary(ctx, req)
 }
 
+// ListBooks calls opendesigner.v1.DocumentService.ListBooks.
+func (c *documentServiceClient) ListBooks(ctx context.Context, req *connect.Request[v1.ListBooksRequest]) (*connect.Response[v1.ListBooksResponse], error) {
+	return c.listBooks.CallUnary(ctx, req)
+}
+
+// GetBook calls opendesigner.v1.DocumentService.GetBook.
+func (c *documentServiceClient) GetBook(ctx context.Context, req *connect.Request[v1.GetBookRequest]) (*connect.Response[v1.GetBookResponse], error) {
+	return c.getBook.CallUnary(ctx, req)
+}
+
+// SaveBook calls opendesigner.v1.DocumentService.SaveBook.
+func (c *documentServiceClient) SaveBook(ctx context.Context, req *connect.Request[v1.SaveBookRequest]) (*connect.Response[v1.Book], error) {
+	return c.saveBook.CallUnary(ctx, req)
+}
+
+// DeleteBook calls opendesigner.v1.DocumentService.DeleteBook.
+func (c *documentServiceClient) DeleteBook(ctx context.Context, req *connect.Request[v1.DeleteBookRequest]) (*connect.Response[v1.DeleteBookResponse], error) {
+	return c.deleteBook.CallUnary(ctx, req)
+}
+
+// SyncBook calls opendesigner.v1.DocumentService.SyncBook.
+func (c *documentServiceClient) SyncBook(ctx context.Context, req *connect.Request[v1.SyncBookRequest]) (*connect.Response[v1.SyncBookResponse], error) {
+	return c.syncBook.CallUnary(ctx, req)
+}
+
 // DocumentServiceHandler is an implementation of the opendesigner.v1.DocumentService service.
 type DocumentServiceHandler interface {
 	RenderBoard(context.Context, *connect.Request[v1.RenderBoardRequest]) (*connect.Response[v1.RenderBoardResponse], error)
@@ -631,6 +711,12 @@ type DocumentServiceHandler interface {
 	// Draws a diagram (flowchart, UML classes, UML sequence, UML states) from
 	// Mermaid text. Pure and stateless: see RenderDiagramRequest.
 	RenderDiagram(context.Context, *connect.Request[v1.RenderDiagramRequest]) (*connect.Response[v1.RenderDiagramResponse], error)
+	// Books: several documents with shared styles and continuous page numbering (docs/book.md).
+	ListBooks(context.Context, *connect.Request[v1.ListBooksRequest]) (*connect.Response[v1.ListBooksResponse], error)
+	GetBook(context.Context, *connect.Request[v1.GetBookRequest]) (*connect.Response[v1.GetBookResponse], error)
+	SaveBook(context.Context, *connect.Request[v1.SaveBookRequest]) (*connect.Response[v1.Book], error)
+	DeleteBook(context.Context, *connect.Request[v1.DeleteBookRequest]) (*connect.Response[v1.DeleteBookResponse], error)
+	SyncBook(context.Context, *connect.Request[v1.SyncBookRequest]) (*connect.Response[v1.SyncBookResponse], error)
 }
 
 // NewDocumentServiceHandler builds an HTTP handler from the service implementation. It returns the
@@ -826,6 +912,36 @@ func NewDocumentServiceHandler(svc DocumentServiceHandler, opts ...connect.Handl
 		connect.WithSchema(documentServiceMethods.ByName("RenderDiagram")),
 		connect.WithHandlerOptions(opts...),
 	)
+	documentServiceListBooksHandler := connect.NewUnaryHandler(
+		DocumentServiceListBooksProcedure,
+		svc.ListBooks,
+		connect.WithSchema(documentServiceMethods.ByName("ListBooks")),
+		connect.WithHandlerOptions(opts...),
+	)
+	documentServiceGetBookHandler := connect.NewUnaryHandler(
+		DocumentServiceGetBookProcedure,
+		svc.GetBook,
+		connect.WithSchema(documentServiceMethods.ByName("GetBook")),
+		connect.WithHandlerOptions(opts...),
+	)
+	documentServiceSaveBookHandler := connect.NewUnaryHandler(
+		DocumentServiceSaveBookProcedure,
+		svc.SaveBook,
+		connect.WithSchema(documentServiceMethods.ByName("SaveBook")),
+		connect.WithHandlerOptions(opts...),
+	)
+	documentServiceDeleteBookHandler := connect.NewUnaryHandler(
+		DocumentServiceDeleteBookProcedure,
+		svc.DeleteBook,
+		connect.WithSchema(documentServiceMethods.ByName("DeleteBook")),
+		connect.WithHandlerOptions(opts...),
+	)
+	documentServiceSyncBookHandler := connect.NewUnaryHandler(
+		DocumentServiceSyncBookProcedure,
+		svc.SyncBook,
+		connect.WithSchema(documentServiceMethods.ByName("SyncBook")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/opendesigner.v1.DocumentService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case DocumentServiceRenderBoardProcedure:
@@ -890,6 +1006,16 @@ func NewDocumentServiceHandler(svc DocumentServiceHandler, opts ...connect.Handl
 			documentServiceExportCodeHandler.ServeHTTP(w, r)
 		case DocumentServiceRenderDiagramProcedure:
 			documentServiceRenderDiagramHandler.ServeHTTP(w, r)
+		case DocumentServiceListBooksProcedure:
+			documentServiceListBooksHandler.ServeHTTP(w, r)
+		case DocumentServiceGetBookProcedure:
+			documentServiceGetBookHandler.ServeHTTP(w, r)
+		case DocumentServiceSaveBookProcedure:
+			documentServiceSaveBookHandler.ServeHTTP(w, r)
+		case DocumentServiceDeleteBookProcedure:
+			documentServiceDeleteBookHandler.ServeHTTP(w, r)
+		case DocumentServiceSyncBookProcedure:
+			documentServiceSyncBookHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -1021,4 +1147,24 @@ func (UnimplementedDocumentServiceHandler) ExportCode(context.Context, *connect.
 
 func (UnimplementedDocumentServiceHandler) RenderDiagram(context.Context, *connect.Request[v1.RenderDiagramRequest]) (*connect.Response[v1.RenderDiagramResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("opendesigner.v1.DocumentService.RenderDiagram is not implemented"))
+}
+
+func (UnimplementedDocumentServiceHandler) ListBooks(context.Context, *connect.Request[v1.ListBooksRequest]) (*connect.Response[v1.ListBooksResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("opendesigner.v1.DocumentService.ListBooks is not implemented"))
+}
+
+func (UnimplementedDocumentServiceHandler) GetBook(context.Context, *connect.Request[v1.GetBookRequest]) (*connect.Response[v1.GetBookResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("opendesigner.v1.DocumentService.GetBook is not implemented"))
+}
+
+func (UnimplementedDocumentServiceHandler) SaveBook(context.Context, *connect.Request[v1.SaveBookRequest]) (*connect.Response[v1.Book], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("opendesigner.v1.DocumentService.SaveBook is not implemented"))
+}
+
+func (UnimplementedDocumentServiceHandler) DeleteBook(context.Context, *connect.Request[v1.DeleteBookRequest]) (*connect.Response[v1.DeleteBookResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("opendesigner.v1.DocumentService.DeleteBook is not implemented"))
+}
+
+func (UnimplementedDocumentServiceHandler) SyncBook(context.Context, *connect.Request[v1.SyncBookRequest]) (*connect.Response[v1.SyncBookResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("opendesigner.v1.DocumentService.SyncBook is not implemented"))
 }
