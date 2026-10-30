@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useT } from "@/i18n";
 import { Dialog, Modal, ModalOverlay } from "react-aria-components";
 import { DiagramError, insertDiagram, renderDiagram, selectedDiagram } from "@/diagram/insert";
 import { viewportCenter } from "@/tools/svgImport";
@@ -76,6 +77,7 @@ const EXAMPLES: { label: string; source: string }[] = [
 ];
 
 export function DiagramDialog({ isOpen, onOpenChange }: { isOpen: boolean; onOpenChange: (open: boolean) => void }) {
+  const { t, tx } = useT();
   const [source, setSource] = useState("");
   const [editId, setEditId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -96,12 +98,12 @@ export function DiagramDialog({ isOpen, onOpenChange }: { isOpen: boolean; onOpe
       const res = await renderDiagram(source);
       const id = insertDiagram(res, viewportCenter(), editId ?? undefined);
       if (id === null) {
-        setError("cannot insert the diagram (no document is open, or another edit is in progress)");
+        setError(t("cannot insert the diagram (no document is open, or another edit is in progress)"));
         return;
       }
       onOpenChange(false);
     } catch (err) {
-      setError(err instanceof DiagramError ? err.message : "the diagram is not readable");
+      setError(err instanceof DiagramError ? err.message : t("the diagram is not readable"));
     } finally {
       setBusy(false);
     }
@@ -110,20 +112,20 @@ export function DiagramDialog({ isOpen, onOpenChange }: { isOpen: boolean; onOpe
   return (
     <ModalOverlay isDismissable isOpen={isOpen} onOpenChange={onOpenChange} className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
       <Modal className="w-full max-w-[560px] rounded-xl bg-raised p-4 text-[13px] text-fg shadow-pop">
-        <Dialog aria-label={editId ? "Edit diagram" : "Create diagram"} className="flex flex-col gap-3 outline-none">
-          <h2 className="text-[14px] font-semibold">{editId ? "Edit diagram" : "Create diagram"}</h2>
+        <Dialog aria-label={editId ? t("Edit diagram") : t("Create diagram")} className="flex flex-col gap-3 outline-none">
+          <h2 className="text-[14px] font-semibold">{editId ? t("Edit diagram") : t("Create diagram")}</h2>
           <p className="text-fg-subtle">
-            Write or paste Mermaid text: flowcharts and UML class, sequence and state diagrams become layers of the document.
+            {t("Write or paste Mermaid text: flowcharts and UML class, sequence and state diagrams become layers of the document.")}
           </p>
-          <div className="flex flex-wrap gap-1.5" role="group" aria-label="Examples">
+          <div className="flex flex-wrap gap-1.5" role="group" aria-label={t("Examples")}>
             {EXAMPLES.map((ex) => (
               <button key={ex.label} type="button" className="h-7 rounded-md border border-line px-2.5 hover:bg-surface-3" onClick={() => { setSource(ex.source); setError(null); }}>
-                {ex.label}
+                {tx(ex.label)}
               </button>
             ))}
           </div>
           <textarea
-            aria-label="Mermaid code"
+            aria-label={t("Mermaid code")}
             value={source}
             onChange={(e) => { setSource(e.target.value); setError(null); }}
             onKeyDown={(e) => e.stopPropagation()}
@@ -134,9 +136,9 @@ export function DiagramDialog({ isOpen, onOpenChange }: { isOpen: boolean; onOpe
           />
           {error && <p role="alert" className="text-danger">{error}</p>}
           <div className="flex justify-end gap-2">
-            <button type="button" className="h-8 rounded-md px-3 hover:bg-surface-3" onClick={() => onOpenChange(false)}>Cancel</button>
+            <button type="button" className="h-8 rounded-md px-3 hover:bg-surface-3" onClick={() => onOpenChange(false)}>{t("Cancel")}</button>
             <button type="button" disabled={busy || source.trim() === ""} className="h-8 rounded-md bg-accent px-3 text-accent-fg disabled:opacity-50" onClick={() => void create()}>
-              {editId ? "Update" : "Create"}
+              {editId ? t("Update") : t("Create")}
             </button>
           </div>
         </Dialog>
