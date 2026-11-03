@@ -22,10 +22,11 @@ type DocView struct {
 	Screens   uint32 `json:"screens"`
 	Flows     uint32 `json:"flows"`
 	Vertical  string `json:"vertical,omitempty" jsonschema:"publishing | design | product"`
+	Library   bool   `json:"library,omitempty" jsonschema:"published as a shared library: get_library lists it, import_from_library copies from it"`
 }
 
 func docView(d *opendesignerv1.DocInfo) DocView {
-	return DocView{Id: d.GetId(), Name: d.GetName(), UpdatedAt: d.GetUpdatedAt(), Screens: d.GetScreens(), Flows: d.GetFlows(), Vertical: verticalName(d.GetVertical())}
+	return DocView{Id: d.GetId(), Name: d.GetName(), UpdatedAt: d.GetUpdatedAt(), Screens: d.GetScreens(), Flows: d.GetFlows(), Vertical: verticalName(d.GetVertical()), Library: d.GetLibrary()}
 }
 
 type ListDocumentsOutput struct {
@@ -257,7 +258,7 @@ func (s *Session) GetAccess(ctx context.Context, _ struct{}) (GetAccessOutput, e
 }
 
 func registerDocumentTools(srv *mcp.Server, s *Session) {
-	addTool(srv, "list_documents", "List the documents of the workspace (id, name, screens, flows, vertical).", s.ListDocuments)
+	addTool(srv, "list_documents", "List the documents of the workspace (id, name, screens, flows, vertical, library).", s.ListDocuments)
 	addTool(srv, "create_document", "Create a new empty document (vertical publishing | design | product). This session keeps working on its own document; start another session to edit the new one.", s.CreateDocument)
 	addTool(srv, "rename_document", "Rename a document (default: this session's).", s.RenameDocument)
 	addTool(srv, "delete_document", "Delete a document PERMANENTLY, with its versions and assets. Needs the docId (never defaulted) and confirm: true.", s.DeleteDocument)

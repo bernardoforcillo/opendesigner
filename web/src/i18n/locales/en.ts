@@ -43,6 +43,8 @@ const PLAIN = [
   "Delete version {name}",
   "Branch the current state",
   "Done",
+  // Libraries dialog
+  "Libraries…", "Libraries", "Publish this document as a library so other documents can import its components, styles and variables.", "Publish as a library", "Import from a library", "Library", "No other document is published as a library yet.", "Components", "Text styles", "Paint styles", "Effect styles", "Variable collections", "Import selected",
   // Prototype player
   "Prototype",
   "Close the prototype",
@@ -546,6 +548,8 @@ const PLAIN = [
 ] as const;
 
 const PLURALS = {
+  "Imported {n} items.": { one: "Imported {n} item.", other: "Imported {n} items." },
+  "{n} components were already in the document and were left as they are.": { one: "{n} component was already in the document and was left as it is.", other: "{n} components were already in the document and were left as they are." },
   "{n} documents": { one: "{n} document", other: "{n} documents" },
   "{n} screens": { one: "{n} screen", other: "{n} screens" },
   "{n} flows": { one: "{n} flow", other: "{n} flows" },

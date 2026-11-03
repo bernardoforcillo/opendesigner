@@ -175,7 +175,7 @@ func (m *Manager) List() ([]*opendesignerv1.DocInfo, error) {
 // An unreadable bundle stays in the list with zero counts: it must not
 // hide the others.
 func (m *Manager) info(meta store.Meta) *opendesignerv1.DocInfo {
-	di := &opendesignerv1.DocInfo{Id: meta.ID, Name: meta.Name}
+	di := &opendesignerv1.DocInfo{Id: meta.ID, Name: meta.Name, Library: meta.Library}
 	t := store.ModTime(m.workspace, meta.ID)
 	if meta.UpdatedAt.After(t) {
 		t = meta.UpdatedAt
@@ -219,7 +219,7 @@ func (m *Manager) Rename(docID, name string) (*opendesignerv1.DocInfo, error) {
 	if err := h.SetName(name); err != nil {
 		return nil, err
 	}
-	return m.info(store.Meta{ID: docID, Name: name}), nil
+	return m.info(m.metaOf(docID, name)), nil
 }
 
 // Delete deletes a document by moving its bundle to the workspace's trash.

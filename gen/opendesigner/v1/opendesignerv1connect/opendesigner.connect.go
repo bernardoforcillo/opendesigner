@@ -87,6 +87,15 @@ const (
 	// DocumentServiceCreateDocumentProcedure is the fully-qualified name of the DocumentService's
 	// CreateDocument RPC.
 	DocumentServiceCreateDocumentProcedure = "/opendesigner.v1.DocumentService/CreateDocument"
+	// DocumentServiceSetLibraryProcedure is the fully-qualified name of the DocumentService's
+	// SetLibrary RPC.
+	DocumentServiceSetLibraryProcedure = "/opendesigner.v1.DocumentService/SetLibrary"
+	// DocumentServiceGetLibraryProcedure is the fully-qualified name of the DocumentService's
+	// GetLibrary RPC.
+	DocumentServiceGetLibraryProcedure = "/opendesigner.v1.DocumentService/GetLibrary"
+	// DocumentServiceImportFromLibraryProcedure is the fully-qualified name of the DocumentService's
+	// ImportFromLibrary RPC.
+	DocumentServiceImportFromLibraryProcedure = "/opendesigner.v1.DocumentService/ImportFromLibrary"
 	// DocumentServiceRenameDocumentProcedure is the fully-qualified name of the DocumentService's
 	// RenameDocument RPC.
 	DocumentServiceRenameDocumentProcedure = "/opendesigner.v1.DocumentService/RenameDocument"
@@ -154,6 +163,10 @@ type DocumentServiceClient interface {
 	MergeBranch(context.Context, *connect.Request[v1.MergeBranchRequest]) (*connect.Response[v1.MergeBranchResponse], error)
 	ListDocuments(context.Context, *connect.Request[v1.ListDocumentsRequest]) (*connect.Response[v1.ListDocumentsResponse], error)
 	CreateDocument(context.Context, *connect.Request[v1.CreateDocumentRequest]) (*connect.Response[v1.DocInfo], error)
+	// Shared libraries: publish a document as a library, read what it offers, import items into another document.
+	SetLibrary(context.Context, *connect.Request[v1.SetLibraryRequest]) (*connect.Response[v1.DocInfo], error)
+	GetLibrary(context.Context, *connect.Request[v1.GetLibraryRequest]) (*connect.Response[v1.GetLibraryResponse], error)
+	ImportFromLibrary(context.Context, *connect.Request[v1.ImportFromLibraryRequest]) (*connect.Response[v1.ImportFromLibraryResponse], error)
 	// Renames a document (meta.json + the hub's in-memory name).
 	RenameDocument(context.Context, *connect.Request[v1.RenameDocumentRequest]) (*connect.Response[v1.DocInfo], error)
 	// Deletes a document by MOVING the bundle to <workspace>/.trash (never rm -rf).
@@ -304,6 +317,24 @@ func NewDocumentServiceClient(httpClient connect.HTTPClient, baseURL string, opt
 			connect.WithSchema(documentServiceMethods.ByName("CreateDocument")),
 			connect.WithClientOptions(opts...),
 		),
+		setLibrary: connect.NewClient[v1.SetLibraryRequest, v1.DocInfo](
+			httpClient,
+			baseURL+DocumentServiceSetLibraryProcedure,
+			connect.WithSchema(documentServiceMethods.ByName("SetLibrary")),
+			connect.WithClientOptions(opts...),
+		),
+		getLibrary: connect.NewClient[v1.GetLibraryRequest, v1.GetLibraryResponse](
+			httpClient,
+			baseURL+DocumentServiceGetLibraryProcedure,
+			connect.WithSchema(documentServiceMethods.ByName("GetLibrary")),
+			connect.WithClientOptions(opts...),
+		),
+		importFromLibrary: connect.NewClient[v1.ImportFromLibraryRequest, v1.ImportFromLibraryResponse](
+			httpClient,
+			baseURL+DocumentServiceImportFromLibraryProcedure,
+			connect.WithSchema(documentServiceMethods.ByName("ImportFromLibrary")),
+			connect.WithClientOptions(opts...),
+		),
 		renameDocument: connect.NewClient[v1.RenameDocumentRequest, v1.DocInfo](
 			httpClient,
 			baseURL+DocumentServiceRenameDocumentProcedure,
@@ -387,37 +418,40 @@ func NewDocumentServiceClient(httpClient connect.HTTPClient, baseURL string, opt
 
 // documentServiceClient implements DocumentServiceClient.
 type documentServiceClient struct {
-	renderBoard     *connect.Client[v1.RenderBoardRequest, v1.RenderBoardResponse]
-	reviewDesign    *connect.Client[v1.ReviewDesignRequest, v1.ReviewDesignResponse]
-	compareReady    *connect.Client[v1.CompareReadyRequest, v1.CompareReadyResponse]
-	createVersion   *connect.Client[v1.CreateVersionRequest, v1.VersionInfo]
-	listVersions    *connect.Client[v1.ListVersionsRequest, v1.ListVersionsResponse]
-	deleteVersion   *connect.Client[v1.DeleteVersionRequest, v1.DeleteVersionResponse]
-	branchDocument  *connect.Client[v1.BranchRequest, v1.DocInfo]
-	getAccess       *connect.Client[v1.GetAccessRequest, v1.GetAccessResponse]
-	enableAccess    *connect.Client[v1.EnableAccessRequest, v1.EnableAccessResponse]
-	disableAccess   *connect.Client[v1.DisableAccessRequest, v1.DisableAccessResponse]
-	createShareLink *connect.Client[v1.CreateShareLinkRequest, v1.CreateShareLinkResponse]
-	revokeShareLink *connect.Client[v1.RevokeShareLinkRequest, v1.RevokeShareLinkResponse]
-	importFig       *connect.Client[v1.ImportFigRequest, v1.ImportFigResponse]
-	getBranchOrigin *connect.Client[v1.GetBranchOriginRequest, v1.GetBranchOriginResponse]
-	reviewMerge     *connect.Client[v1.ReviewMergeRequest, v1.ReviewMergeResponse]
-	mergeBranch     *connect.Client[v1.MergeBranchRequest, v1.MergeBranchResponse]
-	listDocuments   *connect.Client[v1.ListDocumentsRequest, v1.ListDocumentsResponse]
-	createDocument  *connect.Client[v1.CreateDocumentRequest, v1.DocInfo]
-	renameDocument  *connect.Client[v1.RenameDocumentRequest, v1.DocInfo]
-	deleteDocument  *connect.Client[v1.DeleteDocumentRequest, v1.DeleteDocumentResponse]
-	openDocument    *connect.Client[v1.OpenRequest, v1.OpenResponse]
-	submitOp        *connect.Client[v1.SubmitOpRequest, v1.SubmitOpResponse]
-	subscribe       *connect.Client[v1.SubscribeRequest, v1.ServerMsg]
-	watchPresence   *connect.Client[v1.WatchPresenceRequest, v1.PresenceEvent]
-	updatePresence  *connect.Client[v1.UpdatePresenceRequest, v1.UpdatePresenceResponse]
-	watchJobs       *connect.Client[v1.WatchJobsRequest, v1.EditorJob]
-	runJob          *connect.Client[v1.RunJobRequest, v1.RunJobResponse]
-	completeJob     *connect.Client[v1.CompleteJobRequest, v1.CompleteJobResponse]
-	analyzeFlows    *connect.Client[v1.AnalyzeFlowsRequest, v1.AnalyzeFlowsResponse]
-	exportCode      *connect.Client[v1.ExportCodeRequest, v1.ExportCodeResponse]
-	renderDiagram   *connect.Client[v1.RenderDiagramRequest, v1.RenderDiagramResponse]
+	renderBoard       *connect.Client[v1.RenderBoardRequest, v1.RenderBoardResponse]
+	reviewDesign      *connect.Client[v1.ReviewDesignRequest, v1.ReviewDesignResponse]
+	compareReady      *connect.Client[v1.CompareReadyRequest, v1.CompareReadyResponse]
+	createVersion     *connect.Client[v1.CreateVersionRequest, v1.VersionInfo]
+	listVersions      *connect.Client[v1.ListVersionsRequest, v1.ListVersionsResponse]
+	deleteVersion     *connect.Client[v1.DeleteVersionRequest, v1.DeleteVersionResponse]
+	branchDocument    *connect.Client[v1.BranchRequest, v1.DocInfo]
+	getAccess         *connect.Client[v1.GetAccessRequest, v1.GetAccessResponse]
+	enableAccess      *connect.Client[v1.EnableAccessRequest, v1.EnableAccessResponse]
+	disableAccess     *connect.Client[v1.DisableAccessRequest, v1.DisableAccessResponse]
+	createShareLink   *connect.Client[v1.CreateShareLinkRequest, v1.CreateShareLinkResponse]
+	revokeShareLink   *connect.Client[v1.RevokeShareLinkRequest, v1.RevokeShareLinkResponse]
+	importFig         *connect.Client[v1.ImportFigRequest, v1.ImportFigResponse]
+	getBranchOrigin   *connect.Client[v1.GetBranchOriginRequest, v1.GetBranchOriginResponse]
+	reviewMerge       *connect.Client[v1.ReviewMergeRequest, v1.ReviewMergeResponse]
+	mergeBranch       *connect.Client[v1.MergeBranchRequest, v1.MergeBranchResponse]
+	listDocuments     *connect.Client[v1.ListDocumentsRequest, v1.ListDocumentsResponse]
+	createDocument    *connect.Client[v1.CreateDocumentRequest, v1.DocInfo]
+	setLibrary        *connect.Client[v1.SetLibraryRequest, v1.DocInfo]
+	getLibrary        *connect.Client[v1.GetLibraryRequest, v1.GetLibraryResponse]
+	importFromLibrary *connect.Client[v1.ImportFromLibraryRequest, v1.ImportFromLibraryResponse]
+	renameDocument    *connect.Client[v1.RenameDocumentRequest, v1.DocInfo]
+	deleteDocument    *connect.Client[v1.DeleteDocumentRequest, v1.DeleteDocumentResponse]
+	openDocument      *connect.Client[v1.OpenRequest, v1.OpenResponse]
+	submitOp          *connect.Client[v1.SubmitOpRequest, v1.SubmitOpResponse]
+	subscribe         *connect.Client[v1.SubscribeRequest, v1.ServerMsg]
+	watchPresence     *connect.Client[v1.WatchPresenceRequest, v1.PresenceEvent]
+	updatePresence    *connect.Client[v1.UpdatePresenceRequest, v1.UpdatePresenceResponse]
+	watchJobs         *connect.Client[v1.WatchJobsRequest, v1.EditorJob]
+	runJob            *connect.Client[v1.RunJobRequest, v1.RunJobResponse]
+	completeJob       *connect.Client[v1.CompleteJobRequest, v1.CompleteJobResponse]
+	analyzeFlows      *connect.Client[v1.AnalyzeFlowsRequest, v1.AnalyzeFlowsResponse]
+	exportCode        *connect.Client[v1.ExportCodeRequest, v1.ExportCodeResponse]
+	renderDiagram     *connect.Client[v1.RenderDiagramRequest, v1.RenderDiagramResponse]
 }
 
 // RenderBoard calls opendesigner.v1.DocumentService.RenderBoard.
@@ -508,6 +542,21 @@ func (c *documentServiceClient) ListDocuments(ctx context.Context, req *connect.
 // CreateDocument calls opendesigner.v1.DocumentService.CreateDocument.
 func (c *documentServiceClient) CreateDocument(ctx context.Context, req *connect.Request[v1.CreateDocumentRequest]) (*connect.Response[v1.DocInfo], error) {
 	return c.createDocument.CallUnary(ctx, req)
+}
+
+// SetLibrary calls opendesigner.v1.DocumentService.SetLibrary.
+func (c *documentServiceClient) SetLibrary(ctx context.Context, req *connect.Request[v1.SetLibraryRequest]) (*connect.Response[v1.DocInfo], error) {
+	return c.setLibrary.CallUnary(ctx, req)
+}
+
+// GetLibrary calls opendesigner.v1.DocumentService.GetLibrary.
+func (c *documentServiceClient) GetLibrary(ctx context.Context, req *connect.Request[v1.GetLibraryRequest]) (*connect.Response[v1.GetLibraryResponse], error) {
+	return c.getLibrary.CallUnary(ctx, req)
+}
+
+// ImportFromLibrary calls opendesigner.v1.DocumentService.ImportFromLibrary.
+func (c *documentServiceClient) ImportFromLibrary(ctx context.Context, req *connect.Request[v1.ImportFromLibraryRequest]) (*connect.Response[v1.ImportFromLibraryResponse], error) {
+	return c.importFromLibrary.CallUnary(ctx, req)
 }
 
 // RenameDocument calls opendesigner.v1.DocumentService.RenameDocument.
@@ -602,6 +651,10 @@ type DocumentServiceHandler interface {
 	MergeBranch(context.Context, *connect.Request[v1.MergeBranchRequest]) (*connect.Response[v1.MergeBranchResponse], error)
 	ListDocuments(context.Context, *connect.Request[v1.ListDocumentsRequest]) (*connect.Response[v1.ListDocumentsResponse], error)
 	CreateDocument(context.Context, *connect.Request[v1.CreateDocumentRequest]) (*connect.Response[v1.DocInfo], error)
+	// Shared libraries: publish a document as a library, read what it offers, import items into another document.
+	SetLibrary(context.Context, *connect.Request[v1.SetLibraryRequest]) (*connect.Response[v1.DocInfo], error)
+	GetLibrary(context.Context, *connect.Request[v1.GetLibraryRequest]) (*connect.Response[v1.GetLibraryResponse], error)
+	ImportFromLibrary(context.Context, *connect.Request[v1.ImportFromLibraryRequest]) (*connect.Response[v1.ImportFromLibraryResponse], error)
 	// Renames a document (meta.json + the hub's in-memory name).
 	RenameDocument(context.Context, *connect.Request[v1.RenameDocumentRequest]) (*connect.Response[v1.DocInfo], error)
 	// Deletes a document by MOVING the bundle to <workspace>/.trash (never rm -rf).
@@ -748,6 +801,24 @@ func NewDocumentServiceHandler(svc DocumentServiceHandler, opts ...connect.Handl
 		connect.WithSchema(documentServiceMethods.ByName("CreateDocument")),
 		connect.WithHandlerOptions(opts...),
 	)
+	documentServiceSetLibraryHandler := connect.NewUnaryHandler(
+		DocumentServiceSetLibraryProcedure,
+		svc.SetLibrary,
+		connect.WithSchema(documentServiceMethods.ByName("SetLibrary")),
+		connect.WithHandlerOptions(opts...),
+	)
+	documentServiceGetLibraryHandler := connect.NewUnaryHandler(
+		DocumentServiceGetLibraryProcedure,
+		svc.GetLibrary,
+		connect.WithSchema(documentServiceMethods.ByName("GetLibrary")),
+		connect.WithHandlerOptions(opts...),
+	)
+	documentServiceImportFromLibraryHandler := connect.NewUnaryHandler(
+		DocumentServiceImportFromLibraryProcedure,
+		svc.ImportFromLibrary,
+		connect.WithSchema(documentServiceMethods.ByName("ImportFromLibrary")),
+		connect.WithHandlerOptions(opts...),
+	)
 	documentServiceRenameDocumentHandler := connect.NewUnaryHandler(
 		DocumentServiceRenameDocumentProcedure,
 		svc.RenameDocument,
@@ -864,6 +935,12 @@ func NewDocumentServiceHandler(svc DocumentServiceHandler, opts ...connect.Handl
 			documentServiceListDocumentsHandler.ServeHTTP(w, r)
 		case DocumentServiceCreateDocumentProcedure:
 			documentServiceCreateDocumentHandler.ServeHTTP(w, r)
+		case DocumentServiceSetLibraryProcedure:
+			documentServiceSetLibraryHandler.ServeHTTP(w, r)
+		case DocumentServiceGetLibraryProcedure:
+			documentServiceGetLibraryHandler.ServeHTTP(w, r)
+		case DocumentServiceImportFromLibraryProcedure:
+			documentServiceImportFromLibraryHandler.ServeHTTP(w, r)
 		case DocumentServiceRenameDocumentProcedure:
 			documentServiceRenameDocumentHandler.ServeHTTP(w, r)
 		case DocumentServiceDeleteDocumentProcedure:
@@ -969,6 +1046,18 @@ func (UnimplementedDocumentServiceHandler) ListDocuments(context.Context, *conne
 
 func (UnimplementedDocumentServiceHandler) CreateDocument(context.Context, *connect.Request[v1.CreateDocumentRequest]) (*connect.Response[v1.DocInfo], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("opendesigner.v1.DocumentService.CreateDocument is not implemented"))
+}
+
+func (UnimplementedDocumentServiceHandler) SetLibrary(context.Context, *connect.Request[v1.SetLibraryRequest]) (*connect.Response[v1.DocInfo], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("opendesigner.v1.DocumentService.SetLibrary is not implemented"))
+}
+
+func (UnimplementedDocumentServiceHandler) GetLibrary(context.Context, *connect.Request[v1.GetLibraryRequest]) (*connect.Response[v1.GetLibraryResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("opendesigner.v1.DocumentService.GetLibrary is not implemented"))
+}
+
+func (UnimplementedDocumentServiceHandler) ImportFromLibrary(context.Context, *connect.Request[v1.ImportFromLibraryRequest]) (*connect.Response[v1.ImportFromLibraryResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("opendesigner.v1.DocumentService.ImportFromLibrary is not implemented"))
 }
 
 func (UnimplementedDocumentServiceHandler) RenameDocument(context.Context, *connect.Request[v1.RenameDocumentRequest]) (*connect.Response[v1.DocInfo], error) {
