@@ -47,6 +47,19 @@ describe("find_change", () => {
   });
 });
 
+describe("find_change with GREP", () => {
+  it("finds and changes with the InDesign dialect and refuses an unknown character", async () => {
+    const found = await cmd({ name: "find_change", query: "\\u+", grep: true, matchCase: true });
+    expect(found.ok).toBe(true);
+    expect(found.data.count).toBe(2);
+    const done = await cmd({ name: "find_change", query: "(c)olour", grep: true, matchCase: true, replace: "$1~_" });
+    expect(done.ok).toBe(true);
+    expect(useScene.getState().scene!.nodes.get("t1")!.text!.content).toContain("c—");
+    const bad = await cmd({ name: "find_change", query: "~q", grep: true });
+    expect(bad.ok).toBe(false);
+  });
+});
+
 describe("tables", () => {
   it("inserts a table and edits its rows and columns", async () => {
     const made = await cmd({ name: "insert_table", rows: 3, cols: 2, x: 10, y: 10, cellWidth: 100, cellHeight: 30 });
@@ -356,6 +369,31 @@ describe("object-tool commands", () => {
     const placed = (p.data.nodeIds as string[]).map((id) => useScene.getState().scene!.nodes.get(id)!);
     expect(placed.map((n) => [n.x, n.y])).toEqual([[300, 300], [400, 300]]);
     expect((await cmd({ name: "place_snippet", snippet: "{}" })).message).toMatch(/not an opendesigner snippet/);
+  });
+
+  it("the object library keeps snippets by name and places them again", async () => {
+    const mem = new Map<string, string>();
+    vi.stubGlobal("localStorage", { getItem: (k: string) => mem.get(k) ?? null, setItem: (k: string, v: string) => void mem.set(k, v), removeItem: (k: string) => void mem.delete(k) });
+    try {
+      expect((await cmd({ name: "object_library", action: "list" })).data.items).toEqual([]);
+      const saved = await cmd({ name: "object_library", action: "save", item: "Pair", nodeIds: ["r1", "r2"] });
+      expect(saved.ok).toBe(true);
+      expect(saved.data.replaced).toBe(false);
+      expect((await cmd({ name: "object_library", action: "save", item: "pair", nodeIds: ["r1"] })).data.replaced).toBe(true);
+      expect((await cmd({ name: "object_library", action: "save", nodeIds: ["r1"] })).message).toMatch(/name is required/);
+      const listed = (await cmd({ name: "object_library", action: "list" })).data.items as { name: string }[];
+      expect(listed.map((i) => i.name)).toEqual(["pair"]);
+      const placed = await cmd({ name: "object_library", action: "place", item: "PAIR", x: 500, y: 40 });
+      expect(placed.ok).toBe(true);
+      const n = useScene.getState().scene!.nodes.get((placed.data.nodeIds as string[])[0]!)!;
+      expect([n.x, n.y]).toEqual([500, 40]);
+      expect((await cmd({ name: "object_library", action: "place", item: "nope" })).message).toMatch(/no library item/);
+      expect((await cmd({ name: "object_library", action: "delete", item: "pair" })).data.deleted).toBe(true);
+      expect((await cmd({ name: "object_library", action: "delete", item: "pair" })).ok).toBe(false);
+      expect((await cmd({ name: "object_library", action: "wat" })).ok).toBe(false);
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 
   it("fit_frame explains what it cannot do", async () => {
