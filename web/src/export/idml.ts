@@ -32,7 +32,16 @@ function drawOrder(scene: SceneState, parentId: string, depth = 0): NodeLite[] {
 }
 
 /** The package, or null when the document has no pages. */
-export function buildIdml(scene: SceneState, title: string, fallback = { width: 612 / PT, height: 792 / PT }): IdmlResult | null {
+/** Image bytes by asset hash. Only PNG and JPEG are embedded (as base64 in the Image's Contents). */
+export interface IdmlImage { bytes: Uint8Array; mime: string }
+
+function base64(b: Uint8Array): string {
+  let s = "";
+  for (let i = 0; i < b.length; i += 0x8000) s += String.fromCharCode(...b.subarray(i, i + 0x8000));
+  return btoa(s);
+}
+
+export function buildIdml(scene: SceneState, title: string, fallback = { width: 612 / PT, height: 792 / PT }, images: ReadonlyMap<string, IdmlImage> = new Map()): IdmlResult | null {
   const pages = scene.pages.filter((p) => !p.isMaster);
   if (pages.length === 0) return null;
   const skipped = new Set<string>();
@@ -95,7 +104,16 @@ export function buildIdml(scene: SceneState, title: string, fallback = { width: 
         }).join("");
         stories.push({ name: `Stories/Story_${sid}.xml`, data: enc.encode(`${XML}<idPkg:Story ${IDPKG} DOMVersion="8.0"><Story Self="${sid}" AppliedTOCStyle="n" TrackChanges="false" StoryTitle="${xmlEscape(n.name)}" AppliedNamedGrid="n"><StoryPreference OpticalMarginAlignment="false" OpticalMarginSize="12" FrameType="TextFrameType" StoryOrientation="Horizontal" StoryDirection="LeftToRightDirection"/>${ps}</Story></idPkg:Story>`) });
         items += `<TextFrame ${common}"TextType" ParentStory="${sid}" PreviousTextFrame="n" NextTextFrame="n" ${`FillColor="Swatch/None" StrokeColor="Swatch/None" StrokeWeight="0"`}><Properties/>${rectPath}<TextFramePreference TextColumnCount="1" TextColumnGutter="12"/></TextFrame>`;
-      } else if (n.kind === "image") skipped.add("images");
+      } else if (n.kind === "image") {
+        const img = images.get(n.image?.assetHash ?? "");
+        if (!img || (img.mime !== "image/png" && img.mime !== "image/jpeg")) { skipped.add(img ? `${img.mime} images` : "missing images"); continue; }
+        // The picture is placed at 1 px = 1 pt, then scaled to stretch over the frame.
+        const pw = Math.max(1, n.image?.pixelWidth || 1), ph = Math.max(1, n.image?.pixelHeight || 1);
+        const ext = img.mime === "image/png" ? "png" : "jpg";
+        const name = xmlEscape(n.image?.originalName || `${n.name || "image"}.${ext}`);
+        const sx = f((n.width * PT) / pw), sy = f((n.height * PT) / ph);
+        items += `<Rectangle ${common}"GraphicType" FillColor="Swatch/None" StrokeColor="Swatch/None" StrokeWeight="0">${rectPath}<Image Self="${nextId()}" ItemTransform="${sx} 0 0 ${sy} 0 0" Space="$ID/#Links_RGB" ActualPpi="72 72" EffectivePpi="72 72"><Properties><GraphicBounds Left="0" Top="0" Right="${pw}" Bottom="${ph}"/><Contents><![CDATA[${base64(img.bytes)}]]></Contents></Properties><Link Self="${nextId()}" LinkResourceURI="file:${name}" LinkResourceFormat="$ID/${img.mime === "image/png" ? "PNG" : "JPEG"}" StoredState="Embedded"/></Image></Rectangle>`;
+      }
       else if (n.kind === "instance") skipped.add("component instances");
     }
     spreads.push({

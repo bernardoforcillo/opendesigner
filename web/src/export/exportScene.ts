@@ -13,6 +13,7 @@ import { buildIdml } from "@/export/idml";
 import { buildPptx, type PptxImage } from "@/export/pptx";
 import { buildEpub, type EpubPage } from "@/export/epub";
 import { buildReflowEpub, buildReflowHtml, type ReflowImage } from "@/export/epubReflow";
+import { encodePng } from "@/export/rawPng";
 import { dataUrlBytes } from "@/pdf/write/pdfImages";
 import { nodesToSvg, type MeasureText, type ResolveImageHref } from "@/export/svg";
 import { canvasToPngBlob, renderRegionToCanvas, type ExportScale } from "@/export/png";
@@ -394,6 +395,29 @@ function printDeps(deps: ExportDeps, measure: MeasureText) {
   return { measure, loadAssetDataUrl: deps.loadAssetDataUrl ?? fetchAssetDataUrl, rasterize: deps.rasterize ?? canvasRasterize };
 }
 
+/**
+ * The bytes of every image the document uses, for the PPTX and IDML writers. PNG and JPEG go in as
+ * they are; any other type (WebP, GIF...) is decoded and re-encoded as PNG, so it is not lost.
+ * An unreachable or undecodable image is left out; the writer reports it.
+ */
+async function loadDeckImages(raw: SceneState, deps: DocumentExportDeps): Promise<Map<string, PptxImage>> {
+  const load = deps.loadAssetDataUrl ?? fetchAssetDataUrl;
+  const rasterize = deps.rasterize ?? canvasRasterize;
+  const images = new Map<string, PptxImage>();
+  const hashes = [...new Set([...raw.nodes.values()].filter((n) => n.kind === "image" && n.image?.assetHash).map((n) => n.image!.assetHash))];
+  await Promise.all(hashes.map(async (hash) => {
+    try {
+      const uri = await load(raw.id, hash);
+      const d = uri === null ? null : dataUrlBytes(uri);
+      if (!d) return;
+      if (d.mime === "image/png" || d.mime === "image/jpeg") { images.set(hash, { bytes: d.bytes, mime: d.mime }); return; }
+      const px = await rasterize(d.bytes, d.mime);
+      images.set(hash, px && px.width > 0 && px.height > 0 ? { bytes: encodePng(px.width, px.height, px.rgba), mime: "image/png" } : d);
+    } catch { /* an unreachable image is left out */ }
+  }));
+  return images;
+}
+
 /** The download name of a whole-document export (`<name>.epub`). */
 export function documentFileName(docName: string, format: DocumentExportFormat): string {
   return exportFileName(docName, { format: "svg", scope: "page", scale: 1 }).replace(/\.svg$/, `.${format === "epub-reflow" ? "epub" : format === "html-text" ? "html" : format}`);
@@ -440,15 +464,7 @@ export async function runDocumentExport(
     }
 
     if (format === "pptx") {
-      const load = deps.loadAssetDataUrl ?? fetchAssetDataUrl;
-      const images = new Map<string, PptxImage>();
-      await Promise.all([...new Set([...raw.nodes.values()].filter((n) => n.kind === "image" && n.image?.assetHash).map((n) => n.image!.assetHash))].map(async (hash) => {
-        try {
-          const uri = await load(raw.id, hash);
-          const d = uri === null ? null : dataUrlBytes(uri);
-          if (d) images.set(hash, { bytes: d.bytes, mime: d.mime });
-        } catch { /* an unreachable image is left out of the deck */ }
-      }));
+      const images = await loadDeckImages(raw, deps);
       const deck = buildPptx(scene, images, scene.name || FALLBACK_NAME);
       if (!deck) {
         useScene.setState({ notice: "nothing to export: the document has no pages" });
@@ -461,13 +477,13 @@ export async function runDocumentExport(
     }
 
     if (format === "idml") {
-      const pkg = buildIdml(scene, scene.name || FALLBACK_NAME);
+      const pkg = buildIdml(scene, scene.name || FALLBACK_NAME, undefined, await loadDeckImages(raw, deps));
       if (!pkg) {
         useScene.setState({ notice: "nothing to export: the document has no pages" });
         return false;
       }
       (deps.download ?? downloadBlob)(new Blob([pkg.bytes as BlobPart], { type: IDML_MIME }), documentFileName(scene.name, "idml"));
-      useScene.setState({ notice: `IDML written (${pkg.pages} page${pkg.pages === 1 ? "" : "s"}). Not carried over: images, effects, master pages' items, character styles, tables.${pkg.skipped.length ? ` Also left out here: ${pkg.skipped.join(", ")}.` : ""}` });
+      useScene.setState({ notice: `IDML written (${pkg.pages} page${pkg.pages === 1 ? "" : "s"}). Images are embedded as PNG/JPEG. Not carried over: effects, master pages' items, character styles, tables.${pkg.skipped.length ? ` Also left out here: ${pkg.skipped.join(", ")}.` : ""}` });
       return true;
     }
 

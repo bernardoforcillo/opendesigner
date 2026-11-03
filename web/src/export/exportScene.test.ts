@@ -553,6 +553,18 @@ describe("runDocumentExport", () => {
     expect((await (await doc.getPage(2)).view)).toEqual([0, 0, 22.5, 30]);
   });
 
+  it("re-encodes a WebP as PNG for PPTX and IDML so the image is not lost", async () => {
+    const rasterize = async () => ({ width: 1, height: 1, rgba: new Uint8Array([255, 0, 0, 255]) });
+    for (const fmt of ["pptx", "idml"] as const) {
+      install(sceneWith("Pics", node({ id: "i", kind: "image", width: 100, height: 50, image: { assetHash: "h".repeat(64), originalName: "p.webp", pixelWidth: 1, pixelHeight: 1 } })));
+      const d = { ...fakeDeps(), rasterize, loadAssetDataUrl: async () => "data:image/webp;base64,QUJD" };
+      expect(await runDocumentExport(fmt, d)).toBe(true);
+      const text = new TextDecoder("latin1").decode(new Uint8Array(await d.saved[0].blob.arrayBuffer()));
+      // An uncompressed zip: the re-encoded PNG signature is readable in the package (base64 in IDML).
+      expect(fmt === "pptx" ? text.includes("ppt/media/image1.png") : text.includes("LinkResourceURI=\"file:p.webp\"")).toBe(true);
+    }
+  });
+
   it("downloads an EPUB with one spine item per page", async () => {
     install(twoPages());
     const d = fakeDeps();
