@@ -64,7 +64,8 @@ empty state, join field, document cards with plural counts) and the headings of 
 sections (the `Section` component translates its title), the Versions dialog (all but the merge-back section), the Share dialog, Insert table, the Comments panel, Page setup, Fonts, Variables, Styles, Find and change, Data merge, the Preflight panel (its messages included), the Export PDF dialog, Object styles, the Layers and Pages panels, the page bar, the properties panel header and common controls (segmented choices, align, text and stroke fields), and the per-section controls (auto layout, effects, styles, shapes, gradients, constraints, layout grids, export, variables) through the shared controls and the prototype player's controls. The Whiteboard, Diagram, Links, Story, Ink manager, Object tools, Swatches, Layers, Plugins, Long documents, Book metadata and
 Component dialogs are translated too (chrome, status lines and the labels they build; the Plugins API reference, the ONIX
 completeness messages and the text-check messages come from libraries and stay English).
-Everything else is still English: the Components and Flow panels, dev mode, notices, MCP and server messages. A string with no
+The Components panel and the Board's facilitation strip are translated as well.
+Everything else is still English: the Flow panel, presence bar, typography/text-layout/brush/path controls, dev mode, notices, MCP and server messages. A string with no
 catalog entry shows as written, so the interface is never half-blank.
 
 ## Shared controls translate themselves

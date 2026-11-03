@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Button as RacButton } from "react-aria-components";
 import { Button, EmptyState, Icon, IconButton, cls } from "@/ui/ds";
 import { useScene } from "@/store/store";
+import { useT } from "@/i18n";
 import { contentWorldBounds } from "@/store/groups";
 import { nextOrderKey } from "@/store/orderKey";
 import { ComponentDialog } from "@/ui/ComponentDialog";
@@ -25,6 +26,7 @@ import { makeCreateComponentOp, makeCreateNodeOp, makeInstanceNode, uuid } from 
 const PLACE_OFFSET = 20;
 
 export function ComponentsPanel() {
+  const { t } = useT();
   const scene = useScene((s) => s.scene);
   const entries = scene ? Object.entries(scene.components) : [];
   // The component whose variants and properties are being edited (ComponentDialog).
@@ -96,31 +98,31 @@ export function ComponentsPanel() {
   return (
     <div className="flex flex-col text-[13px] text-fg">
       <div className="flex h-9 items-center gap-2 px-3">
-        <h3 className={cls.sectionTitle}>Components</h3>
+        <h3 className={cls.sectionTitle}>{t("Components")}</h3>
         {entries.length > 0 && <span className="text-[11px] tabular-nums text-fg-subtle">{entries.length}</span>}
         <div className="ml-auto flex items-center">
           {canCreate && entries.length > 0 && (
-            <IconButton icon="plus" label="Create component from selection" size={24} onPress={createFromSelection} />
+            <IconButton icon="plus" label={t("Create component from selection")} size={24} onPress={createFromSelection} />
           )}
         </div>
       </div>
       {entries.length === 0 ? (
         <EmptyState
           icon="components"
-          title="No components"
-          hint="Select a layer and press Ctrl+Alt+K to turn it into a reusable component."
+          title={t("No components")}
+          hint={t("Select a layer and press Ctrl+Alt+K to turn it into a reusable component.")}
           action={
             canCreate ? (
               <Button variant="secondary" icon="plus" onPress={createFromSelection}>
-                Create component
+                {t("Create component")}
               </Button>
             ) : undefined
           }
         />
       ) : (
-        <ul aria-label="Components" className="flex flex-col gap-1 px-2 pb-2">
+        <ul aria-label={t("Components")} className="flex flex-col gap-1 px-2 pb-2">
           {entries.map(([id, comp]) => {
-            const label = comp.name.trim() !== "" ? comp.name : "Unnamed component";
+            const label = comp.name.trim() !== "" ? comp.name : t("Unnamed component");
             return (
               <li key={id} className="relative">
                 {/* The whole card is the "Instantiate" button: the accessible name
@@ -144,11 +146,11 @@ export function ComponentsPanel() {
                     className="flex shrink-0 items-center gap-1 text-[11px] font-medium text-fg-subtle opacity-0 transition-opacity group-hover:opacity-100 group-data-[focus-visible]:opacity-100"
                   >
                     <Icon name="plus" size={12} />
-                    Instantiate
+                    {t("Instantiate")}
                   </span>
                 </RacButton>
                 <IconButton
-                  icon="pen" label={`Edit ${label}`} size={24} onPress={() => setEditing(id)}
+                  icon="pen" label={t("Edit {name}", { name: label })} size={24} onPress={() => setEditing(id)}
                   className="absolute right-1 top-1/2 -translate-y-1/2 bg-surface"
                 />
               </li>
