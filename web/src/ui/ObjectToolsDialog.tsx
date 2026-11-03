@@ -89,7 +89,7 @@ function Form() {
       <section aria-label="Frame fitting" className="flex flex-col gap-1.5">
         <h3 className="text-[12px] font-semibold">Frame fitting</h3>
         <div className="flex flex-wrap gap-2">
-          {([["fill", "Fill frame"], ["fit", "Fit content"], ["tile", "Tile"], ["frame-to-content", "Frame to content"]] as [FitMode, string][]).map(([m, label]) => (
+          {([["fill", "Fill frame"], ["fit", "Fit content"], ["tile", "Tile"], ["frame-to-content", "Frame to content"], ["frame-to-children", "Frame to children"], ["fit-in-parent", "Fit in parent"]] as [FitMode, string][]).map(([m, label]) => (
             <Button key={m} onPress={() => {
               const id = selection()[0];
               const ops = id ? fitOps(scene(), id, m) : "Select a node first.";

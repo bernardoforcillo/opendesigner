@@ -102,7 +102,7 @@ export function gapOps(scene: SceneState, ids: readonly string[], axis: "x" | "y
   return ops;
 }
 
-export type FitMode = "fill" | "fit" | "tile" | "frame-to-content";
+export type FitMode = "fill" | "fit" | "tile" | "frame-to-content" | "frame-to-children" | "fit-in-parent";
 
 /**
  * Frame fitting. "fill" (cover), "fit" (contain) and "tile" set how the image PAINTS of a shape fill its frame; "frame-to-content"
@@ -111,16 +111,58 @@ export type FitMode = "fill" | "fit" | "tile" | "frame-to-content";
 export function fitOps(scene: SceneState, id: string, mode: FitMode): Op[] | string {
   const n = scene.nodes.get(id);
   if (!n) return `no node ${id}`;
+  if (mode === "frame-to-children") return frameToChildrenOps(scene, n);
+  if (mode === "fit-in-parent") return fitInParentOps(scene, n);
   if (mode === "frame-to-content") {
     const w = n.image?.pixelWidth ?? 0, h = n.image?.pixelHeight ?? 0;
     if (n.kind !== "image" || w <= 0 || h <= 0) return "frame-to-content needs an image node whose size is known";
     const height = (n.width * h) / w;
     return height === n.height ? [] : [makeSetPropsOp(id, { height }, ["height"])];
   }
-  if (!["fill", "fit", "tile"].includes(mode)) return "mode must be fill, fit, tile or frame-to-content";
+  if (!["fill", "fit", "tile"].includes(mode)) return "mode must be fill, fit, tile, frame-to-content, frame-to-children or fit-in-parent";
   if (!n.fills.some((f) => f.image)) return "that node has no image fill (use frame-to-content for an image node)";
   const fills = n.fills.map((f) => (f.image ? { ...f, image: { ...f.image, mode } } : f));
   return [makeSetPropsOp(id, { fills: toPbFills(fills) }, ["fills"])];
+}
+
+/**
+ * "frame-to-children": a frame shrinks or grows to the box that wraps its visible children (their rotated boxes), and the children
+ * move by the opposite amount so nothing shifts on the page. Nested frames work the same way, innermost first. Refused for rotated
+ * frames and auto layout frames (the server lays those out).
+ */
+function frameToChildrenOps(scene: SceneState, n: NodeLite): Op[] | string {
+  if (n.kind !== "frame") return "frame-to-children needs a frame";
+  if (n.rotation !== 0) return "frame-to-children does not work on a rotated frame";
+  if (n.autoLayout) return "an auto layout frame already hugs its content (set its size to hug)";
+  const kids = childrenOf(scene, n.id).filter((c) => c.visible);
+  if (kids.length === 0) return "the frame has no visible children";
+  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+  for (const c of kids) {
+    const b = worldAabbOfNode(c);
+    x0 = Math.min(x0, b.x); y0 = Math.min(y0, b.y); x1 = Math.max(x1, b.x + b.width); y1 = Math.max(y1, b.y + b.height);
+  }
+  const width = x1 - x0, height = y1 - y0;
+  if (x0 === 0 && y0 === 0 && width === n.width && height === n.height) return [];
+  const ops: Op[] = [makeSetPropsOp(n.id, { x: n.x + x0, y: n.y + y0, width, height }, ["x", "y", "width", "height"])];
+  if (x0 !== 0 || y0 !== 0) for (const c of childrenOf(scene, n.id)) ops.push(makeSetPropsOp(c.id, { x: c.x - x0, y: c.y - y0 }, ["x", "y"]));
+  return ops;
+}
+
+/**
+ * "fit-in-parent": a node without children is scaled, keeping its proportions, to the largest size that fits inside its parent
+ * frame and is centred there (frame inside frame, image inside an image frame). Its children are not scaled, so a node that has some is refused.
+ */
+function fitInParentOps(scene: SceneState, n: NodeLite): Op[] | string {
+  const parent = scene.nodes.get(n.parentId);
+  if (!parent || parent.kind !== "frame") return "fit-in-parent needs a node inside a frame";
+  if (n.rotation !== 0) return "fit-in-parent does not work on a rotated node";
+  if (childrenOf(scene, n.id).length > 0) return "fit-in-parent would not scale the children; use frame-to-children on the inner frame instead";
+  if (!(n.width > 0) || !(n.height > 0)) return "the node has no size";
+  const k = Math.min(parent.width / n.width, parent.height / n.height);
+  const width = n.width * k, height = n.height * k;
+  const x = (parent.width - width) / 2, y = (parent.height - height) / 2;
+  if (width === n.width && height === n.height && x === n.x && y === n.y) return [];
+  return [makeSetPropsOp(n.id, { x, y, width, height }, ["x", "y", "width", "height"])];
 }
 
 /** Clipping path: the shape becomes the mask of a new group that holds it and the content (the content shows only inside the outline). */

@@ -1,5 +1,6 @@
 import { forPdf } from "@/renderer/bidi";
-import type { BlendModeLite, FillLite, GradientLite, NodeLite } from "@/store/types";
+import { rotatedCorners } from "@/canvas/transform";
+import type { BlendModeLite, ClipBox, FillLite, GradientLite, NodeLite } from "@/store/types";
 import type { Bounds } from "@/canvas/geometry";
 import { decorationBars, fontSizeOf, paragraphDecorations, placeTextLines, type MeasureText } from "@/renderer/text";
 import { resolvedFill } from "@/renderer/canvasRenderer";
@@ -337,6 +338,12 @@ function drawText(pg: Page, n: NodeLite): void {
   }
 }
 
+// A clipping frame's box as a path (rotated around its centre), in the page's user space.
+function boxPath(c: ClipBox): string {
+  const [a, b, d, e] = rotatedCorners({ x: c.x, y: c.y, width: c.width, height: c.height }, c.rotation);
+  return `${num(a.x)} ${num(a.y)} m ${num(b.x)} ${num(b.y)} l ${num(d.x)} ${num(d.y)} l ${num(e.x)} ${num(e.y)} l h\n`;
+}
+
 function maskOutline(n: NodeLite): string | null {
   if (n.kind === "ellipse" || n.kind === "rect" || n.kind === "frame") return outline(n, true);
   if (n.kind === "vector") {
@@ -377,6 +384,8 @@ export function renderPage(deps: PageDeps, nodes: readonly NodeLite[], bounds: B
     pg.out.push("q\n");
     if (n.meta?.["overprint"]) pg.out.push(pg.overprint(n.meta["overprint"]));
     if (clip && !clipOpen.has(n.id)) pg.out.push(`${clip}W* n\n`);
+    // Frames that clip their content: each one's (possibly rotated) box intersects the clip.
+    for (const c of n.exportClips ?? []) pg.out.push(`${boxPath(c)}W n\n`);
     // Node opacity and blend mode wrap the whole node; the paint's own alpha is applied inside.
     if (n.opacity !== 1 || n.blendMode) pg.out.push(pg.gs(n.opacity, n.opacity, n.blendMode));
     if (n.kind === "text") drawText(pg, n);

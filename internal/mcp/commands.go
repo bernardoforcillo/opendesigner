@@ -506,7 +506,7 @@ func (s *Session) SetGap(ctx context.Context, in SetGapInput) (MovedCountOutput,
 
 type FitFrameInput struct {
 	NodeId string `json:"nodeId"`
-	Mode   string `json:"mode" jsonschema:"fill (image fill covers the frame) | fit (whole image inside the frame) | tile | frame-to-content (resize an image node to the image's own proportions, keeping its width)"`
+	Mode   string `json:"mode" jsonschema:"fill (image fill covers the frame) | fit (whole image inside the frame) | tile | frame-to-content (resize an image node to the image's own proportions, keeping its width) | frame-to-children (a frame wraps its visible children, which stay in place on the page) | fit-in-parent (scale a childless node to the largest size inside its parent frame, centred)"`
 }
 
 type ChangedOutput struct {
@@ -900,7 +900,7 @@ func registerCommandTools(srv *mcp.Server, s *Session) {
 	addTool(srv, "list_editorial_notes", "The editorial notes written [!comment] in the text: never drawn, exported or printed. Write one with set_text; remove it by editing the text."+jobNote, s.ListEditorialNotes)
 	addTool(srv, "step_and_repeat", "Step and Repeat: make N copies of nodes, each offset (dx, dy) from the previous (a row, a column, a staircase). Groups are copied with their children."+jobNote, s.StepAndRepeat)
 	addTool(srv, "set_gap", "The Gap tool: set the exact space between neighbouring objects along x or y, keeping the first one in place."+jobNote, s.SetGap)
-	addTool(srv, "fit_frame", "Frame fitting: make an image fill cover or fit inside its frame, tile it, or resize an image node to the image's own proportions."+jobNote, s.FitFrame)
+	addTool(srv, "fit_frame", "Frame fitting: make an image fill cover or fit inside its frame, tile it, resize an image node to the image's own proportions, wrap a frame around its children, or fit a node inside its parent frame."+jobNote, s.FitFrame)
 	addTool(srv, "clip_with_shape", "Clipping path: use a shape's outline to clip other nodes (they are grouped with it, the shape as a mask below them); release it with release=true."+jobNote, s.ClipWithShape)
 	addTool(srv, "create_qr_code", "Draw a QR code (ISO 18004, byte mode, versions 1-10) as vectors: a background square and one vector for the dark modules, so it prints sharp at any size."+jobNote, s.CreateQRCode)
 	addTool(srv, "find_objects", "Find nodes by kind, layer name (regex) or solid fill/stroke colour."+jobNote, s.FindObjects)
