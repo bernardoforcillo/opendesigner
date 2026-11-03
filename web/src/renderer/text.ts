@@ -1,4 +1,5 @@
 import { cjkSplit } from "@/renderer/cjk";
+import { directionOf, effectiveAlign, isVertical, layoutVertical } from "@/renderer/textIntl";
 import type { NodeLite, TextAlignLite, TextLite, TextStyleLite } from "@/store/types";
 import { hyphenPoints } from "@/renderer/hyphenate";
 import type { Bounds } from "@/canvas/geometry";
@@ -442,7 +443,19 @@ export function placeTextLines(measure: (s: string) => number, n: NodeLite, meas
     return placeRichLines(tracked, n, layoutRich(tracked, t.content, t.style, t.rich, innerWidth(n, t.style)));
   }
   const m = trackedMeasure(measure, t.style);
+  if (isVertical(t.style)) return placeVertical(m, n, t.style, t.content);
   return placeLines(m, n, t.style, layoutText(m, t.content, t.style, innerWidth(n, t.style)));
+}
+
+// Vertical writing (textIntl.layoutVertical): every upright character is a placed line of its own, so the canvas, the
+// GPU renderer, the SVG and the PDF draw it with no vertical support of their own.
+function placeVertical(measure: (s: string) => number, n: NodeLite, style: TextStyleLite, content: string): PlacedLine[] {
+  const size = fontSizeOf(style);
+  const { glyphs } = layoutVertical(caseText(content, style).replace(/\r\n?/g, "\n").split("\n"), {
+    x: n.x, y: n.y, width: n.width, height: n.height, inset: insetOf(style), size,
+    pitch: lineHeightOf(style), ascent: size * ASCENT_RATIO, align: style.align, measure: styledMeasure(measure, style),
+  });
+  return glyphs.map((g) => ({ text: g.text, x: g.x, y: g.y, width: g.width }));
 }
 
 // The real placement, starting from an ALREADY computed layout: it is private because
@@ -471,7 +484,9 @@ function placeLines(
     if (line === "") continue;
     const width = m(line);
     const lead = layout.leads[i] ?? 0;
-    const x = n.x + inset + lead + alignOffsetX(style.align, width, inner > 0 ? Math.max(0, inner - lead) : inner);
+    // A right-to-left paragraph keeps its indent at the right edge: the lead is reserved there, not added on the left.
+    const rtl = style.direction === "rtl";
+    const x = n.x + inset + (rtl ? 0 : lead) + alignOffsetX(effectiveAlign(style.align, style), width, inner > 0 ? Math.max(0, inner - lead) : inner);
     const baseline = top + layout.ascent + i * layout.lineHeight;
     const placed: PlacedLine = { text: line, x, y: baseline, width };
     const marker = layout.markers[i] ?? "";
@@ -534,6 +549,11 @@ export function textPaintBounds(measure: MeasureText, n: NodeLite): Bounds {
   }
 
   const m = trackedMeasure((s: string) => measure(s, t.style), t.style);
+  if (isVertical(t.style)) {
+    let minX = n.x, maxX = n.x + n.width;
+    for (const g of placeVertical(m, n, t.style, t.content)) { minX = Math.min(minX, g.x); maxX = Math.max(maxX, g.x + g.width); }
+    return { x: minX, y: n.y, width: maxX - minX, height: n.height };
+  }
   const layout = layoutText(m, t.content, t.style, innerWidth(n, t.style));
   let minX = n.x;
   let maxX = n.x + n.width;
@@ -652,6 +672,8 @@ function paintText(
   // Same reason: alignment is computed by alignOffsetX line by line
   // with respect to the node's box, not by the ctx.
   ctx.textAlign = "left";
+  // The base direction of mixed-direction text: the style's, else the first strong character.
+  if ("direction" in ctx) ctx.direction = directionOf(t.content, t.style);
 
   // placeTextLines (track 3) is the ONLY source of the lines' position --
   // the same one the SVG export consumes -- and paintLine (track 2) chooses

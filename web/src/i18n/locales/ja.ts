@@ -562,4 +562,8 @@ export const ja: Record<MessageKey, Message> = {
   "Remove grid {n}": "グリッド {n} を削除",
   "Margin": "マージン",
   "Grid opacity": "グリッドの不透明度",
+  "Writing mode": "書字方向",
+  "Auto": "自動",
+  "Left to right": "左から右",
+  "Right to left": "右から左",
 };

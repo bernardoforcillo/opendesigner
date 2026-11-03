@@ -562,4 +562,8 @@ export const it: Record<MessageKey, Message> = {
   "Remove grid {n}": "Rimuovi la griglia {n}",
   "Margin": "Margine",
   "Grid opacity": "Opacità della griglia",
+  "Writing mode": "Modalità di scrittura",
+  "Auto": "Auto",
+  "Left to right": "Da sinistra a destra",
+  "Right to left": "Da destra a sinistra",
 };

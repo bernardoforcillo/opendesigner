@@ -318,7 +318,7 @@ function drawText(pg: Page, n: NodeLite): void {
       pg.out.push(
         `${pg.gs(color.a, color.a)}${pg.d.colors.ops(paint, false)}${pdfName(font.res)} ${num(fontSizeOf(st))} Tf\n` +
         `${num(st.letterSpacing ?? 0)} Tc ${num((st.horizontalScale ?? 1) * 100)} Tz\n` +
-        `${num(c)} ${num(s)} ${num(s)} ${num(-c)} ${num(seg.x)} ${num(y)} Tm\n${font.encode(forPdf(seg.text))} Tj\n`,
+        `${num(c)} ${num(s)} ${num(s)} ${num(-c)} ${num(seg.x)} ${num(y)} Tm\n${font.encode(forPdf(seg.text, st.direction ? st.direction === "rtl" : undefined))} Tj\n`,
       );
     }
   }

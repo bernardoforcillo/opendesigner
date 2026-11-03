@@ -244,7 +244,11 @@ function pickTextExtras(s: Record<string, unknown>): Partial<TextStyleLite> {
   const textScript = oneOf(s.textScript, ["super", "sub"] as const);
   const listKind = oneOf(s.listKind, ["bullet", "numbered"] as const);
   const verticalAlign = oneOf(s.verticalAlign, ["middle", "bottom"] as const);
+  const direction = oneOf(s.direction, ["ltr", "rtl"] as const);
+  const writingMode = oneOf(s.writingMode, ["vertical"] as const);
   return {
+    ...(direction ? { direction } : {}),
+    ...(writingMode ? { writingMode } : {}),
     ...(textCase ? { textCase } : {}),
     ...(textScript ? { textScript } : {}),
     ...(listKind ? { listKind } : {}),

@@ -562,4 +562,8 @@ export const ptBR: Record<MessageKey, Message> = {
   "Remove grid {n}": "Remover a grade {n}",
   "Margin": "Margem",
   "Grid opacity": "Opacidade da grade",
+  "Writing mode": "Modo de escrita",
+  "Auto": "Auto",
+  "Left to right": "Da esquerda para a direita",
+  "Right to left": "Da direita para a esquerda",
 };

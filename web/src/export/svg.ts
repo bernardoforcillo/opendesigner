@@ -10,6 +10,7 @@ import type { Bounds } from "@/canvas/geometry";
 import { firstBlur, firstShadow, resolvedFill } from "@/renderer/canvasRenderer";
 import { cssFeatureSettings, cssVariationSettings, fontFamilyOf, fontFeaturesOf, fontSizeOf, fontWeightOf, hscaleOf, paragraphDecorations, piecesOfSegment, placeTextLines } from "@/renderer/text";
 import type { MeasureText } from "@/renderer/text";
+import { directionOf } from "@/renderer/textIntl";
 import { hasRealStroke, vectorStyleOf } from "@/renderer/vectorStyle";
 import { subPathsToD } from "@/svg/pathData";
 import { meshBitmap } from "@/renderer/mesh";
@@ -512,6 +513,8 @@ function textElement(n: NodeLite, measure: MeasureText, defs: string[]): string 
     ...(style.letterSpacing ? [attr("letter-spacing", style.letterSpacing)] : []),
     h === 1 ? null : attr("transform", `scale(${h} 1)`),
     ...declarations([
+      // Mixed-direction text is reordered by the viewer from its first strong character; the lines keep their absolute x.
+      directionOf(n.text?.content ?? "", style) === "rtl" && /[\u0590-\u08ff\ufb1d-\ufdff\ufe70-\ufeff]/.test(n.text?.content ?? "") ? "unicode-bidi:plaintext" : "",
       rootFeatures === "" ? "" : `font-feature-settings:${cssFeatureSettings(rootFeatures) || "normal"}`,
       style.fontVariations ? `font-variation-settings:${cssVariationSettings(style.fontVariations)}` : "",
     ].filter(Boolean)),

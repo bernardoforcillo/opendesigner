@@ -298,6 +298,12 @@ func validateTextExtras(st *opendesignerv1.TextStyle) error {
 	if _, ok := opendesignerv1.TextVAlign_name[int32(st.GetVerticalAlign())]; !ok {
 		return ErrTextStyleValue
 	}
+	if _, ok := opendesignerv1.TextDirection_name[int32(st.GetDirection())]; !ok {
+		return ErrTextStyleValue
+	}
+	if _, ok := opendesignerv1.WritingMode_name[int32(st.GetWritingMode())]; !ok {
+		return ErrTextStyleValue
+	}
 	if !finiteNonNeg(st.GetIndent()) || !finiteNonNeg(st.GetInset()) || !ValidFontFeatures(st.GetFontFeatures()) {
 		return ErrTextStyleValue
 	}

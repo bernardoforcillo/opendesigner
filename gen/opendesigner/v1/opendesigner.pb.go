@@ -897,6 +897,103 @@ func (TextScript) EnumDescriptor() ([]byte, []int) {
 	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{14}
 }
 
+// Paragraph direction. In a right-to-left paragraph LEFT and RIGHT alignment mean start and end.
+type TextDirection int32
+
+const (
+	TextDirection_TEXT_DIRECTION_UNSPECIFIED TextDirection = 0 // auto: the first strong character decides
+	TextDirection_TEXT_DIRECTION_LTR         TextDirection = 1
+	TextDirection_TEXT_DIRECTION_RTL         TextDirection = 2
+)
+
+// Enum value maps for TextDirection.
+var (
+	TextDirection_name = map[int32]string{
+		0: "TEXT_DIRECTION_UNSPECIFIED",
+		1: "TEXT_DIRECTION_LTR",
+		2: "TEXT_DIRECTION_RTL",
+	}
+	TextDirection_value = map[string]int32{
+		"TEXT_DIRECTION_UNSPECIFIED": 0,
+		"TEXT_DIRECTION_LTR":         1,
+		"TEXT_DIRECTION_RTL":         2,
+	}
+)
+
+func (x TextDirection) Enum() *TextDirection {
+	p := new(TextDirection)
+	*p = x
+	return p
+}
+
+func (x TextDirection) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (TextDirection) Descriptor() protoreflect.EnumDescriptor {
+	return file_opendesigner_v1_opendesigner_proto_enumTypes[15].Descriptor()
+}
+
+func (TextDirection) Type() protoreflect.EnumType {
+	return &file_opendesigner_v1_opendesigner_proto_enumTypes[15]
+}
+
+func (x TextDirection) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use TextDirection.Descriptor instead.
+func (TextDirection) EnumDescriptor() ([]byte, []int) {
+	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{15}
+}
+
+// Writing mode: vertical-rl stacks upright characters top to bottom in columns that run right to left.
+type WritingMode int32
+
+const (
+	WritingMode_WRITING_MODE_UNSPECIFIED WritingMode = 0 // horizontal
+	WritingMode_WRITING_MODE_VERTICAL_RL WritingMode = 1
+)
+
+// Enum value maps for WritingMode.
+var (
+	WritingMode_name = map[int32]string{
+		0: "WRITING_MODE_UNSPECIFIED",
+		1: "WRITING_MODE_VERTICAL_RL",
+	}
+	WritingMode_value = map[string]int32{
+		"WRITING_MODE_UNSPECIFIED": 0,
+		"WRITING_MODE_VERTICAL_RL": 1,
+	}
+)
+
+func (x WritingMode) Enum() *WritingMode {
+	p := new(WritingMode)
+	*p = x
+	return p
+}
+
+func (x WritingMode) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (WritingMode) Descriptor() protoreflect.EnumDescriptor {
+	return file_opendesigner_v1_opendesigner_proto_enumTypes[16].Descriptor()
+}
+
+func (WritingMode) Type() protoreflect.EnumType {
+	return &file_opendesigner_v1_opendesigner_proto_enumTypes[16]
+}
+
+func (x WritingMode) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use WritingMode.Descriptor instead.
+func (WritingMode) EnumDescriptor() ([]byte, []int) {
+	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{16}
+}
+
 // Text case: a transform of what is DRAWN, the content keeps its capitalisation.
 type TextCase int32
 
@@ -937,11 +1034,11 @@ func (x TextCase) String() string {
 }
 
 func (TextCase) Descriptor() protoreflect.EnumDescriptor {
-	return file_opendesigner_v1_opendesigner_proto_enumTypes[15].Descriptor()
+	return file_opendesigner_v1_opendesigner_proto_enumTypes[17].Descriptor()
 }
 
 func (TextCase) Type() protoreflect.EnumType {
-	return &file_opendesigner_v1_opendesigner_proto_enumTypes[15]
+	return &file_opendesigner_v1_opendesigner_proto_enumTypes[17]
 }
 
 func (x TextCase) Number() protoreflect.EnumNumber {
@@ -950,7 +1047,7 @@ func (x TextCase) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use TextCase.Descriptor instead.
 func (TextCase) EnumDescriptor() ([]byte, []int) {
-	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{15}
+	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{17}
 }
 
 type TextVAlign int32
@@ -986,11 +1083,11 @@ func (x TextVAlign) String() string {
 }
 
 func (TextVAlign) Descriptor() protoreflect.EnumDescriptor {
-	return file_opendesigner_v1_opendesigner_proto_enumTypes[16].Descriptor()
+	return file_opendesigner_v1_opendesigner_proto_enumTypes[18].Descriptor()
 }
 
 func (TextVAlign) Type() protoreflect.EnumType {
-	return &file_opendesigner_v1_opendesigner_proto_enumTypes[16]
+	return &file_opendesigner_v1_opendesigner_proto_enumTypes[18]
 }
 
 func (x TextVAlign) Number() protoreflect.EnumNumber {
@@ -999,7 +1096,7 @@ func (x TextVAlign) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use TextVAlign.Descriptor instead.
 func (TextVAlign) EnumDescriptor() ([]byte, []int) {
-	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{16}
+	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{18}
 }
 
 type ComponentPropertyType int32
@@ -1044,11 +1141,11 @@ func (x ComponentPropertyType) String() string {
 }
 
 func (ComponentPropertyType) Descriptor() protoreflect.EnumDescriptor {
-	return file_opendesigner_v1_opendesigner_proto_enumTypes[17].Descriptor()
+	return file_opendesigner_v1_opendesigner_proto_enumTypes[19].Descriptor()
 }
 
 func (ComponentPropertyType) Type() protoreflect.EnumType {
-	return &file_opendesigner_v1_opendesigner_proto_enumTypes[17]
+	return &file_opendesigner_v1_opendesigner_proto_enumTypes[19]
 }
 
 func (x ComponentPropertyType) Number() protoreflect.EnumNumber {
@@ -1057,7 +1154,7 @@ func (x ComponentPropertyType) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use ComponentPropertyType.Descriptor instead.
 func (ComponentPropertyType) EnumDescriptor() ([]byte, []int) {
-	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{17}
+	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{19}
 }
 
 type LayoutPositioning int32
@@ -1090,11 +1187,11 @@ func (x LayoutPositioning) String() string {
 }
 
 func (LayoutPositioning) Descriptor() protoreflect.EnumDescriptor {
-	return file_opendesigner_v1_opendesigner_proto_enumTypes[18].Descriptor()
+	return file_opendesigner_v1_opendesigner_proto_enumTypes[20].Descriptor()
 }
 
 func (LayoutPositioning) Type() protoreflect.EnumType {
-	return &file_opendesigner_v1_opendesigner_proto_enumTypes[18]
+	return &file_opendesigner_v1_opendesigner_proto_enumTypes[20]
 }
 
 func (x LayoutPositioning) Number() protoreflect.EnumNumber {
@@ -1103,7 +1200,7 @@ func (x LayoutPositioning) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use LayoutPositioning.Descriptor instead.
 func (LayoutPositioning) EnumDescriptor() ([]byte, []int) {
-	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{18}
+	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{20}
 }
 
 type LayoutGridKind int32
@@ -1142,11 +1239,11 @@ func (x LayoutGridKind) String() string {
 }
 
 func (LayoutGridKind) Descriptor() protoreflect.EnumDescriptor {
-	return file_opendesigner_v1_opendesigner_proto_enumTypes[19].Descriptor()
+	return file_opendesigner_v1_opendesigner_proto_enumTypes[21].Descriptor()
 }
 
 func (LayoutGridKind) Type() protoreflect.EnumType {
-	return &file_opendesigner_v1_opendesigner_proto_enumTypes[19]
+	return &file_opendesigner_v1_opendesigner_proto_enumTypes[21]
 }
 
 func (x LayoutGridKind) Number() protoreflect.EnumNumber {
@@ -1155,7 +1252,7 @@ func (x LayoutGridKind) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use LayoutGridKind.Descriptor instead.
 func (LayoutGridKind) EnumDescriptor() ([]byte, []int) {
-	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{19}
+	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{21}
 }
 
 // A named, reusable text style. Text nodes point to it with Node.text_style_id.
@@ -1195,11 +1292,11 @@ func (x TextStyleKind) String() string {
 }
 
 func (TextStyleKind) Descriptor() protoreflect.EnumDescriptor {
-	return file_opendesigner_v1_opendesigner_proto_enumTypes[20].Descriptor()
+	return file_opendesigner_v1_opendesigner_proto_enumTypes[22].Descriptor()
 }
 
 func (TextStyleKind) Type() protoreflect.EnumType {
-	return &file_opendesigner_v1_opendesigner_proto_enumTypes[20]
+	return &file_opendesigner_v1_opendesigner_proto_enumTypes[22]
 }
 
 func (x TextStyleKind) Number() protoreflect.EnumNumber {
@@ -1208,7 +1305,7 @@ func (x TextStyleKind) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use TextStyleKind.Descriptor instead.
 func (TextStyleKind) EnumDescriptor() ([]byte, []int) {
-	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{20}
+	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{22}
 }
 
 type ListKind int32
@@ -1250,11 +1347,11 @@ func (x ListKind) String() string {
 }
 
 func (ListKind) Descriptor() protoreflect.EnumDescriptor {
-	return file_opendesigner_v1_opendesigner_proto_enumTypes[21].Descriptor()
+	return file_opendesigner_v1_opendesigner_proto_enumTypes[23].Descriptor()
 }
 
 func (ListKind) Type() protoreflect.EnumType {
-	return &file_opendesigner_v1_opendesigner_proto_enumTypes[21]
+	return &file_opendesigner_v1_opendesigner_proto_enumTypes[23]
 }
 
 func (x ListKind) Number() protoreflect.EnumNumber {
@@ -1263,7 +1360,7 @@ func (x ListKind) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use ListKind.Descriptor instead.
 func (ListKind) EnumDescriptor() ([]byte, []int) {
-	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{21}
+	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{23}
 }
 
 type TabAlign int32
@@ -1299,11 +1396,11 @@ func (x TabAlign) String() string {
 }
 
 func (TabAlign) Descriptor() protoreflect.EnumDescriptor {
-	return file_opendesigner_v1_opendesigner_proto_enumTypes[22].Descriptor()
+	return file_opendesigner_v1_opendesigner_proto_enumTypes[24].Descriptor()
 }
 
 func (TabAlign) Type() protoreflect.EnumType {
-	return &file_opendesigner_v1_opendesigner_proto_enumTypes[22]
+	return &file_opendesigner_v1_opendesigner_proto_enumTypes[24]
 }
 
 func (x TabAlign) Number() protoreflect.EnumNumber {
@@ -1312,7 +1409,7 @@ func (x TabAlign) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use TabAlign.Descriptor instead.
 func (TabAlign) EnumDescriptor() ([]byte, []int) {
-	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{22}
+	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{24}
 }
 
 type VariableType int32
@@ -1354,11 +1451,11 @@ func (x VariableType) String() string {
 }
 
 func (VariableType) Descriptor() protoreflect.EnumDescriptor {
-	return file_opendesigner_v1_opendesigner_proto_enumTypes[23].Descriptor()
+	return file_opendesigner_v1_opendesigner_proto_enumTypes[25].Descriptor()
 }
 
 func (VariableType) Type() protoreflect.EnumType {
-	return &file_opendesigner_v1_opendesigner_proto_enumTypes[23]
+	return &file_opendesigner_v1_opendesigner_proto_enumTypes[25]
 }
 
 func (x VariableType) Number() protoreflect.EnumNumber {
@@ -1367,7 +1464,7 @@ func (x VariableType) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use VariableType.Descriptor instead.
 func (VariableType) EnumDescriptor() ([]byte, []int) {
-	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{23}
+	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{25}
 }
 
 // ---------- document / scene graph ----------
@@ -3725,7 +3822,10 @@ type TextStyle struct {
 	// Fields 30..49 are the text-scale range.
 	// Horizontal scale of the glyphs in percent: 0 => 100 (unscaled), otherwise 1..1000. Widens or narrows
 	// every glyph (and so the layout) without changing the height of the line.
-	TextScale     float64 `protobuf:"fixed64,30,opt,name=text_scale,json=textScale,proto3" json:"text_scale,omitempty"`
+	TextScale float64 `protobuf:"fixed64,30,opt,name=text_scale,json=textScale,proto3" json:"text_scale,omitempty"`
+	// Fields 31..39 are the international-text range (docs/text-international.md).
+	Direction     TextDirection `protobuf:"varint,31,opt,name=direction,proto3,enum=opendesigner.v1.TextDirection" json:"direction,omitempty"`                      // UNSPECIFIED => auto (the first strong character decides)
+	WritingMode   WritingMode   `protobuf:"varint,32,opt,name=writing_mode,json=writingMode,proto3,enum=opendesigner.v1.WritingMode" json:"writing_mode,omitempty"` // UNSPECIFIED => horizontal
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -3919,6 +4019,20 @@ func (x *TextStyle) GetTextScale() float64 {
 		return x.TextScale
 	}
 	return 0
+}
+
+func (x *TextStyle) GetDirection() TextDirection {
+	if x != nil {
+		return x.Direction
+	}
+	return TextDirection_TEXT_DIRECTION_UNSPECIFIED
+}
+
+func (x *TextStyle) GetWritingMode() WritingMode {
+	if x != nil {
+		return x.WritingMode
+	}
+	return WritingMode_WRITING_MODE_UNSPECIFIED
 }
 
 // The text box is x/y/width/height of the Node (as for rect/ellipse): width is
@@ -16633,7 +16747,7 @@ const file_opendesigner_v1_opendesigner_proto_rawDesc = "" +
 	"\tFrameNode\x12#\n" +
 	"\rclips_content\x18\x01 \x01(\bR\fclipsContent\x12<\n" +
 	"\vauto_layout\x18\x02 \x01(\v2\x1b.opendesigner.v1.AutoLayoutR\n" +
-	"autoLayout\"\x9f\a\n" +
+	"autoLayout\"\x9e\b\n" +
 	"\tTextStyle\x12\x1f\n" +
 	"\vfont_family\x18\x01 \x01(\tR\n" +
 	"fontFamily\x12\x1b\n" +
@@ -16665,7 +16779,9 @@ const file_opendesigner_v1_opendesigner_proto_rawDesc = "" +
 	"\x0evertical_align\x18\x19 \x01(\x0e2\x1b.opendesigner.v1.TextVAlignR\rverticalAlign\x12\x14\n" +
 	"\x05inset\x18\x1a \x01(\x01R\x05inset\x12\x1d\n" +
 	"\n" +
-	"text_scale\x18\x1e \x01(\x01R\ttextScaleJ\x04\b\x18\x10\x19\"\xaf\x01\n" +
+	"text_scale\x18\x1e \x01(\x01R\ttextScale\x12<\n" +
+	"\tdirection\x18\x1f \x01(\x0e2\x1e.opendesigner.v1.TextDirectionR\tdirection\x12?\n" +
+	"\fwriting_mode\x18  \x01(\x0e2\x1c.opendesigner.v1.WritingModeR\vwritingModeJ\x04\b\x18\x10\x19\"\xaf\x01\n" +
 	"\bTextNode\x12\x18\n" +
 	"\acontent\x18\x01 \x01(\tR\acontent\x120\n" +
 	"\x05style\x18\x02 \x01(\v2\x1a.opendesigner.v1.TextStyleR\x05style\x12)\n" +
@@ -17788,7 +17904,14 @@ const file_opendesigner_v1_opendesigner_proto_rawDesc = "" +
 	"\x0fTEXT_SCRIPT_SUB\x10\x02\x12\x16\n" +
 	"\x12TEXT_SCRIPT_NORMAL\x10\x00\x12\x1b\n" +
 	"\x17TEXT_SCRIPT_SUPERSCRIPT\x10\x01\x12\x19\n" +
-	"\x15TEXT_SCRIPT_SUBSCRIPT\x10\x02\x1a\x02\x10\x01*~\n" +
+	"\x15TEXT_SCRIPT_SUBSCRIPT\x10\x02\x1a\x02\x10\x01*_\n" +
+	"\rTextDirection\x12\x1e\n" +
+	"\x1aTEXT_DIRECTION_UNSPECIFIED\x10\x00\x12\x16\n" +
+	"\x12TEXT_DIRECTION_LTR\x10\x01\x12\x16\n" +
+	"\x12TEXT_DIRECTION_RTL\x10\x02*I\n" +
+	"\vWritingMode\x12\x1c\n" +
+	"\x18WRITING_MODE_UNSPECIFIED\x10\x00\x12\x1c\n" +
+	"\x18WRITING_MODE_VERTICAL_RL\x10\x01*~\n" +
 	"\bTextCase\x12\x19\n" +
 	"\x15TEXT_CASE_UNSPECIFIED\x10\x00\x12\x13\n" +
 	"\x0fTEXT_CASE_UPPER\x10\x01\x12\x13\n" +
@@ -17879,7 +18002,7 @@ func file_opendesigner_v1_opendesigner_proto_rawDescGZIP() []byte {
 	return file_opendesigner_v1_opendesigner_proto_rawDescData
 }
 
-var file_opendesigner_v1_opendesigner_proto_enumTypes = make([]protoimpl.EnumInfo, 24)
+var file_opendesigner_v1_opendesigner_proto_enumTypes = make([]protoimpl.EnumInfo, 26)
 var file_opendesigner_v1_opendesigner_proto_msgTypes = make([]protoimpl.MessageInfo, 226)
 var file_opendesigner_v1_opendesigner_proto_goTypes = []any{
 	(ImageScaleMode)(0),             // 0: opendesigner.v1.ImageScaleMode
@@ -17897,575 +18020,579 @@ var file_opendesigner_v1_opendesigner_proto_goTypes = []any{
 	(Constraint)(0),                 // 12: opendesigner.v1.Constraint
 	(TextAlign)(0),                  // 13: opendesigner.v1.TextAlign
 	(TextScript)(0),                 // 14: opendesigner.v1.TextScript
-	(TextCase)(0),                   // 15: opendesigner.v1.TextCase
-	(TextVAlign)(0),                 // 16: opendesigner.v1.TextVAlign
-	(ComponentPropertyType)(0),      // 17: opendesigner.v1.ComponentPropertyType
-	(LayoutPositioning)(0),          // 18: opendesigner.v1.LayoutPositioning
-	(LayoutGridKind)(0),             // 19: opendesigner.v1.LayoutGridKind
-	(TextStyleKind)(0),              // 20: opendesigner.v1.TextStyleKind
-	(ListKind)(0),                   // 21: opendesigner.v1.ListKind
-	(TabAlign)(0),                   // 22: opendesigner.v1.TabAlign
-	(VariableType)(0),               // 23: opendesigner.v1.VariableType
-	(*Color)(nil),                   // 24: opendesigner.v1.Color
-	(*SolidPaint)(nil),              // 25: opendesigner.v1.SolidPaint
-	(*GradientStop)(nil),            // 26: opendesigner.v1.GradientStop
-	(*GradientPaint)(nil),           // 27: opendesigner.v1.GradientPaint
-	(*ImagePaint)(nil),              // 28: opendesigner.v1.ImagePaint
-	(*MeshPaint)(nil),               // 29: opendesigner.v1.MeshPaint
-	(*Paint)(nil),                   // 30: opendesigner.v1.Paint
-	(*StrokeSides)(nil),             // 31: opendesigner.v1.StrokeSides
-	(*Stroke)(nil),                  // 32: opendesigner.v1.Stroke
-	(*Brush)(nil),                   // 33: opendesigner.v1.Brush
-	(*WidthPoint)(nil),              // 34: opendesigner.v1.WidthPoint
-	(*DropShadow)(nil),              // 35: opendesigner.v1.DropShadow
-	(*LayerBlur)(nil),               // 36: opendesigner.v1.LayerBlur
-	(*InnerShadow)(nil),             // 37: opendesigner.v1.InnerShadow
-	(*BackgroundBlur)(nil),          // 38: opendesigner.v1.BackgroundBlur
-	(*ProgressiveBlur)(nil),         // 39: opendesigner.v1.ProgressiveBlur
-	(*Noise)(nil),                   // 40: opendesigner.v1.Noise
-	(*Texture)(nil),                 // 41: opendesigner.v1.Texture
-	(*Glass)(nil),                   // 42: opendesigner.v1.Glass
-	(*Effect)(nil),                  // 43: opendesigner.v1.Effect
-	(*CornerRadii)(nil),             // 44: opendesigner.v1.CornerRadii
-	(*RectNode)(nil),                // 45: opendesigner.v1.RectNode
-	(*EllipseNode)(nil),             // 46: opendesigner.v1.EllipseNode
-	(*PolygonNode)(nil),             // 47: opendesigner.v1.PolygonNode
-	(*StarNode)(nil),                // 48: opendesigner.v1.StarNode
-	(*GroupNode)(nil),               // 49: opendesigner.v1.GroupNode
-	(*AutoLayout)(nil),              // 50: opendesigner.v1.AutoLayout
-	(*GridTrack)(nil),               // 51: opendesigner.v1.GridTrack
-	(*GridPlacement)(nil),           // 52: opendesigner.v1.GridPlacement
-	(*FrameNode)(nil),               // 53: opendesigner.v1.FrameNode
-	(*TextStyle)(nil),               // 54: opendesigner.v1.TextStyle
-	(*TextNode)(nil),                // 55: opendesigner.v1.TextNode
-	(*TextRun)(nil),                 // 56: opendesigner.v1.TextRun
-	(*ImageNode)(nil),               // 57: opendesigner.v1.ImageNode
-	(*Anchor)(nil),                  // 58: opendesigner.v1.Anchor
-	(*SubPath)(nil),                 // 59: opendesigner.v1.SubPath
-	(*VectorNode)(nil),              // 60: opendesigner.v1.VectorNode
-	(*Component)(nil),               // 61: opendesigner.v1.Component
-	(*ComponentProperty)(nil),       // 62: opendesigner.v1.ComponentProperty
-	(*VariantAxis)(nil),             // 63: opendesigner.v1.VariantAxis
-	(*ComponentSet)(nil),            // 64: opendesigner.v1.ComponentSet
-	(*InstanceOverride)(nil),        // 65: opendesigner.v1.InstanceOverride
-	(*InstanceNode)(nil),            // 66: opendesigner.v1.InstanceNode
-	(*Node)(nil),                    // 67: opendesigner.v1.Node
-	(*LayoutGrid)(nil),              // 68: opendesigner.v1.LayoutGrid
-	(*Page)(nil),                    // 69: opendesigner.v1.Page
-	(*Guide)(nil),                   // 70: opendesigner.v1.Guide
-	(*FontFace)(nil),                // 71: opendesigner.v1.FontFace
-	(*TextStyleDef)(nil),            // 72: opendesigner.v1.TextStyleDef
-	(*PaintStyleDef)(nil),           // 73: opendesigner.v1.PaintStyleDef
-	(*EffectStyleDef)(nil),          // 74: opendesigner.v1.EffectStyleDef
-	(*ParagraphRule)(nil),           // 75: opendesigner.v1.ParagraphRule
-	(*TabStop)(nil),                 // 76: opendesigner.v1.TabStop
-	(*NestedStyle)(nil),             // 77: opendesigner.v1.NestedStyle
-	(*VariableMode)(nil),            // 78: opendesigner.v1.VariableMode
-	(*VariableCollection)(nil),      // 79: opendesigner.v1.VariableCollection
-	(*VariableValue)(nil),           // 80: opendesigner.v1.VariableValue
-	(*Variable)(nil),                // 81: opendesigner.v1.Variable
-	(*Cmyk)(nil),                    // 82: opendesigner.v1.Cmyk
-	(*Flow)(nil),                    // 83: opendesigner.v1.Flow
-	(*Transition)(nil),              // 84: opendesigner.v1.Transition
-	(*Keyframe)(nil),                // 85: opendesigner.v1.Keyframe
-	(*Track)(nil),                   // 86: opendesigner.v1.Track
-	(*Clip)(nil),                    // 87: opendesigner.v1.Clip
-	(*Document)(nil),                // 88: opendesigner.v1.Document
-	(*ObjectStyleDef)(nil),          // 89: opendesigner.v1.ObjectStyleDef
-	(*Layer)(nil),                   // 90: opendesigner.v1.Layer
-	(*DocSettings)(nil),             // 91: opendesigner.v1.DocSettings
-	(*TextCondition)(nil),           // 92: opendesigner.v1.TextCondition
-	(*TableStyle)(nil),              // 93: opendesigner.v1.TableStyle
-	(*BookMetadata)(nil),            // 94: opendesigner.v1.BookMetadata
-	(*Contributor)(nil),             // 95: opendesigner.v1.Contributor
-	(*Subject)(nil),                 // 96: opendesigner.v1.Subject
-	(*Price)(nil),                   // 97: opendesigner.v1.Price
-	(*CreateNode)(nil),              // 98: opendesigner.v1.CreateNode
-	(*DeleteNode)(nil),              // 99: opendesigner.v1.DeleteNode
-	(*SetProperties)(nil),           // 100: opendesigner.v1.SetProperties
-	(*SetText)(nil),                 // 101: opendesigner.v1.SetText
-	(*SetVectorPath)(nil),           // 102: opendesigner.v1.SetVectorPath
-	(*ReparentNode)(nil),            // 103: opendesigner.v1.ReparentNode
-	(*CreatePage)(nil),              // 104: opendesigner.v1.CreatePage
-	(*DeletePage)(nil),              // 105: opendesigner.v1.DeletePage
-	(*RenamePage)(nil),              // 106: opendesigner.v1.RenamePage
-	(*UpdatePage)(nil),              // 107: opendesigner.v1.UpdatePage
-	(*MovePage)(nil),                // 108: opendesigner.v1.MovePage
-	(*SetDocSettings)(nil),          // 109: opendesigner.v1.SetDocSettings
-	(*CreateComponent)(nil),         // 110: opendesigner.v1.CreateComponent
-	(*SetInstanceOverride)(nil),     // 111: opendesigner.v1.SetInstanceOverride
-	(*SetFlow)(nil),                 // 112: opendesigner.v1.SetFlow
-	(*DeleteFlow)(nil),              // 113: opendesigner.v1.DeleteFlow
-	(*SetTransition)(nil),           // 114: opendesigner.v1.SetTransition
-	(*DeleteTransition)(nil),        // 115: opendesigner.v1.DeleteTransition
-	(*SetClip)(nil),                 // 116: opendesigner.v1.SetClip
-	(*DeleteClip)(nil),              // 117: opendesigner.v1.DeleteClip
-	(*Op)(nil),                      // 118: opendesigner.v1.Op
-	(*Comment)(nil),                 // 119: opendesigner.v1.Comment
-	(*SetComment)(nil),              // 120: opendesigner.v1.SetComment
-	(*DeleteComment)(nil),           // 121: opendesigner.v1.DeleteComment
-	(*SetInstance)(nil),             // 122: opendesigner.v1.SetInstance
-	(*Annotation)(nil),              // 123: opendesigner.v1.Annotation
-	(*ReadyForDev)(nil),             // 124: opendesigner.v1.ReadyForDev
-	(*SetAnnotation)(nil),           // 125: opendesigner.v1.SetAnnotation
-	(*DeleteAnnotation)(nil),        // 126: opendesigner.v1.DeleteAnnotation
-	(*SetReadyForDev)(nil),          // 127: opendesigner.v1.SetReadyForDev
-	(*ClearReadyForDev)(nil),        // 128: opendesigner.v1.ClearReadyForDev
-	(*ReadyChange)(nil),             // 129: opendesigner.v1.ReadyChange
-	(*CompareReadyRequest)(nil),     // 130: opendesigner.v1.CompareReadyRequest
-	(*CompareReadyResponse)(nil),    // 131: opendesigner.v1.CompareReadyResponse
-	(*SetCollection)(nil),           // 132: opendesigner.v1.SetCollection
-	(*DeleteCollection)(nil),        // 133: opendesigner.v1.DeleteCollection
-	(*SetVariable)(nil),             // 134: opendesigner.v1.SetVariable
-	(*DeleteVariable)(nil),          // 135: opendesigner.v1.DeleteVariable
-	(*SetFont)(nil),                 // 136: opendesigner.v1.SetFont
-	(*DeleteFont)(nil),              // 137: opendesigner.v1.DeleteFont
-	(*SetTextStyleDef)(nil),         // 138: opendesigner.v1.SetTextStyleDef
-	(*DeleteTextStyleDef)(nil),      // 139: opendesigner.v1.DeleteTextStyleDef
-	(*SetPaintStyleDef)(nil),        // 140: opendesigner.v1.SetPaintStyleDef
-	(*DeletePaintStyleDef)(nil),     // 141: opendesigner.v1.DeletePaintStyleDef
-	(*SetEffectStyleDef)(nil),       // 142: opendesigner.v1.SetEffectStyleDef
-	(*DeleteEffectStyleDef)(nil),    // 143: opendesigner.v1.DeleteEffectStyleDef
-	(*SetObjectStyleDef)(nil),       // 144: opendesigner.v1.SetObjectStyleDef
-	(*DeleteObjectStyleDef)(nil),    // 145: opendesigner.v1.DeleteObjectStyleDef
-	(*SetLayer)(nil),                // 146: opendesigner.v1.SetLayer
-	(*DeleteLayer)(nil),             // 147: opendesigner.v1.DeleteLayer
-	(*SetImage)(nil),                // 148: opendesigner.v1.SetImage
-	(*OptionRename)(nil),            // 149: opendesigner.v1.OptionRename
-	(*SetComponentSet)(nil),         // 150: opendesigner.v1.SetComponentSet
-	(*DeleteComponentSet)(nil),      // 151: opendesigner.v1.DeleteComponentSet
-	(*SetComponentDef)(nil),         // 152: opendesigner.v1.SetComponentDef
-	(*SetInstanceProps)(nil),        // 153: opendesigner.v1.SetInstanceProps
-	(*OpRecord)(nil),                // 154: opendesigner.v1.OpRecord
-	(*OpenRequest)(nil),             // 155: opendesigner.v1.OpenRequest
-	(*OpenResponse)(nil),            // 156: opendesigner.v1.OpenResponse
-	(*CreateDocumentRequest)(nil),   // 157: opendesigner.v1.CreateDocumentRequest
-	(*DocInfo)(nil),                 // 158: opendesigner.v1.DocInfo
-	(*RenameDocumentRequest)(nil),   // 159: opendesigner.v1.RenameDocumentRequest
-	(*DeleteDocumentRequest)(nil),   // 160: opendesigner.v1.DeleteDocumentRequest
-	(*DeleteDocumentResponse)(nil),  // 161: opendesigner.v1.DeleteDocumentResponse
-	(*ListDocumentsRequest)(nil),    // 162: opendesigner.v1.ListDocumentsRequest
-	(*ListDocumentsResponse)(nil),   // 163: opendesigner.v1.ListDocumentsResponse
-	(*SubmitOpRequest)(nil),         // 164: opendesigner.v1.SubmitOpRequest
-	(*SubmitOpResponse)(nil),        // 165: opendesigner.v1.SubmitOpResponse
-	(*SubscribeRequest)(nil),        // 166: opendesigner.v1.SubscribeRequest
-	(*Ack)(nil),                     // 167: opendesigner.v1.Ack
-	(*ErrorMsg)(nil),                // 168: opendesigner.v1.ErrorMsg
-	(*ServerMsg)(nil),               // 169: opendesigner.v1.ServerMsg
-	(*PresenceState)(nil),           // 170: opendesigner.v1.PresenceState
-	(*PresenceEvent)(nil),           // 171: opendesigner.v1.PresenceEvent
-	(*FlowIssue)(nil),               // 172: opendesigner.v1.FlowIssue
-	(*FlowPath)(nil),                // 173: opendesigner.v1.FlowPath
-	(*FlowReport)(nil),              // 174: opendesigner.v1.FlowReport
-	(*AnalyzeFlowsRequest)(nil),     // 175: opendesigner.v1.AnalyzeFlowsRequest
-	(*AnalyzeFlowsResponse)(nil),    // 176: opendesigner.v1.AnalyzeFlowsResponse
-	(*ExportFile)(nil),              // 177: opendesigner.v1.ExportFile
-	(*ExportCodeRequest)(nil),       // 178: opendesigner.v1.ExportCodeRequest
-	(*ExportCodeResponse)(nil),      // 179: opendesigner.v1.ExportCodeResponse
-	(*RenderDiagramRequest)(nil),    // 180: opendesigner.v1.RenderDiagramRequest
-	(*RenderDiagramResponse)(nil),   // 181: opendesigner.v1.RenderDiagramResponse
-	(*VersionInfo)(nil),             // 182: opendesigner.v1.VersionInfo
-	(*CreateVersionRequest)(nil),    // 183: opendesigner.v1.CreateVersionRequest
-	(*ListVersionsRequest)(nil),     // 184: opendesigner.v1.ListVersionsRequest
-	(*ListVersionsResponse)(nil),    // 185: opendesigner.v1.ListVersionsResponse
-	(*DeleteVersionRequest)(nil),    // 186: opendesigner.v1.DeleteVersionRequest
-	(*DeleteVersionResponse)(nil),   // 187: opendesigner.v1.DeleteVersionResponse
-	(*BranchRequest)(nil),           // 188: opendesigner.v1.BranchRequest
-	(*AccessLink)(nil),              // 189: opendesigner.v1.AccessLink
-	(*GetAccessRequest)(nil),        // 190: opendesigner.v1.GetAccessRequest
-	(*GetAccessResponse)(nil),       // 191: opendesigner.v1.GetAccessResponse
-	(*EnableAccessRequest)(nil),     // 192: opendesigner.v1.EnableAccessRequest
-	(*EnableAccessResponse)(nil),    // 193: opendesigner.v1.EnableAccessResponse
-	(*DisableAccessRequest)(nil),    // 194: opendesigner.v1.DisableAccessRequest
-	(*DisableAccessResponse)(nil),   // 195: opendesigner.v1.DisableAccessResponse
-	(*CreateShareLinkRequest)(nil),  // 196: opendesigner.v1.CreateShareLinkRequest
-	(*CreateShareLinkResponse)(nil), // 197: opendesigner.v1.CreateShareLinkResponse
-	(*RevokeShareLinkRequest)(nil),  // 198: opendesigner.v1.RevokeShareLinkRequest
-	(*RevokeShareLinkResponse)(nil), // 199: opendesigner.v1.RevokeShareLinkResponse
-	(*ImportFigRequest)(nil),        // 200: opendesigner.v1.ImportFigRequest
-	(*ImportFigResponse)(nil),       // 201: opendesigner.v1.ImportFigResponse
-	(*GetBranchOriginRequest)(nil),  // 202: opendesigner.v1.GetBranchOriginRequest
-	(*GetBranchOriginResponse)(nil), // 203: opendesigner.v1.GetBranchOriginResponse
-	(*MergeChange)(nil),             // 204: opendesigner.v1.MergeChange
-	(*ReviewMergeRequest)(nil),      // 205: opendesigner.v1.ReviewMergeRequest
-	(*ReviewMergeResponse)(nil),     // 206: opendesigner.v1.ReviewMergeResponse
-	(*MergeBranchRequest)(nil),      // 207: opendesigner.v1.MergeBranchRequest
-	(*MergeBranchResponse)(nil),     // 208: opendesigner.v1.MergeBranchResponse
-	(*ReviewIssue)(nil),             // 209: opendesigner.v1.ReviewIssue
-	(*ReviewDesignRequest)(nil),     // 210: opendesigner.v1.ReviewDesignRequest
-	(*ReviewDesignResponse)(nil),    // 211: opendesigner.v1.ReviewDesignResponse
-	(*RenderBoardRequest)(nil),      // 212: opendesigner.v1.RenderBoardRequest
-	(*RenderBoardResponse)(nil),     // 213: opendesigner.v1.RenderBoardResponse
-	(*WatchPresenceRequest)(nil),    // 214: opendesigner.v1.WatchPresenceRequest
-	(*UpdatePresenceRequest)(nil),   // 215: opendesigner.v1.UpdatePresenceRequest
-	(*UpdatePresenceResponse)(nil),  // 216: opendesigner.v1.UpdatePresenceResponse
-	(*EditorJob)(nil),               // 217: opendesigner.v1.EditorJob
-	(*WatchJobsRequest)(nil),        // 218: opendesigner.v1.WatchJobsRequest
-	(*RunJobRequest)(nil),           // 219: opendesigner.v1.RunJobRequest
-	(*RunJobResponse)(nil),          // 220: opendesigner.v1.RunJobResponse
-	(*CompleteJobRequest)(nil),      // 221: opendesigner.v1.CompleteJobRequest
-	(*CompleteJobResponse)(nil),     // 222: opendesigner.v1.CompleteJobResponse
-	nil,                             // 223: opendesigner.v1.Component.VariantEntry
-	nil,                             // 224: opendesigner.v1.InstanceNode.PropertyValuesEntry
-	nil,                             // 225: opendesigner.v1.InstanceNode.VariantPropsEntry
-	nil,                             // 226: opendesigner.v1.Node.MetaEntry
-	nil,                             // 227: opendesigner.v1.Node.BindingsEntry
-	nil,                             // 228: opendesigner.v1.Node.ModesEntry
-	nil,                             // 229: opendesigner.v1.Variable.ValuesEntry
-	nil,                             // 230: opendesigner.v1.Document.NodesEntry
-	nil,                             // 231: opendesigner.v1.Document.ComponentsEntry
-	nil,                             // 232: opendesigner.v1.Document.FlowsEntry
-	nil,                             // 233: opendesigner.v1.Document.TransitionsEntry
-	nil,                             // 234: opendesigner.v1.Document.ClipsEntry
-	nil,                             // 235: opendesigner.v1.Document.CollectionsEntry
-	nil,                             // 236: opendesigner.v1.Document.VariablesEntry
-	nil,                             // 237: opendesigner.v1.Document.FontsEntry
-	nil,                             // 238: opendesigner.v1.Document.TextStylesEntry
-	nil,                             // 239: opendesigner.v1.Document.ComponentSetsEntry
-	nil,                             // 240: opendesigner.v1.Document.CommentsEntry
-	nil,                             // 241: opendesigner.v1.Document.PaintStylesEntry
-	nil,                             // 242: opendesigner.v1.Document.EffectStylesEntry
-	nil,                             // 243: opendesigner.v1.Document.AnnotationsEntry
-	nil,                             // 244: opendesigner.v1.Document.ReadyForDevEntry
-	nil,                             // 245: opendesigner.v1.Document.ObjectStylesEntry
-	nil,                             // 246: opendesigner.v1.SetComponentSet.AxisRenamesEntry
-	nil,                             // 247: opendesigner.v1.SetComponentDef.VariantEntry
-	nil,                             // 248: opendesigner.v1.SetInstanceProps.PropertyValuesEntry
-	nil,                             // 249: opendesigner.v1.SetInstanceProps.VariantPropsEntry
-	(*fieldmaskpb.FieldMask)(nil),   // 250: google.protobuf.FieldMask
-	(*timestamppb.Timestamp)(nil),   // 251: google.protobuf.Timestamp
+	(TextDirection)(0),              // 15: opendesigner.v1.TextDirection
+	(WritingMode)(0),                // 16: opendesigner.v1.WritingMode
+	(TextCase)(0),                   // 17: opendesigner.v1.TextCase
+	(TextVAlign)(0),                 // 18: opendesigner.v1.TextVAlign
+	(ComponentPropertyType)(0),      // 19: opendesigner.v1.ComponentPropertyType
+	(LayoutPositioning)(0),          // 20: opendesigner.v1.LayoutPositioning
+	(LayoutGridKind)(0),             // 21: opendesigner.v1.LayoutGridKind
+	(TextStyleKind)(0),              // 22: opendesigner.v1.TextStyleKind
+	(ListKind)(0),                   // 23: opendesigner.v1.ListKind
+	(TabAlign)(0),                   // 24: opendesigner.v1.TabAlign
+	(VariableType)(0),               // 25: opendesigner.v1.VariableType
+	(*Color)(nil),                   // 26: opendesigner.v1.Color
+	(*SolidPaint)(nil),              // 27: opendesigner.v1.SolidPaint
+	(*GradientStop)(nil),            // 28: opendesigner.v1.GradientStop
+	(*GradientPaint)(nil),           // 29: opendesigner.v1.GradientPaint
+	(*ImagePaint)(nil),              // 30: opendesigner.v1.ImagePaint
+	(*MeshPaint)(nil),               // 31: opendesigner.v1.MeshPaint
+	(*Paint)(nil),                   // 32: opendesigner.v1.Paint
+	(*StrokeSides)(nil),             // 33: opendesigner.v1.StrokeSides
+	(*Stroke)(nil),                  // 34: opendesigner.v1.Stroke
+	(*Brush)(nil),                   // 35: opendesigner.v1.Brush
+	(*WidthPoint)(nil),              // 36: opendesigner.v1.WidthPoint
+	(*DropShadow)(nil),              // 37: opendesigner.v1.DropShadow
+	(*LayerBlur)(nil),               // 38: opendesigner.v1.LayerBlur
+	(*InnerShadow)(nil),             // 39: opendesigner.v1.InnerShadow
+	(*BackgroundBlur)(nil),          // 40: opendesigner.v1.BackgroundBlur
+	(*ProgressiveBlur)(nil),         // 41: opendesigner.v1.ProgressiveBlur
+	(*Noise)(nil),                   // 42: opendesigner.v1.Noise
+	(*Texture)(nil),                 // 43: opendesigner.v1.Texture
+	(*Glass)(nil),                   // 44: opendesigner.v1.Glass
+	(*Effect)(nil),                  // 45: opendesigner.v1.Effect
+	(*CornerRadii)(nil),             // 46: opendesigner.v1.CornerRadii
+	(*RectNode)(nil),                // 47: opendesigner.v1.RectNode
+	(*EllipseNode)(nil),             // 48: opendesigner.v1.EllipseNode
+	(*PolygonNode)(nil),             // 49: opendesigner.v1.PolygonNode
+	(*StarNode)(nil),                // 50: opendesigner.v1.StarNode
+	(*GroupNode)(nil),               // 51: opendesigner.v1.GroupNode
+	(*AutoLayout)(nil),              // 52: opendesigner.v1.AutoLayout
+	(*GridTrack)(nil),               // 53: opendesigner.v1.GridTrack
+	(*GridPlacement)(nil),           // 54: opendesigner.v1.GridPlacement
+	(*FrameNode)(nil),               // 55: opendesigner.v1.FrameNode
+	(*TextStyle)(nil),               // 56: opendesigner.v1.TextStyle
+	(*TextNode)(nil),                // 57: opendesigner.v1.TextNode
+	(*TextRun)(nil),                 // 58: opendesigner.v1.TextRun
+	(*ImageNode)(nil),               // 59: opendesigner.v1.ImageNode
+	(*Anchor)(nil),                  // 60: opendesigner.v1.Anchor
+	(*SubPath)(nil),                 // 61: opendesigner.v1.SubPath
+	(*VectorNode)(nil),              // 62: opendesigner.v1.VectorNode
+	(*Component)(nil),               // 63: opendesigner.v1.Component
+	(*ComponentProperty)(nil),       // 64: opendesigner.v1.ComponentProperty
+	(*VariantAxis)(nil),             // 65: opendesigner.v1.VariantAxis
+	(*ComponentSet)(nil),            // 66: opendesigner.v1.ComponentSet
+	(*InstanceOverride)(nil),        // 67: opendesigner.v1.InstanceOverride
+	(*InstanceNode)(nil),            // 68: opendesigner.v1.InstanceNode
+	(*Node)(nil),                    // 69: opendesigner.v1.Node
+	(*LayoutGrid)(nil),              // 70: opendesigner.v1.LayoutGrid
+	(*Page)(nil),                    // 71: opendesigner.v1.Page
+	(*Guide)(nil),                   // 72: opendesigner.v1.Guide
+	(*FontFace)(nil),                // 73: opendesigner.v1.FontFace
+	(*TextStyleDef)(nil),            // 74: opendesigner.v1.TextStyleDef
+	(*PaintStyleDef)(nil),           // 75: opendesigner.v1.PaintStyleDef
+	(*EffectStyleDef)(nil),          // 76: opendesigner.v1.EffectStyleDef
+	(*ParagraphRule)(nil),           // 77: opendesigner.v1.ParagraphRule
+	(*TabStop)(nil),                 // 78: opendesigner.v1.TabStop
+	(*NestedStyle)(nil),             // 79: opendesigner.v1.NestedStyle
+	(*VariableMode)(nil),            // 80: opendesigner.v1.VariableMode
+	(*VariableCollection)(nil),      // 81: opendesigner.v1.VariableCollection
+	(*VariableValue)(nil),           // 82: opendesigner.v1.VariableValue
+	(*Variable)(nil),                // 83: opendesigner.v1.Variable
+	(*Cmyk)(nil),                    // 84: opendesigner.v1.Cmyk
+	(*Flow)(nil),                    // 85: opendesigner.v1.Flow
+	(*Transition)(nil),              // 86: opendesigner.v1.Transition
+	(*Keyframe)(nil),                // 87: opendesigner.v1.Keyframe
+	(*Track)(nil),                   // 88: opendesigner.v1.Track
+	(*Clip)(nil),                    // 89: opendesigner.v1.Clip
+	(*Document)(nil),                // 90: opendesigner.v1.Document
+	(*ObjectStyleDef)(nil),          // 91: opendesigner.v1.ObjectStyleDef
+	(*Layer)(nil),                   // 92: opendesigner.v1.Layer
+	(*DocSettings)(nil),             // 93: opendesigner.v1.DocSettings
+	(*TextCondition)(nil),           // 94: opendesigner.v1.TextCondition
+	(*TableStyle)(nil),              // 95: opendesigner.v1.TableStyle
+	(*BookMetadata)(nil),            // 96: opendesigner.v1.BookMetadata
+	(*Contributor)(nil),             // 97: opendesigner.v1.Contributor
+	(*Subject)(nil),                 // 98: opendesigner.v1.Subject
+	(*Price)(nil),                   // 99: opendesigner.v1.Price
+	(*CreateNode)(nil),              // 100: opendesigner.v1.CreateNode
+	(*DeleteNode)(nil),              // 101: opendesigner.v1.DeleteNode
+	(*SetProperties)(nil),           // 102: opendesigner.v1.SetProperties
+	(*SetText)(nil),                 // 103: opendesigner.v1.SetText
+	(*SetVectorPath)(nil),           // 104: opendesigner.v1.SetVectorPath
+	(*ReparentNode)(nil),            // 105: opendesigner.v1.ReparentNode
+	(*CreatePage)(nil),              // 106: opendesigner.v1.CreatePage
+	(*DeletePage)(nil),              // 107: opendesigner.v1.DeletePage
+	(*RenamePage)(nil),              // 108: opendesigner.v1.RenamePage
+	(*UpdatePage)(nil),              // 109: opendesigner.v1.UpdatePage
+	(*MovePage)(nil),                // 110: opendesigner.v1.MovePage
+	(*SetDocSettings)(nil),          // 111: opendesigner.v1.SetDocSettings
+	(*CreateComponent)(nil),         // 112: opendesigner.v1.CreateComponent
+	(*SetInstanceOverride)(nil),     // 113: opendesigner.v1.SetInstanceOverride
+	(*SetFlow)(nil),                 // 114: opendesigner.v1.SetFlow
+	(*DeleteFlow)(nil),              // 115: opendesigner.v1.DeleteFlow
+	(*SetTransition)(nil),           // 116: opendesigner.v1.SetTransition
+	(*DeleteTransition)(nil),        // 117: opendesigner.v1.DeleteTransition
+	(*SetClip)(nil),                 // 118: opendesigner.v1.SetClip
+	(*DeleteClip)(nil),              // 119: opendesigner.v1.DeleteClip
+	(*Op)(nil),                      // 120: opendesigner.v1.Op
+	(*Comment)(nil),                 // 121: opendesigner.v1.Comment
+	(*SetComment)(nil),              // 122: opendesigner.v1.SetComment
+	(*DeleteComment)(nil),           // 123: opendesigner.v1.DeleteComment
+	(*SetInstance)(nil),             // 124: opendesigner.v1.SetInstance
+	(*Annotation)(nil),              // 125: opendesigner.v1.Annotation
+	(*ReadyForDev)(nil),             // 126: opendesigner.v1.ReadyForDev
+	(*SetAnnotation)(nil),           // 127: opendesigner.v1.SetAnnotation
+	(*DeleteAnnotation)(nil),        // 128: opendesigner.v1.DeleteAnnotation
+	(*SetReadyForDev)(nil),          // 129: opendesigner.v1.SetReadyForDev
+	(*ClearReadyForDev)(nil),        // 130: opendesigner.v1.ClearReadyForDev
+	(*ReadyChange)(nil),             // 131: opendesigner.v1.ReadyChange
+	(*CompareReadyRequest)(nil),     // 132: opendesigner.v1.CompareReadyRequest
+	(*CompareReadyResponse)(nil),    // 133: opendesigner.v1.CompareReadyResponse
+	(*SetCollection)(nil),           // 134: opendesigner.v1.SetCollection
+	(*DeleteCollection)(nil),        // 135: opendesigner.v1.DeleteCollection
+	(*SetVariable)(nil),             // 136: opendesigner.v1.SetVariable
+	(*DeleteVariable)(nil),          // 137: opendesigner.v1.DeleteVariable
+	(*SetFont)(nil),                 // 138: opendesigner.v1.SetFont
+	(*DeleteFont)(nil),              // 139: opendesigner.v1.DeleteFont
+	(*SetTextStyleDef)(nil),         // 140: opendesigner.v1.SetTextStyleDef
+	(*DeleteTextStyleDef)(nil),      // 141: opendesigner.v1.DeleteTextStyleDef
+	(*SetPaintStyleDef)(nil),        // 142: opendesigner.v1.SetPaintStyleDef
+	(*DeletePaintStyleDef)(nil),     // 143: opendesigner.v1.DeletePaintStyleDef
+	(*SetEffectStyleDef)(nil),       // 144: opendesigner.v1.SetEffectStyleDef
+	(*DeleteEffectStyleDef)(nil),    // 145: opendesigner.v1.DeleteEffectStyleDef
+	(*SetObjectStyleDef)(nil),       // 146: opendesigner.v1.SetObjectStyleDef
+	(*DeleteObjectStyleDef)(nil),    // 147: opendesigner.v1.DeleteObjectStyleDef
+	(*SetLayer)(nil),                // 148: opendesigner.v1.SetLayer
+	(*DeleteLayer)(nil),             // 149: opendesigner.v1.DeleteLayer
+	(*SetImage)(nil),                // 150: opendesigner.v1.SetImage
+	(*OptionRename)(nil),            // 151: opendesigner.v1.OptionRename
+	(*SetComponentSet)(nil),         // 152: opendesigner.v1.SetComponentSet
+	(*DeleteComponentSet)(nil),      // 153: opendesigner.v1.DeleteComponentSet
+	(*SetComponentDef)(nil),         // 154: opendesigner.v1.SetComponentDef
+	(*SetInstanceProps)(nil),        // 155: opendesigner.v1.SetInstanceProps
+	(*OpRecord)(nil),                // 156: opendesigner.v1.OpRecord
+	(*OpenRequest)(nil),             // 157: opendesigner.v1.OpenRequest
+	(*OpenResponse)(nil),            // 158: opendesigner.v1.OpenResponse
+	(*CreateDocumentRequest)(nil),   // 159: opendesigner.v1.CreateDocumentRequest
+	(*DocInfo)(nil),                 // 160: opendesigner.v1.DocInfo
+	(*RenameDocumentRequest)(nil),   // 161: opendesigner.v1.RenameDocumentRequest
+	(*DeleteDocumentRequest)(nil),   // 162: opendesigner.v1.DeleteDocumentRequest
+	(*DeleteDocumentResponse)(nil),  // 163: opendesigner.v1.DeleteDocumentResponse
+	(*ListDocumentsRequest)(nil),    // 164: opendesigner.v1.ListDocumentsRequest
+	(*ListDocumentsResponse)(nil),   // 165: opendesigner.v1.ListDocumentsResponse
+	(*SubmitOpRequest)(nil),         // 166: opendesigner.v1.SubmitOpRequest
+	(*SubmitOpResponse)(nil),        // 167: opendesigner.v1.SubmitOpResponse
+	(*SubscribeRequest)(nil),        // 168: opendesigner.v1.SubscribeRequest
+	(*Ack)(nil),                     // 169: opendesigner.v1.Ack
+	(*ErrorMsg)(nil),                // 170: opendesigner.v1.ErrorMsg
+	(*ServerMsg)(nil),               // 171: opendesigner.v1.ServerMsg
+	(*PresenceState)(nil),           // 172: opendesigner.v1.PresenceState
+	(*PresenceEvent)(nil),           // 173: opendesigner.v1.PresenceEvent
+	(*FlowIssue)(nil),               // 174: opendesigner.v1.FlowIssue
+	(*FlowPath)(nil),                // 175: opendesigner.v1.FlowPath
+	(*FlowReport)(nil),              // 176: opendesigner.v1.FlowReport
+	(*AnalyzeFlowsRequest)(nil),     // 177: opendesigner.v1.AnalyzeFlowsRequest
+	(*AnalyzeFlowsResponse)(nil),    // 178: opendesigner.v1.AnalyzeFlowsResponse
+	(*ExportFile)(nil),              // 179: opendesigner.v1.ExportFile
+	(*ExportCodeRequest)(nil),       // 180: opendesigner.v1.ExportCodeRequest
+	(*ExportCodeResponse)(nil),      // 181: opendesigner.v1.ExportCodeResponse
+	(*RenderDiagramRequest)(nil),    // 182: opendesigner.v1.RenderDiagramRequest
+	(*RenderDiagramResponse)(nil),   // 183: opendesigner.v1.RenderDiagramResponse
+	(*VersionInfo)(nil),             // 184: opendesigner.v1.VersionInfo
+	(*CreateVersionRequest)(nil),    // 185: opendesigner.v1.CreateVersionRequest
+	(*ListVersionsRequest)(nil),     // 186: opendesigner.v1.ListVersionsRequest
+	(*ListVersionsResponse)(nil),    // 187: opendesigner.v1.ListVersionsResponse
+	(*DeleteVersionRequest)(nil),    // 188: opendesigner.v1.DeleteVersionRequest
+	(*DeleteVersionResponse)(nil),   // 189: opendesigner.v1.DeleteVersionResponse
+	(*BranchRequest)(nil),           // 190: opendesigner.v1.BranchRequest
+	(*AccessLink)(nil),              // 191: opendesigner.v1.AccessLink
+	(*GetAccessRequest)(nil),        // 192: opendesigner.v1.GetAccessRequest
+	(*GetAccessResponse)(nil),       // 193: opendesigner.v1.GetAccessResponse
+	(*EnableAccessRequest)(nil),     // 194: opendesigner.v1.EnableAccessRequest
+	(*EnableAccessResponse)(nil),    // 195: opendesigner.v1.EnableAccessResponse
+	(*DisableAccessRequest)(nil),    // 196: opendesigner.v1.DisableAccessRequest
+	(*DisableAccessResponse)(nil),   // 197: opendesigner.v1.DisableAccessResponse
+	(*CreateShareLinkRequest)(nil),  // 198: opendesigner.v1.CreateShareLinkRequest
+	(*CreateShareLinkResponse)(nil), // 199: opendesigner.v1.CreateShareLinkResponse
+	(*RevokeShareLinkRequest)(nil),  // 200: opendesigner.v1.RevokeShareLinkRequest
+	(*RevokeShareLinkResponse)(nil), // 201: opendesigner.v1.RevokeShareLinkResponse
+	(*ImportFigRequest)(nil),        // 202: opendesigner.v1.ImportFigRequest
+	(*ImportFigResponse)(nil),       // 203: opendesigner.v1.ImportFigResponse
+	(*GetBranchOriginRequest)(nil),  // 204: opendesigner.v1.GetBranchOriginRequest
+	(*GetBranchOriginResponse)(nil), // 205: opendesigner.v1.GetBranchOriginResponse
+	(*MergeChange)(nil),             // 206: opendesigner.v1.MergeChange
+	(*ReviewMergeRequest)(nil),      // 207: opendesigner.v1.ReviewMergeRequest
+	(*ReviewMergeResponse)(nil),     // 208: opendesigner.v1.ReviewMergeResponse
+	(*MergeBranchRequest)(nil),      // 209: opendesigner.v1.MergeBranchRequest
+	(*MergeBranchResponse)(nil),     // 210: opendesigner.v1.MergeBranchResponse
+	(*ReviewIssue)(nil),             // 211: opendesigner.v1.ReviewIssue
+	(*ReviewDesignRequest)(nil),     // 212: opendesigner.v1.ReviewDesignRequest
+	(*ReviewDesignResponse)(nil),    // 213: opendesigner.v1.ReviewDesignResponse
+	(*RenderBoardRequest)(nil),      // 214: opendesigner.v1.RenderBoardRequest
+	(*RenderBoardResponse)(nil),     // 215: opendesigner.v1.RenderBoardResponse
+	(*WatchPresenceRequest)(nil),    // 216: opendesigner.v1.WatchPresenceRequest
+	(*UpdatePresenceRequest)(nil),   // 217: opendesigner.v1.UpdatePresenceRequest
+	(*UpdatePresenceResponse)(nil),  // 218: opendesigner.v1.UpdatePresenceResponse
+	(*EditorJob)(nil),               // 219: opendesigner.v1.EditorJob
+	(*WatchJobsRequest)(nil),        // 220: opendesigner.v1.WatchJobsRequest
+	(*RunJobRequest)(nil),           // 221: opendesigner.v1.RunJobRequest
+	(*RunJobResponse)(nil),          // 222: opendesigner.v1.RunJobResponse
+	(*CompleteJobRequest)(nil),      // 223: opendesigner.v1.CompleteJobRequest
+	(*CompleteJobResponse)(nil),     // 224: opendesigner.v1.CompleteJobResponse
+	nil,                             // 225: opendesigner.v1.Component.VariantEntry
+	nil,                             // 226: opendesigner.v1.InstanceNode.PropertyValuesEntry
+	nil,                             // 227: opendesigner.v1.InstanceNode.VariantPropsEntry
+	nil,                             // 228: opendesigner.v1.Node.MetaEntry
+	nil,                             // 229: opendesigner.v1.Node.BindingsEntry
+	nil,                             // 230: opendesigner.v1.Node.ModesEntry
+	nil,                             // 231: opendesigner.v1.Variable.ValuesEntry
+	nil,                             // 232: opendesigner.v1.Document.NodesEntry
+	nil,                             // 233: opendesigner.v1.Document.ComponentsEntry
+	nil,                             // 234: opendesigner.v1.Document.FlowsEntry
+	nil,                             // 235: opendesigner.v1.Document.TransitionsEntry
+	nil,                             // 236: opendesigner.v1.Document.ClipsEntry
+	nil,                             // 237: opendesigner.v1.Document.CollectionsEntry
+	nil,                             // 238: opendesigner.v1.Document.VariablesEntry
+	nil,                             // 239: opendesigner.v1.Document.FontsEntry
+	nil,                             // 240: opendesigner.v1.Document.TextStylesEntry
+	nil,                             // 241: opendesigner.v1.Document.ComponentSetsEntry
+	nil,                             // 242: opendesigner.v1.Document.CommentsEntry
+	nil,                             // 243: opendesigner.v1.Document.PaintStylesEntry
+	nil,                             // 244: opendesigner.v1.Document.EffectStylesEntry
+	nil,                             // 245: opendesigner.v1.Document.AnnotationsEntry
+	nil,                             // 246: opendesigner.v1.Document.ReadyForDevEntry
+	nil,                             // 247: opendesigner.v1.Document.ObjectStylesEntry
+	nil,                             // 248: opendesigner.v1.SetComponentSet.AxisRenamesEntry
+	nil,                             // 249: opendesigner.v1.SetComponentDef.VariantEntry
+	nil,                             // 250: opendesigner.v1.SetInstanceProps.PropertyValuesEntry
+	nil,                             // 251: opendesigner.v1.SetInstanceProps.VariantPropsEntry
+	(*fieldmaskpb.FieldMask)(nil),   // 252: google.protobuf.FieldMask
+	(*timestamppb.Timestamp)(nil),   // 253: google.protobuf.Timestamp
 }
 var file_opendesigner_v1_opendesigner_proto_depIdxs = []int32{
-	24,  // 0: opendesigner.v1.SolidPaint.color:type_name -> opendesigner.v1.Color
-	24,  // 1: opendesigner.v1.GradientStop.color:type_name -> opendesigner.v1.Color
-	26,  // 2: opendesigner.v1.GradientPaint.stops:type_name -> opendesigner.v1.GradientStop
+	26,  // 0: opendesigner.v1.SolidPaint.color:type_name -> opendesigner.v1.Color
+	26,  // 1: opendesigner.v1.GradientStop.color:type_name -> opendesigner.v1.Color
+	28,  // 2: opendesigner.v1.GradientPaint.stops:type_name -> opendesigner.v1.GradientStop
 	0,   // 3: opendesigner.v1.ImagePaint.mode:type_name -> opendesigner.v1.ImageScaleMode
-	24,  // 4: opendesigner.v1.MeshPaint.colors:type_name -> opendesigner.v1.Color
-	25,  // 5: opendesigner.v1.Paint.solid:type_name -> opendesigner.v1.SolidPaint
-	27,  // 6: opendesigner.v1.Paint.linear:type_name -> opendesigner.v1.GradientPaint
-	27,  // 7: opendesigner.v1.Paint.radial:type_name -> opendesigner.v1.GradientPaint
-	28,  // 8: opendesigner.v1.Paint.image:type_name -> opendesigner.v1.ImagePaint
-	29,  // 9: opendesigner.v1.Paint.mesh:type_name -> opendesigner.v1.MeshPaint
-	27,  // 10: opendesigner.v1.Paint.angular:type_name -> opendesigner.v1.GradientPaint
-	27,  // 11: opendesigner.v1.Paint.diamond:type_name -> opendesigner.v1.GradientPaint
-	30,  // 12: opendesigner.v1.Stroke.paint:type_name -> opendesigner.v1.Paint
+	26,  // 4: opendesigner.v1.MeshPaint.colors:type_name -> opendesigner.v1.Color
+	27,  // 5: opendesigner.v1.Paint.solid:type_name -> opendesigner.v1.SolidPaint
+	29,  // 6: opendesigner.v1.Paint.linear:type_name -> opendesigner.v1.GradientPaint
+	29,  // 7: opendesigner.v1.Paint.radial:type_name -> opendesigner.v1.GradientPaint
+	30,  // 8: opendesigner.v1.Paint.image:type_name -> opendesigner.v1.ImagePaint
+	31,  // 9: opendesigner.v1.Paint.mesh:type_name -> opendesigner.v1.MeshPaint
+	29,  // 10: opendesigner.v1.Paint.angular:type_name -> opendesigner.v1.GradientPaint
+	29,  // 11: opendesigner.v1.Paint.diamond:type_name -> opendesigner.v1.GradientPaint
+	32,  // 12: opendesigner.v1.Stroke.paint:type_name -> opendesigner.v1.Paint
 	1,   // 13: opendesigner.v1.Stroke.align:type_name -> opendesigner.v1.StrokeAlign
 	2,   // 14: opendesigner.v1.Stroke.start_cap:type_name -> opendesigner.v1.ArrowHead
 	2,   // 15: opendesigner.v1.Stroke.end_cap:type_name -> opendesigner.v1.ArrowHead
-	31,  // 16: opendesigner.v1.Stroke.sides:type_name -> opendesigner.v1.StrokeSides
-	34,  // 17: opendesigner.v1.Stroke.width_profile:type_name -> opendesigner.v1.WidthPoint
-	33,  // 18: opendesigner.v1.Stroke.brush:type_name -> opendesigner.v1.Brush
+	33,  // 16: opendesigner.v1.Stroke.sides:type_name -> opendesigner.v1.StrokeSides
+	36,  // 17: opendesigner.v1.Stroke.width_profile:type_name -> opendesigner.v1.WidthPoint
+	35,  // 18: opendesigner.v1.Stroke.brush:type_name -> opendesigner.v1.Brush
 	3,   // 19: opendesigner.v1.Brush.kind:type_name -> opendesigner.v1.BrushKind
 	4,   // 20: opendesigner.v1.Brush.tip:type_name -> opendesigner.v1.BrushTip
-	24,  // 21: opendesigner.v1.DropShadow.color:type_name -> opendesigner.v1.Color
-	24,  // 22: opendesigner.v1.InnerShadow.color:type_name -> opendesigner.v1.Color
+	26,  // 21: opendesigner.v1.DropShadow.color:type_name -> opendesigner.v1.Color
+	26,  // 22: opendesigner.v1.InnerShadow.color:type_name -> opendesigner.v1.Color
 	5,   // 23: opendesigner.v1.Noise.mode:type_name -> opendesigner.v1.NoiseMode
-	24,  // 24: opendesigner.v1.Noise.color:type_name -> opendesigner.v1.Color
-	24,  // 25: opendesigner.v1.Noise.color2:type_name -> opendesigner.v1.Color
-	35,  // 26: opendesigner.v1.Effect.drop_shadow:type_name -> opendesigner.v1.DropShadow
-	36,  // 27: opendesigner.v1.Effect.layer_blur:type_name -> opendesigner.v1.LayerBlur
-	37,  // 28: opendesigner.v1.Effect.inner_shadow:type_name -> opendesigner.v1.InnerShadow
-	38,  // 29: opendesigner.v1.Effect.background_blur:type_name -> opendesigner.v1.BackgroundBlur
-	39,  // 30: opendesigner.v1.Effect.progressive_blur:type_name -> opendesigner.v1.ProgressiveBlur
-	40,  // 31: opendesigner.v1.Effect.noise:type_name -> opendesigner.v1.Noise
-	41,  // 32: opendesigner.v1.Effect.texture:type_name -> opendesigner.v1.Texture
-	42,  // 33: opendesigner.v1.Effect.glass:type_name -> opendesigner.v1.Glass
-	44,  // 34: opendesigner.v1.RectNode.radii:type_name -> opendesigner.v1.CornerRadii
+	26,  // 24: opendesigner.v1.Noise.color:type_name -> opendesigner.v1.Color
+	26,  // 25: opendesigner.v1.Noise.color2:type_name -> opendesigner.v1.Color
+	37,  // 26: opendesigner.v1.Effect.drop_shadow:type_name -> opendesigner.v1.DropShadow
+	38,  // 27: opendesigner.v1.Effect.layer_blur:type_name -> opendesigner.v1.LayerBlur
+	39,  // 28: opendesigner.v1.Effect.inner_shadow:type_name -> opendesigner.v1.InnerShadow
+	40,  // 29: opendesigner.v1.Effect.background_blur:type_name -> opendesigner.v1.BackgroundBlur
+	41,  // 30: opendesigner.v1.Effect.progressive_blur:type_name -> opendesigner.v1.ProgressiveBlur
+	42,  // 31: opendesigner.v1.Effect.noise:type_name -> opendesigner.v1.Noise
+	43,  // 32: opendesigner.v1.Effect.texture:type_name -> opendesigner.v1.Texture
+	44,  // 33: opendesigner.v1.Effect.glass:type_name -> opendesigner.v1.Glass
+	46,  // 34: opendesigner.v1.RectNode.radii:type_name -> opendesigner.v1.CornerRadii
 	7,   // 35: opendesigner.v1.AutoLayout.direction:type_name -> opendesigner.v1.LayoutDirection
 	8,   // 36: opendesigner.v1.AutoLayout.main_align:type_name -> opendesigner.v1.LayoutAlign
 	8,   // 37: opendesigner.v1.AutoLayout.cross_align:type_name -> opendesigner.v1.LayoutAlign
 	9,   // 38: opendesigner.v1.AutoLayout.mode:type_name -> opendesigner.v1.LayoutMode
-	51,  // 39: opendesigner.v1.AutoLayout.columns:type_name -> opendesigner.v1.GridTrack
-	51,  // 40: opendesigner.v1.AutoLayout.rows:type_name -> opendesigner.v1.GridTrack
+	53,  // 39: opendesigner.v1.AutoLayout.columns:type_name -> opendesigner.v1.GridTrack
+	53,  // 40: opendesigner.v1.AutoLayout.rows:type_name -> opendesigner.v1.GridTrack
 	10,  // 41: opendesigner.v1.GridTrack.kind:type_name -> opendesigner.v1.GridTrackKind
-	50,  // 42: opendesigner.v1.FrameNode.auto_layout:type_name -> opendesigner.v1.AutoLayout
+	52,  // 42: opendesigner.v1.FrameNode.auto_layout:type_name -> opendesigner.v1.AutoLayout
 	13,  // 43: opendesigner.v1.TextStyle.align:type_name -> opendesigner.v1.TextAlign
 	14,  // 44: opendesigner.v1.TextStyle.script:type_name -> opendesigner.v1.TextScript
-	24,  // 45: opendesigner.v1.TextStyle.color:type_name -> opendesigner.v1.Color
-	15,  // 46: opendesigner.v1.TextStyle.text_case:type_name -> opendesigner.v1.TextCase
+	26,  // 45: opendesigner.v1.TextStyle.color:type_name -> opendesigner.v1.Color
+	17,  // 46: opendesigner.v1.TextStyle.text_case:type_name -> opendesigner.v1.TextCase
 	14,  // 47: opendesigner.v1.TextStyle.text_script:type_name -> opendesigner.v1.TextScript
-	21,  // 48: opendesigner.v1.TextStyle.list_kind:type_name -> opendesigner.v1.ListKind
-	16,  // 49: opendesigner.v1.TextStyle.vertical_align:type_name -> opendesigner.v1.TextVAlign
-	54,  // 50: opendesigner.v1.TextNode.style:type_name -> opendesigner.v1.TextStyle
-	56,  // 51: opendesigner.v1.TextNode.runs:type_name -> opendesigner.v1.TextRun
-	58,  // 52: opendesigner.v1.SubPath.anchors:type_name -> opendesigner.v1.Anchor
-	59,  // 53: opendesigner.v1.VectorNode.subpaths:type_name -> opendesigner.v1.SubPath
-	223, // 54: opendesigner.v1.Component.variant:type_name -> opendesigner.v1.Component.VariantEntry
-	62,  // 55: opendesigner.v1.Component.properties:type_name -> opendesigner.v1.ComponentProperty
-	17,  // 56: opendesigner.v1.ComponentProperty.type:type_name -> opendesigner.v1.ComponentPropertyType
-	63,  // 57: opendesigner.v1.ComponentSet.axes:type_name -> opendesigner.v1.VariantAxis
-	30,  // 58: opendesigner.v1.InstanceOverride.fills:type_name -> opendesigner.v1.Paint
-	65,  // 59: opendesigner.v1.InstanceNode.overrides:type_name -> opendesigner.v1.InstanceOverride
-	224, // 60: opendesigner.v1.InstanceNode.property_values:type_name -> opendesigner.v1.InstanceNode.PropertyValuesEntry
-	225, // 61: opendesigner.v1.InstanceNode.variant_props:type_name -> opendesigner.v1.InstanceNode.VariantPropsEntry
-	30,  // 62: opendesigner.v1.Node.fills:type_name -> opendesigner.v1.Paint
-	32,  // 63: opendesigner.v1.Node.strokes:type_name -> opendesigner.v1.Stroke
-	43,  // 64: opendesigner.v1.Node.effects:type_name -> opendesigner.v1.Effect
-	45,  // 65: opendesigner.v1.Node.rect:type_name -> opendesigner.v1.RectNode
-	46,  // 66: opendesigner.v1.Node.ellipse:type_name -> opendesigner.v1.EllipseNode
-	55,  // 67: opendesigner.v1.Node.text:type_name -> opendesigner.v1.TextNode
-	49,  // 68: opendesigner.v1.Node.group:type_name -> opendesigner.v1.GroupNode
-	53,  // 69: opendesigner.v1.Node.frame:type_name -> opendesigner.v1.FrameNode
-	57,  // 70: opendesigner.v1.Node.image:type_name -> opendesigner.v1.ImageNode
-	60,  // 71: opendesigner.v1.Node.vector:type_name -> opendesigner.v1.VectorNode
-	66,  // 72: opendesigner.v1.Node.instance:type_name -> opendesigner.v1.InstanceNode
-	47,  // 73: opendesigner.v1.Node.polygon:type_name -> opendesigner.v1.PolygonNode
-	48,  // 74: opendesigner.v1.Node.star:type_name -> opendesigner.v1.StarNode
-	226, // 75: opendesigner.v1.Node.meta:type_name -> opendesigner.v1.Node.MetaEntry
-	227, // 76: opendesigner.v1.Node.bindings:type_name -> opendesigner.v1.Node.BindingsEntry
-	228, // 77: opendesigner.v1.Node.modes:type_name -> opendesigner.v1.Node.ModesEntry
-	12,  // 78: opendesigner.v1.Node.constraint_x:type_name -> opendesigner.v1.Constraint
-	12,  // 79: opendesigner.v1.Node.constraint_y:type_name -> opendesigner.v1.Constraint
-	11,  // 80: opendesigner.v1.Node.layout_sizing_x:type_name -> opendesigner.v1.LayoutSizing
-	11,  // 81: opendesigner.v1.Node.layout_sizing_y:type_name -> opendesigner.v1.LayoutSizing
-	6,   // 82: opendesigner.v1.Node.blend_mode:type_name -> opendesigner.v1.BlendMode
-	68,  // 83: opendesigner.v1.Node.layout_grids:type_name -> opendesigner.v1.LayoutGrid
-	18,  // 84: opendesigner.v1.Node.layout_positioning:type_name -> opendesigner.v1.LayoutPositioning
-	52,  // 85: opendesigner.v1.Node.grid_cell:type_name -> opendesigner.v1.GridPlacement
-	19,  // 86: opendesigner.v1.LayoutGrid.kind:type_name -> opendesigner.v1.LayoutGridKind
-	24,  // 87: opendesigner.v1.LayoutGrid.color:type_name -> opendesigner.v1.Color
-	70,  // 88: opendesigner.v1.Page.guides:type_name -> opendesigner.v1.Guide
-	54,  // 89: opendesigner.v1.TextStyleDef.style:type_name -> opendesigner.v1.TextStyle
-	20,  // 90: opendesigner.v1.TextStyleDef.kind:type_name -> opendesigner.v1.TextStyleKind
-	21,  // 91: opendesigner.v1.TextStyleDef.list_kind:type_name -> opendesigner.v1.ListKind
-	76,  // 92: opendesigner.v1.TextStyleDef.tab_stops:type_name -> opendesigner.v1.TabStop
-	77,  // 93: opendesigner.v1.TextStyleDef.nested_styles:type_name -> opendesigner.v1.NestedStyle
-	75,  // 94: opendesigner.v1.TextStyleDef.rule_above:type_name -> opendesigner.v1.ParagraphRule
-	75,  // 95: opendesigner.v1.TextStyleDef.rule_below:type_name -> opendesigner.v1.ParagraphRule
-	24,  // 96: opendesigner.v1.TextStyleDef.shading:type_name -> opendesigner.v1.Color
-	24,  // 97: opendesigner.v1.TextStyleDef.border_color:type_name -> opendesigner.v1.Color
-	30,  // 98: opendesigner.v1.PaintStyleDef.paints:type_name -> opendesigner.v1.Paint
-	43,  // 99: opendesigner.v1.EffectStyleDef.effects:type_name -> opendesigner.v1.Effect
-	24,  // 100: opendesigner.v1.ParagraphRule.color:type_name -> opendesigner.v1.Color
-	22,  // 101: opendesigner.v1.TabStop.align:type_name -> opendesigner.v1.TabAlign
-	78,  // 102: opendesigner.v1.VariableCollection.modes:type_name -> opendesigner.v1.VariableMode
-	24,  // 103: opendesigner.v1.VariableValue.color:type_name -> opendesigner.v1.Color
-	23,  // 104: opendesigner.v1.Variable.type:type_name -> opendesigner.v1.VariableType
-	229, // 105: opendesigner.v1.Variable.values:type_name -> opendesigner.v1.Variable.ValuesEntry
-	82,  // 106: opendesigner.v1.Variable.cmyk:type_name -> opendesigner.v1.Cmyk
-	85,  // 107: opendesigner.v1.Track.keyframes:type_name -> opendesigner.v1.Keyframe
-	86,  // 108: opendesigner.v1.Clip.tracks:type_name -> opendesigner.v1.Track
-	69,  // 109: opendesigner.v1.Document.pages:type_name -> opendesigner.v1.Page
-	230, // 110: opendesigner.v1.Document.nodes:type_name -> opendesigner.v1.Document.NodesEntry
-	231, // 111: opendesigner.v1.Document.components:type_name -> opendesigner.v1.Document.ComponentsEntry
-	232, // 112: opendesigner.v1.Document.flows:type_name -> opendesigner.v1.Document.FlowsEntry
-	233, // 113: opendesigner.v1.Document.transitions:type_name -> opendesigner.v1.Document.TransitionsEntry
-	234, // 114: opendesigner.v1.Document.clips:type_name -> opendesigner.v1.Document.ClipsEntry
-	235, // 115: opendesigner.v1.Document.collections:type_name -> opendesigner.v1.Document.CollectionsEntry
-	236, // 116: opendesigner.v1.Document.variables:type_name -> opendesigner.v1.Document.VariablesEntry
-	237, // 117: opendesigner.v1.Document.fonts:type_name -> opendesigner.v1.Document.FontsEntry
-	238, // 118: opendesigner.v1.Document.text_styles:type_name -> opendesigner.v1.Document.TextStylesEntry
-	239, // 119: opendesigner.v1.Document.component_sets:type_name -> opendesigner.v1.Document.ComponentSetsEntry
-	240, // 120: opendesigner.v1.Document.comments:type_name -> opendesigner.v1.Document.CommentsEntry
-	241, // 121: opendesigner.v1.Document.paint_styles:type_name -> opendesigner.v1.Document.PaintStylesEntry
-	242, // 122: opendesigner.v1.Document.effect_styles:type_name -> opendesigner.v1.Document.EffectStylesEntry
-	243, // 123: opendesigner.v1.Document.annotations:type_name -> opendesigner.v1.Document.AnnotationsEntry
-	244, // 124: opendesigner.v1.Document.ready_for_dev:type_name -> opendesigner.v1.Document.ReadyForDevEntry
-	91,  // 125: opendesigner.v1.Document.settings:type_name -> opendesigner.v1.DocSettings
-	245, // 126: opendesigner.v1.Document.object_styles:type_name -> opendesigner.v1.Document.ObjectStylesEntry
-	90,  // 127: opendesigner.v1.Document.layers:type_name -> opendesigner.v1.Layer
-	30,  // 128: opendesigner.v1.ObjectStyleDef.fills:type_name -> opendesigner.v1.Paint
-	32,  // 129: opendesigner.v1.ObjectStyleDef.strokes:type_name -> opendesigner.v1.Stroke
-	43,  // 130: opendesigner.v1.ObjectStyleDef.effects:type_name -> opendesigner.v1.Effect
-	6,   // 131: opendesigner.v1.ObjectStyleDef.blend_mode:type_name -> opendesigner.v1.BlendMode
-	94,  // 132: opendesigner.v1.DocSettings.book:type_name -> opendesigner.v1.BookMetadata
-	92,  // 133: opendesigner.v1.DocSettings.conditions:type_name -> opendesigner.v1.TextCondition
-	93,  // 134: opendesigner.v1.DocSettings.table_styles:type_name -> opendesigner.v1.TableStyle
-	95,  // 135: opendesigner.v1.BookMetadata.contributors:type_name -> opendesigner.v1.Contributor
-	96,  // 136: opendesigner.v1.BookMetadata.subjects:type_name -> opendesigner.v1.Subject
-	97,  // 137: opendesigner.v1.BookMetadata.prices:type_name -> opendesigner.v1.Price
-	67,  // 138: opendesigner.v1.CreateNode.node:type_name -> opendesigner.v1.Node
-	67,  // 139: opendesigner.v1.SetProperties.patch:type_name -> opendesigner.v1.Node
-	250, // 140: opendesigner.v1.SetProperties.mask:type_name -> google.protobuf.FieldMask
-	54,  // 141: opendesigner.v1.SetText.style:type_name -> opendesigner.v1.TextStyle
-	56,  // 142: opendesigner.v1.SetText.runs:type_name -> opendesigner.v1.TextRun
-	59,  // 143: opendesigner.v1.SetVectorPath.subpaths:type_name -> opendesigner.v1.SubPath
-	69,  // 144: opendesigner.v1.CreatePage.page:type_name -> opendesigner.v1.Page
-	69,  // 145: opendesigner.v1.UpdatePage.page:type_name -> opendesigner.v1.Page
-	91,  // 146: opendesigner.v1.SetDocSettings.settings:type_name -> opendesigner.v1.DocSettings
-	65,  // 147: opendesigner.v1.SetInstanceOverride.override:type_name -> opendesigner.v1.InstanceOverride
-	83,  // 148: opendesigner.v1.SetFlow.flow:type_name -> opendesigner.v1.Flow
-	84,  // 149: opendesigner.v1.SetTransition.transition:type_name -> opendesigner.v1.Transition
-	87,  // 150: opendesigner.v1.SetClip.clip:type_name -> opendesigner.v1.Clip
-	98,  // 151: opendesigner.v1.Op.create_node:type_name -> opendesigner.v1.CreateNode
-	100, // 152: opendesigner.v1.Op.set_props:type_name -> opendesigner.v1.SetProperties
-	99,  // 153: opendesigner.v1.Op.delete_node:type_name -> opendesigner.v1.DeleteNode
-	101, // 154: opendesigner.v1.Op.set_text:type_name -> opendesigner.v1.SetText
-	103, // 155: opendesigner.v1.Op.reparent_node:type_name -> opendesigner.v1.ReparentNode
-	104, // 156: opendesigner.v1.Op.create_page:type_name -> opendesigner.v1.CreatePage
-	105, // 157: opendesigner.v1.Op.delete_page:type_name -> opendesigner.v1.DeletePage
-	106, // 158: opendesigner.v1.Op.rename_page:type_name -> opendesigner.v1.RenamePage
-	102, // 159: opendesigner.v1.Op.set_vector_path:type_name -> opendesigner.v1.SetVectorPath
-	110, // 160: opendesigner.v1.Op.create_component:type_name -> opendesigner.v1.CreateComponent
-	111, // 161: opendesigner.v1.Op.set_instance_override:type_name -> opendesigner.v1.SetInstanceOverride
-	112, // 162: opendesigner.v1.Op.set_flow:type_name -> opendesigner.v1.SetFlow
-	113, // 163: opendesigner.v1.Op.delete_flow:type_name -> opendesigner.v1.DeleteFlow
-	114, // 164: opendesigner.v1.Op.set_transition:type_name -> opendesigner.v1.SetTransition
-	115, // 165: opendesigner.v1.Op.delete_transition:type_name -> opendesigner.v1.DeleteTransition
-	116, // 166: opendesigner.v1.Op.set_clip:type_name -> opendesigner.v1.SetClip
-	117, // 167: opendesigner.v1.Op.delete_clip:type_name -> opendesigner.v1.DeleteClip
-	132, // 168: opendesigner.v1.Op.set_collection:type_name -> opendesigner.v1.SetCollection
-	133, // 169: opendesigner.v1.Op.delete_collection:type_name -> opendesigner.v1.DeleteCollection
-	134, // 170: opendesigner.v1.Op.set_variable:type_name -> opendesigner.v1.SetVariable
-	135, // 171: opendesigner.v1.Op.delete_variable:type_name -> opendesigner.v1.DeleteVariable
-	136, // 172: opendesigner.v1.Op.set_font:type_name -> opendesigner.v1.SetFont
-	137, // 173: opendesigner.v1.Op.delete_font:type_name -> opendesigner.v1.DeleteFont
-	138, // 174: opendesigner.v1.Op.set_text_style_def:type_name -> opendesigner.v1.SetTextStyleDef
-	139, // 175: opendesigner.v1.Op.delete_text_style_def:type_name -> opendesigner.v1.DeleteTextStyleDef
-	150, // 176: opendesigner.v1.Op.set_component_set:type_name -> opendesigner.v1.SetComponentSet
-	151, // 177: opendesigner.v1.Op.delete_component_set:type_name -> opendesigner.v1.DeleteComponentSet
-	152, // 178: opendesigner.v1.Op.set_component_def:type_name -> opendesigner.v1.SetComponentDef
-	153, // 179: opendesigner.v1.Op.set_instance_props:type_name -> opendesigner.v1.SetInstanceProps
-	120, // 180: opendesigner.v1.Op.set_comment:type_name -> opendesigner.v1.SetComment
-	121, // 181: opendesigner.v1.Op.delete_comment:type_name -> opendesigner.v1.DeleteComment
-	140, // 182: opendesigner.v1.Op.set_paint_style_def:type_name -> opendesigner.v1.SetPaintStyleDef
-	141, // 183: opendesigner.v1.Op.delete_paint_style_def:type_name -> opendesigner.v1.DeletePaintStyleDef
-	142, // 184: opendesigner.v1.Op.set_effect_style_def:type_name -> opendesigner.v1.SetEffectStyleDef
-	143, // 185: opendesigner.v1.Op.delete_effect_style_def:type_name -> opendesigner.v1.DeleteEffectStyleDef
-	122, // 186: opendesigner.v1.Op.set_instance:type_name -> opendesigner.v1.SetInstance
-	125, // 187: opendesigner.v1.Op.set_annotation:type_name -> opendesigner.v1.SetAnnotation
-	126, // 188: opendesigner.v1.Op.delete_annotation:type_name -> opendesigner.v1.DeleteAnnotation
-	127, // 189: opendesigner.v1.Op.set_ready_for_dev:type_name -> opendesigner.v1.SetReadyForDev
-	128, // 190: opendesigner.v1.Op.clear_ready_for_dev:type_name -> opendesigner.v1.ClearReadyForDev
-	107, // 191: opendesigner.v1.Op.update_page:type_name -> opendesigner.v1.UpdatePage
-	109, // 192: opendesigner.v1.Op.set_doc_settings:type_name -> opendesigner.v1.SetDocSettings
-	108, // 193: opendesigner.v1.Op.move_page:type_name -> opendesigner.v1.MovePage
-	144, // 194: opendesigner.v1.Op.set_object_style_def:type_name -> opendesigner.v1.SetObjectStyleDef
-	145, // 195: opendesigner.v1.Op.delete_object_style_def:type_name -> opendesigner.v1.DeleteObjectStyleDef
-	146, // 196: opendesigner.v1.Op.set_layer:type_name -> opendesigner.v1.SetLayer
-	147, // 197: opendesigner.v1.Op.delete_layer:type_name -> opendesigner.v1.DeleteLayer
-	148, // 198: opendesigner.v1.Op.set_image:type_name -> opendesigner.v1.SetImage
-	119, // 199: opendesigner.v1.SetComment.comment:type_name -> opendesigner.v1.Comment
-	66,  // 200: opendesigner.v1.SetInstance.instance:type_name -> opendesigner.v1.InstanceNode
-	67,  // 201: opendesigner.v1.ReadyForDev.snapshot:type_name -> opendesigner.v1.Node
-	123, // 202: opendesigner.v1.SetAnnotation.annotation:type_name -> opendesigner.v1.Annotation
-	124, // 203: opendesigner.v1.SetReadyForDev.ready:type_name -> opendesigner.v1.ReadyForDev
-	129, // 204: opendesigner.v1.CompareReadyResponse.changes:type_name -> opendesigner.v1.ReadyChange
-	79,  // 205: opendesigner.v1.SetCollection.collection:type_name -> opendesigner.v1.VariableCollection
-	81,  // 206: opendesigner.v1.SetVariable.variable:type_name -> opendesigner.v1.Variable
-	71,  // 207: opendesigner.v1.SetFont.font:type_name -> opendesigner.v1.FontFace
-	72,  // 208: opendesigner.v1.SetTextStyleDef.text_style:type_name -> opendesigner.v1.TextStyleDef
-	73,  // 209: opendesigner.v1.SetPaintStyleDef.paint_style:type_name -> opendesigner.v1.PaintStyleDef
-	74,  // 210: opendesigner.v1.SetEffectStyleDef.effect_style:type_name -> opendesigner.v1.EffectStyleDef
-	89,  // 211: opendesigner.v1.SetObjectStyleDef.object_style:type_name -> opendesigner.v1.ObjectStyleDef
-	90,  // 212: opendesigner.v1.SetLayer.layer:type_name -> opendesigner.v1.Layer
-	57,  // 213: opendesigner.v1.SetImage.image:type_name -> opendesigner.v1.ImageNode
-	64,  // 214: opendesigner.v1.SetComponentSet.component_set:type_name -> opendesigner.v1.ComponentSet
-	246, // 215: opendesigner.v1.SetComponentSet.axis_renames:type_name -> opendesigner.v1.SetComponentSet.AxisRenamesEntry
-	149, // 216: opendesigner.v1.SetComponentSet.option_renames:type_name -> opendesigner.v1.OptionRename
-	247, // 217: opendesigner.v1.SetComponentDef.variant:type_name -> opendesigner.v1.SetComponentDef.VariantEntry
-	62,  // 218: opendesigner.v1.SetComponentDef.properties:type_name -> opendesigner.v1.ComponentProperty
-	248, // 219: opendesigner.v1.SetInstanceProps.property_values:type_name -> opendesigner.v1.SetInstanceProps.PropertyValuesEntry
-	249, // 220: opendesigner.v1.SetInstanceProps.variant_props:type_name -> opendesigner.v1.SetInstanceProps.VariantPropsEntry
-	251, // 221: opendesigner.v1.OpRecord.ts:type_name -> google.protobuf.Timestamp
-	118, // 222: opendesigner.v1.OpRecord.op:type_name -> opendesigner.v1.Op
-	88,  // 223: opendesigner.v1.OpenResponse.snapshot:type_name -> opendesigner.v1.Document
-	158, // 224: opendesigner.v1.ListDocumentsResponse.docs:type_name -> opendesigner.v1.DocInfo
-	118, // 225: opendesigner.v1.SubmitOpRequest.op:type_name -> opendesigner.v1.Op
-	167, // 226: opendesigner.v1.SubmitOpResponse.ack:type_name -> opendesigner.v1.Ack
-	154, // 227: opendesigner.v1.ServerMsg.applied:type_name -> opendesigner.v1.OpRecord
-	167, // 228: opendesigner.v1.ServerMsg.ack:type_name -> opendesigner.v1.Ack
-	168, // 229: opendesigner.v1.ServerMsg.error:type_name -> opendesigner.v1.ErrorMsg
-	170, // 230: opendesigner.v1.PresenceEvent.update:type_name -> opendesigner.v1.PresenceState
-	172, // 231: opendesigner.v1.FlowReport.issues:type_name -> opendesigner.v1.FlowIssue
-	173, // 232: opendesigner.v1.FlowReport.paths:type_name -> opendesigner.v1.FlowPath
-	174, // 233: opendesigner.v1.AnalyzeFlowsResponse.reports:type_name -> opendesigner.v1.FlowReport
-	177, // 234: opendesigner.v1.ExportCodeResponse.files:type_name -> opendesigner.v1.ExportFile
-	67,  // 235: opendesigner.v1.RenderDiagramResponse.nodes:type_name -> opendesigner.v1.Node
-	182, // 236: opendesigner.v1.ListVersionsResponse.versions:type_name -> opendesigner.v1.VersionInfo
-	189, // 237: opendesigner.v1.GetAccessResponse.links:type_name -> opendesigner.v1.AccessLink
-	189, // 238: opendesigner.v1.CreateShareLinkResponse.link:type_name -> opendesigner.v1.AccessLink
-	67,  // 239: opendesigner.v1.ImportFigResponse.nodes:type_name -> opendesigner.v1.Node
-	79,  // 240: opendesigner.v1.ImportFigResponse.collections:type_name -> opendesigner.v1.VariableCollection
-	81,  // 241: opendesigner.v1.ImportFigResponse.variables:type_name -> opendesigner.v1.Variable
-	204, // 242: opendesigner.v1.ReviewMergeResponse.changes:type_name -> opendesigner.v1.MergeChange
-	209, // 243: opendesigner.v1.ReviewDesignResponse.issues:type_name -> opendesigner.v1.ReviewIssue
-	67,  // 244: opendesigner.v1.RenderBoardResponse.nodes:type_name -> opendesigner.v1.Node
-	170, // 245: opendesigner.v1.UpdatePresenceRequest.state:type_name -> opendesigner.v1.PresenceState
-	80,  // 246: opendesigner.v1.Variable.ValuesEntry.value:type_name -> opendesigner.v1.VariableValue
-	67,  // 247: opendesigner.v1.Document.NodesEntry.value:type_name -> opendesigner.v1.Node
-	61,  // 248: opendesigner.v1.Document.ComponentsEntry.value:type_name -> opendesigner.v1.Component
-	83,  // 249: opendesigner.v1.Document.FlowsEntry.value:type_name -> opendesigner.v1.Flow
-	84,  // 250: opendesigner.v1.Document.TransitionsEntry.value:type_name -> opendesigner.v1.Transition
-	87,  // 251: opendesigner.v1.Document.ClipsEntry.value:type_name -> opendesigner.v1.Clip
-	79,  // 252: opendesigner.v1.Document.CollectionsEntry.value:type_name -> opendesigner.v1.VariableCollection
-	81,  // 253: opendesigner.v1.Document.VariablesEntry.value:type_name -> opendesigner.v1.Variable
-	71,  // 254: opendesigner.v1.Document.FontsEntry.value:type_name -> opendesigner.v1.FontFace
-	72,  // 255: opendesigner.v1.Document.TextStylesEntry.value:type_name -> opendesigner.v1.TextStyleDef
-	64,  // 256: opendesigner.v1.Document.ComponentSetsEntry.value:type_name -> opendesigner.v1.ComponentSet
-	119, // 257: opendesigner.v1.Document.CommentsEntry.value:type_name -> opendesigner.v1.Comment
-	73,  // 258: opendesigner.v1.Document.PaintStylesEntry.value:type_name -> opendesigner.v1.PaintStyleDef
-	74,  // 259: opendesigner.v1.Document.EffectStylesEntry.value:type_name -> opendesigner.v1.EffectStyleDef
-	123, // 260: opendesigner.v1.Document.AnnotationsEntry.value:type_name -> opendesigner.v1.Annotation
-	124, // 261: opendesigner.v1.Document.ReadyForDevEntry.value:type_name -> opendesigner.v1.ReadyForDev
-	89,  // 262: opendesigner.v1.Document.ObjectStylesEntry.value:type_name -> opendesigner.v1.ObjectStyleDef
-	212, // 263: opendesigner.v1.DocumentService.RenderBoard:input_type -> opendesigner.v1.RenderBoardRequest
-	210, // 264: opendesigner.v1.DocumentService.ReviewDesign:input_type -> opendesigner.v1.ReviewDesignRequest
-	130, // 265: opendesigner.v1.DocumentService.CompareReady:input_type -> opendesigner.v1.CompareReadyRequest
-	183, // 266: opendesigner.v1.DocumentService.CreateVersion:input_type -> opendesigner.v1.CreateVersionRequest
-	184, // 267: opendesigner.v1.DocumentService.ListVersions:input_type -> opendesigner.v1.ListVersionsRequest
-	186, // 268: opendesigner.v1.DocumentService.DeleteVersion:input_type -> opendesigner.v1.DeleteVersionRequest
-	188, // 269: opendesigner.v1.DocumentService.BranchDocument:input_type -> opendesigner.v1.BranchRequest
-	190, // 270: opendesigner.v1.DocumentService.GetAccess:input_type -> opendesigner.v1.GetAccessRequest
-	192, // 271: opendesigner.v1.DocumentService.EnableAccess:input_type -> opendesigner.v1.EnableAccessRequest
-	194, // 272: opendesigner.v1.DocumentService.DisableAccess:input_type -> opendesigner.v1.DisableAccessRequest
-	196, // 273: opendesigner.v1.DocumentService.CreateShareLink:input_type -> opendesigner.v1.CreateShareLinkRequest
-	198, // 274: opendesigner.v1.DocumentService.RevokeShareLink:input_type -> opendesigner.v1.RevokeShareLinkRequest
-	200, // 275: opendesigner.v1.DocumentService.ImportFig:input_type -> opendesigner.v1.ImportFigRequest
-	202, // 276: opendesigner.v1.DocumentService.GetBranchOrigin:input_type -> opendesigner.v1.GetBranchOriginRequest
-	205, // 277: opendesigner.v1.DocumentService.ReviewMerge:input_type -> opendesigner.v1.ReviewMergeRequest
-	207, // 278: opendesigner.v1.DocumentService.MergeBranch:input_type -> opendesigner.v1.MergeBranchRequest
-	162, // 279: opendesigner.v1.DocumentService.ListDocuments:input_type -> opendesigner.v1.ListDocumentsRequest
-	157, // 280: opendesigner.v1.DocumentService.CreateDocument:input_type -> opendesigner.v1.CreateDocumentRequest
-	159, // 281: opendesigner.v1.DocumentService.RenameDocument:input_type -> opendesigner.v1.RenameDocumentRequest
-	160, // 282: opendesigner.v1.DocumentService.DeleteDocument:input_type -> opendesigner.v1.DeleteDocumentRequest
-	155, // 283: opendesigner.v1.DocumentService.OpenDocument:input_type -> opendesigner.v1.OpenRequest
-	164, // 284: opendesigner.v1.DocumentService.SubmitOp:input_type -> opendesigner.v1.SubmitOpRequest
-	166, // 285: opendesigner.v1.DocumentService.Subscribe:input_type -> opendesigner.v1.SubscribeRequest
-	214, // 286: opendesigner.v1.DocumentService.WatchPresence:input_type -> opendesigner.v1.WatchPresenceRequest
-	215, // 287: opendesigner.v1.DocumentService.UpdatePresence:input_type -> opendesigner.v1.UpdatePresenceRequest
-	218, // 288: opendesigner.v1.DocumentService.WatchJobs:input_type -> opendesigner.v1.WatchJobsRequest
-	219, // 289: opendesigner.v1.DocumentService.RunJob:input_type -> opendesigner.v1.RunJobRequest
-	221, // 290: opendesigner.v1.DocumentService.CompleteJob:input_type -> opendesigner.v1.CompleteJobRequest
-	175, // 291: opendesigner.v1.DocumentService.AnalyzeFlows:input_type -> opendesigner.v1.AnalyzeFlowsRequest
-	178, // 292: opendesigner.v1.DocumentService.ExportCode:input_type -> opendesigner.v1.ExportCodeRequest
-	180, // 293: opendesigner.v1.DocumentService.RenderDiagram:input_type -> opendesigner.v1.RenderDiagramRequest
-	213, // 294: opendesigner.v1.DocumentService.RenderBoard:output_type -> opendesigner.v1.RenderBoardResponse
-	211, // 295: opendesigner.v1.DocumentService.ReviewDesign:output_type -> opendesigner.v1.ReviewDesignResponse
-	131, // 296: opendesigner.v1.DocumentService.CompareReady:output_type -> opendesigner.v1.CompareReadyResponse
-	182, // 297: opendesigner.v1.DocumentService.CreateVersion:output_type -> opendesigner.v1.VersionInfo
-	185, // 298: opendesigner.v1.DocumentService.ListVersions:output_type -> opendesigner.v1.ListVersionsResponse
-	187, // 299: opendesigner.v1.DocumentService.DeleteVersion:output_type -> opendesigner.v1.DeleteVersionResponse
-	158, // 300: opendesigner.v1.DocumentService.BranchDocument:output_type -> opendesigner.v1.DocInfo
-	191, // 301: opendesigner.v1.DocumentService.GetAccess:output_type -> opendesigner.v1.GetAccessResponse
-	193, // 302: opendesigner.v1.DocumentService.EnableAccess:output_type -> opendesigner.v1.EnableAccessResponse
-	195, // 303: opendesigner.v1.DocumentService.DisableAccess:output_type -> opendesigner.v1.DisableAccessResponse
-	197, // 304: opendesigner.v1.DocumentService.CreateShareLink:output_type -> opendesigner.v1.CreateShareLinkResponse
-	199, // 305: opendesigner.v1.DocumentService.RevokeShareLink:output_type -> opendesigner.v1.RevokeShareLinkResponse
-	201, // 306: opendesigner.v1.DocumentService.ImportFig:output_type -> opendesigner.v1.ImportFigResponse
-	203, // 307: opendesigner.v1.DocumentService.GetBranchOrigin:output_type -> opendesigner.v1.GetBranchOriginResponse
-	206, // 308: opendesigner.v1.DocumentService.ReviewMerge:output_type -> opendesigner.v1.ReviewMergeResponse
-	208, // 309: opendesigner.v1.DocumentService.MergeBranch:output_type -> opendesigner.v1.MergeBranchResponse
-	163, // 310: opendesigner.v1.DocumentService.ListDocuments:output_type -> opendesigner.v1.ListDocumentsResponse
-	158, // 311: opendesigner.v1.DocumentService.CreateDocument:output_type -> opendesigner.v1.DocInfo
-	158, // 312: opendesigner.v1.DocumentService.RenameDocument:output_type -> opendesigner.v1.DocInfo
-	161, // 313: opendesigner.v1.DocumentService.DeleteDocument:output_type -> opendesigner.v1.DeleteDocumentResponse
-	156, // 314: opendesigner.v1.DocumentService.OpenDocument:output_type -> opendesigner.v1.OpenResponse
-	165, // 315: opendesigner.v1.DocumentService.SubmitOp:output_type -> opendesigner.v1.SubmitOpResponse
-	169, // 316: opendesigner.v1.DocumentService.Subscribe:output_type -> opendesigner.v1.ServerMsg
-	171, // 317: opendesigner.v1.DocumentService.WatchPresence:output_type -> opendesigner.v1.PresenceEvent
-	216, // 318: opendesigner.v1.DocumentService.UpdatePresence:output_type -> opendesigner.v1.UpdatePresenceResponse
-	217, // 319: opendesigner.v1.DocumentService.WatchJobs:output_type -> opendesigner.v1.EditorJob
-	220, // 320: opendesigner.v1.DocumentService.RunJob:output_type -> opendesigner.v1.RunJobResponse
-	222, // 321: opendesigner.v1.DocumentService.CompleteJob:output_type -> opendesigner.v1.CompleteJobResponse
-	176, // 322: opendesigner.v1.DocumentService.AnalyzeFlows:output_type -> opendesigner.v1.AnalyzeFlowsResponse
-	179, // 323: opendesigner.v1.DocumentService.ExportCode:output_type -> opendesigner.v1.ExportCodeResponse
-	181, // 324: opendesigner.v1.DocumentService.RenderDiagram:output_type -> opendesigner.v1.RenderDiagramResponse
-	294, // [294:325] is the sub-list for method output_type
-	263, // [263:294] is the sub-list for method input_type
-	263, // [263:263] is the sub-list for extension type_name
-	263, // [263:263] is the sub-list for extension extendee
-	0,   // [0:263] is the sub-list for field type_name
+	23,  // 48: opendesigner.v1.TextStyle.list_kind:type_name -> opendesigner.v1.ListKind
+	18,  // 49: opendesigner.v1.TextStyle.vertical_align:type_name -> opendesigner.v1.TextVAlign
+	15,  // 50: opendesigner.v1.TextStyle.direction:type_name -> opendesigner.v1.TextDirection
+	16,  // 51: opendesigner.v1.TextStyle.writing_mode:type_name -> opendesigner.v1.WritingMode
+	56,  // 52: opendesigner.v1.TextNode.style:type_name -> opendesigner.v1.TextStyle
+	58,  // 53: opendesigner.v1.TextNode.runs:type_name -> opendesigner.v1.TextRun
+	60,  // 54: opendesigner.v1.SubPath.anchors:type_name -> opendesigner.v1.Anchor
+	61,  // 55: opendesigner.v1.VectorNode.subpaths:type_name -> opendesigner.v1.SubPath
+	225, // 56: opendesigner.v1.Component.variant:type_name -> opendesigner.v1.Component.VariantEntry
+	64,  // 57: opendesigner.v1.Component.properties:type_name -> opendesigner.v1.ComponentProperty
+	19,  // 58: opendesigner.v1.ComponentProperty.type:type_name -> opendesigner.v1.ComponentPropertyType
+	65,  // 59: opendesigner.v1.ComponentSet.axes:type_name -> opendesigner.v1.VariantAxis
+	32,  // 60: opendesigner.v1.InstanceOverride.fills:type_name -> opendesigner.v1.Paint
+	67,  // 61: opendesigner.v1.InstanceNode.overrides:type_name -> opendesigner.v1.InstanceOverride
+	226, // 62: opendesigner.v1.InstanceNode.property_values:type_name -> opendesigner.v1.InstanceNode.PropertyValuesEntry
+	227, // 63: opendesigner.v1.InstanceNode.variant_props:type_name -> opendesigner.v1.InstanceNode.VariantPropsEntry
+	32,  // 64: opendesigner.v1.Node.fills:type_name -> opendesigner.v1.Paint
+	34,  // 65: opendesigner.v1.Node.strokes:type_name -> opendesigner.v1.Stroke
+	45,  // 66: opendesigner.v1.Node.effects:type_name -> opendesigner.v1.Effect
+	47,  // 67: opendesigner.v1.Node.rect:type_name -> opendesigner.v1.RectNode
+	48,  // 68: opendesigner.v1.Node.ellipse:type_name -> opendesigner.v1.EllipseNode
+	57,  // 69: opendesigner.v1.Node.text:type_name -> opendesigner.v1.TextNode
+	51,  // 70: opendesigner.v1.Node.group:type_name -> opendesigner.v1.GroupNode
+	55,  // 71: opendesigner.v1.Node.frame:type_name -> opendesigner.v1.FrameNode
+	59,  // 72: opendesigner.v1.Node.image:type_name -> opendesigner.v1.ImageNode
+	62,  // 73: opendesigner.v1.Node.vector:type_name -> opendesigner.v1.VectorNode
+	68,  // 74: opendesigner.v1.Node.instance:type_name -> opendesigner.v1.InstanceNode
+	49,  // 75: opendesigner.v1.Node.polygon:type_name -> opendesigner.v1.PolygonNode
+	50,  // 76: opendesigner.v1.Node.star:type_name -> opendesigner.v1.StarNode
+	228, // 77: opendesigner.v1.Node.meta:type_name -> opendesigner.v1.Node.MetaEntry
+	229, // 78: opendesigner.v1.Node.bindings:type_name -> opendesigner.v1.Node.BindingsEntry
+	230, // 79: opendesigner.v1.Node.modes:type_name -> opendesigner.v1.Node.ModesEntry
+	12,  // 80: opendesigner.v1.Node.constraint_x:type_name -> opendesigner.v1.Constraint
+	12,  // 81: opendesigner.v1.Node.constraint_y:type_name -> opendesigner.v1.Constraint
+	11,  // 82: opendesigner.v1.Node.layout_sizing_x:type_name -> opendesigner.v1.LayoutSizing
+	11,  // 83: opendesigner.v1.Node.layout_sizing_y:type_name -> opendesigner.v1.LayoutSizing
+	6,   // 84: opendesigner.v1.Node.blend_mode:type_name -> opendesigner.v1.BlendMode
+	70,  // 85: opendesigner.v1.Node.layout_grids:type_name -> opendesigner.v1.LayoutGrid
+	20,  // 86: opendesigner.v1.Node.layout_positioning:type_name -> opendesigner.v1.LayoutPositioning
+	54,  // 87: opendesigner.v1.Node.grid_cell:type_name -> opendesigner.v1.GridPlacement
+	21,  // 88: opendesigner.v1.LayoutGrid.kind:type_name -> opendesigner.v1.LayoutGridKind
+	26,  // 89: opendesigner.v1.LayoutGrid.color:type_name -> opendesigner.v1.Color
+	72,  // 90: opendesigner.v1.Page.guides:type_name -> opendesigner.v1.Guide
+	56,  // 91: opendesigner.v1.TextStyleDef.style:type_name -> opendesigner.v1.TextStyle
+	22,  // 92: opendesigner.v1.TextStyleDef.kind:type_name -> opendesigner.v1.TextStyleKind
+	23,  // 93: opendesigner.v1.TextStyleDef.list_kind:type_name -> opendesigner.v1.ListKind
+	78,  // 94: opendesigner.v1.TextStyleDef.tab_stops:type_name -> opendesigner.v1.TabStop
+	79,  // 95: opendesigner.v1.TextStyleDef.nested_styles:type_name -> opendesigner.v1.NestedStyle
+	77,  // 96: opendesigner.v1.TextStyleDef.rule_above:type_name -> opendesigner.v1.ParagraphRule
+	77,  // 97: opendesigner.v1.TextStyleDef.rule_below:type_name -> opendesigner.v1.ParagraphRule
+	26,  // 98: opendesigner.v1.TextStyleDef.shading:type_name -> opendesigner.v1.Color
+	26,  // 99: opendesigner.v1.TextStyleDef.border_color:type_name -> opendesigner.v1.Color
+	32,  // 100: opendesigner.v1.PaintStyleDef.paints:type_name -> opendesigner.v1.Paint
+	45,  // 101: opendesigner.v1.EffectStyleDef.effects:type_name -> opendesigner.v1.Effect
+	26,  // 102: opendesigner.v1.ParagraphRule.color:type_name -> opendesigner.v1.Color
+	24,  // 103: opendesigner.v1.TabStop.align:type_name -> opendesigner.v1.TabAlign
+	80,  // 104: opendesigner.v1.VariableCollection.modes:type_name -> opendesigner.v1.VariableMode
+	26,  // 105: opendesigner.v1.VariableValue.color:type_name -> opendesigner.v1.Color
+	25,  // 106: opendesigner.v1.Variable.type:type_name -> opendesigner.v1.VariableType
+	231, // 107: opendesigner.v1.Variable.values:type_name -> opendesigner.v1.Variable.ValuesEntry
+	84,  // 108: opendesigner.v1.Variable.cmyk:type_name -> opendesigner.v1.Cmyk
+	87,  // 109: opendesigner.v1.Track.keyframes:type_name -> opendesigner.v1.Keyframe
+	88,  // 110: opendesigner.v1.Clip.tracks:type_name -> opendesigner.v1.Track
+	71,  // 111: opendesigner.v1.Document.pages:type_name -> opendesigner.v1.Page
+	232, // 112: opendesigner.v1.Document.nodes:type_name -> opendesigner.v1.Document.NodesEntry
+	233, // 113: opendesigner.v1.Document.components:type_name -> opendesigner.v1.Document.ComponentsEntry
+	234, // 114: opendesigner.v1.Document.flows:type_name -> opendesigner.v1.Document.FlowsEntry
+	235, // 115: opendesigner.v1.Document.transitions:type_name -> opendesigner.v1.Document.TransitionsEntry
+	236, // 116: opendesigner.v1.Document.clips:type_name -> opendesigner.v1.Document.ClipsEntry
+	237, // 117: opendesigner.v1.Document.collections:type_name -> opendesigner.v1.Document.CollectionsEntry
+	238, // 118: opendesigner.v1.Document.variables:type_name -> opendesigner.v1.Document.VariablesEntry
+	239, // 119: opendesigner.v1.Document.fonts:type_name -> opendesigner.v1.Document.FontsEntry
+	240, // 120: opendesigner.v1.Document.text_styles:type_name -> opendesigner.v1.Document.TextStylesEntry
+	241, // 121: opendesigner.v1.Document.component_sets:type_name -> opendesigner.v1.Document.ComponentSetsEntry
+	242, // 122: opendesigner.v1.Document.comments:type_name -> opendesigner.v1.Document.CommentsEntry
+	243, // 123: opendesigner.v1.Document.paint_styles:type_name -> opendesigner.v1.Document.PaintStylesEntry
+	244, // 124: opendesigner.v1.Document.effect_styles:type_name -> opendesigner.v1.Document.EffectStylesEntry
+	245, // 125: opendesigner.v1.Document.annotations:type_name -> opendesigner.v1.Document.AnnotationsEntry
+	246, // 126: opendesigner.v1.Document.ready_for_dev:type_name -> opendesigner.v1.Document.ReadyForDevEntry
+	93,  // 127: opendesigner.v1.Document.settings:type_name -> opendesigner.v1.DocSettings
+	247, // 128: opendesigner.v1.Document.object_styles:type_name -> opendesigner.v1.Document.ObjectStylesEntry
+	92,  // 129: opendesigner.v1.Document.layers:type_name -> opendesigner.v1.Layer
+	32,  // 130: opendesigner.v1.ObjectStyleDef.fills:type_name -> opendesigner.v1.Paint
+	34,  // 131: opendesigner.v1.ObjectStyleDef.strokes:type_name -> opendesigner.v1.Stroke
+	45,  // 132: opendesigner.v1.ObjectStyleDef.effects:type_name -> opendesigner.v1.Effect
+	6,   // 133: opendesigner.v1.ObjectStyleDef.blend_mode:type_name -> opendesigner.v1.BlendMode
+	96,  // 134: opendesigner.v1.DocSettings.book:type_name -> opendesigner.v1.BookMetadata
+	94,  // 135: opendesigner.v1.DocSettings.conditions:type_name -> opendesigner.v1.TextCondition
+	95,  // 136: opendesigner.v1.DocSettings.table_styles:type_name -> opendesigner.v1.TableStyle
+	97,  // 137: opendesigner.v1.BookMetadata.contributors:type_name -> opendesigner.v1.Contributor
+	98,  // 138: opendesigner.v1.BookMetadata.subjects:type_name -> opendesigner.v1.Subject
+	99,  // 139: opendesigner.v1.BookMetadata.prices:type_name -> opendesigner.v1.Price
+	69,  // 140: opendesigner.v1.CreateNode.node:type_name -> opendesigner.v1.Node
+	69,  // 141: opendesigner.v1.SetProperties.patch:type_name -> opendesigner.v1.Node
+	252, // 142: opendesigner.v1.SetProperties.mask:type_name -> google.protobuf.FieldMask
+	56,  // 143: opendesigner.v1.SetText.style:type_name -> opendesigner.v1.TextStyle
+	58,  // 144: opendesigner.v1.SetText.runs:type_name -> opendesigner.v1.TextRun
+	61,  // 145: opendesigner.v1.SetVectorPath.subpaths:type_name -> opendesigner.v1.SubPath
+	71,  // 146: opendesigner.v1.CreatePage.page:type_name -> opendesigner.v1.Page
+	71,  // 147: opendesigner.v1.UpdatePage.page:type_name -> opendesigner.v1.Page
+	93,  // 148: opendesigner.v1.SetDocSettings.settings:type_name -> opendesigner.v1.DocSettings
+	67,  // 149: opendesigner.v1.SetInstanceOverride.override:type_name -> opendesigner.v1.InstanceOverride
+	85,  // 150: opendesigner.v1.SetFlow.flow:type_name -> opendesigner.v1.Flow
+	86,  // 151: opendesigner.v1.SetTransition.transition:type_name -> opendesigner.v1.Transition
+	89,  // 152: opendesigner.v1.SetClip.clip:type_name -> opendesigner.v1.Clip
+	100, // 153: opendesigner.v1.Op.create_node:type_name -> opendesigner.v1.CreateNode
+	102, // 154: opendesigner.v1.Op.set_props:type_name -> opendesigner.v1.SetProperties
+	101, // 155: opendesigner.v1.Op.delete_node:type_name -> opendesigner.v1.DeleteNode
+	103, // 156: opendesigner.v1.Op.set_text:type_name -> opendesigner.v1.SetText
+	105, // 157: opendesigner.v1.Op.reparent_node:type_name -> opendesigner.v1.ReparentNode
+	106, // 158: opendesigner.v1.Op.create_page:type_name -> opendesigner.v1.CreatePage
+	107, // 159: opendesigner.v1.Op.delete_page:type_name -> opendesigner.v1.DeletePage
+	108, // 160: opendesigner.v1.Op.rename_page:type_name -> opendesigner.v1.RenamePage
+	104, // 161: opendesigner.v1.Op.set_vector_path:type_name -> opendesigner.v1.SetVectorPath
+	112, // 162: opendesigner.v1.Op.create_component:type_name -> opendesigner.v1.CreateComponent
+	113, // 163: opendesigner.v1.Op.set_instance_override:type_name -> opendesigner.v1.SetInstanceOverride
+	114, // 164: opendesigner.v1.Op.set_flow:type_name -> opendesigner.v1.SetFlow
+	115, // 165: opendesigner.v1.Op.delete_flow:type_name -> opendesigner.v1.DeleteFlow
+	116, // 166: opendesigner.v1.Op.set_transition:type_name -> opendesigner.v1.SetTransition
+	117, // 167: opendesigner.v1.Op.delete_transition:type_name -> opendesigner.v1.DeleteTransition
+	118, // 168: opendesigner.v1.Op.set_clip:type_name -> opendesigner.v1.SetClip
+	119, // 169: opendesigner.v1.Op.delete_clip:type_name -> opendesigner.v1.DeleteClip
+	134, // 170: opendesigner.v1.Op.set_collection:type_name -> opendesigner.v1.SetCollection
+	135, // 171: opendesigner.v1.Op.delete_collection:type_name -> opendesigner.v1.DeleteCollection
+	136, // 172: opendesigner.v1.Op.set_variable:type_name -> opendesigner.v1.SetVariable
+	137, // 173: opendesigner.v1.Op.delete_variable:type_name -> opendesigner.v1.DeleteVariable
+	138, // 174: opendesigner.v1.Op.set_font:type_name -> opendesigner.v1.SetFont
+	139, // 175: opendesigner.v1.Op.delete_font:type_name -> opendesigner.v1.DeleteFont
+	140, // 176: opendesigner.v1.Op.set_text_style_def:type_name -> opendesigner.v1.SetTextStyleDef
+	141, // 177: opendesigner.v1.Op.delete_text_style_def:type_name -> opendesigner.v1.DeleteTextStyleDef
+	152, // 178: opendesigner.v1.Op.set_component_set:type_name -> opendesigner.v1.SetComponentSet
+	153, // 179: opendesigner.v1.Op.delete_component_set:type_name -> opendesigner.v1.DeleteComponentSet
+	154, // 180: opendesigner.v1.Op.set_component_def:type_name -> opendesigner.v1.SetComponentDef
+	155, // 181: opendesigner.v1.Op.set_instance_props:type_name -> opendesigner.v1.SetInstanceProps
+	122, // 182: opendesigner.v1.Op.set_comment:type_name -> opendesigner.v1.SetComment
+	123, // 183: opendesigner.v1.Op.delete_comment:type_name -> opendesigner.v1.DeleteComment
+	142, // 184: opendesigner.v1.Op.set_paint_style_def:type_name -> opendesigner.v1.SetPaintStyleDef
+	143, // 185: opendesigner.v1.Op.delete_paint_style_def:type_name -> opendesigner.v1.DeletePaintStyleDef
+	144, // 186: opendesigner.v1.Op.set_effect_style_def:type_name -> opendesigner.v1.SetEffectStyleDef
+	145, // 187: opendesigner.v1.Op.delete_effect_style_def:type_name -> opendesigner.v1.DeleteEffectStyleDef
+	124, // 188: opendesigner.v1.Op.set_instance:type_name -> opendesigner.v1.SetInstance
+	127, // 189: opendesigner.v1.Op.set_annotation:type_name -> opendesigner.v1.SetAnnotation
+	128, // 190: opendesigner.v1.Op.delete_annotation:type_name -> opendesigner.v1.DeleteAnnotation
+	129, // 191: opendesigner.v1.Op.set_ready_for_dev:type_name -> opendesigner.v1.SetReadyForDev
+	130, // 192: opendesigner.v1.Op.clear_ready_for_dev:type_name -> opendesigner.v1.ClearReadyForDev
+	109, // 193: opendesigner.v1.Op.update_page:type_name -> opendesigner.v1.UpdatePage
+	111, // 194: opendesigner.v1.Op.set_doc_settings:type_name -> opendesigner.v1.SetDocSettings
+	110, // 195: opendesigner.v1.Op.move_page:type_name -> opendesigner.v1.MovePage
+	146, // 196: opendesigner.v1.Op.set_object_style_def:type_name -> opendesigner.v1.SetObjectStyleDef
+	147, // 197: opendesigner.v1.Op.delete_object_style_def:type_name -> opendesigner.v1.DeleteObjectStyleDef
+	148, // 198: opendesigner.v1.Op.set_layer:type_name -> opendesigner.v1.SetLayer
+	149, // 199: opendesigner.v1.Op.delete_layer:type_name -> opendesigner.v1.DeleteLayer
+	150, // 200: opendesigner.v1.Op.set_image:type_name -> opendesigner.v1.SetImage
+	121, // 201: opendesigner.v1.SetComment.comment:type_name -> opendesigner.v1.Comment
+	68,  // 202: opendesigner.v1.SetInstance.instance:type_name -> opendesigner.v1.InstanceNode
+	69,  // 203: opendesigner.v1.ReadyForDev.snapshot:type_name -> opendesigner.v1.Node
+	125, // 204: opendesigner.v1.SetAnnotation.annotation:type_name -> opendesigner.v1.Annotation
+	126, // 205: opendesigner.v1.SetReadyForDev.ready:type_name -> opendesigner.v1.ReadyForDev
+	131, // 206: opendesigner.v1.CompareReadyResponse.changes:type_name -> opendesigner.v1.ReadyChange
+	81,  // 207: opendesigner.v1.SetCollection.collection:type_name -> opendesigner.v1.VariableCollection
+	83,  // 208: opendesigner.v1.SetVariable.variable:type_name -> opendesigner.v1.Variable
+	73,  // 209: opendesigner.v1.SetFont.font:type_name -> opendesigner.v1.FontFace
+	74,  // 210: opendesigner.v1.SetTextStyleDef.text_style:type_name -> opendesigner.v1.TextStyleDef
+	75,  // 211: opendesigner.v1.SetPaintStyleDef.paint_style:type_name -> opendesigner.v1.PaintStyleDef
+	76,  // 212: opendesigner.v1.SetEffectStyleDef.effect_style:type_name -> opendesigner.v1.EffectStyleDef
+	91,  // 213: opendesigner.v1.SetObjectStyleDef.object_style:type_name -> opendesigner.v1.ObjectStyleDef
+	92,  // 214: opendesigner.v1.SetLayer.layer:type_name -> opendesigner.v1.Layer
+	59,  // 215: opendesigner.v1.SetImage.image:type_name -> opendesigner.v1.ImageNode
+	66,  // 216: opendesigner.v1.SetComponentSet.component_set:type_name -> opendesigner.v1.ComponentSet
+	248, // 217: opendesigner.v1.SetComponentSet.axis_renames:type_name -> opendesigner.v1.SetComponentSet.AxisRenamesEntry
+	151, // 218: opendesigner.v1.SetComponentSet.option_renames:type_name -> opendesigner.v1.OptionRename
+	249, // 219: opendesigner.v1.SetComponentDef.variant:type_name -> opendesigner.v1.SetComponentDef.VariantEntry
+	64,  // 220: opendesigner.v1.SetComponentDef.properties:type_name -> opendesigner.v1.ComponentProperty
+	250, // 221: opendesigner.v1.SetInstanceProps.property_values:type_name -> opendesigner.v1.SetInstanceProps.PropertyValuesEntry
+	251, // 222: opendesigner.v1.SetInstanceProps.variant_props:type_name -> opendesigner.v1.SetInstanceProps.VariantPropsEntry
+	253, // 223: opendesigner.v1.OpRecord.ts:type_name -> google.protobuf.Timestamp
+	120, // 224: opendesigner.v1.OpRecord.op:type_name -> opendesigner.v1.Op
+	90,  // 225: opendesigner.v1.OpenResponse.snapshot:type_name -> opendesigner.v1.Document
+	160, // 226: opendesigner.v1.ListDocumentsResponse.docs:type_name -> opendesigner.v1.DocInfo
+	120, // 227: opendesigner.v1.SubmitOpRequest.op:type_name -> opendesigner.v1.Op
+	169, // 228: opendesigner.v1.SubmitOpResponse.ack:type_name -> opendesigner.v1.Ack
+	156, // 229: opendesigner.v1.ServerMsg.applied:type_name -> opendesigner.v1.OpRecord
+	169, // 230: opendesigner.v1.ServerMsg.ack:type_name -> opendesigner.v1.Ack
+	170, // 231: opendesigner.v1.ServerMsg.error:type_name -> opendesigner.v1.ErrorMsg
+	172, // 232: opendesigner.v1.PresenceEvent.update:type_name -> opendesigner.v1.PresenceState
+	174, // 233: opendesigner.v1.FlowReport.issues:type_name -> opendesigner.v1.FlowIssue
+	175, // 234: opendesigner.v1.FlowReport.paths:type_name -> opendesigner.v1.FlowPath
+	176, // 235: opendesigner.v1.AnalyzeFlowsResponse.reports:type_name -> opendesigner.v1.FlowReport
+	179, // 236: opendesigner.v1.ExportCodeResponse.files:type_name -> opendesigner.v1.ExportFile
+	69,  // 237: opendesigner.v1.RenderDiagramResponse.nodes:type_name -> opendesigner.v1.Node
+	184, // 238: opendesigner.v1.ListVersionsResponse.versions:type_name -> opendesigner.v1.VersionInfo
+	191, // 239: opendesigner.v1.GetAccessResponse.links:type_name -> opendesigner.v1.AccessLink
+	191, // 240: opendesigner.v1.CreateShareLinkResponse.link:type_name -> opendesigner.v1.AccessLink
+	69,  // 241: opendesigner.v1.ImportFigResponse.nodes:type_name -> opendesigner.v1.Node
+	81,  // 242: opendesigner.v1.ImportFigResponse.collections:type_name -> opendesigner.v1.VariableCollection
+	83,  // 243: opendesigner.v1.ImportFigResponse.variables:type_name -> opendesigner.v1.Variable
+	206, // 244: opendesigner.v1.ReviewMergeResponse.changes:type_name -> opendesigner.v1.MergeChange
+	211, // 245: opendesigner.v1.ReviewDesignResponse.issues:type_name -> opendesigner.v1.ReviewIssue
+	69,  // 246: opendesigner.v1.RenderBoardResponse.nodes:type_name -> opendesigner.v1.Node
+	172, // 247: opendesigner.v1.UpdatePresenceRequest.state:type_name -> opendesigner.v1.PresenceState
+	82,  // 248: opendesigner.v1.Variable.ValuesEntry.value:type_name -> opendesigner.v1.VariableValue
+	69,  // 249: opendesigner.v1.Document.NodesEntry.value:type_name -> opendesigner.v1.Node
+	63,  // 250: opendesigner.v1.Document.ComponentsEntry.value:type_name -> opendesigner.v1.Component
+	85,  // 251: opendesigner.v1.Document.FlowsEntry.value:type_name -> opendesigner.v1.Flow
+	86,  // 252: opendesigner.v1.Document.TransitionsEntry.value:type_name -> opendesigner.v1.Transition
+	89,  // 253: opendesigner.v1.Document.ClipsEntry.value:type_name -> opendesigner.v1.Clip
+	81,  // 254: opendesigner.v1.Document.CollectionsEntry.value:type_name -> opendesigner.v1.VariableCollection
+	83,  // 255: opendesigner.v1.Document.VariablesEntry.value:type_name -> opendesigner.v1.Variable
+	73,  // 256: opendesigner.v1.Document.FontsEntry.value:type_name -> opendesigner.v1.FontFace
+	74,  // 257: opendesigner.v1.Document.TextStylesEntry.value:type_name -> opendesigner.v1.TextStyleDef
+	66,  // 258: opendesigner.v1.Document.ComponentSetsEntry.value:type_name -> opendesigner.v1.ComponentSet
+	121, // 259: opendesigner.v1.Document.CommentsEntry.value:type_name -> opendesigner.v1.Comment
+	75,  // 260: opendesigner.v1.Document.PaintStylesEntry.value:type_name -> opendesigner.v1.PaintStyleDef
+	76,  // 261: opendesigner.v1.Document.EffectStylesEntry.value:type_name -> opendesigner.v1.EffectStyleDef
+	125, // 262: opendesigner.v1.Document.AnnotationsEntry.value:type_name -> opendesigner.v1.Annotation
+	126, // 263: opendesigner.v1.Document.ReadyForDevEntry.value:type_name -> opendesigner.v1.ReadyForDev
+	91,  // 264: opendesigner.v1.Document.ObjectStylesEntry.value:type_name -> opendesigner.v1.ObjectStyleDef
+	214, // 265: opendesigner.v1.DocumentService.RenderBoard:input_type -> opendesigner.v1.RenderBoardRequest
+	212, // 266: opendesigner.v1.DocumentService.ReviewDesign:input_type -> opendesigner.v1.ReviewDesignRequest
+	132, // 267: opendesigner.v1.DocumentService.CompareReady:input_type -> opendesigner.v1.CompareReadyRequest
+	185, // 268: opendesigner.v1.DocumentService.CreateVersion:input_type -> opendesigner.v1.CreateVersionRequest
+	186, // 269: opendesigner.v1.DocumentService.ListVersions:input_type -> opendesigner.v1.ListVersionsRequest
+	188, // 270: opendesigner.v1.DocumentService.DeleteVersion:input_type -> opendesigner.v1.DeleteVersionRequest
+	190, // 271: opendesigner.v1.DocumentService.BranchDocument:input_type -> opendesigner.v1.BranchRequest
+	192, // 272: opendesigner.v1.DocumentService.GetAccess:input_type -> opendesigner.v1.GetAccessRequest
+	194, // 273: opendesigner.v1.DocumentService.EnableAccess:input_type -> opendesigner.v1.EnableAccessRequest
+	196, // 274: opendesigner.v1.DocumentService.DisableAccess:input_type -> opendesigner.v1.DisableAccessRequest
+	198, // 275: opendesigner.v1.DocumentService.CreateShareLink:input_type -> opendesigner.v1.CreateShareLinkRequest
+	200, // 276: opendesigner.v1.DocumentService.RevokeShareLink:input_type -> opendesigner.v1.RevokeShareLinkRequest
+	202, // 277: opendesigner.v1.DocumentService.ImportFig:input_type -> opendesigner.v1.ImportFigRequest
+	204, // 278: opendesigner.v1.DocumentService.GetBranchOrigin:input_type -> opendesigner.v1.GetBranchOriginRequest
+	207, // 279: opendesigner.v1.DocumentService.ReviewMerge:input_type -> opendesigner.v1.ReviewMergeRequest
+	209, // 280: opendesigner.v1.DocumentService.MergeBranch:input_type -> opendesigner.v1.MergeBranchRequest
+	164, // 281: opendesigner.v1.DocumentService.ListDocuments:input_type -> opendesigner.v1.ListDocumentsRequest
+	159, // 282: opendesigner.v1.DocumentService.CreateDocument:input_type -> opendesigner.v1.CreateDocumentRequest
+	161, // 283: opendesigner.v1.DocumentService.RenameDocument:input_type -> opendesigner.v1.RenameDocumentRequest
+	162, // 284: opendesigner.v1.DocumentService.DeleteDocument:input_type -> opendesigner.v1.DeleteDocumentRequest
+	157, // 285: opendesigner.v1.DocumentService.OpenDocument:input_type -> opendesigner.v1.OpenRequest
+	166, // 286: opendesigner.v1.DocumentService.SubmitOp:input_type -> opendesigner.v1.SubmitOpRequest
+	168, // 287: opendesigner.v1.DocumentService.Subscribe:input_type -> opendesigner.v1.SubscribeRequest
+	216, // 288: opendesigner.v1.DocumentService.WatchPresence:input_type -> opendesigner.v1.WatchPresenceRequest
+	217, // 289: opendesigner.v1.DocumentService.UpdatePresence:input_type -> opendesigner.v1.UpdatePresenceRequest
+	220, // 290: opendesigner.v1.DocumentService.WatchJobs:input_type -> opendesigner.v1.WatchJobsRequest
+	221, // 291: opendesigner.v1.DocumentService.RunJob:input_type -> opendesigner.v1.RunJobRequest
+	223, // 292: opendesigner.v1.DocumentService.CompleteJob:input_type -> opendesigner.v1.CompleteJobRequest
+	177, // 293: opendesigner.v1.DocumentService.AnalyzeFlows:input_type -> opendesigner.v1.AnalyzeFlowsRequest
+	180, // 294: opendesigner.v1.DocumentService.ExportCode:input_type -> opendesigner.v1.ExportCodeRequest
+	182, // 295: opendesigner.v1.DocumentService.RenderDiagram:input_type -> opendesigner.v1.RenderDiagramRequest
+	215, // 296: opendesigner.v1.DocumentService.RenderBoard:output_type -> opendesigner.v1.RenderBoardResponse
+	213, // 297: opendesigner.v1.DocumentService.ReviewDesign:output_type -> opendesigner.v1.ReviewDesignResponse
+	133, // 298: opendesigner.v1.DocumentService.CompareReady:output_type -> opendesigner.v1.CompareReadyResponse
+	184, // 299: opendesigner.v1.DocumentService.CreateVersion:output_type -> opendesigner.v1.VersionInfo
+	187, // 300: opendesigner.v1.DocumentService.ListVersions:output_type -> opendesigner.v1.ListVersionsResponse
+	189, // 301: opendesigner.v1.DocumentService.DeleteVersion:output_type -> opendesigner.v1.DeleteVersionResponse
+	160, // 302: opendesigner.v1.DocumentService.BranchDocument:output_type -> opendesigner.v1.DocInfo
+	193, // 303: opendesigner.v1.DocumentService.GetAccess:output_type -> opendesigner.v1.GetAccessResponse
+	195, // 304: opendesigner.v1.DocumentService.EnableAccess:output_type -> opendesigner.v1.EnableAccessResponse
+	197, // 305: opendesigner.v1.DocumentService.DisableAccess:output_type -> opendesigner.v1.DisableAccessResponse
+	199, // 306: opendesigner.v1.DocumentService.CreateShareLink:output_type -> opendesigner.v1.CreateShareLinkResponse
+	201, // 307: opendesigner.v1.DocumentService.RevokeShareLink:output_type -> opendesigner.v1.RevokeShareLinkResponse
+	203, // 308: opendesigner.v1.DocumentService.ImportFig:output_type -> opendesigner.v1.ImportFigResponse
+	205, // 309: opendesigner.v1.DocumentService.GetBranchOrigin:output_type -> opendesigner.v1.GetBranchOriginResponse
+	208, // 310: opendesigner.v1.DocumentService.ReviewMerge:output_type -> opendesigner.v1.ReviewMergeResponse
+	210, // 311: opendesigner.v1.DocumentService.MergeBranch:output_type -> opendesigner.v1.MergeBranchResponse
+	165, // 312: opendesigner.v1.DocumentService.ListDocuments:output_type -> opendesigner.v1.ListDocumentsResponse
+	160, // 313: opendesigner.v1.DocumentService.CreateDocument:output_type -> opendesigner.v1.DocInfo
+	160, // 314: opendesigner.v1.DocumentService.RenameDocument:output_type -> opendesigner.v1.DocInfo
+	163, // 315: opendesigner.v1.DocumentService.DeleteDocument:output_type -> opendesigner.v1.DeleteDocumentResponse
+	158, // 316: opendesigner.v1.DocumentService.OpenDocument:output_type -> opendesigner.v1.OpenResponse
+	167, // 317: opendesigner.v1.DocumentService.SubmitOp:output_type -> opendesigner.v1.SubmitOpResponse
+	171, // 318: opendesigner.v1.DocumentService.Subscribe:output_type -> opendesigner.v1.ServerMsg
+	173, // 319: opendesigner.v1.DocumentService.WatchPresence:output_type -> opendesigner.v1.PresenceEvent
+	218, // 320: opendesigner.v1.DocumentService.UpdatePresence:output_type -> opendesigner.v1.UpdatePresenceResponse
+	219, // 321: opendesigner.v1.DocumentService.WatchJobs:output_type -> opendesigner.v1.EditorJob
+	222, // 322: opendesigner.v1.DocumentService.RunJob:output_type -> opendesigner.v1.RunJobResponse
+	224, // 323: opendesigner.v1.DocumentService.CompleteJob:output_type -> opendesigner.v1.CompleteJobResponse
+	178, // 324: opendesigner.v1.DocumentService.AnalyzeFlows:output_type -> opendesigner.v1.AnalyzeFlowsResponse
+	181, // 325: opendesigner.v1.DocumentService.ExportCode:output_type -> opendesigner.v1.ExportCodeResponse
+	183, // 326: opendesigner.v1.DocumentService.RenderDiagram:output_type -> opendesigner.v1.RenderDiagramResponse
+	296, // [296:327] is the sub-list for method output_type
+	265, // [265:296] is the sub-list for method input_type
+	265, // [265:265] is the sub-list for extension type_name
+	265, // [265:265] is the sub-list for extension extendee
+	0,   // [0:265] is the sub-list for field type_name
 }
 
 func init() { file_opendesigner_v1_opendesigner_proto_init() }
@@ -18574,7 +18701,7 @@ func file_opendesigner_v1_opendesigner_proto_init() {
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_opendesigner_v1_opendesigner_proto_rawDesc), len(file_opendesigner_v1_opendesigner_proto_rawDesc)),
-			NumEnums:      24,
+			NumEnums:      26,
 			NumMessages:   226,
 			NumExtensions: 0,
 			NumServices:   1,

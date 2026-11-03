@@ -562,4 +562,8 @@ export const de: Record<MessageKey, Message> = {
   "Remove grid {n}": "Raster {n} entfernen",
   "Margin": "Rand",
   "Grid opacity": "Rasterdeckkraft",
+  "Writing mode": "Schreibmodus",
+  "Auto": "Auto",
+  "Left to right": "Links nach rechts",
+  "Right to left": "Rechts nach links",
 };

@@ -543,6 +543,11 @@ const PLAIN = [
   // Panel section headings
   "Size limits", "Variables", "Transitions", "Stroke", "Sizing", "Paths", "Override", "Layout", "Instance",
   "Fill", "Export", "Effect style", "Current flow", "Corners", "Constraints", "Component", "Arc", "Appearance",
+  // International text
+  "Writing mode",
+  "Auto",
+  "Left to right",
+  "Right to left",
 ] as const;
 
 const PLURALS = {

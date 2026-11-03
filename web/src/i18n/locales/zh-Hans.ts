@@ -562,4 +562,8 @@ export const zhHans: Record<MessageKey, Message> = {
   "Remove grid {n}": "移除网格 {n}",
   "Margin": "边距",
   "Grid opacity": "网格不透明度",
+  "Writing mode": "书写模式",
+  "Auto": "自动",
+  "Left to right": "从左到右",
+  "Right to left": "从右到左",
 };
