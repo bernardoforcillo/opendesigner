@@ -94,6 +94,9 @@ export class FontBook {
   private custom = new Map<string, CustomFace>();
   private customDoc = "";
   private customFonts: Record<string, FontLite> | null = null;
+  // The file each face was made from: the shaper (ck/shaping.ts) registers fonts by their bytes.
+  private bytes = new Map<Typeface, ArrayBuffer>();
+  private fontBytes = new WeakMap<Font, ArrayBuffer>();
 
   constructor(
     private readonly CK: CanvasKit,
@@ -116,6 +119,7 @@ export class FontBook {
       const face = this.CK.Typeface.MakeFreeTypeFaceFromData(data);
       if (face) {
         this.faces.set(w, face);
+        this.bytes.set(face, data);
         // Fonts already created for different weights remain valid: they are per (weight,
         // size) and are requested again by fontFor.
         this.onLoad();
@@ -158,6 +162,7 @@ export class FontBook {
           const face = this.CK.Typeface.MakeFreeTypeFaceFromData(data);
           if (!face) return;
           entry.face = face;
+          this.bytes.set(face, data);
           this.onLoad();
         })
         .catch(() => {});
@@ -170,7 +175,13 @@ export class FontBook {
     for (const [key, font] of [...this.fonts]) {
       if (key.startsWith(`c:${id}|`)) { font.delete(); this.fonts.delete(key); }
     }
+    if (c?.face) this.bytes.delete(c.face);
     c?.face?.delete();
+  }
+
+  /** The file a Font returned by fontFor was made from, for the shaper. */
+  bytesOf(font: Font): ArrayBuffer | undefined {
+    return this.fontBytes.get(font);
   }
 
   /** The loaded uploaded face that best matches family, weight and style, or null. */
@@ -200,6 +211,8 @@ export class FontBook {
       let font = this.fonts.get(key);
       if (!font) {
         font = new this.CK.Font(custom.face, size);
+        const data = this.bytes.get(custom.face);
+        if (data) this.fontBytes.set(font, data);
         font.setSubpixel(true);
         font.setHinting(this.CK.FontHinting.None);
         font.setEdging(this.CK.FontEdging.SubpixelAntiAlias);
@@ -219,7 +232,10 @@ export class FontBook {
     const key = `${have}|${size}`;
     let font = this.fonts.get(key);
     if (!font) {
-      font = new this.CK.Font(this.faces.get(have) as Typeface, size);
+      const face = this.faces.get(have) as Typeface;
+      font = new this.CK.Font(face, size);
+      const data = this.bytes.get(face);
+      if (data) this.fontBytes.set(font, data);
       font.setSubpixel(true);
       font.setHinting(this.CK.FontHinting.None);
       font.setEdging(this.CK.FontEdging.SubpixelAntiAlias);
@@ -234,5 +250,6 @@ export class FontBook {
     for (const t of this.faces.values()) t.delete();
     this.fonts.clear();
     this.faces.clear();
+    this.bytes.clear();
   }
 }
