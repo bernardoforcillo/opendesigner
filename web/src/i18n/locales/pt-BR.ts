@@ -203,6 +203,7 @@ export const ptBR: Record<MessageKey, Message> = {
   "Match case": "Diferenciar maiúsculas",
   "Whole word": "Palavra inteira",
   "Regular expression": "Expressão regular",
+  "GREP": "GREP",
   "Type what to look for.": "Digite o que procurar.",
   "No match.": "Nenhuma correspondência.",
   "Matches": "Correspondências",

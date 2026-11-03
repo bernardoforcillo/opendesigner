@@ -203,6 +203,7 @@ export const ja: Record<MessageKey, Message> = {
   "Match case": "大文字と小文字を区別",
   "Whole word": "単語単位",
   "Regular expression": "正規表現",
+  "GREP": "GREP",
   "Type what to look for.": "検索する文字列を入力してください。",
   "No match.": "一致する項目はありません。",
   "Matches": "一致する項目",

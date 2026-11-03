@@ -203,6 +203,7 @@ export const zhHans: Record<MessageKey, Message> = {
   "Match case": "区分大小写",
   "Whole word": "全字匹配",
   "Regular expression": "正则表达式",
+  "GREP": "GREP",
   "Type what to look for.": "请输入要查找的内容。",
   "No match.": "没有匹配项。",
   "Matches": "匹配项",

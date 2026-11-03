@@ -190,6 +190,7 @@ const PLAIN = [
   "Match case",
   "Whole word",
   "Regular expression",
+  "GREP",
   "Type what to look for.",
   "No match.",
   "Matches",

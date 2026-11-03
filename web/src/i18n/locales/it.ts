@@ -203,6 +203,7 @@ export const it: Record<MessageKey, Message> = {
   "Match case": "Maiuscole/minuscole",
   "Whole word": "Parola intera",
   "Regular expression": "Espressione regolare",
+  "GREP": "GREP",
   "Type what to look for.": "Digita cosa cercare.",
   "No match.": "Nessuna corrispondenza.",
   "Matches": "Corrispondenze",

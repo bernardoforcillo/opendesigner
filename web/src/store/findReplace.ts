@@ -1,6 +1,7 @@
 import { worldTransformOf } from "@/canvas/transform";
 import type { Op } from "@/gen/opendesigner/v1/opendesigner_pb";
 import { makeSetTextOp } from "@/tools/ops";
+import { expandReplacement, translateGrep, translateReplacement } from "@/store/grep";
 import { nextOf } from "@/store/threads";
 import { reconcileRich } from "@/store/richText";
 import type { NodeLite, SceneState, TextLite } from "@/store/types";
@@ -11,8 +12,9 @@ import type { NodeLite, SceneState, TextLite } from "@/store/types";
 // the formatting (paragraph styles, character styles) stays on its characters. Linked frames other than the
 // first of a chain are skipped: their text is the first frame's story.
 
-export interface FindOptions { query: string; matchCase?: boolean; wholeWord?: boolean; regex?: boolean }
-export interface Match { nodeId: string; pageId: string; start: number; end: number; text: string; context: string }
+export interface FindOptions { query: string; matchCase?: boolean; wholeWord?: boolean; regex?: boolean;
+  /** The InDesign-style GREP dialect (store/grep.ts); takes the place of `regex`. */ grep?: boolean }
+export interface Match { nodeId: string; pageId: string; start: number; end: number; text: string; context: string; /** Capture groups, kept for GREP so the change can expand $1. */ groups?: (string | undefined)[] }
 
 export const MAX_MATCHES = 5000;
 
@@ -21,10 +23,20 @@ const escape = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 /** The regular expression of the options, or an error message (an invalid pattern); null for an empty query. */
 export function compile(opts: FindOptions): RegExp | { error: string } | null {
   if (opts.query === "") return null;
-  let source = opts.regex ? opts.query : escape(opts.query);
+  let source = opts.regex || opts.grep ? opts.query : escape(opts.query);
+  let ignoreCase = !opts.matchCase;
+  if (opts.grep) {
+    try {
+      const g = translateGrep(opts.query);
+      source = g.source;
+      if (g.ignoreCase !== undefined) ignoreCase = g.ignoreCase;
+    } catch (e) {
+      return { error: e instanceof Error ? e.message : "Invalid pattern" };
+    }
+  }
   if (opts.wholeWord) source = `(?<![\\p{L}\\p{N}_])(?:${source})(?![\\p{L}\\p{N}_])`;
   try {
-    return new RegExp(source, "gu" + (opts.matchCase ? "" : "i"));
+    return new RegExp(source, "gu" + (opts.grep ? "m" : "") + (ignoreCase ? "i" : ""));
   } catch (e) {
     return { error: e instanceof Error ? e.message : "Invalid pattern" };
   }
@@ -68,7 +80,7 @@ export function findAll(scene: SceneState, opts: FindOptions): Match[] | { error
     for (let m = re.exec(content); m; m = re.exec(content)) {
       if (m[0] === "") { re.lastIndex++; continue; }
       const from = Math.max(0, m.index - 20), to = Math.min(content.length, m.index + m[0].length + 20);
-      out.push({ nodeId: n.id, pageId, start: m.index, end: m.index + m[0].length, text: m[0], context: content.slice(from, to).replace(/\s+/g, " ") });
+      out.push({ nodeId: n.id, pageId, start: m.index, end: m.index + m[0].length, text: m[0], context: content.slice(from, to).replace(/\s+/g, " "), ...(opts.grep ? { groups: m.slice(1) } : {}) });
       if (out.length >= MAX_MATCHES) return out;
     }
   }
@@ -77,6 +89,13 @@ export function findAll(scene: SceneState, opts: FindOptions): Match[] | { error
 
 /** What a match becomes: `replacement` as is, or -- for a regular expression -- with $1, $& ... expanded. */
 export function replacementFor(m: Match, opts: FindOptions, replacement: string): string {
+  if (opts.grep) {
+    try {
+      return expandReplacement(translateReplacement(replacement), m.text, m.groups ?? []);
+    } catch {
+      return replacement;
+    }
+  }
   const re = compile(opts);
   if (!opts.regex || !re || "error" in re) return replacement;
   return m.text.replace(new RegExp(re.source, re.flags.replace("g", "")), replacement);

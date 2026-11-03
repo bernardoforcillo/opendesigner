@@ -204,6 +204,7 @@ export const fr: Record<MessageKey, Message> = {
   "Match case": "Respecter la casse",
   "Whole word": "Mot entier",
   "Regular expression": "Expression régulière",
+  "GREP": "GREP",
   "Type what to look for.": "Saisissez ce que vous cherchez.",
   "No match.": "Aucune correspondance.",
   "Matches": "Correspondances",
