@@ -624,8 +624,7 @@ const PLAIN = [
   "Story editor",
   "Story text",
   "Character and paragraph styles stay with the text around your changes.",
-  "Save",
-  "Ink manager",
+    "Ink manager",
   "Status",
   "Process inks",
   "Spot inks",
@@ -736,9 +735,7 @@ const PLAIN = [
   "{tint}% of {name}",
   "Spot · {name}",
   "prints as {color}",
-  "Use for fill",
-  "Use for stroke",
-  "Layers are shared by all pages. Hide or lock one and everything on it follows, on every page.",
+      "Layers are shared by all pages. Hide or lock one and everything on it follows, on every page.",
   "No layers yet.",
   "Name of {name}",
   "{label}: {name}",
@@ -908,8 +905,7 @@ const PLAIN = [
   "Font size",
   "select, on the canvas, the nodes of this component the property controls (text nodes for a text or font size property, rectangles for a corner radius, nested instances for a swap), and give it a unique name",
   "Add from selection",
-  "Components",
-  "Create component from selection",
+    "Create component from selection",
   "No components",
   "Select a layer and press Ctrl+Alt+K to turn it into a reusable component.",
   "Create component",
@@ -934,7 +930,15 @@ const PLAIN = [
   "Voting results",
   "No dots yet.",
   // Generate screen dialog
-  "Generate screen from the kit…", "Generate screen", "Describe a screen. A connected agent builds it from this document's own components, colors and text styles, nothing else.", "Design kit", "Components", "Color variables", "Text styles", "The kit is empty. Create components, color variables and text styles first, or the agent has nothing to build from.", "Description", "e.g. A sign in screen with an email field, a password field and a primary button", "I will attach a screenshot to the agent", "Copied. Paste it to the agent that is connected to this document.", "Could not copy to the clipboard.", "Close", "Copy prompt for the agent",
+  "Generate screen from the kit…", "Generate screen", "Describe a screen. A connected agent builds it from this document's own components, colors and text styles, nothing else.", "Design kit", "Color variables", "The kit is empty. Create components, color variables and text styles first, or the agent has nothing to build from.", "e.g. A sign in screen with an email field, a password field and a primary button", "I will attach a screenshot to the agent", "Copied. Paste it to the agent that is connected to this document.", "Could not copy to the clipboard.", "Copy prompt for the agent",
+  "Separations",
+  "Nothing is painted yet.",
+  "Trapping",
+  "No touching shapes need a trap.",
+  "into",
+  "Advice only; nothing is changed.",
+  // Writing mode
+  "Writing mode", "Auto", "Left to right", "Right to left",
 ] as const;
 
 const PLURALS = {
@@ -967,6 +971,8 @@ const PLURALS = {
   "{n} found and selected.": { one: "{n} found and selected.", other: "{n} found and selected." },
   "{n} changed.": { one: "{n} changed.", other: "{n} changed." },
   "{n} nodes of this component selected.": { one: "{n} node of this component selected.", other: "{n} nodes of this component selected." },
+  "{n} objects on this plate": { one: "{n} object on this plate", other: "{n} objects on this plate" },
+  "{n} edges could show a white gap if the plates misregister:": { one: "{n} edge could show a white gap if the plates misregister:", other: "{n} edges could show a white gap if the plates misregister:" },
 } satisfies Record<string, PluralForms>;
 
 /** Every key of the interface; the other catalogs are typed `Record<MessageKey, Message>`. */
