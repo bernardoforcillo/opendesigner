@@ -153,6 +153,14 @@ export class SyncClient {
       console.warn("opendesigner: submit on a stopped SyncClient — op ignored", op.opId);
       return;
     }
+    // Stamp for the server's per-property LWW registers (internal/server/propversions.go):
+    // the highest seq this client had applied when the user made the edit. Of two
+    // concurrent writes to one property, the writer who had seen more wins whatever
+    // order they reach the hub in; the loser's path is dropped from the echo, and the
+    // echo (not the optimistic view) is what this client then converges on. Stamped
+    // here, not in drain(), so a queued op does not claim to have seen records that
+    // arrived after the gesture.
+    op.baseSeq = BigInt(this.seq);
     // OPTIMISTIC apply: it enters the in-flight ops queue and shows up immediately.
     // It is not confirmed yet: it will become so when its echo returns from
     // Subscribe. It stays SYNCHRONOUS -- only the sending is serialized, the
