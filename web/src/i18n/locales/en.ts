@@ -543,6 +543,8 @@ const PLAIN = [
   // Panel section headings
   "Size limits", "Variables", "Transitions", "Stroke", "Sizing", "Paths", "Override", "Layout", "Instance",
   "Fill", "Export", "Effect style", "Current flow", "Corners", "Constraints", "Component", "Arc", "Appearance",
+  // Generate screen dialog
+  "Generate screen from the kit…", "Generate screen", "Describe a screen. A connected agent builds it from this document's own components, colors and text styles, nothing else.", "Design kit", "Components", "Color variables", "Text styles", "The kit is empty. Create components, color variables and text styles first, or the agent has nothing to build from.", "Description", "e.g. A sign in screen with an email field, a password field and a primary button", "I will attach a screenshot to the agent", "Copied. Paste it to the agent that is connected to this document.", "Could not copy to the clipboard.", "Close", "Copy prompt for the agent",
 ] as const;
 
 const PLURALS = {

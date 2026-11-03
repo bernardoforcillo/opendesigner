@@ -35,6 +35,7 @@ import { VersionsDialog } from "@/ui/VersionsDialog";
 import { PluginsDialog } from "@/ui/PluginsDialog";
 import { ShareDialog } from "@/ui/ShareDialog";
 import { BoardDialog } from "@/ui/BoardDialog";
+import { GenerateDialog } from "@features/generate/components/organisms/GenerateDialog";
 import { useAppNavigate } from "@/home/nav";
 import { verticalOf } from "@/store/docSettings";
 import { makeSetDocSettingsOp } from "@/tools/ops";
@@ -77,6 +78,7 @@ export function DocMenu({ onNewDocument }: { onNewDocument: () => void }) {
   const [pluginsOpen, setPluginsOpen] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
   const [boardOpen, setBoardOpen] = useState(false);
+  const [generateOpen, setGenerateOpen] = useState(false);
   const [findOpen, setFindOpen] = useState(false);
   const [swatchesOpen, setSwatchesOpen] = useState(false);
   const [objectStylesOpen, setObjectStylesOpen] = useState(false);
@@ -159,6 +161,7 @@ export function DocMenu({ onNewDocument }: { onNewDocument: () => void }) {
           else if (k === "plugins") setPluginsOpen(true);
           else if (k === "share") setShareOpen(true);
           else if (k === "board") setBoardOpen(true);
+          else if (k === "generate") setGenerateOpen(true);
           else if (typeof k === "string" && k.startsWith("vertical:")) {
             const v = k.slice("vertical:".length) as (typeof VERTICAL_LIST)[number]["id"];
             const st = useScene.getState();
@@ -245,6 +248,9 @@ export function DocMenu({ onNewDocument }: { onNewDocument: () => void }) {
                 <Icon name="plus" size={14} /> {t("Whiteboard (sticky, table, kanban…)…")}
               </MenuItem>
               )}
+              <MenuItem id="generate" className={ITEM}>
+                <Icon name="plus" size={14} /> {t("Generate screen from the kit…")}
+              </MenuItem>
               {show("variables") && (
                 <MenuItem id="variables" className={ITEM}>
                 <Icon name="plus" size={14} /> {t("Variables…")}
@@ -369,6 +375,7 @@ export function DocMenu({ onNewDocument }: { onNewDocument: () => void }) {
     <PluginsDialog isOpen={pluginsOpen} onOpenChange={setPluginsOpen} />
     <ShareDialog isOpen={shareOpen} onOpenChange={setShareOpen} />
     <BoardDialog isOpen={boardOpen} onOpenChange={setBoardOpen} />
+    <GenerateDialog isOpen={generateOpen} onOpenChange={setGenerateOpen} />
     <FindReplaceDialog isOpen={findOpen} onOpenChange={setFindOpen} />
     <SwatchesDialog isOpen={swatchesOpen} onOpenChange={setSwatchesOpen} />
     <ObjectStylesDialog isOpen={objectStylesOpen} onOpenChange={setObjectStylesOpen} />
