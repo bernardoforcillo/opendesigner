@@ -342,6 +342,7 @@ export const es: Record<MessageKey, Message> = {
   "An image on \"{page}\" prints at {ppi} ppi (under 150).": "Una imagen de «{page}» se imprime a {ppi} ppp (menos de 150).",
   "Font lacks a glyph: {glyph}.": "A la fuente le falta un glifo: {glyph}.",
   "{mode} does not allow transparency (opacity, blend modes); this file uses it. Use PDF/X-4 or flatten.": "{mode} no admite transparencia (opacidad, modos de fusión); este archivo la usa. Usa PDF/X-4 o aplana.",
+  "Opacity was flattened onto white paper for {mode}: translucent areas print lighter than on screen.": "La opacidad se aplanó sobre papel blanco para {mode}: las zonas translúcidas se imprimen más claras que en pantalla.",
   "RGB content remains (images); PDF/X-1a is CMYK only.": "Queda contenido RGB (imágenes); PDF/X-1a es solo CMYK.",
   "{n} image could not be read and is drawn as a placeholder.": { one: "No se pudo leer {n} imagen y se dibuja como marcador de posición.", other: "No se pudieron leer {n} imágenes y se dibujan como marcadores de posición." },
   "{n} uploaded font could not be read.": { one: "No se pudo leer {n} fuente subida.", other: "No se pudieron leer {n} fuentes subidas." },

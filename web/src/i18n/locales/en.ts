@@ -328,6 +328,7 @@ const PLAIN = [
   "An image on \"{page}\" prints at {ppi} ppi (under 150).",
   "Font lacks a glyph: {glyph}.",
   "{mode} does not allow transparency (opacity, blend modes); this file uses it. Use PDF/X-4 or flatten.",
+  "Opacity was flattened onto white paper for {mode}: translucent areas print lighter than on screen.",
   "RGB content remains (images); PDF/X-1a is CMYK only.",
   // Print PDF and object styles dialogs
   "Export PDF",

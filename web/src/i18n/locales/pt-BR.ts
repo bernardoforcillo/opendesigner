@@ -342,6 +342,7 @@ export const ptBR: Record<MessageKey, Message> = {
   "An image on \"{page}\" prints at {ppi} ppi (under 150).": "Uma imagem em “{page}” é impressa a {ppi} ppi (abaixo de 150).",
   "Font lacks a glyph: {glyph}.": "A fonte não tem um glifo: {glyph}.",
   "{mode} does not allow transparency (opacity, blend modes); this file uses it. Use PDF/X-4 or flatten.": "O {mode} não permite transparência (opacidade, modos de mesclagem); este arquivo a usa. Use PDF/X-4 ou nivele.",
+  "Opacity was flattened onto white paper for {mode}: translucent areas print lighter than on screen.": "A opacidade foi achatada sobre papel branco para o {mode}: áreas translúcidas são impressas mais claras do que na tela.",
   "RGB content remains (images); PDF/X-1a is CMYK only.": "Resta conteúdo RGB (imagens); o PDF/X-1a é somente CMYK.",
   "{n} image could not be read and is drawn as a placeholder.": { one: "{n} imagem não pôde ser lida e é desenhada como espaço reservado.", other: "{n} imagens não puderam ser lidas e são desenhadas como espaços reservados." },
   "{n} uploaded font could not be read.": { one: "{n} fonte enviada não pôde ser lida.", other: "{n} fontes enviadas não puderam ser lidas." },

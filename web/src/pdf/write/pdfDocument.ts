@@ -67,6 +67,8 @@ export interface PdfReport {
   usesRgb: boolean;
   usesCmyk: boolean;
   transparency: boolean;
+  /** PDF/X-1a / X-3: opacity or alpha was baked into opaque colours (over white paper) instead of written as transparency. */
+  transparencyFlattened: boolean;
   flattened: string[];
   lowResolution: { page: string; hash: string; ppi: number }[];
 }
@@ -110,14 +112,16 @@ export async function buildPdf(b: PdfBuild): Promise<{ bytes: Uint8Array; report
   const pageIds = b.pages.map(() => file.alloc());
 
   let transparency = false;
+  let baked = false;
   const flattened: string[] = [];
   const lowResolution: PdfReport["lowResolution"] = [];
   const regFont = b.marks ? fonts.fontFor({ fontFamily: "Helvetica", fontSize: 6, fontWeight: "400", lineHeight: 1, align: "left" }) : null;
   let usesMarks = false;
 
   const rendered = b.pages.map((spec) => {
-    const r = renderPage({ file, fonts, colors, measure: b.measure, images: b.images, imageObjs, ...(b.tagged ? { tagged: { headingOf: b.headingOf ?? (() => 0) } } : {}) }, spec.nodes, spec.media, b.skip);
+    const r = renderPage({ file, fonts, colors, measure: b.measure, images: b.images, imageObjs, flatten: mode === "x1a" || mode === "x3", ...(b.tagged ? { tagged: { headingOf: b.headingOf ?? (() => 0) } } : {}) }, spec.nodes, spec.media, b.skip);
     transparency ||= r.transparency;
+    baked ||= r.baked;
     flattened.push(...r.flattened);
     for (const pl of r.placed) {
       const img = b.images.get(pl.assetHash);
@@ -231,7 +235,7 @@ export async function buildPdf(b: PdfBuild): Promise<{ bytes: Uint8Array; report
       pages: b.pages.length, pdfx: mode,
       substitutedFonts: [...fonts.substituted], missingGlyphs: [...fonts.missingGlyphs],
       embeddedFonts: b.faces.length, spots: [...colors.spots],
-      usesRgb: colors.usesRgb, usesCmyk: colors.usesCmyk, transparency, flattened: [...new Set(flattened)], lowResolution,
+      usesRgb: colors.usesRgb, usesCmyk: colors.usesCmyk, transparency, transparencyFlattened: baked, flattened: [...new Set(flattened)], lowResolution,
     },
   };
 }

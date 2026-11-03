@@ -92,3 +92,53 @@ describe("PDF effects", () => {
     expect([...report.flattened].sort()).toEqual(["bg", "v"]);
   });
 });
+
+describe("transparency flattening (PDF/X-1a, X-3)", () => {
+  const buildX = (nodes: NodeLite[], pdfx: "x1a" | "x3" | "x4") => buildPdf({
+    pages: [page(nodes)], images: new Map(), faces: [], scene: { variables: {}, collections: {} }, measure: (s: string) => s.length * 8,
+    title: "T", created: new Date(Date.UTC(2026, 0, 1)), pdfx, condition: "FOGRA39",
+  });
+  const stops = [{ color: { r: 1, g: 0, b: 0, a: 1 }, position: 0 }, { color: { r: 1, g: 0, b: 0, a: 0 }, position: 1 }];
+
+  it("opacity becomes a lighter colour: no ExtGState alpha, no group", async () => {
+    const nodes = [node({ id: "o", opacity: 0.5, fills: [{ r: 0, g: 0, b: 0, a: 1 }] })];
+    expect(text((await buildX(nodes, "x4")).bytes)).toContain("/ca 0.5");
+    const x1a = await buildX(nodes, "x1a");
+    const raw = text(x1a.bytes);
+    expect(raw).not.toContain("/ca ");
+    expect(raw).not.toContain("/Group");
+    expect(raw).not.toContain("/SMask");
+    expect(x1a.report.transparency).toBe(false);
+    expect(x1a.report.transparencyFlattened).toBe(true);
+    // Black at 50% over white paper is 50% K in the CMYK document.
+    expect(raw).toContain("0 0 0 0.5 k");
+  });
+  it("X-3 flattens too, with RGB mixed toward white", async () => {
+    const { bytes, report } = await buildX([node({ id: "o", fills: [{ r: 0, g: 0, b: 0, a: 0.25 }] })], "x3");
+    expect(text(bytes)).toContain("0.75 0.75 0.75 rg");
+    expect(report.transparency).toBe(false);
+  });
+  it("gradient transparency stops are lightened, with no soft mask", async () => {
+    const { bytes, report } = await buildX([node({ id: "g", fills: [{ r: 1, g: 0, b: 0, a: 1, gradient: { kind: "linear", x1: 0, y1: 0, x2: 1, y2: 0, stops } }] })], "x1a");
+    const raw = text(bytes);
+    expect(raw).not.toContain("/S/Luminosity");
+    expect(raw).toContain("/C1[0 0 0 0]");
+    expect(report.transparency).toBe(false);
+    expect(report.transparencyFlattened).toBe(true);
+  });
+  it("blurs fall back to the hard stand-in and are listed; blend modes are dropped and listed", async () => {
+    const { bytes, report } = await buildX([
+      node({ id: "s", effects: [{ kind: "dropShadow", color: { r: 0, g: 0, b: 0, a: 0.5 }, offsetX: 3, offsetY: 3, blur: 8 }] }),
+      node({ id: "m", x: 100, blendMode: "multiply" }),
+    ], "x1a");
+    expect([...report.flattened].sort()).toEqual(["m", "s"]);
+    expect(report.transparency).toBe(false);
+    expect(text(bytes)).not.toContain("/SMask");
+    expect(text(bytes)).not.toContain("/BM");
+  });
+  it("without a PDF/X standard nothing is flattened", async () => {
+    const { report } = await build([node({ id: "o", opacity: 0.5 })]);
+    expect(report.transparencyFlattened).toBe(false);
+    expect(report.transparency).toBe(true);
+  });
+});
