@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Dialog, Modal, ModalOverlay } from "react-aria-components";
 import { useScene } from "@/store/store";
 import { convertSpotsOps, inkReport, mergeSpotsOps, overprintOps, type OverprintMode } from "@/tools/inks";
+import { platesOf, separationView, trapSuggestions } from "@/tools/printPreview";
 import { Button, cls } from "@/ui/ds";
 
 // INK MANAGER (document menu): the process and spot inks of the document, spot -> process conversion, ink aliases, and overprint for the
@@ -21,6 +22,8 @@ function Form() {
   const [status, setStatus] = useState("");
   const [alias, setAlias] = useState<Record<string, string>>({});
   const report = inkReport(scene);
+  const plates = platesOf(scene).map((p) => ({ name: p, objects: separationView(scene, p).size }));
+  const traps = trapSuggestions(scene);
   const act = (ops: Ops | string, done: string) => { if (typeof ops === "string") setStatus(ops); else { run(ops); setStatus(done); } };
   return (
     <Dialog aria-label="Ink manager" className="flex flex-col gap-3 outline-none">
@@ -48,6 +51,19 @@ function Form() {
           </div>
         ))}
         {report.spots.length > 1 && <div><Button onPress={() => act(convertSpotsOps(scene), "All spot inks converted to process.")}>Convert all to process</Button></div>}
+      </section>
+
+      <section aria-label="Separations" className="flex flex-col gap-1">
+        <h3 className="text-[12px] font-semibold">Separations</h3>
+        {plates.length === 0 && <p className="text-fg-subtle">Nothing is painted yet.</p>}
+        {plates.map((p) => <p key={p.name}>{p.name} <span className="text-fg-subtle">· {p.objects} object{p.objects === 1 ? "" : "s"} on this plate</span></p>)}
+      </section>
+
+      <section aria-label="Trapping" className="flex flex-col gap-1">
+        <h3 className="text-[12px] font-semibold">Trapping</h3>
+        {traps.length === 0
+          ? <p className="text-fg-subtle">No touching shapes need a trap.</p>
+          : <p role="alert">{traps.length} edge{traps.length === 1 ? "" : "s"} could show a white gap if the plates misregister: {traps.slice(0, 5).map((t) => `${scene.nodes.get(t.spread)?.name ?? t.spread} ${t.kind === "centered" ? "/" : "into"} ${scene.nodes.get(t.under)?.name ?? t.under}`).join(", ")}{traps.length > 5 ? "…" : ""}. Advice only; nothing is changed.</p>}
       </section>
 
       <section aria-label="Overprint" className="flex flex-col gap-1.5">
