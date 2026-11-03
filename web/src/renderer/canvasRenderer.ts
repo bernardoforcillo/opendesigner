@@ -28,7 +28,7 @@ import { sideBandRects } from "@/renderer/strokeSides";
 import { variableStrokeCommands } from "@/vector/widthProfile";
 import { brushStrokeCommands } from "@/vector/brush";
 import { GRADIENT_BITMAP_SIZE, angularStart, gradientBitmap } from "@/renderer/gradientBitmap";
-import { FX_TILE, blurBands, overlayEffects, overlayTile, progressiveBlur, tileUnit, withBandBlur, withExpandedGlass } from "@/renderer/effectsFx";
+import { FX_TILE, blurBands, featherBands, gradientFeather, overlayEffects, overlayTile, progressiveBlur, tileUnit, withBandBlur, withExpandedGlass } from "@/renderer/effectsFx";
 
 const DEG_TO_RAD = Math.PI / 180;
 
@@ -930,23 +930,36 @@ function drawNode(
   // Effects apply to everything the node draws below: shape, text,
   // image, vector.
   const pb = progressiveBlur(eff, false);
-  if (pb) {
-    // A progressive layer blur: the node drawn once per band, clipped to it, with the band's radius.
-    for (const band of blurBands(eff, pb, 1 / scale)) {
+  const drawLayer = () => {
+    if (pb) {
+      // A progressive layer blur: the node drawn once per band, clipped to it, with the band's radius.
+      for (const band of blurBands(eff, pb, 1 / scale)) {
+        ctx.save();
+        clipPolygon(ctx, band.polygon);
+        const bandFx = applyEffects(ctx, withBandBlur(eff, pb, band.radius), scale);
+        castsShadow = bandFx;
+        body();
+        if (bandFx) ctx.restore();
+        ctx.restore();
+      }
+    } else {
+      const fx = applyEffects(ctx, eff, scale);
+      castsShadow = fx;
+      body();
+      if (fx) ctx.restore();
+    }
+  };
+  const ft = gradientFeather(eff);
+  if (ft) {
+    // A gradient feather: everything above, once per strip across the ramp, with the strip's opacity.
+    for (const band of featherBands(eff, ft)) {
       ctx.save();
       clipPolygon(ctx, band.polygon);
-      const bandFx = applyEffects(ctx, withBandBlur(eff, pb, band.radius), scale);
-      castsShadow = bandFx;
-      body();
-      if (bandFx) ctx.restore();
+      ctx.globalAlpha = eff.opacity * band.opacity;
+      drawLayer();
       ctx.restore();
     }
-  } else {
-    const fx = applyEffects(ctx, eff, scale);
-    castsShadow = fx;
-    body();
-    if (fx) ctx.restore();
-  }
+  } else drawLayer();
   if (outline && innerShadows(eff).length > 0) drawInnerShadows(ctx, eff, outline, scale);
   if (outline || eff.kind === "image") drawOverlays(ctx, eff, outline);
   if (blended) ctx.globalCompositeOperation = "source-over";

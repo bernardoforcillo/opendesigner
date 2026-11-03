@@ -21,7 +21,7 @@ import { brushStrokeCommands } from "@/vector/brush";
 import { GRADIENT_BITMAP_SIZE, angularStart, gradientBitmap } from "@/renderer/gradientBitmap";
 import { VECTOR_STROKE_PX, inkIsBox, nodeCenter } from "@/renderer/shapes";
 import { decorationBars, fontSizeOf, hscaleOf, paragraphDecorations, piecesOfLine, piecesOfSegment, placeTextLines, trackedOffsets, type MeasureFor } from "@/renderer/text";
-import { FX_TILE, blurBands, overlayEffects, overlayTile, progressiveBlur, tileUnit, withBandBlur, withExpandedGlass } from "@/renderer/effectsFx";
+import { FX_TILE, blurBands, featherBands, gradientFeather, overlayEffects, overlayTile, progressiveBlur, tileUnit, withBandBlur, withExpandedGlass } from "@/renderer/effectsFx";
 import { buildFx, type BuiltFx } from "@/animation/fx/apply";
 import { DISPLACE_SKSL } from "@/animation/fx/timeFx";
 import { makeLutShader, readHistogram } from "@/animation/fx/lutImage";
@@ -487,21 +487,38 @@ export class CanvasKitRenderer {
       }
     };
     const pb = progressiveBlur(eff, false);
-    if (pb) {
-      // A progressive layer blur: the node once per band, clipped to it, with the band's radius.
-      for (const band of blurBands(eff, pb, 1 / f.px)) {
-        sk.save();
-        this.clipPolygon(sk, band.polygon);
-        const layered = this.beginEffects(sk, withBandBlur(eff, pb, band.radius));
+    const drawLayer = () => {
+      if (pb) {
+        // A progressive layer blur: the node once per band, clipped to it, with the band's radius.
+        for (const band of blurBands(eff, pb, 1 / f.px)) {
+          sk.save();
+          this.clipPolygon(sk, band.polygon);
+          const layered = this.beginEffects(sk, withBandBlur(eff, pb, band.radius));
+          this.drawLayerBody(sk, eff, layered, drawBody);
+          if (layered) this.endEffects(sk);
+          sk.restore();
+        }
+      } else {
+        const layered = this.beginEffects(sk, eff);
         this.drawLayerBody(sk, eff, layered, drawBody);
         if (layered) this.endEffects(sk);
+      }
+    };
+    const ft = gradientFeather(eff);
+    if (ft) {
+      // A gradient feather: everything above once per strip across the ramp, composited at the strip's opacity.
+      for (const band of featherBands(eff, ft)) {
+        sk.save();
+        this.clipPolygon(sk, band.polygon);
+        const lp = new this.CK.Paint();
+        lp.setAlphaf(band.opacity);
+        f.garbage.push(lp);
+        sk.saveLayer(lp);
+        drawLayer();
+        sk.restore();
         sk.restore();
       }
-    } else {
-      const layered = this.beginEffects(sk, eff);
-      this.drawLayerBody(sk, eff, layered, drawBody);
-      if (layered) this.endEffects(sk);
-    }
+    } else drawLayer();
     if (outline) this.drawInnerShadows(sk, eff, outline);
     if (outline || eff.kind === "image") this.drawOverlays(sk, eff, outline);
     if (rotated) sk.restore();

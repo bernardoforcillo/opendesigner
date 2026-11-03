@@ -11,25 +11,27 @@ import (
 // effects (docs/effects.md). Every field is optional: a missing one takes the same default
 // the editor's panel starts from. Embedded in EffectSpec.
 type EffectFx struct {
-	StartRadius *float64  `json:"startRadius,omitempty" jsonschema:"progressiveBlur: radius at the start point (default 0)"`
-	EndRadius   *float64  `json:"endRadius,omitempty" jsonschema:"progressiveBlur: radius at the end point (default 16)"`
-	X1          *float64  `json:"x1,omitempty" jsonschema:"progressiveBlur: start point in the node's unit box, 0..1 (default 0.5)"`
-	Y1          *float64  `json:"y1,omitempty" jsonschema:"progressiveBlur: start point (default 0)"`
-	X2          *float64  `json:"x2,omitempty" jsonschema:"progressiveBlur: end point (default 0.5)"`
-	Y2          *float64  `json:"y2,omitempty" jsonschema:"progressiveBlur: end point (default 1)"`
-	Background  bool      `json:"background,omitempty" jsonschema:"progressiveBlur: true blurs what is behind the node (inside its outline), false the node itself"`
-	Mode        string    `json:"mode,omitempty" jsonschema:"noise: mono (default) | duo | multi"`
-	Size        *float64  `json:"size,omitempty" jsonschema:"noise: grain size in world units (default 1)"`
-	Density     *float64  `json:"density,omitempty" jsonschema:"noise: 0..1, share of grains that show (default 0.5)"`
-	Opacity     *float64  `json:"opacity,omitempty" jsonschema:"noise: 0..1 (default 0.25)"`
-	Color2      StopColor `json:"color2,omitempty" jsonschema:"noise duo: the second colour (color is the first); defaults to white"`
-	Seed        *uint32   `json:"seed,omitempty" jsonschema:"noise and texture: the random seed, same seed same grain (default 1)"`
-	Scale       *float64  `json:"scale,omitempty" jsonschema:"texture: blob size in world units (default 8)"`
-	Intensity   *float64  `json:"intensity,omitempty" jsonschema:"texture: 0..1 (default 0.4)"`
-	Frost       *float64  `json:"frost,omitempty" jsonschema:"glass: backdrop blur radius (default 12)"`
-	Light       *float64  `json:"light,omitempty" jsonschema:"glass: 0..1 strength of the light edge (default 0.5)"`
-	LightAngle  *float64  `json:"lightAngle,omitempty" jsonschema:"glass: degrees, where the light comes from: 0 = left, 90 = top (default 45)"`
-	Noise       *float64  `json:"noise,omitempty" jsonschema:"glass: 0..1 strength of the grain (default 0.25)"`
+	StartRadius  *float64  `json:"startRadius,omitempty" jsonschema:"progressiveBlur: radius at the start point (default 0)"`
+	EndRadius    *float64  `json:"endRadius,omitempty" jsonschema:"progressiveBlur: radius at the end point (default 16)"`
+	X1           *float64  `json:"x1,omitempty" jsonschema:"progressiveBlur: start point in the node's unit box, 0..1 (default 0.5)"`
+	Y1           *float64  `json:"y1,omitempty" jsonschema:"progressiveBlur: start point (default 0)"`
+	X2           *float64  `json:"x2,omitempty" jsonschema:"progressiveBlur: end point (default 0.5)"`
+	Y2           *float64  `json:"y2,omitempty" jsonschema:"progressiveBlur: end point (default 1)"`
+	Background   bool      `json:"background,omitempty" jsonschema:"progressiveBlur: true blurs what is behind the node (inside its outline), false the node itself"`
+	StartOpacity *float64  `json:"startOpacity,omitempty" jsonschema:"gradientFeather: 0..1 opacity at the start point (default 1); x1,y1,x2,y2 as progressiveBlur"`
+	EndOpacity   *float64  `json:"endOpacity,omitempty" jsonschema:"gradientFeather: 0..1 opacity at the end point (default 0)"`
+	Mode         string    `json:"mode,omitempty" jsonschema:"noise: mono (default) | duo | multi"`
+	Size         *float64  `json:"size,omitempty" jsonschema:"noise: grain size in world units (default 1)"`
+	Density      *float64  `json:"density,omitempty" jsonschema:"noise: 0..1, share of grains that show (default 0.5)"`
+	Opacity      *float64  `json:"opacity,omitempty" jsonschema:"noise: 0..1 (default 0.25)"`
+	Color2       StopColor `json:"color2,omitempty" jsonschema:"noise duo: the second colour (color is the first); defaults to white"`
+	Seed         *uint32   `json:"seed,omitempty" jsonschema:"noise and texture: the random seed, same seed same grain (default 1)"`
+	Scale        *float64  `json:"scale,omitempty" jsonschema:"texture: blob size in world units (default 8)"`
+	Intensity    *float64  `json:"intensity,omitempty" jsonschema:"texture: 0..1 (default 0.4)"`
+	Frost        *float64  `json:"frost,omitempty" jsonschema:"glass: backdrop blur radius (default 12)"`
+	Light        *float64  `json:"light,omitempty" jsonschema:"glass: 0..1 strength of the light edge (default 0.5)"`
+	LightAngle   *float64  `json:"lightAngle,omitempty" jsonschema:"glass: degrees, where the light comes from: 0 = left, 90 = top (default 45)"`
+	Noise        *float64  `json:"noise,omitempty" jsonschema:"glass: 0..1 strength of the grain (default 0.25)"`
 }
 
 func or(p *float64, def float64) float64 {
@@ -40,7 +42,7 @@ func or(p *float64, def float64) float64 {
 }
 
 func isFxKind(k string) bool {
-	return k == "progressiveBlur" || k == "noise" || k == "texture" || k == "glass"
+	return k == "progressiveBlur" || k == "noise" || k == "texture" || k == "glass" || k == "gradientFeather"
 }
 
 func fxColor(c StopColor, def float64) *opendesignerv1.Color {
@@ -59,6 +61,11 @@ func (e EffectSpec) fxProto() (*opendesignerv1.Effect, error) {
 		out = &opendesignerv1.Effect{Kind: &opendesignerv1.Effect_ProgressiveBlur{ProgressiveBlur: &opendesignerv1.ProgressiveBlur{
 			StartRadius: or(e.StartRadius, 0), EndRadius: or(e.EndRadius, 16),
 			X1: or(e.X1, 0.5), Y1: or(e.Y1, 0), X2: or(e.X2, 0.5), Y2: or(e.Y2, 1), Background: e.Background,
+		}}}
+	case "gradientFeather":
+		out = &opendesignerv1.Effect{Kind: &opendesignerv1.Effect_GradientFeather{GradientFeather: &opendesignerv1.GradientFeather{
+			StartOpacity: or(e.StartOpacity, 1), EndOpacity: or(e.EndOpacity, 0),
+			X1: or(e.X1, 0.5), Y1: or(e.Y1, 0), X2: or(e.X2, 0.5), Y2: or(e.Y2, 1),
 		}}}
 	case "noise":
 		mode := opendesignerv1.NoiseMode_NOISE_MODE_MONO
@@ -115,6 +122,8 @@ func effectKinds(effects []*opendesignerv1.Effect) []string {
 			out = append(out, "backgroundBlur")
 		case *opendesignerv1.Effect_ProgressiveBlur:
 			out = append(out, "progressiveBlur")
+		case *opendesignerv1.Effect_GradientFeather:
+			out = append(out, "gradientFeather")
 		case *opendesignerv1.Effect_Noise:
 			out = append(out, "noise")
 		case *opendesignerv1.Effect_Texture:
