@@ -136,6 +136,23 @@ describe("transparency flattening (PDF/X-1a, X-3)", () => {
     expect(text(bytes)).not.toContain("/SMask");
     expect(text(bytes)).not.toContain("/BM");
   });
+  const mesh = (a: number) => ({ r: 1, g: 0, b: 0, a, mesh: { rows: 2, cols: 2, colors: [1, 2, 3, 4].map(() => ({ r: 1, g: 0, b: 0, a })) } });
+  it("a mesh with alpha colours under X-1a/X-3 reports no transparency", async () => {
+    for (const x of ["x1a", "x3"] as const) {
+      const { bytes, report } = await buildX([node({ id: "m", fills: [mesh(0.5)] })], x);
+      expect(text(bytes)).not.toContain("/SMask");
+      expect(report.transparency).toBe(false);
+      expect(report.transparencyFlattened).toBe(true);
+    }
+    expect((await buildX([node({ id: "m", fills: [mesh(0.5)] })], "x4")).report.transparency).toBe(true);
+  });
+  it("node opacity is baked into a mesh fill under flattening", async () => {
+    const full = await buildX([node({ id: "m", fills: [mesh(1)] })], "x1a");
+    expect(full.report.transparencyFlattened).toBe(false);
+    const faded = await buildX([node({ id: "m", opacity: 0.5, fills: [mesh(1)] })], "x1a");
+    expect(faded.report.transparency).toBe(false);
+    expect(faded.report.transparencyFlattened).toBe(true);
+  });
   it("without a PDF/X standard nothing is flattened", async () => {
     const { report } = await build([node({ id: "o", opacity: 0.5 })]);
     expect(report.transparencyFlattened).toBe(false);

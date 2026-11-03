@@ -279,19 +279,32 @@ function paintFill(pg: Page, n: NodeLite, f: FillLite, slot: string, evenOdd: bo
   if (f.mesh && n.width > 0 && n.height > 0) {
     const SIZE = 32;
     const px = meshBitmap(f.mesh, SIZE, 0);
+    // Flattening: the node's opacity scales the pixels' alpha, and the result is composited on white in pg.image.
+    if (pg.d.flatten && pg.nodeOpacity < 1) for (let i = 3; i < px.length; i += 4) px[i] = Math.round(px[i]! * pg.nodeOpacity);
     const prepared: PreparedImage = { kind: "rgba", width: SIZE, height: SIZE, rgba: px };
     const key = `mesh:${n.id}`;
     pg.d.images.set(key, prepared);
     const name = pg.image(key);
     if (name) {
-      pg.transparency ||= f.mesh.colors.some((c) => c.a < 1);
+      if (!pg.d.flatten) pg.transparency ||= f.mesh.colors.some((c) => c.a < 1);
       pg.out.push(`q\n${path}${clip} n\n${num(n.width)} 0 0 ${num(-n.height)} ${num(n.x)} ${num(n.y + n.height)} cm\n${pdfName(name)} Do\nQ\n`);
       return;
     }
   }
   if (f.image) {
-    const name = pg.image(f.image.assetHash);
-    const img = pg.d.images.get(f.image.assetHash);
+    let hash = f.image.assetHash;
+    if (pg.d.flatten && pg.nodeOpacity < 1) {
+      const src = pg.d.images.get(hash);
+      if (src?.kind === "rgba") {
+        // A derived bitmap with the node's opacity folded into its alpha (flattened onto white by pg.image).
+        const faded = new Uint8ClampedArray(src.rgba);
+        for (let i = 3; i < faded.length; i += 4) faded[i] = Math.round(faded[i]! * pg.nodeOpacity);
+        hash = `${hash}@${pg.nodeOpacity}`;
+        pg.d.images.set(hash, { ...src, rgba: faded });
+      } else if (src) pg.flattened.push(n.id); // an opaque JPEG/PNG cannot be lightened without decoding it
+    }
+    const name = pg.image(hash);
+    const img = pg.d.images.get(hash);
     if (name && img && n.width > 0 && n.height > 0) {
       const sx = n.width / img.width, sy = n.height / img.height;
       const s = f.image.mode === "fit" ? Math.min(sx, sy) : Math.max(sx, sy);
