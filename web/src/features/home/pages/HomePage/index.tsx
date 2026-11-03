@@ -8,6 +8,7 @@ import type { Vertical } from "@/store/types";
 import type { Template } from "@/templates/catalog";
 import { docClient } from "@/rpc/client";
 import { DocCard, type DocSummary } from "@features/home/components/molecules/DocCard";
+import { BooksSection, type BooksClient } from "@features/home/components/organisms/BooksSection";
 import { TemplatePreview } from "@features/home/components/molecules/TemplatePreview";
 import { pathForDoc, parseJoinLink, sortRecent } from "@/home/route";
 import { useAppNavigate } from "@/home/nav";
@@ -21,7 +22,7 @@ import { startDocument, StartError, type StartClient } from "@/home/startDocumen
 // no longer creates one on its own when opening.
 
 /** The part of the RPC client the Home needs (tests pass a fake one). */
-export interface HomeClient extends StartClient {
+export interface HomeClient extends StartClient, Partial<BooksClient> {
   listDocuments(req: Record<string, never>): Promise<{ docs: { id: string; name: string; updatedAt: bigint | number; screens: number; flows: number; vertical?: string }[] }>;
   renameDocument(req: { docId: string; name: string }): Promise<unknown>;
   deleteDocument(req: { docId: string }): Promise<unknown>;
@@ -209,6 +210,10 @@ export function Home({
               </div>
             )}
           </section>
+
+          {vertical === "publishing" && client.listBooks && docs && (
+            <BooksSection client={client as BooksClient} docs={docs} />
+          )}
         </div>
       </main>
 

@@ -13,7 +13,7 @@ Menu *Document*; every one is also an MCP tool (they run in the open editor, see
 | Excel (.xlsx) | place | `place_document` | the first sheet as a table (header row = first row); cached values, not formulas |
 | Tagged PDF | export option | `export_pdf` `tagged` | marked content and a structure tree: headings (outline-level styles), paragraphs (one per text frame), figures with alt text (`meta alt`, else the layer name), language from the book metadata; other drawing is marked as an artifact |
 | Accessible EPUB | export (both modes) | `export_epub` | reflowable: `doc-chapter`/`doc-toc`/`doc-noteref`/`doc-footnote` roles, landmarks, headings from outline styles, `alt` on every image (`meta alt`, else the layer name; a bare file name counts as no description); fixed layout: each page's text repeated as real headings and paragraphs in reading order behind the picture (the SVG is `aria-hidden`); accessibility metadata (`schema:accessMode`, `accessModeSufficient`, `accessibilityFeature`, `accessibilitySummary`) claiming only what is true |
-| Booklet | export option | `export_pdf` `booklet` | saddle-stitch imposition: two pages per sheet side (N-1\|1, 2\|N-2, …), padded with blanks to a multiple of 4 |
+| Booklet | export option | `export_pdf` `booklet` | saddle-stitch imposition: two pages per sheet side (N-1\|1, 2\|N-2, …), padded with blanks to a multiple of 4; `creep` (px, >= 0) moves the content of each sheet nested inside the previous one that much further toward the spine (the outermost sheet stays; the sum is `creep` times the sheet index) |
 
 ## How they were checked
 - PPTX: read back with python-pptx (shapes, text, freeform, picture, slide size). **Not opened in PowerPoint.**
@@ -27,5 +27,5 @@ Menu *Document*; every one is also an MCP tool (they run in the open editor, see
 - IDML export/import: no images or links, effects, master-page items, character styles, tables, gradients, tracking or OpenType; rotation of imported boxes is dropped (they come in upright).
 - PPTX: other image types, effects, masks, auto layout and master pages are not carried; one slide size for the deck (the first page's).
 - Word: images, tables, footnotes, comments, fonts and colours inside the file are not carried; the frame is sized by an estimate and may overflow (thread more frames).
-- Booklet: pages of different sizes are placed side by side as they are; there is no creep or gutter compensation.
+- Booklet: pages of different sizes are placed side by side as they are; creep is a single distance per sheet that you work out from the paper's thickness (no paper-weight calculation) and applies to page content only, not to marks or bleed boxes; there is no gutter compensation.
 - HTML: page by page as it looks; for reflowing text use the reflowable EPUB.

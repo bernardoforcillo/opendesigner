@@ -34,6 +34,10 @@ function printOptions(o: Record<string, unknown>): PrintPdfOptions | string {
     if (typeof o[k] !== "boolean") return `${k} must be true or false`;
     out[k] = o[k] as boolean;
   }
+  if (o.creep !== undefined) {
+    if (typeof o.creep !== "number" || !Number.isFinite(o.creep) || o.creep < 0) return `creep must be a number >= 0`;
+    out.creep = o.creep;
+  }
   return out;
 }
 
