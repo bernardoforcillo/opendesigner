@@ -30,3 +30,9 @@ just built, not on arbitrary PDFs.
   fixed warning that reading order, contrast and table structure need a human or veraPDF.
 
 Not done: showing the checks in the Export PDF dialog, embedding an ICC profile, a real PDF/X or PDF/UA validator.
+
+## Test coverage of the font code
+
+- `web/src/pdf/write/fontSubset.test.ts` builds small synthetic TrueType fonts and checks `buildSfnt` (sorted directory, 4-byte alignment, head checksum adjustment), `subsetTrueType` (kept and emptied glyphs, glyph ids preserved, long loca rewrite, dropped tables, composite glyphs walked transitively including word arguments, scale fields and cycles, null for CFF/malformed input) and `subsetTag`.
+- `web/src/pdf/write/fontLayout.test.ts` builds a synthetic GSUB and checks `parseFeatures` and `readGsub` (ligature, alternate, single delta/list, range coverage, extension lookups, feature values, source text merged into ligatures, corrupt table returns null).
+- The fixtures are synthetic: they prove the parsers follow the OpenType layout, not that every real-world font subsets cleanly.
