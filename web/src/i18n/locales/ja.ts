@@ -342,6 +342,7 @@ export const ja: Record<MessageKey, Message> = {
   "An image on \"{page}\" prints at {ppi} ppi (under 150).": "「{page}」の画像は {ppi} ppi で印刷されます (150 未満)。",
   "Font lacks a glyph: {glyph}.": "フォントにグリフがありません: {glyph}。",
   "{mode} does not allow transparency (opacity, blend modes); this file uses it. Use PDF/X-4 or flatten.": "{mode} では透明 (不透明度、描画モード) を使えませんが、このファイルは使用しています。PDF/X-4 を使うか統合してください。",
+  "Opacity was flattened onto white paper for {mode}: translucent areas print lighter than on screen.": "{mode} のため、不透明度を白い紙の上に統合しました。半透明の部分は画面より薄く印刷されます。",
   "RGB content remains (images); PDF/X-1a is CMYK only.": "RGB のコンテンツ (画像) が残っています。PDF/X-1a は CMYK のみです。",
   "{n} image could not be read and is drawn as a placeholder.": { one: "{n} 件の画像を読み込めず、プレースホルダーとして描画されます。", other: "{n} 件の画像を読み込めず、プレースホルダーとして描画されます。" },
   "{n} uploaded font could not be read.": { one: "アップロードしたフォント {n} 件を読み込めませんでした。", other: "アップロードしたフォント {n} 件を読み込めませんでした。" },

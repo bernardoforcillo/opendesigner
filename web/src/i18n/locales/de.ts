@@ -342,6 +342,7 @@ export const de: Record<MessageKey, Message> = {
   "An image on \"{page}\" prints at {ppi} ppi (under 150).": "Ein Bild auf „{page}“ wird mit {ppi} ppi gedruckt (unter 150).",
   "Font lacks a glyph: {glyph}.": "Der Schrift fehlt ein Glyph: {glyph}.",
   "{mode} does not allow transparency (opacity, blend modes); this file uses it. Use PDF/X-4 or flatten.": "{mode} erlaubt keine Transparenz (Deckkraft, Füllmethoden); diese Datei verwendet sie. Verwenden Sie PDF/X-4 oder reduzieren Sie die Transparenz.",
+  "Opacity was flattened onto white paper for {mode}: translucent areas print lighter than on screen.": "Die Deckkraft wurde für {mode} auf weißes Papier reduziert: transparente Flächen drucken heller als am Bildschirm.",
   "RGB content remains (images); PDF/X-1a is CMYK only.": "RGB-Inhalte sind noch vorhanden (Bilder); PDF/X-1a ist nur CMYK.",
   "{n} image could not be read and is drawn as a placeholder.": { one: "{n} Bild konnte nicht gelesen werden und wird als Platzhalter gezeichnet.", other: "{n} Bilder konnten nicht gelesen werden und werden als Platzhalter gezeichnet." },
   "{n} uploaded font could not be read.": { one: "{n} hochgeladene Schrift konnte nicht gelesen werden.", other: "{n} hochgeladene Schriften konnten nicht gelesen werden." },

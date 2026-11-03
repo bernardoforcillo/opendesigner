@@ -17,7 +17,7 @@ Everything here lives in the **document menu**, except the single-page **Downloa
 | colour | a swatch with CMYK → DeviceCMYK as typed; a spot swatch (or its tint) → a Separation named after the spot; a CMYK document → plain colours converted with the device conversion; else RGB |
 | layers | a layer marked **do not print** is left out; hidden layers are not exported |
 
-Not carried over (and reported by the preflight where it can be seen): blur and inner shadows (a drop shadow is drawn hard-edged, offset), transparency in gradient stops, OpenType features (ligatures, alternates), font subsetting (files are larger), text on a path's glyph shaping beyond per-segment rotation.
+Under X-1a and X-3 transparency is flattened against white paper (see pdf-epub.md). Not carried over (and reported by the preflight where it can be seen): blur on vectors and text and background blur (a drop shadow is drawn hard-edged, offset), OpenType features (ligatures, alternates), font subsetting (files are larger), text on a path's glyph shaping beyond per-segment rotation.
 
 ## Export PDF for print…
 
@@ -56,6 +56,6 @@ Write `{{Field}}` in the text of a page (or in a node's `link.url`), paste or op
 ## What is not here
 
 - **Book** (several documents with shared styles and continuous numbering): not built. It needs a server-side entity and cross-document style sync. A single document already has sections with their own numbering.
-- HTML export of text, PDF/X validation, an embedded ICC profile, font subsetting, forms, blur in the PDF.
+- HTML export of text, PDF/X validation, an embedded ICC profile, font subsetting, forms, blur on vectors in the PDF, flattening against the real backdrop.
 
 Code: `web/src/pdf/write/{pdfFile,pdfFonts,pdfColor,pdfImages,pdfPage,pdfDocument}.ts`, `web/src/export/{printPdf,preflight,packageForPrint,epubReflow}.ts`, `web/src/tools/dataMerge.ts`, `web/src/ui/{PrintPdfDialog,DataMergeDialog}.tsx`, `runDocumentExport` / `runPackage` in `web/src/export/exportScene.ts`.

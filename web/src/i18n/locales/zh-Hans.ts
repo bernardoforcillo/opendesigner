@@ -342,6 +342,7 @@ export const zhHans: Record<MessageKey, Message> = {
   "An image on \"{page}\" prints at {ppi} ppi (under 150).": "“{page}”上的一张图片将以 {ppi} ppi 打印（低于 150）。",
   "Font lacks a glyph: {glyph}.": "字体缺少字形：{glyph}。",
   "{mode} does not allow transparency (opacity, blend modes); this file uses it. Use PDF/X-4 or flatten.": "{mode} 不允许透明（不透明度、混合模式）；此文件使用了透明。请使用 PDF/X-4 或拼合。",
+  "Opacity was flattened onto white paper for {mode}: translucent areas print lighter than on screen.": "为满足 {mode}，不透明度已拼合到白纸上：半透明区域的印刷效果会比屏幕上更浅。",
   "RGB content remains (images); PDF/X-1a is CMYK only.": "仍有 RGB 内容（图片）；PDF/X-1a 仅支持 CMYK。",
   "{n} image could not be read and is drawn as a placeholder.": { one: "有 {n} 张图片无法读取，将绘制为占位图。", other: "有 {n} 张图片无法读取，将绘制为占位图。" },
   "{n} uploaded font could not be read.": { one: "有 {n} 个已上传的字体无法读取。", other: "有 {n} 个已上传的字体无法读取。" },

@@ -7,6 +7,7 @@ import { resolvedFill } from "@/renderer/canvasRenderer";
 import { hasRealStroke, vectorStyleOf } from "@/renderer/vectorStyle";
 import { meshBitmap } from "@/renderer/mesh";
 import { writeImage, type PreparedImage } from "@/pdf/write/pdfImages";
+import { effectBitmap, type FxBitmap, type FxShape, type FxSpec } from "@/pdf/write/pdfEffects";
 import { num, pdfName, type PdfFile } from "@/pdf/write/pdfFile";
 import type { PdfColors } from "@/pdf/write/pdfColor";
 import type { PdfFonts } from "@/pdf/write/pdfFonts";
@@ -19,8 +20,12 @@ import type { PdfFonts } from "@/pdf/write/pdfFonts";
 // text (placed by the same layout as the canvas, real fonts, real colour, decorations), images
 // (original JPEG/PNG bytes), linear and radial gradients (true shadings), mesh gradients (a small
 // bitmap), opacity and blend modes (ExtGState), masks (clip paths), CMYK and spot paints.
-// What does not: blur effects and inner shadows (a hard offset copy stands in for a drop shadow),
-// gradient stop transparency, per-glyph OpenType features. The preflight lists these.
+// PDF/X-1a and X-3 (`flatten`): opacity, paint alpha, gradient stop alpha and alpha channels are baked into opaque
+// colours over white paper; blurs fall back to the hard stand-in and blend modes are dropped, both listed by the preflight.
+// Also carried over: gradient stop transparency (a luminosity soft mask built from the stops' alpha), and
+// blurred drop shadows, inner shadows and layer blur of rectangles and ellipses (a small bitmap, pdfEffects.ts).
+// What does not: those effects on vectors (a hard offset copy stands in for a drop shadow), background and
+// progressive blur, per-glyph OpenType features. The preflight lists these.
 
 export const PT = 0.75;
 
@@ -43,6 +48,8 @@ export interface PageDeps {
   imageObjs: Map<string, number>;
   /** Tagged PDF: text and images are wrapped in marked content, everything else is an artifact. `headingOf` = outline level of a text node. */
   tagged?: { headingOf: (n: NodeLite) => number };
+  /** PDF/X-1a and X-3 allow no transparency: alpha is baked into the colours (over white paper) and no ExtGState, soft mask or alpha channel is written. */
+  flatten?: boolean;
 }
 
 /** One marked-content item of a tagged page, in the page's drawing order. */
@@ -56,6 +63,8 @@ export interface PageRender {
   /** Every image placed on the page, with the box it was drawn into (for the preflight's resolution check). */
   placed: Placed[];
   transparency: boolean;
+  /** Flattening only: some opacity, gradient alpha or alpha channel was baked into opaque colours. */
+  baked: boolean;
   /** Effects the PDF cannot reproduce, by node id. */
   flattened: string[];
   /** Tagged PDF only: the marked content on the page. */
@@ -70,6 +79,11 @@ class Page {
   shadings: string[] = [];
   placed: Placed[] = [];
   transparency = false;
+  baked = false;
+  /** Flattening: the current node's opacity, folded into every paint of the node. */
+  nodeOpacity = 1;
+  /** The node being drawn (for the flattened list). */
+  nodeId = "";
   flattened: string[] = [];
   constructor(readonly d: PageDeps) {}
 
@@ -88,6 +102,14 @@ class Page {
   overprinted = 0;
 
   gs(ca: number, CA: number, blend?: BlendModeLite): string {
+    if (this.d.flatten) {
+      // Opaque output: the alpha goes into the colours (PdfColors.ops); a blend mode has no flat equivalent.
+      this.d.colors.fillAlpha = ca * this.nodeOpacity;
+      this.d.colors.strokeAlpha = CA * this.nodeOpacity;
+      if (ca < 1 || CA < 1 || this.nodeOpacity < 1) this.baked = true;
+      if (blend) this.flattened.push(this.nodeId);
+      return "";
+    }
     if (ca >= 1 && CA >= 1 && !blend) return "";
     const key = `${num(ca)}/${num(CA)}/${blend ?? ""}`;
     let name = this.gsKey.get(key);
@@ -102,14 +124,32 @@ class Page {
   }
 
   image(hash: string): string | null {
-    const img = this.d.images.get(hash);
+    let img = this.d.images.get(hash);
     if (!img) return null;
+    if (this.d.flatten && img.kind === "rgba") {
+      // The alpha channel goes onto white paper: an opaque bitmap, no soft mask.
+      const flat = flattenRgba(img.rgba);
+      if (flat.changed) { this.baked = true; img = { ...img, rgba: flat.rgba }; this.d.images.set(hash, img); }
+    }
     let obj = this.d.imageObjs.get(hash);
     if (obj === undefined) { obj = writeImage(this.d.file, img); this.d.imageObjs.set(hash, obj); }
     const name = `Im${obj}`;
     this.xobjects.set(name, obj);
     return name;
   }
+}
+
+/** `rgba` composited over white; `changed` says whether any pixel was not opaque. */
+function flattenRgba(rgba: Uint8ClampedArray | Uint8Array): { rgba: Uint8ClampedArray; changed: boolean } {
+  const out = new Uint8ClampedArray(rgba.length);
+  let changed = false;
+  for (let i = 0; i < rgba.length; i += 4) {
+    const a = rgba[i + 3]! / 255;
+    if (a < 1) changed = true;
+    for (let k = 0; k < 3; k++) out[i + k] = Math.round(255 - a * (255 - rgba[i + k]!));
+    out[i + 3] = 255;
+  }
+  return { rgba: out, changed };
 }
 
 // --- paths ------------------------------------------------------------------------------------------
@@ -165,13 +205,51 @@ function outline(n: NodeLite, forFill: boolean): string {
 
 // --- paints -----------------------------------------------------------------------------------------
 
-function shadingFor(pg: Page, n: NodeLite, g: GradientLite): string | null {
+/** A luminosity soft mask (ExtGState name) that gives the gradient's stops their alpha, or null when every stop is opaque. */
+function stopAlphaMask(pg: Page, n: NodeLite, g: GradientLite, sp: { x1: number; y1: number; x2: number; y2: number; len: number }): string | null {
+  const stops = [...g.stops].sort((a, b) => a.position - b.position);
+  if (stops.every((s) => s.color.a >= 1)) return null;
+  if (pg.d.flatten) return null; // flattened: the stops are lightened instead (shadingFor)
+  const fns: string[] = [], bounds: number[] = [], encode: string[] = [];
+  for (let i = 0; i < stops.length - 1; i++) {
+    fns.push(`${pg.d.file.add(`<</FunctionType 2/Domain[0 1]/C0[${num(stops[i]!.color.a)}]/C1[${num(stops[i + 1]!.color.a)}]/N 1>>`)} 0 R`);
+    if (i > 0) bounds.push(Math.min(1, Math.max(0, stops[i]!.position)));
+    encode.push("0 1");
+  }
+  const fn = stops.length === 2 ? fns[0]! : `${pg.d.file.add(`<</FunctionType 3/Domain[0 1]/Functions[${fns.join(" ")}]/Bounds[${bounds.map(num).join(" ")}]/Encode[${encode.join(" ")}]>>`)} 0 R`;
+  const { x1, y1, x2, y2, len } = sp;
+  const dict = g.kind === "linear"
+    ? `<</ShadingType 2/ColorSpace/DeviceGray/Coords[${num(x1)} ${num(y1)} ${num(x2)} ${num(y2)}]/Function ${fn}/Extend[true true]>>`
+    : `<</ShadingType 3/ColorSpace/DeviceGray/Coords[${num(x1)} ${num(y1)} 0 ${num(x1)} ${num(y1)} ${num(len)}]/Function ${fn}/Extend[true true]>>`;
+  const sh = pg.d.file.add(dict);
+  // The form covers the node's box generously: the gradient extends, the fill's own clip cuts it.
+  const m = Math.max(n.width, n.height) + 1;
+  const form = pg.d.file.stream(
+    `/Type/XObject/Subtype/Form/BBox[${num(n.x - m)} ${num(n.y - m)} ${num(n.x + n.width + m)} ${num(n.y + n.height + m)}]/Group<</S/Transparency/CS/DeviceGray>>/Resources<</Shading<</ShA ${sh} 0 R>>>>`,
+    "/ShA sh\n",
+  );
+  const name = `GM${pg.gstates.length + 1}`;
+  pg.gstates.push(`${pdfName(name)}<</Type/ExtGState/SMask<</Type/Mask/S/Luminosity/G ${form} 0 R>>>>`);
+  pg.transparency = true;
+  return name;
+}
+
+function shadingFor(pg: Page, n: NodeLite, g: GradientLite): { name: string; mask: string | null } | null {
   const x1 = n.x + g.x1 * n.width, y1 = n.y + g.y1 * n.height, x2 = n.x + g.x2 * n.width, y2 = n.y + g.y2 * n.height;
   const len = Math.hypot(x2 - x1, y2 - y1);
   if (!(len > 0) || g.stops.length < 2) return null;
   const stops = [...g.stops].sort((a, b) => a.position - b.position);
   // RGB (or device CMYK in a CMYK document) interpolation between stops, stitched into one function.
-  const comp = (s: (typeof stops)[number]) => cmykDoc(pg) ? cmykOf(s.color) : [s.color.r, s.color.g, s.color.b];
+  // Flattening: a stop's alpha (and the fill's and node's) lightens its colour toward white paper.
+  const lift = (s: (typeof stops)[number]) => {
+    const a = s.color.a * pg.d.colors.fillAlpha;
+    if (a < 1) pg.baked = true;
+    return a >= 1 ? s.color : { r: 1 - a * (1 - s.color.r), g: 1 - a * (1 - s.color.g), b: 1 - a * (1 - s.color.b) };
+  };
+  const comp = (s: (typeof stops)[number]) => {
+    const c = pg.d.flatten ? lift(s) : s.color;
+    return cmykDoc(pg) ? cmykOf(c) : [c.r, c.g, c.b];
+  };
   const fns: string[] = [], bounds: number[] = [], encode: string[] = [];
   for (let i = 0; i < stops.length - 1; i++) {
     fns.push(`${pg.d.file.add(`<</FunctionType 2/Domain[0 1]/C0[${comp(stops[i]!).map(num).join(" ")}]/C1[${comp(stops[i + 1]!).map(num).join(" ")}]/N 1>>`)} 0 R`);
@@ -185,7 +263,7 @@ function shadingFor(pg: Page, n: NodeLite, g: GradientLite): string | null {
     : `<</ShadingType 3/ColorSpace${space}/Coords[${num(x1)} ${num(y1)} 0 ${num(x1)} ${num(y1)} ${num(len)}]/Function ${fn}/Extend[true true]>>`;
   const name = `Sh${pg.shadings.length + 1}`;
   pg.shadings.push(`${pdfName(name)} ${pg.d.file.add(dict)} 0 R`);
-  return name;
+  return { name, mask: stopAlphaMask(pg, n, g, { x1, y1, x2, y2, len }) };
 }
 
 const cmykDoc = (pg: Page) => pg.d.colors.cmykDocument;
@@ -202,19 +280,32 @@ function paintFill(pg: Page, n: NodeLite, f: FillLite, slot: string, evenOdd: bo
   if (f.mesh && n.width > 0 && n.height > 0) {
     const SIZE = 32;
     const px = meshBitmap(f.mesh, SIZE, 0);
+    // Flattening: the node's opacity scales the pixels' alpha, and the result is composited on white in pg.image.
+    if (pg.d.flatten && pg.nodeOpacity < 1) for (let i = 3; i < px.length; i += 4) px[i] = Math.round(px[i]! * pg.nodeOpacity);
     const prepared: PreparedImage = { kind: "rgba", width: SIZE, height: SIZE, rgba: px };
     const key = `mesh:${n.id}`;
     pg.d.images.set(key, prepared);
     const name = pg.image(key);
     if (name) {
-      pg.transparency ||= f.mesh.colors.some((c) => c.a < 1);
+      if (!pg.d.flatten) pg.transparency ||= f.mesh.colors.some((c) => c.a < 1);
       pg.out.push(`q\n${path}${clip} n\n${num(n.width)} 0 0 ${num(-n.height)} ${num(n.x)} ${num(n.y + n.height)} cm\n${pdfName(name)} Do\nQ\n`);
       return;
     }
   }
   if (f.image) {
-    const name = pg.image(f.image.assetHash);
-    const img = pg.d.images.get(f.image.assetHash);
+    let hash = f.image.assetHash;
+    if (pg.d.flatten && pg.nodeOpacity < 1) {
+      const src = pg.d.images.get(hash);
+      if (src?.kind === "rgba") {
+        // A derived bitmap with the node's opacity folded into its alpha (flattened onto white by pg.image).
+        const faded = new Uint8ClampedArray(src.rgba);
+        for (let i = 3; i < faded.length; i += 4) faded[i] = Math.round(faded[i]! * pg.nodeOpacity);
+        hash = `${hash}@${pg.nodeOpacity}`;
+        pg.d.images.set(hash, { ...src, rgba: faded });
+      } else if (src) pg.flattened.push(n.id); // an opaque JPEG/PNG cannot be lightened without decoding it
+    }
+    const name = pg.image(hash);
+    const img = pg.d.images.get(hash);
     if (name && img && n.width > 0 && n.height > 0) {
       const sx = n.width / img.width, sy = n.height / img.height;
       const s = f.image.mode === "fit" ? Math.min(sx, sy) : Math.max(sx, sy);
@@ -227,7 +318,7 @@ function paintFill(pg: Page, n: NodeLite, f: FillLite, slot: string, evenOdd: bo
   if (f.gradient) {
     const sh = shadingFor(pg, n, f.gradient);
     if (sh) {
-      pg.out.push(`q\n${path}${clip} n\n${pdfName(sh)} sh\nQ\n`);
+      pg.out.push(`q\n${path}${clip} n\n${sh.mask ? `${pdfName(sh.mask)} gs\n` : ""}${pdfName(sh.name)} sh\nQ\n`);
       return;
     }
   }
@@ -255,6 +346,30 @@ function strokeOps(pg: Page, n: NodeLite): string {
 
 // --- one node ---------------------------------------------------------------------------------------
 
+/** The closed-form outline of a node, for the effect bitmaps; null for vectors. */
+function fxShape(n: NodeLite): FxShape | null {
+  if (n.width <= 0 || n.height <= 0) return null;
+  if (n.kind === "ellipse") return { kind: "ellipse", w: n.width, h: n.height, r: 0 };
+  if (n.kind === "rect") return { kind: "rect", w: n.width, h: n.height, r: Math.min(n.cornerRadius, n.width / 2, n.height / 2) };
+  if (n.kind === "frame") return { kind: "rect", w: n.width, h: n.height, r: 0 };
+  return null;
+}
+
+/** Draws an effect bitmap (optionally clipped to `clip`, a path). False when there is nothing to draw. */
+function fxImage(pg: Page, n: NodeLite, shape: FxShape, spec: FxSpec, clip: string): boolean {
+  if (pg.d.flatten) return false; // a blurred bitmap needs an alpha channel: the hard-edged stand-in is used and listed
+  const bmp: FxBitmap | null = effectBitmap(shape, spec);
+  if (!bmp) return false;
+  const key = `fx:${n.id}:${spec.mode}:${shape.w}x${shape.h}:${shape.r}:${spec.sigma}:${spec.dx ?? 0},${spec.dy ?? 0}:${spec.color.r},${spec.color.g},${spec.color.b},${spec.color.a}`;
+  pg.d.images.set(key, { kind: "rgba", width: bmp.width, height: bmp.height, rgba: bmp.rgba });
+  const name = pg.image(key);
+  if (!name) return false;
+  pg.transparency = true;
+  const x = n.x + bmp.x, y = n.y + bmp.y;
+  pg.out.push(`q\n${clip ? `${clip}W n\n` : ""}${num(bmp.w)} 0 0 ${num(-bmp.h)} ${num(x)} ${num(y + bmp.h)} cm\n${pdfName(name)} Do\nQ\n`);
+  return true;
+}
+
 function drawShape(pg: Page, n: NodeLite): void {
   const fillable = !(n.kind === "frame" && n.fills.length === 0);
   const evenOdd = n.kind === "vector" ? (vectorStyleOf(n).fillRule ?? "evenodd") === "evenodd" : false;
@@ -262,18 +377,33 @@ function drawShape(pg: Page, n: NodeLite): void {
   const path = outline(n, true);
   const s = strokeOf(n);
   const shadow = n.effects?.find((e) => e.kind === "dropShadow");
+  const shape = fxShape(n);
   if (shadow && shadow.kind === "dropShadow" && path !== "") {
-    // PDF has no blur: a hard-edged offset copy at the shadow's colour and alpha stands in for it.
-    pg.out.push(`q\n${pg.gs(shadow.color.a, shadow.color.a)}1 0 0 1 ${num(shadow.offsetX)} ${num(shadow.offsetY)} cm\n`);
-    pg.out.push(pg.d.colors.rgbOps(shadow.color, false), path, evenOdd ? "f*\n" : "f\n", "Q\n");
-    pg.flattened.push(n.id);
+    const soft = shadow.blur > 0 && shape ? fxImage(pg, n, shape, { mode: "drop", color: shadow.color, dx: shadow.offsetX, dy: shadow.offsetY, sigma: shadow.blur / 2 }, "") : false;
+    if (!soft) {
+      // Not a plain rectangle or ellipse: a hard-edged offset copy at the shadow's colour and alpha stands in for the blur.
+      pg.out.push(`q\n${pg.gs(shadow.color.a, shadow.color.a)}1 0 0 1 ${num(shadow.offsetX)} ${num(shadow.offsetY)} cm\n`);
+      pg.out.push(pg.d.colors.rgbOps(shadow.color, false), path, evenOdd ? "f*\n" : "f\n", "Q\n");
+      if (shadow.blur > 0) pg.flattened.push(n.id);
+    }
   }
-  if (n.effects?.some((e) => e.kind === "layerBlur" || e.kind === "innerShadow" || e.kind === "backgroundBlur")) pg.flattened.push(n.id);
   const alpha = fillable && !f.gradient && !f.image && !f.mesh ? f.a : 1;
-  if (fillable && path !== "") {
+  const blur = n.effects?.find((e) => e.kind === "layerBlur" && e.radius > 0);
+  // Layer blur of a plain flat fill with no stroke is a blurred bitmap of the shape instead of the fill.
+  const blurredFill = blur?.kind === "layerBlur" && fillable && shape && !s && !f.gradient && !f.image && !f.mesh && path !== ""
+    && fxImage(pg, n, shape, { mode: "blur", color: { r: f.r, g: f.g, b: f.b, a: alpha }, sigma: blur.radius }, "");
+  if (blur && !blurredFill) pg.flattened.push(n.id);
+  if (fillable && path !== "" && !blurredFill) {
     pg.out.push(`q\n${pg.gs(alpha, 1)}`);
     paintFill(pg, n, f, "fills.0", evenOdd, path);
     pg.out.push("Q\n");
+  }
+  for (const e of n.effects ?? []) {
+    if (e.kind === "backgroundBlur") pg.flattened.push(n.id);
+    else if (e.kind === "innerShadow" && path !== "") {
+      const ok = shape && fxImage(pg, n, shape, { mode: "inner", color: e.color, dx: e.offsetX, dy: e.offsetY, sigma: e.blur / 2 }, outline(n, true));
+      if (!ok) pg.flattened.push(n.id);
+    }
   }
   if (s) {
     pg.out.push(`q\n${pg.gs(1, s.color.a)}${strokeOps(pg, n)}${outline(n, false)}S\nQ\n`);
@@ -285,11 +415,13 @@ function drawImage(pg: Page, n: NodeLite): void {
   const name = pg.image(hash);
   if (!name) {
     // The same placeholder the canvas and the SVG show: faint box, border, cross.
-    pg.out.push(`q\n${pg.gs(0.06, 1)}0 g\n${p(n.x, n.y)} ${p(n.width, n.height)} re f\nQ\n`);
-    pg.out.push(`q\n${pg.gs(1, 0.35)}0 G 1 w\n${p(n.x, n.y)} ${p(n.width, n.height)} re S\n${p(n.x, n.y)} m ${p(n.x + n.width, n.y + n.height)} l ${p(n.x + n.width, n.y)} m ${p(n.x, n.y + n.height)} l S\nQ\n`);
+    pg.out.push(`q\n${pg.gs(0.06, 1)}${pg.d.colors.rgbOps({ r: 0, g: 0, b: 0 }, false)}${p(n.x, n.y)} ${p(n.width, n.height)} re f\nQ\n`);
+    pg.out.push(`q\n${pg.gs(1, 0.35)}${pg.d.colors.rgbOps({ r: 0, g: 0, b: 0 }, true)}1 w\n${p(n.x, n.y)} ${p(n.width, n.height)} re S\n${p(n.x, n.y)} m ${p(n.x + n.width, n.y + n.height)} l ${p(n.x + n.width, n.y)} m ${p(n.x, n.y + n.height)} l S\nQ\n`);
     return;
   }
   pg.placed.push({ assetHash: hash, width: n.width, height: n.height });
+  // An opaque JPEG/PNG cannot be lightened without decoding it: flattening draws it at full strength and lists it.
+  if (pg.d.flatten && n.opacity < 1) pg.flattened.push(n.id);
   pg.out.push(`q\n${num(n.width)} 0 0 ${num(-n.height)} ${num(n.x)} ${num(n.y + n.height)} cm\n${pdfName(name)} Do\nQ\n`);
 }
 
@@ -387,7 +519,11 @@ export function renderPage(deps: PageDeps, nodes: readonly NodeLite[], bounds: B
     // Frames that clip their content: each one's (possibly rotated) box intersects the clip.
     for (const c of n.exportClips ?? []) pg.out.push(`${boxPath(c)}W n\n`);
     // Node opacity and blend mode wrap the whole node; the paint's own alpha is applied inside.
+    pg.nodeId = n.id;
+    pg.nodeOpacity = 1;
+    pg.d.colors.fillAlpha = pg.d.colors.strokeAlpha = 1;
     if (n.opacity !== 1 || n.blendMode) pg.out.push(pg.gs(n.opacity, n.opacity, n.blendMode));
+    if (pg.d.flatten) pg.nodeOpacity = n.opacity;
     if (n.kind === "text") drawText(pg, n);
     else if (n.kind === "image") drawImage(pg, n);
     else drawShape(pg, n);
@@ -398,5 +534,5 @@ export function renderPage(deps: PageDeps, nodes: readonly NodeLite[], bounds: B
   if (pg.xobjects.size) res.push(`/XObject<<${[...pg.xobjects].map(([k, v]) => `${pdfName(k)} ${v} 0 R`).join(" ")}>>`);
   if (pg.gstates.length) res.push(`/ExtGState<<${pg.gstates.join(" ")}>>`);
   if (pg.shadings.length) res.push(`/Shading<<${pg.shadings.join(" ")}>>`);
-  return { content: pg.out.join(""), resources: res.join(""), placed: pg.placed, transparency: pg.transparency, flattened: [...new Set(pg.flattened)], tags };
+  return { content: pg.out.join(""), resources: res.join(""), placed: pg.placed, transparency: pg.transparency, baked: pg.baked, flattened: [...new Set(pg.flattened)], tags };
 }

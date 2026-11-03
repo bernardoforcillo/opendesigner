@@ -20,11 +20,26 @@ export type PdfPaint =
 
 const c01 = (v: number) => Math.min(1, Math.max(0, v));
 
+/** `p` at opacity `a` over white paper: RGB mixes toward 1, CMYK and spot tints scale toward 0 ink. */
+export function onWhite(p: PdfPaint, a: number): PdfPaint {
+  if (a >= 1) return p;
+  const t = c01(a);
+  if (p.kind === "rgb") return { kind: "rgb", r: 1 - t * (1 - p.r), g: 1 - t * (1 - p.g), b: 1 - t * (1 - p.b) };
+  if (p.kind === "cmyk") return { kind: "cmyk", c: p.c * t, m: p.m * t, y: p.y * t, k: p.k * t };
+  return { ...p, tint: p.tint * t };
+}
+
 export class PdfColors {
   /** Spot names in use and whether the file uses RGB / CMYK: the preflight and the output intent read these. */
   readonly spots = new Set<string>();
   usesRgb = false;
   usesCmyk = false;
+  /**
+   * Transparency flattening (PDF/X-1a, X-3): the alpha the next fills / strokes are painted with. Instead of an
+   * ExtGState, the colour itself is lightened toward white paper (a tint), so the file holds no transparency.
+   */
+  fillAlpha = 1;
+  strokeAlpha = 1;
   private spaces = new Map<string, string>(); // spot name -> resource name
   private n = 0;
 
@@ -47,6 +62,7 @@ export class PdfColors {
 
   /** Fill (`stroke` false) or stroke colour operators for `p`. */
   ops(p: PdfPaint, stroke: boolean): string {
+    p = onWhite(p, stroke ? this.strokeAlpha : this.fillAlpha);
     if (p.kind === "rgb") { this.usesRgb = true; return `${num(p.r)} ${num(p.g)} ${num(p.b)} ${stroke ? "RG" : "rg"}\n`; }
     if (p.kind === "cmyk") { this.usesCmyk = true; return `${num(p.c)} ${num(p.m)} ${num(p.y)} ${num(p.k)} ${stroke ? "K" : "k"}\n`; }
     this.spots.add(p.name);

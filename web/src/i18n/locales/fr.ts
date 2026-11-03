@@ -343,6 +343,7 @@ export const fr: Record<MessageKey, Message> = {
   "An image on \"{page}\" prints at {ppi} ppi (under 150).": "Une image de « {page} » s’imprime à {ppi} ppp (moins de 150).",
   "Font lacks a glyph: {glyph}.": "La police n’a pas de glyphe : {glyph}.",
   "{mode} does not allow transparency (opacity, blend modes); this file uses it. Use PDF/X-4 or flatten.": "{mode} n’autorise pas la transparence (opacité, modes de fusion) ; ce fichier l’utilise. Utilisez PDF/X-4 ou aplatissez.",
+  "Opacity was flattened onto white paper for {mode}: translucent areas print lighter than on screen.": "L’opacité a été aplatie sur du papier blanc pour {mode} : les zones translucides s’impriment plus claires qu’à l’écran.",
   "RGB content remains (images); PDF/X-1a is CMYK only.": "Du contenu RVB subsiste (images) ; PDF/X-1a est exclusivement CMJN.",
   "{n} image could not be read and is drawn as a placeholder.": { one: "{n} image n’a pas pu être lue et est dessinée comme espace réservé.", other: "{n} images n’ont pas pu être lues et sont dessinées comme espaces réservés." },
   "{n} uploaded font could not be read.": { one: "{n} police importée n’a pas pu être lue.", other: "{n} polices importées n’ont pas pu être lues." },

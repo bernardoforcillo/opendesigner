@@ -124,6 +124,7 @@ export function preflightReport(report: PdfReport, opts: PreflightOptions = {}, 
   if (missingFonts > 0) out.push({ severity: "warning", code: "font-unreadable", ...msg("{n} uploaded font could not be read.", { n: missingFonts }, true) });
   if (report.transparency && (opts.pdfx === "x1a" || opts.pdfx === "x3")) out.push({ severity: "error", code: "transparency", ...msg("{mode} does not allow transparency (opacity, blend modes); this file uses it. Use PDF/X-4 or flatten.", { mode: opts.pdfx === "x1a" ? "PDF/X-1a" : "PDF/X-3" }) });
   if (report.usesRgb && opts.pdfx === "x1a") out.push({ severity: "error", code: "rgb", ...msg("RGB content remains (images); PDF/X-1a is CMYK only.") });
+  if (report.transparencyFlattened && (opts.pdfx === "x1a" || opts.pdfx === "x3")) out.push({ severity: "warning", code: "transparency-flattened", ...msg("Opacity was flattened onto white paper for {mode}: translucent areas print lighter than on screen.", { mode: opts.pdfx === "x1a" ? "PDF/X-1a" : "PDF/X-3" }) });
   if (report.flattened.length > 0) out.push({ severity: "warning", code: "effects", ...msg("{n} object uses blur or inner-shadow effects the PDF cannot reproduce (drop shadows are drawn hard-edged).", { n: report.flattened.length }, true) });
   return out;
 }
