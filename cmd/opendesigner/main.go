@@ -17,7 +17,7 @@ import (
 
 func main() {
 	if len(os.Args) < 2 {
-		log.Fatal("usage: opendesigner <serve|flow|export|pack|unpack> ...")
+		log.Fatal("usage: opendesigner <serve|flow|export|sync|pack|unpack> ...")
 	}
 	switch os.Args[1] {
 	case "serve":
@@ -26,12 +26,14 @@ func main() {
 		os.Exit(runFlow(os.Args[2:], os.Stdout, os.Stderr))
 	case "export":
 		os.Exit(runExport(os.Args[2:], os.Stdout, os.Stderr))
+	case "sync":
+		os.Exit(runSync(os.Args[2:], os.Stdout, os.Stderr))
 	case "pack":
 		os.Exit(runPack(os.Args[2:], os.Stdout, os.Stderr))
 	case "unpack":
 		os.Exit(runUnpack(os.Args[2:], os.Stdout, os.Stderr))
 	default:
-		log.Fatal("usage: opendesigner <serve|flow|export|pack|unpack> ...")
+		log.Fatal("usage: opendesigner <serve|flow|export|sync|pack|unpack> ...")
 	}
 }
 
