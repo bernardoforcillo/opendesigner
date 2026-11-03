@@ -207,7 +207,7 @@ export function PageBar({ compact = false }: { compact?: boolean } = {}) {
         />
       ) : (
         <DialogTrigger isOpen={open} onOpenChange={setOpen}>
-          <div className="min-w-0 flex-1">
+          <div className="min-w-0 flex-1" onDoubleClick={() => { if (current) { setOpen(false); setRenamingId(current.id); } }}>
             <Button
               className={
                 "flex h-7 w-full min-w-0 items-center gap-1.5 rounded-md px-2 text-left text-[13px] font-medium text-fg " +
