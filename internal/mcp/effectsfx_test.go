@@ -39,11 +39,12 @@ func TestProgressiveBlurNoiseTextureAndGlassTools(t *testing.T) {
 		{Kind: "noise", EffectFx: odmcp.EffectFx{Mode: "duo", Density: &density, Seed: &seed}},
 		{Kind: "texture"},
 		{Kind: "glass"},
+		{Kind: "gradientFeather"},
 	}})
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := []string{"dropShadow", "progressiveBlur", "noise", "texture", "glass"}
+	want := []string{"dropShadow", "progressiveBlur", "noise", "texture", "glass", "gradientFeather"}
 	if got := kinds(); !reflect.DeepEqual(got, want) {
 		t.Fatalf("effectKinds = %v, want %v", got, want)
 	}
@@ -55,6 +56,7 @@ func TestProgressiveBlurNoiseTextureAndGlassTools(t *testing.T) {
 		"noise density": {Kind: "noise", EffectFx: odmcp.EffectFx{Density: &badDensity}},
 		"glass light":   {Kind: "glass", EffectFx: odmcp.EffectFx{Light: &badLight}},
 		"blur radius":   {Kind: "progressiveBlur", EffectFx: odmcp.EffectFx{StartRadius: &negative}},
+		"feather":       {Kind: "gradientFeather", EffectFx: odmcp.EffectFx{EndOpacity: &badLight}},
 		"texture":       {Kind: "texture", EffectFx: odmcp.EffectFx{Intensity: &badLight}},
 	} {
 		if _, err := s.SetProperties(ctx, odmcp.SetPropertiesInput{Id: r.NodeId, Effects: []odmcp.EffectSpec{e}}); err == nil {

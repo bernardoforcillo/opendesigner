@@ -103,7 +103,7 @@ func validateFills(colors []RGBA) error {
 // EffectSpec is one node effect. Any number of dropShadow and innerShadow effects
 // are drawn; the canvas applies the FIRST layerBlur and the FIRST backgroundBlur.
 type EffectSpec struct {
-	Kind    string    `json:"kind" jsonschema:"dropShadow, innerShadow, layerBlur, backgroundBlur, progressiveBlur, noise, texture or glass"`
+	Kind    string    `json:"kind" jsonschema:"dropShadow, innerShadow, layerBlur, backgroundBlur, progressiveBlur, gradientFeather, noise, texture or glass"`
 	Color   StopColor `json:"color,omitempty" jsonschema:"shadows only; alpha 0..1"`
 	OffsetX float64   `json:"offsetX,omitempty" jsonschema:"shadows only, in world units"`
 	OffsetY float64   `json:"offsetY,omitempty" jsonschema:"shadows only, in world units"`
@@ -144,12 +144,12 @@ func validateEffects(effects []EffectSpec) error {
 			if e.Radius < 0 {
 				return fmt.Errorf("effects[%d].radius must be >= 0", i)
 			}
-		case "progressiveBlur", "noise", "texture", "glass":
+		case "progressiveBlur", "gradientFeather", "noise", "texture", "glass":
 			if _, err := e.fxProto(); err != nil {
 				return fmt.Errorf("effects[%d] (%s): %w", i, e.Kind, err)
 			}
 		default:
-			return fmt.Errorf("effects[%d].kind must be dropShadow, innerShadow, layerBlur, backgroundBlur, progressiveBlur, noise, texture or glass, got %q", i, e.Kind)
+			return fmt.Errorf("effects[%d].kind must be dropShadow, innerShadow, layerBlur, backgroundBlur, progressiveBlur, gradientFeather, noise, texture or glass, got %q", i, e.Kind)
 		}
 	}
 	return nil
@@ -1150,7 +1150,7 @@ func RegisterTools(srv *mcp.Server, s *Session) {
 	addTool(srv, "create_frame", "Create a frame: a container with its own box. Optionally clipsContent, and autoLayout to have the server arrange its children in a row or column (the children's x/y are then computed for you). parentId defaults to the first page.", s.CreateFrame)
 	addTool(srv, "set_auto_layout", "Turn auto layout on, change it, or (autoLayout omitted) off for a frame. After every change the server repositions the frame's children; reposition by editing the layout, not the children's x/y, which it overrides.", s.SetAutoLayout)
 	addTool(srv, "create_text", "Create a text node with the given content. parentId defaults to the first page. Returns the new node id.", s.CreateText)
-	addTool(srv, "set_properties", "Set absolute properties on a node (x/y/width/height/opacity/rotation/name/visible/cornerRadius/fills/strokes/effects/layoutGrids). Effects (any number of shadows): [{kind:dropShadow|innerShadow,color,offsetX,offsetY,blur}|{kind:layerBlur|backgroundBlur,radius}|{kind:progressiveBlur,startRadius,endRadius,x1,y1,x2,y2,background}|{kind:noise,mode:mono|duo|multi,size,density,opacity,color,color2,seed}|{kind:texture,scale,intensity,seed}|{kind:glass,frost,light,lightAngle,noise}] (progressive blur, noise, texture and glass are described in docs/effects.md; noise, texture and glass draw on rect/ellipse/frame/image). blendMode: normal|multiply|screen|overlay|... (CSS names). isMask: true makes the shape a mask for the siblings above it. A fill is a solid {r,g,b,a} or a {gradient:{kind:linear|radial|angular|diamond,stops,x1,y1,x2,y2}} in box-normalised coordinates. Only provided fields change.", s.SetProperties)
+	addTool(srv, "set_properties", "Set absolute properties on a node (x/y/width/height/opacity/rotation/name/visible/cornerRadius/fills/strokes/effects/layoutGrids). Effects (any number of shadows): [{kind:dropShadow|innerShadow,color,offsetX,offsetY,blur}|{kind:layerBlur|backgroundBlur,radius}|{kind:progressiveBlur,startRadius,endRadius,x1,y1,x2,y2,background}|{kind:gradientFeather,startOpacity,endOpacity,x1,y1,x2,y2}|{kind:noise,mode:mono|duo|multi,size,density,opacity,color,color2,seed}|{kind:texture,scale,intensity,seed}|{kind:glass,frost,light,lightAngle,noise}] (progressive blur, noise, texture and glass are described in docs/effects.md; noise, texture and glass draw on rect/ellipse/frame/image). blendMode: normal|multiply|screen|overlay|... (CSS names). isMask: true makes the shape a mask for the siblings above it. A fill is a solid {r,g,b,a} or a {gradient:{kind:linear|radial|angular|diamond,stops,x1,y1,x2,y2}} in box-normalised coordinates. Only provided fields change.", s.SetProperties)
 	addTool(srv, "set_text", "Set a text node's content, and optionally replace its style. Markers written in the content do things when the text is drawn (the document keeps the markers): [^note] footnote (numbered, set at the foot of the page); [*note] endnote (list them with generate_contents kind endnotes); [#term] or [#Parent:Child] index entry; [=name] a named place, and [>name] / [>name:text] a cross-reference to it (its page number / its paragraph text, always current, ?? if missing); [!comment] an editorial note (never drawn or exported); [?Name]...[/?] conditional text hidden while the condition Name is hidden (set_document_settings conditions); [@id] an object anchored in the text; {{Field}} a data_merge placeholder; <#> <pages> <doc> <h1> <h2> <h3> variables on a master page.", s.SetText)
 	addTool(srv, "delete_node", "Delete a node and its whole subtree.", s.DeleteNode)
 	addTool(srv, "reparent_node", "Move a node under a new parent (node or page), with an optional order key.", s.ReparentNode)

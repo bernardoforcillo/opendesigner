@@ -42,6 +42,16 @@ func validateEffects(effects []*opendesignerv1.Effect) error {
 					return bad("progressive blur point")
 				}
 			}
+		case *opendesignerv1.Effect_GradientFeather:
+			g := k.GradientFeather
+			if !unit(g.GetStartOpacity()) || !unit(g.GetEndOpacity()) {
+				return bad("gradient feather opacity")
+			}
+			for _, v := range []float64{g.GetX1(), g.GetY1(), g.GetX2(), g.GetY2()} {
+				if math.IsNaN(v) || math.IsInf(v, 0) {
+					return bad("gradient feather point")
+				}
+			}
 		case *opendesignerv1.Effect_Noise:
 			n := k.Noise
 			if _, ok := opendesignerv1.NoiseMode_name[int32(n.GetMode())]; !ok {

@@ -149,6 +149,8 @@ export type EffectLite =
   | { kind: "backgroundBlur"; radius: number }
   // The radius ramps from startRadius at (x1,y1) to endRadius at (x2,y2), points in the node's unit box.
   | { kind: "progressiveBlur"; startRadius: number; endRadius: number; x1: number; y1: number; x2: number; y2: number; background: boolean }
+  // The node's opacity ramps from startOpacity at (x1,y1) to endOpacity at (x2,y2), points in the node's unit box.
+  | { kind: "gradientFeather"; startOpacity: number; endOpacity: number; x1: number; y1: number; x2: number; y2: number }
   | { kind: "noise"; mode: NoiseModeLite; size: number; density: number; opacity: number; color: RgbaLite; color2: RgbaLite; seed: number }
   | { kind: "texture"; scale: number; intensity: number; seed: number }
   // Frosted backdrop + grain + light edge; drawn as those effects (renderer/effectsFx.ts::expandGlass).
@@ -999,6 +1001,8 @@ export function toPbEffects(effects: readonly EffectLite[]) {
         return { kind: { case: "backgroundBlur" as const, value: { radius: e.radius } } };
       case "progressiveBlur":
         return { kind: { case: "progressiveBlur" as const, value: { startRadius: e.startRadius, endRadius: e.endRadius, x1: e.x1, y1: e.y1, x2: e.x2, y2: e.y2, background: e.background } } };
+      case "gradientFeather":
+        return { kind: { case: "gradientFeather" as const, value: { startOpacity: e.startOpacity, endOpacity: e.endOpacity, x1: e.x1, y1: e.y1, x2: e.x2, y2: e.y2 } } };
       case "noise":
         return { kind: { case: "noise" as const, value: { mode: NOISE_TO_PB[e.mode], size: e.size, density: e.density, opacity: e.opacity, color: { ...e.color }, color2: { ...e.color2 }, seed: e.seed } } };
       case "texture":
@@ -1086,6 +1090,10 @@ export function toEffectLite(e: PbEffect): EffectLite {
   if (k.case === "progressiveBlur") {
     const v = k.value;
     return { kind: "progressiveBlur", startRadius: v.startRadius, endRadius: v.endRadius, x1: v.x1, y1: v.y1, x2: v.x2, y2: v.y2, background: v.background };
+  }
+  if (k.case === "gradientFeather") {
+    const v = k.value;
+    return { kind: "gradientFeather", startOpacity: v.startOpacity, endOpacity: v.endOpacity, x1: v.x1, y1: v.y1, x2: v.x2, y2: v.y2 };
   }
   if (k.case === "noise") {
     const v = k.value;

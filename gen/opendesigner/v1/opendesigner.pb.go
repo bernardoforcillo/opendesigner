@@ -2587,6 +2587,93 @@ func (x *ProgressiveBlur) GetBackground() bool {
 	return false
 }
 
+// Gradient feather: the node's own opacity (everything it draws) ramps linearly from
+// start_opacity at (x1, y1) to end_opacity at (x2, y2), points in the node's unit box;
+// before the start and past the end it stays. A soft edge that fades along a direction.
+type GradientFeather struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	StartOpacity  float64                `protobuf:"fixed64,1,opt,name=start_opacity,json=startOpacity,proto3" json:"start_opacity,omitempty"` // 0..1
+	EndOpacity    float64                `protobuf:"fixed64,2,opt,name=end_opacity,json=endOpacity,proto3" json:"end_opacity,omitempty"`       // 0..1
+	X1            float64                `protobuf:"fixed64,3,opt,name=x1,proto3" json:"x1,omitempty"`
+	Y1            float64                `protobuf:"fixed64,4,opt,name=y1,proto3" json:"y1,omitempty"`
+	X2            float64                `protobuf:"fixed64,5,opt,name=x2,proto3" json:"x2,omitempty"`
+	Y2            float64                `protobuf:"fixed64,6,opt,name=y2,proto3" json:"y2,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GradientFeather) Reset() {
+	*x = GradientFeather{}
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[16]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GradientFeather) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GradientFeather) ProtoMessage() {}
+
+func (x *GradientFeather) ProtoReflect() protoreflect.Message {
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[16]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GradientFeather.ProtoReflect.Descriptor instead.
+func (*GradientFeather) Descriptor() ([]byte, []int) {
+	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{16}
+}
+
+func (x *GradientFeather) GetStartOpacity() float64 {
+	if x != nil {
+		return x.StartOpacity
+	}
+	return 0
+}
+
+func (x *GradientFeather) GetEndOpacity() float64 {
+	if x != nil {
+		return x.EndOpacity
+	}
+	return 0
+}
+
+func (x *GradientFeather) GetX1() float64 {
+	if x != nil {
+		return x.X1
+	}
+	return 0
+}
+
+func (x *GradientFeather) GetY1() float64 {
+	if x != nil {
+		return x.Y1
+	}
+	return 0
+}
+
+func (x *GradientFeather) GetX2() float64 {
+	if x != nil {
+		return x.X2
+	}
+	return 0
+}
+
+func (x *GradientFeather) GetY2() float64 {
+	if x != nil {
+		return x.Y2
+	}
+	return 0
+}
+
 // Film grain drawn over the node, inside its outline (its box for other shapes).
 type Noise struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
@@ -2603,7 +2690,7 @@ type Noise struct {
 
 func (x *Noise) Reset() {
 	*x = Noise{}
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[16]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[17]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2615,7 +2702,7 @@ func (x *Noise) String() string {
 func (*Noise) ProtoMessage() {}
 
 func (x *Noise) ProtoReflect() protoreflect.Message {
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[16]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[17]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2628,7 +2715,7 @@ func (x *Noise) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Noise.ProtoReflect.Descriptor instead.
 func (*Noise) Descriptor() ([]byte, []int) {
-	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{16}
+	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{17}
 }
 
 func (x *Noise) GetMode() NoiseMode {
@@ -2692,7 +2779,7 @@ type Texture struct {
 
 func (x *Texture) Reset() {
 	*x = Texture{}
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[17]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[18]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2704,7 +2791,7 @@ func (x *Texture) String() string {
 func (*Texture) ProtoMessage() {}
 
 func (x *Texture) ProtoReflect() protoreflect.Message {
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[17]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[18]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2717,7 +2804,7 @@ func (x *Texture) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Texture.ProtoReflect.Descriptor instead.
 func (*Texture) Descriptor() ([]byte, []int) {
-	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{17}
+	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{18}
 }
 
 func (x *Texture) GetScale() float64 {
@@ -2755,7 +2842,7 @@ type Glass struct {
 
 func (x *Glass) Reset() {
 	*x = Glass{}
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[18]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[19]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2767,7 +2854,7 @@ func (x *Glass) String() string {
 func (*Glass) ProtoMessage() {}
 
 func (x *Glass) ProtoReflect() protoreflect.Message {
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[18]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[19]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2780,7 +2867,7 @@ func (x *Glass) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Glass.ProtoReflect.Descriptor instead.
 func (*Glass) Descriptor() ([]byte, []int) {
-	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{18}
+	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{19}
 }
 
 func (x *Glass) GetFrost() float64 {
@@ -2823,6 +2910,7 @@ type Effect struct {
 	//	*Effect_Noise
 	//	*Effect_Texture
 	//	*Effect_Glass
+	//	*Effect_GradientFeather
 	Kind          isEffect_Kind `protobuf_oneof:"kind"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -2830,7 +2918,7 @@ type Effect struct {
 
 func (x *Effect) Reset() {
 	*x = Effect{}
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[19]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[20]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2842,7 +2930,7 @@ func (x *Effect) String() string {
 func (*Effect) ProtoMessage() {}
 
 func (x *Effect) ProtoReflect() protoreflect.Message {
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[19]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[20]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2855,7 +2943,7 @@ func (x *Effect) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Effect.ProtoReflect.Descriptor instead.
 func (*Effect) Descriptor() ([]byte, []int) {
-	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{19}
+	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{20}
 }
 
 func (x *Effect) GetKind() isEffect_Kind {
@@ -2937,6 +3025,15 @@ func (x *Effect) GetGlass() *Glass {
 	return nil
 }
 
+func (x *Effect) GetGradientFeather() *GradientFeather {
+	if x != nil {
+		if x, ok := x.Kind.(*Effect_GradientFeather); ok {
+			return x.GradientFeather
+		}
+	}
+	return nil
+}
+
 type isEffect_Kind interface {
 	isEffect_Kind()
 }
@@ -2974,6 +3071,10 @@ type Effect_Glass struct {
 	Glass *Glass `protobuf:"bytes,23,opt,name=glass,proto3,oneof"`
 }
 
+type Effect_GradientFeather struct {
+	GradientFeather *GradientFeather `protobuf:"bytes,24,opt,name=gradient_feather,json=gradientFeather,proto3,oneof"`
+}
+
 func (*Effect_DropShadow) isEffect_Kind() {}
 
 func (*Effect_LayerBlur) isEffect_Kind() {}
@@ -2990,6 +3091,8 @@ func (*Effect_Texture) isEffect_Kind() {}
 
 func (*Effect_Glass) isEffect_Kind() {}
 
+func (*Effect_GradientFeather) isEffect_Kind() {}
+
 // Independent corner radii (world units, each >= 0, clamped so neighbours fit the side).
 type CornerRadii struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
@@ -3003,7 +3106,7 @@ type CornerRadii struct {
 
 func (x *CornerRadii) Reset() {
 	*x = CornerRadii{}
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[20]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[21]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3015,7 +3118,7 @@ func (x *CornerRadii) String() string {
 func (*CornerRadii) ProtoMessage() {}
 
 func (x *CornerRadii) ProtoReflect() protoreflect.Message {
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[20]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[21]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3028,7 +3131,7 @@ func (x *CornerRadii) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CornerRadii.ProtoReflect.Descriptor instead.
 func (*CornerRadii) Descriptor() ([]byte, []int) {
-	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{20}
+	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{21}
 }
 
 func (x *CornerRadii) GetTopLeft() float64 {
@@ -3074,7 +3177,7 @@ type RectNode struct {
 
 func (x *RectNode) Reset() {
 	*x = RectNode{}
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[21]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[22]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3086,7 +3189,7 @@ func (x *RectNode) String() string {
 func (*RectNode) ProtoMessage() {}
 
 func (x *RectNode) ProtoReflect() protoreflect.Message {
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[21]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[22]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3099,7 +3202,7 @@ func (x *RectNode) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RectNode.ProtoReflect.Descriptor instead.
 func (*RectNode) Descriptor() ([]byte, []int) {
-	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{21}
+	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{22}
 }
 
 func (x *RectNode) GetCornerRadius() float64 {
@@ -3136,7 +3239,7 @@ type EllipseNode struct {
 
 func (x *EllipseNode) Reset() {
 	*x = EllipseNode{}
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[22]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[23]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3148,7 +3251,7 @@ func (x *EllipseNode) String() string {
 func (*EllipseNode) ProtoMessage() {}
 
 func (x *EllipseNode) ProtoReflect() protoreflect.Message {
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[22]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[23]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3161,7 +3264,7 @@ func (x *EllipseNode) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use EllipseNode.ProtoReflect.Descriptor instead.
 func (*EllipseNode) Descriptor() ([]byte, []int) {
-	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{22}
+	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{23}
 }
 
 func (x *EllipseNode) GetArcStart() float64 {
@@ -3195,7 +3298,7 @@ type PolygonNode struct {
 
 func (x *PolygonNode) Reset() {
 	*x = PolygonNode{}
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[23]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[24]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3207,7 +3310,7 @@ func (x *PolygonNode) String() string {
 func (*PolygonNode) ProtoMessage() {}
 
 func (x *PolygonNode) ProtoReflect() protoreflect.Message {
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[23]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[24]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3220,7 +3323,7 @@ func (x *PolygonNode) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PolygonNode.ProtoReflect.Descriptor instead.
 func (*PolygonNode) Descriptor() ([]byte, []int) {
-	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{23}
+	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{24}
 }
 
 func (x *PolygonNode) GetSides() uint32 {
@@ -3241,7 +3344,7 @@ type StarNode struct {
 
 func (x *StarNode) Reset() {
 	*x = StarNode{}
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[24]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[25]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3253,7 +3356,7 @@ func (x *StarNode) String() string {
 func (*StarNode) ProtoMessage() {}
 
 func (x *StarNode) ProtoReflect() protoreflect.Message {
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[24]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[25]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3266,7 +3369,7 @@ func (x *StarNode) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use StarNode.ProtoReflect.Descriptor instead.
 func (*StarNode) Descriptor() ([]byte, []int) {
-	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{24}
+	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{25}
 }
 
 func (x *StarNode) GetPoints() uint32 {
@@ -3306,7 +3409,7 @@ type GroupNode struct {
 
 func (x *GroupNode) Reset() {
 	*x = GroupNode{}
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[25]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[26]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3318,7 +3421,7 @@ func (x *GroupNode) String() string {
 func (*GroupNode) ProtoMessage() {}
 
 func (x *GroupNode) ProtoReflect() protoreflect.Message {
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[25]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[26]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3331,7 +3434,7 @@ func (x *GroupNode) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GroupNode.ProtoReflect.Descriptor instead.
 func (*GroupNode) Descriptor() ([]byte, []int) {
-	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{25}
+	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{26}
 }
 
 type AutoLayout struct {
@@ -3366,7 +3469,7 @@ type AutoLayout struct {
 
 func (x *AutoLayout) Reset() {
 	*x = AutoLayout{}
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[26]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[27]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3378,7 +3481,7 @@ func (x *AutoLayout) String() string {
 func (*AutoLayout) ProtoMessage() {}
 
 func (x *AutoLayout) ProtoReflect() protoreflect.Message {
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[26]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[27]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3391,7 +3494,7 @@ func (x *AutoLayout) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AutoLayout.ProtoReflect.Descriptor instead.
 func (*AutoLayout) Descriptor() ([]byte, []int) {
-	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{26}
+	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{27}
 }
 
 func (x *AutoLayout) GetDirection() LayoutDirection {
@@ -3523,7 +3626,7 @@ type GridTrack struct {
 
 func (x *GridTrack) Reset() {
 	*x = GridTrack{}
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[27]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[28]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3535,7 +3638,7 @@ func (x *GridTrack) String() string {
 func (*GridTrack) ProtoMessage() {}
 
 func (x *GridTrack) ProtoReflect() protoreflect.Message {
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[27]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[28]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3548,7 +3651,7 @@ func (x *GridTrack) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GridTrack.ProtoReflect.Descriptor instead.
 func (*GridTrack) Descriptor() ([]byte, []int) {
-	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{27}
+	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{28}
 }
 
 func (x *GridTrack) GetKind() GridTrackKind {
@@ -3578,7 +3681,7 @@ type GridPlacement struct {
 
 func (x *GridPlacement) Reset() {
 	*x = GridPlacement{}
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[28]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[29]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3590,7 +3693,7 @@ func (x *GridPlacement) String() string {
 func (*GridPlacement) ProtoMessage() {}
 
 func (x *GridPlacement) ProtoReflect() protoreflect.Message {
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[28]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[29]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3603,7 +3706,7 @@ func (x *GridPlacement) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GridPlacement.ProtoReflect.Descriptor instead.
 func (*GridPlacement) Descriptor() ([]byte, []int) {
-	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{28}
+	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{29}
 }
 
 func (x *GridPlacement) GetColumn() int32 {
@@ -3655,7 +3758,7 @@ type FrameNode struct {
 
 func (x *FrameNode) Reset() {
 	*x = FrameNode{}
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[29]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[30]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3667,7 +3770,7 @@ func (x *FrameNode) String() string {
 func (*FrameNode) ProtoMessage() {}
 
 func (x *FrameNode) ProtoReflect() protoreflect.Message {
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[29]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[30]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3680,7 +3783,7 @@ func (x *FrameNode) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FrameNode.ProtoReflect.Descriptor instead.
 func (*FrameNode) Descriptor() ([]byte, []int) {
-	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{29}
+	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{30}
 }
 
 func (x *FrameNode) GetClipsContent() bool {
@@ -3732,7 +3835,7 @@ type TextStyle struct {
 
 func (x *TextStyle) Reset() {
 	*x = TextStyle{}
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[30]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[31]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3744,7 +3847,7 @@ func (x *TextStyle) String() string {
 func (*TextStyle) ProtoMessage() {}
 
 func (x *TextStyle) ProtoReflect() protoreflect.Message {
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[30]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[31]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3757,7 +3860,7 @@ func (x *TextStyle) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TextStyle.ProtoReflect.Descriptor instead.
 func (*TextStyle) Descriptor() ([]byte, []int) {
-	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{30}
+	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{31}
 }
 
 func (x *TextStyle) GetFontFamily() string {
@@ -3942,7 +4045,7 @@ type TextNode struct {
 
 func (x *TextNode) Reset() {
 	*x = TextNode{}
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[31]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[32]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3954,7 +4057,7 @@ func (x *TextNode) String() string {
 func (*TextNode) ProtoMessage() {}
 
 func (x *TextNode) ProtoReflect() protoreflect.Message {
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[31]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[32]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3967,7 +4070,7 @@ func (x *TextNode) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TextNode.ProtoReflect.Descriptor instead.
 func (*TextNode) Descriptor() ([]byte, []int) {
-	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{31}
+	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{32}
 }
 
 func (x *TextNode) GetContent() string {
@@ -4009,7 +4112,7 @@ type TextRun struct {
 
 func (x *TextRun) Reset() {
 	*x = TextRun{}
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[32]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[33]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4021,7 +4124,7 @@ func (x *TextRun) String() string {
 func (*TextRun) ProtoMessage() {}
 
 func (x *TextRun) ProtoReflect() protoreflect.Message {
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[32]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[33]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4034,7 +4137,7 @@ func (x *TextRun) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TextRun.ProtoReflect.Descriptor instead.
 func (*TextRun) Descriptor() ([]byte, []int) {
-	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{32}
+	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{33}
 }
 
 func (x *TextRun) GetStart() int32 {
@@ -4081,7 +4184,7 @@ type ImageNode struct {
 
 func (x *ImageNode) Reset() {
 	*x = ImageNode{}
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[33]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[34]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4093,7 +4196,7 @@ func (x *ImageNode) String() string {
 func (*ImageNode) ProtoMessage() {}
 
 func (x *ImageNode) ProtoReflect() protoreflect.Message {
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[33]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[34]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4106,7 +4209,7 @@ func (x *ImageNode) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ImageNode.ProtoReflect.Descriptor instead.
 func (*ImageNode) Descriptor() ([]byte, []int) {
-	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{33}
+	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{34}
 }
 
 func (x *ImageNode) GetAssetHash() string {
@@ -4186,7 +4289,7 @@ type Anchor struct {
 
 func (x *Anchor) Reset() {
 	*x = Anchor{}
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[34]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[35]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4198,7 +4301,7 @@ func (x *Anchor) String() string {
 func (*Anchor) ProtoMessage() {}
 
 func (x *Anchor) ProtoReflect() protoreflect.Message {
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[34]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[35]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4211,7 +4314,7 @@ func (x *Anchor) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Anchor.ProtoReflect.Descriptor instead.
 func (*Anchor) Descriptor() ([]byte, []int) {
-	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{34}
+	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{35}
 }
 
 func (x *Anchor) GetX() float64 {
@@ -4269,7 +4372,7 @@ type SubPath struct {
 
 func (x *SubPath) Reset() {
 	*x = SubPath{}
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[35]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[36]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4281,7 +4384,7 @@ func (x *SubPath) String() string {
 func (*SubPath) ProtoMessage() {}
 
 func (x *SubPath) ProtoReflect() protoreflect.Message {
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[35]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[36]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4294,7 +4397,7 @@ func (x *SubPath) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SubPath.ProtoReflect.Descriptor instead.
 func (*SubPath) Descriptor() ([]byte, []int) {
-	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{35}
+	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{36}
 }
 
 func (x *SubPath) GetAnchors() []*Anchor {
@@ -4365,7 +4468,7 @@ type VectorNode struct {
 
 func (x *VectorNode) Reset() {
 	*x = VectorNode{}
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[36]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[37]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4377,7 +4480,7 @@ func (x *VectorNode) String() string {
 func (*VectorNode) ProtoMessage() {}
 
 func (x *VectorNode) ProtoReflect() protoreflect.Message {
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[36]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[37]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4390,7 +4493,7 @@ func (x *VectorNode) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use VectorNode.ProtoReflect.Descriptor instead.
 func (*VectorNode) Descriptor() ([]byte, []int) {
-	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{36}
+	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{37}
 }
 
 func (x *VectorNode) GetSubpaths() []*SubPath {
@@ -4421,7 +4524,7 @@ type Component struct {
 
 func (x *Component) Reset() {
 	*x = Component{}
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[37]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[38]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4433,7 +4536,7 @@ func (x *Component) String() string {
 func (*Component) ProtoMessage() {}
 
 func (x *Component) ProtoReflect() protoreflect.Message {
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[37]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[38]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4446,7 +4549,7 @@ func (x *Component) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Component.ProtoReflect.Descriptor instead.
 func (*Component) Descriptor() ([]byte, []int) {
-	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{37}
+	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{38}
 }
 
 func (x *Component) GetRootNodeId() string {
@@ -4506,7 +4609,7 @@ type ComponentProperty struct {
 
 func (x *ComponentProperty) Reset() {
 	*x = ComponentProperty{}
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[38]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[39]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4518,7 +4621,7 @@ func (x *ComponentProperty) String() string {
 func (*ComponentProperty) ProtoMessage() {}
 
 func (x *ComponentProperty) ProtoReflect() protoreflect.Message {
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[38]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[39]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4531,7 +4634,7 @@ func (x *ComponentProperty) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ComponentProperty.ProtoReflect.Descriptor instead.
 func (*ComponentProperty) Descriptor() ([]byte, []int) {
-	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{38}
+	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{39}
 }
 
 func (x *ComponentProperty) GetName() string {
@@ -4591,7 +4694,7 @@ type VariantAxis struct {
 
 func (x *VariantAxis) Reset() {
 	*x = VariantAxis{}
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[39]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[40]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4603,7 +4706,7 @@ func (x *VariantAxis) String() string {
 func (*VariantAxis) ProtoMessage() {}
 
 func (x *VariantAxis) ProtoReflect() protoreflect.Message {
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[39]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[40]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4616,7 +4719,7 @@ func (x *VariantAxis) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use VariantAxis.ProtoReflect.Descriptor instead.
 func (*VariantAxis) Descriptor() ([]byte, []int) {
-	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{39}
+	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{40}
 }
 
 func (x *VariantAxis) GetName() string {
@@ -4644,7 +4747,7 @@ type ComponentSet struct {
 
 func (x *ComponentSet) Reset() {
 	*x = ComponentSet{}
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[40]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[41]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4656,7 +4759,7 @@ func (x *ComponentSet) String() string {
 func (*ComponentSet) ProtoMessage() {}
 
 func (x *ComponentSet) ProtoReflect() protoreflect.Message {
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[40]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[41]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4669,7 +4772,7 @@ func (x *ComponentSet) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ComponentSet.ProtoReflect.Descriptor instead.
 func (*ComponentSet) Descriptor() ([]byte, []int) {
-	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{40}
+	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{41}
 }
 
 func (x *ComponentSet) GetId() string {
@@ -4710,7 +4813,7 @@ type InstanceOverride struct {
 
 func (x *InstanceOverride) Reset() {
 	*x = InstanceOverride{}
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[41]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[42]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4722,7 +4825,7 @@ func (x *InstanceOverride) String() string {
 func (*InstanceOverride) ProtoMessage() {}
 
 func (x *InstanceOverride) ProtoReflect() protoreflect.Message {
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[41]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[42]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4735,7 +4838,7 @@ func (x *InstanceOverride) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use InstanceOverride.ProtoReflect.Descriptor instead.
 func (*InstanceOverride) Descriptor() ([]byte, []int) {
-	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{41}
+	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{42}
 }
 
 func (x *InstanceOverride) GetMasterNodeId() string {
@@ -4791,7 +4894,7 @@ type InstanceNode struct {
 
 func (x *InstanceNode) Reset() {
 	*x = InstanceNode{}
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[42]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[43]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4803,7 +4906,7 @@ func (x *InstanceNode) String() string {
 func (*InstanceNode) ProtoMessage() {}
 
 func (x *InstanceNode) ProtoReflect() protoreflect.Message {
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[42]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[43]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4816,7 +4919,7 @@ func (x *InstanceNode) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use InstanceNode.ProtoReflect.Descriptor instead.
 func (*InstanceNode) Descriptor() ([]byte, []int) {
-	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{42}
+	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{43}
 }
 
 func (x *InstanceNode) GetComponentId() string {
@@ -4969,7 +5072,7 @@ type Node struct {
 
 func (x *Node) Reset() {
 	*x = Node{}
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[43]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[44]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4981,7 +5084,7 @@ func (x *Node) String() string {
 func (*Node) ProtoMessage() {}
 
 func (x *Node) ProtoReflect() protoreflect.Message {
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[43]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[44]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4994,7 +5097,7 @@ func (x *Node) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Node.ProtoReflect.Descriptor instead.
 func (*Node) Descriptor() ([]byte, []int) {
-	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{43}
+	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{44}
 }
 
 func (x *Node) GetId() string {
@@ -5430,7 +5533,7 @@ type LayoutGrid struct {
 
 func (x *LayoutGrid) Reset() {
 	*x = LayoutGrid{}
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[44]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[45]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5442,7 +5545,7 @@ func (x *LayoutGrid) String() string {
 func (*LayoutGrid) ProtoMessage() {}
 
 func (x *LayoutGrid) ProtoReflect() protoreflect.Message {
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[44]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[45]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5455,7 +5558,7 @@ func (x *LayoutGrid) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use LayoutGrid.ProtoReflect.Descriptor instead.
 func (*LayoutGrid) Descriptor() ([]byte, []int) {
-	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{44}
+	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{45}
 }
 
 func (x *LayoutGrid) GetKind() LayoutGridKind {
@@ -5541,7 +5644,7 @@ type Page struct {
 
 func (x *Page) Reset() {
 	*x = Page{}
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[45]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[46]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5553,7 +5656,7 @@ func (x *Page) String() string {
 func (*Page) ProtoMessage() {}
 
 func (x *Page) ProtoReflect() protoreflect.Message {
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[45]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[46]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5566,7 +5669,7 @@ func (x *Page) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Page.ProtoReflect.Descriptor instead.
 func (*Page) Descriptor() ([]byte, []int) {
-	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{45}
+	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{46}
 }
 
 func (x *Page) GetId() string {
@@ -5720,7 +5823,7 @@ type Guide struct {
 
 func (x *Guide) Reset() {
 	*x = Guide{}
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[46]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[47]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5732,7 +5835,7 @@ func (x *Guide) String() string {
 func (*Guide) ProtoMessage() {}
 
 func (x *Guide) ProtoReflect() protoreflect.Message {
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[46]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[47]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5745,7 +5848,7 @@ func (x *Guide) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Guide.ProtoReflect.Descriptor instead.
 func (*Guide) Descriptor() ([]byte, []int) {
-	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{46}
+	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{47}
 }
 
 func (x *Guide) GetVertical() bool {
@@ -5780,7 +5883,7 @@ type FontFace struct {
 
 func (x *FontFace) Reset() {
 	*x = FontFace{}
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[47]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[48]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5792,7 +5895,7 @@ func (x *FontFace) String() string {
 func (*FontFace) ProtoMessage() {}
 
 func (x *FontFace) ProtoReflect() protoreflect.Message {
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[47]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[48]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5805,7 +5908,7 @@ func (x *FontFace) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FontFace.ProtoReflect.Descriptor instead.
 func (*FontFace) Descriptor() ([]byte, []int) {
-	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{47}
+	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{48}
 }
 
 func (x *FontFace) GetId() string {
@@ -5891,7 +5994,7 @@ type TextStyleDef struct {
 
 func (x *TextStyleDef) Reset() {
 	*x = TextStyleDef{}
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[48]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[49]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5903,7 +6006,7 @@ func (x *TextStyleDef) String() string {
 func (*TextStyleDef) ProtoMessage() {}
 
 func (x *TextStyleDef) ProtoReflect() protoreflect.Message {
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[48]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[49]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5916,7 +6019,7 @@ func (x *TextStyleDef) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TextStyleDef.ProtoReflect.Descriptor instead.
 func (*TextStyleDef) Descriptor() ([]byte, []int) {
-	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{48}
+	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{49}
 }
 
 func (x *TextStyleDef) GetId() string {
@@ -6157,7 +6260,7 @@ type PaintStyleDef struct {
 
 func (x *PaintStyleDef) Reset() {
 	*x = PaintStyleDef{}
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[49]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[50]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6169,7 +6272,7 @@ func (x *PaintStyleDef) String() string {
 func (*PaintStyleDef) ProtoMessage() {}
 
 func (x *PaintStyleDef) ProtoReflect() protoreflect.Message {
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[49]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[50]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6182,7 +6285,7 @@ func (x *PaintStyleDef) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PaintStyleDef.ProtoReflect.Descriptor instead.
 func (*PaintStyleDef) Descriptor() ([]byte, []int) {
-	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{49}
+	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{50}
 }
 
 func (x *PaintStyleDef) GetId() string {
@@ -6217,7 +6320,7 @@ type EffectStyleDef struct {
 
 func (x *EffectStyleDef) Reset() {
 	*x = EffectStyleDef{}
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[50]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[51]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6229,7 +6332,7 @@ func (x *EffectStyleDef) String() string {
 func (*EffectStyleDef) ProtoMessage() {}
 
 func (x *EffectStyleDef) ProtoReflect() protoreflect.Message {
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[50]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[51]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6242,7 +6345,7 @@ func (x *EffectStyleDef) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use EffectStyleDef.ProtoReflect.Descriptor instead.
 func (*EffectStyleDef) Descriptor() ([]byte, []int) {
-	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{50}
+	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{51}
 }
 
 func (x *EffectStyleDef) GetId() string {
@@ -6282,7 +6385,7 @@ type ParagraphRule struct {
 
 func (x *ParagraphRule) Reset() {
 	*x = ParagraphRule{}
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[51]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[52]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6294,7 +6397,7 @@ func (x *ParagraphRule) String() string {
 func (*ParagraphRule) ProtoMessage() {}
 
 func (x *ParagraphRule) ProtoReflect() protoreflect.Message {
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[51]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[52]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6307,7 +6410,7 @@ func (x *ParagraphRule) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ParagraphRule.ProtoReflect.Descriptor instead.
 func (*ParagraphRule) Descriptor() ([]byte, []int) {
-	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{51}
+	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{52}
 }
 
 func (x *ParagraphRule) GetWeight() float64 {
@@ -6365,7 +6468,7 @@ type TabStop struct {
 
 func (x *TabStop) Reset() {
 	*x = TabStop{}
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[52]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[53]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6377,7 +6480,7 @@ func (x *TabStop) String() string {
 func (*TabStop) ProtoMessage() {}
 
 func (x *TabStop) ProtoReflect() protoreflect.Message {
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[52]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[53]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6390,7 +6493,7 @@ func (x *TabStop) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TabStop.ProtoReflect.Descriptor instead.
 func (*TabStop) Descriptor() ([]byte, []int) {
-	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{52}
+	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{53}
 }
 
 func (x *TabStop) GetPosition() float64 {
@@ -6428,7 +6531,7 @@ type NestedStyle struct {
 
 func (x *NestedStyle) Reset() {
 	*x = NestedStyle{}
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[53]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[54]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6440,7 +6543,7 @@ func (x *NestedStyle) String() string {
 func (*NestedStyle) ProtoMessage() {}
 
 func (x *NestedStyle) ProtoReflect() protoreflect.Message {
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[53]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[54]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6453,7 +6556,7 @@ func (x *NestedStyle) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use NestedStyle.ProtoReflect.Descriptor instead.
 func (*NestedStyle) Descriptor() ([]byte, []int) {
-	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{53}
+	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{54}
 }
 
 func (x *NestedStyle) GetStyleId() string {
@@ -6499,7 +6602,7 @@ type VariableMode struct {
 
 func (x *VariableMode) Reset() {
 	*x = VariableMode{}
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[54]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[55]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6511,7 +6614,7 @@ func (x *VariableMode) String() string {
 func (*VariableMode) ProtoMessage() {}
 
 func (x *VariableMode) ProtoReflect() protoreflect.Message {
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[54]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[55]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6524,7 +6627,7 @@ func (x *VariableMode) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use VariableMode.ProtoReflect.Descriptor instead.
 func (*VariableMode) Descriptor() ([]byte, []int) {
-	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{54}
+	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{55}
 }
 
 func (x *VariableMode) GetId() string {
@@ -6552,7 +6655,7 @@ type VariableCollection struct {
 
 func (x *VariableCollection) Reset() {
 	*x = VariableCollection{}
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[55]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[56]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6564,7 +6667,7 @@ func (x *VariableCollection) String() string {
 func (*VariableCollection) ProtoMessage() {}
 
 func (x *VariableCollection) ProtoReflect() protoreflect.Message {
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[55]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[56]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6577,7 +6680,7 @@ func (x *VariableCollection) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use VariableCollection.ProtoReflect.Descriptor instead.
 func (*VariableCollection) Descriptor() ([]byte, []int) {
-	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{55}
+	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{56}
 }
 
 func (x *VariableCollection) GetId() string {
@@ -6616,7 +6719,7 @@ type VariableValue struct {
 
 func (x *VariableValue) Reset() {
 	*x = VariableValue{}
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[56]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[57]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6628,7 +6731,7 @@ func (x *VariableValue) String() string {
 func (*VariableValue) ProtoMessage() {}
 
 func (x *VariableValue) ProtoReflect() protoreflect.Message {
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[56]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[57]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6641,7 +6744,7 @@ func (x *VariableValue) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use VariableValue.ProtoReflect.Descriptor instead.
 func (*VariableValue) Descriptor() ([]byte, []int) {
-	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{56}
+	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{57}
 }
 
 func (x *VariableValue) GetKind() isVariableValue_Kind {
@@ -6747,7 +6850,7 @@ type Variable struct {
 
 func (x *Variable) Reset() {
 	*x = Variable{}
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[57]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[58]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6759,7 +6862,7 @@ func (x *Variable) String() string {
 func (*Variable) ProtoMessage() {}
 
 func (x *Variable) ProtoReflect() protoreflect.Message {
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[57]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[58]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6772,7 +6875,7 @@ func (x *Variable) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Variable.ProtoReflect.Descriptor instead.
 func (*Variable) Descriptor() ([]byte, []int) {
-	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{57}
+	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{58}
 }
 
 func (x *Variable) GetId() string {
@@ -6864,7 +6967,7 @@ type Cmyk struct {
 
 func (x *Cmyk) Reset() {
 	*x = Cmyk{}
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[58]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[59]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6876,7 +6979,7 @@ func (x *Cmyk) String() string {
 func (*Cmyk) ProtoMessage() {}
 
 func (x *Cmyk) ProtoReflect() protoreflect.Message {
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[58]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[59]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6889,7 +6992,7 @@ func (x *Cmyk) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Cmyk.ProtoReflect.Descriptor instead.
 func (*Cmyk) Descriptor() ([]byte, []int) {
-	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{58}
+	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{59}
 }
 
 func (x *Cmyk) GetC() float32 {
@@ -6939,7 +7042,7 @@ type Flow struct {
 
 func (x *Flow) Reset() {
 	*x = Flow{}
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[59]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[60]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6951,7 +7054,7 @@ func (x *Flow) String() string {
 func (*Flow) ProtoMessage() {}
 
 func (x *Flow) ProtoReflect() protoreflect.Message {
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[59]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[60]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6964,7 +7067,7 @@ func (x *Flow) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Flow.ProtoReflect.Descriptor instead.
 func (*Flow) Descriptor() ([]byte, []int) {
-	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{59}
+	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{60}
 }
 
 func (x *Flow) GetId() string {
@@ -7031,7 +7134,7 @@ type Transition struct {
 
 func (x *Transition) Reset() {
 	*x = Transition{}
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[60]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[61]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -7043,7 +7146,7 @@ func (x *Transition) String() string {
 func (*Transition) ProtoMessage() {}
 
 func (x *Transition) ProtoReflect() protoreflect.Message {
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[60]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[61]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -7056,7 +7159,7 @@ func (x *Transition) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Transition.ProtoReflect.Descriptor instead.
 func (*Transition) Descriptor() ([]byte, []int) {
-	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{60}
+	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{61}
 }
 
 func (x *Transition) GetId() string {
@@ -7176,7 +7279,7 @@ type Keyframe struct {
 
 func (x *Keyframe) Reset() {
 	*x = Keyframe{}
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[61]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[62]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -7188,7 +7291,7 @@ func (x *Keyframe) String() string {
 func (*Keyframe) ProtoMessage() {}
 
 func (x *Keyframe) ProtoReflect() protoreflect.Message {
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[61]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[62]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -7201,7 +7304,7 @@ func (x *Keyframe) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Keyframe.ProtoReflect.Descriptor instead.
 func (*Keyframe) Descriptor() ([]byte, []int) {
-	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{61}
+	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{62}
 }
 
 func (x *Keyframe) GetTime() float64 {
@@ -7239,7 +7342,7 @@ type Track struct {
 
 func (x *Track) Reset() {
 	*x = Track{}
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[62]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[63]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -7251,7 +7354,7 @@ func (x *Track) String() string {
 func (*Track) ProtoMessage() {}
 
 func (x *Track) ProtoReflect() protoreflect.Message {
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[62]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[63]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -7264,7 +7367,7 @@ func (x *Track) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Track.ProtoReflect.Descriptor instead.
 func (*Track) Descriptor() ([]byte, []int) {
-	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{62}
+	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{63}
 }
 
 func (x *Track) GetNodeId() string {
@@ -7305,7 +7408,7 @@ type Clip struct {
 
 func (x *Clip) Reset() {
 	*x = Clip{}
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[63]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[64]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -7317,7 +7420,7 @@ func (x *Clip) String() string {
 func (*Clip) ProtoMessage() {}
 
 func (x *Clip) ProtoReflect() protoreflect.Message {
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[63]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[64]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -7330,7 +7433,7 @@ func (x *Clip) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Clip.ProtoReflect.Descriptor instead.
 func (*Clip) Descriptor() ([]byte, []int) {
-	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{63}
+	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{64}
 }
 
 func (x *Clip) GetId() string {
@@ -7437,7 +7540,7 @@ type Document struct {
 
 func (x *Document) Reset() {
 	*x = Document{}
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[64]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[65]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -7449,7 +7552,7 @@ func (x *Document) String() string {
 func (*Document) ProtoMessage() {}
 
 func (x *Document) ProtoReflect() protoreflect.Message {
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[64]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[65]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -7462,7 +7565,7 @@ func (x *Document) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Document.ProtoReflect.Descriptor instead.
 func (*Document) Descriptor() ([]byte, []int) {
-	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{64}
+	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{65}
 }
 
 func (x *Document) GetId() string {
@@ -7641,7 +7744,7 @@ type ObjectStyleDef struct {
 
 func (x *ObjectStyleDef) Reset() {
 	*x = ObjectStyleDef{}
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[65]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[66]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -7653,7 +7756,7 @@ func (x *ObjectStyleDef) String() string {
 func (*ObjectStyleDef) ProtoMessage() {}
 
 func (x *ObjectStyleDef) ProtoReflect() protoreflect.Message {
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[65]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[66]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -7666,7 +7769,7 @@ func (x *ObjectStyleDef) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ObjectStyleDef.ProtoReflect.Descriptor instead.
 func (*ObjectStyleDef) Descriptor() ([]byte, []int) {
-	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{65}
+	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{66}
 }
 
 func (x *ObjectStyleDef) GetId() string {
@@ -7755,7 +7858,7 @@ type Layer struct {
 
 func (x *Layer) Reset() {
 	*x = Layer{}
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[66]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[67]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -7767,7 +7870,7 @@ func (x *Layer) String() string {
 func (*Layer) ProtoMessage() {}
 
 func (x *Layer) ProtoReflect() protoreflect.Message {
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[66]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[67]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -7780,7 +7883,7 @@ func (x *Layer) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Layer.ProtoReflect.Descriptor instead.
 func (*Layer) Descriptor() ([]byte, []int) {
-	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{66}
+	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{67}
 }
 
 func (x *Layer) GetId() string {
@@ -7856,7 +7959,7 @@ type DocSettings struct {
 
 func (x *DocSettings) Reset() {
 	*x = DocSettings{}
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[67]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[68]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -7868,7 +7971,7 @@ func (x *DocSettings) String() string {
 func (*DocSettings) ProtoMessage() {}
 
 func (x *DocSettings) ProtoReflect() protoreflect.Message {
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[67]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[68]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -7881,7 +7984,7 @@ func (x *DocSettings) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DocSettings.ProtoReflect.Descriptor instead.
 func (*DocSettings) Descriptor() ([]byte, []int) {
-	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{67}
+	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{68}
 }
 
 func (x *DocSettings) GetVertical() string {
@@ -7966,7 +8069,7 @@ type TextCondition struct {
 
 func (x *TextCondition) Reset() {
 	*x = TextCondition{}
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[68]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[69]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -7978,7 +8081,7 @@ func (x *TextCondition) String() string {
 func (*TextCondition) ProtoMessage() {}
 
 func (x *TextCondition) ProtoReflect() protoreflect.Message {
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[68]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[69]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -7991,7 +8094,7 @@ func (x *TextCondition) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TextCondition.ProtoReflect.Descriptor instead.
 func (*TextCondition) Descriptor() ([]byte, []int) {
-	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{68}
+	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{69}
 }
 
 func (x *TextCondition) GetName() string {
@@ -8025,7 +8128,7 @@ type TableStyle struct {
 
 func (x *TableStyle) Reset() {
 	*x = TableStyle{}
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[69]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[70]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -8037,7 +8140,7 @@ func (x *TableStyle) String() string {
 func (*TableStyle) ProtoMessage() {}
 
 func (x *TableStyle) ProtoReflect() protoreflect.Message {
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[69]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[70]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -8050,7 +8153,7 @@ func (x *TableStyle) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TableStyle.ProtoReflect.Descriptor instead.
 func (*TableStyle) Descriptor() ([]byte, []int) {
-	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{69}
+	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{70}
 }
 
 func (x *TableStyle) GetId() string {
@@ -8130,7 +8233,7 @@ type BookMetadata struct {
 
 func (x *BookMetadata) Reset() {
 	*x = BookMetadata{}
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[70]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[71]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -8142,7 +8245,7 @@ func (x *BookMetadata) String() string {
 func (*BookMetadata) ProtoMessage() {}
 
 func (x *BookMetadata) ProtoReflect() protoreflect.Message {
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[70]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[71]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -8155,7 +8258,7 @@ func (x *BookMetadata) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use BookMetadata.ProtoReflect.Descriptor instead.
 func (*BookMetadata) Descriptor() ([]byte, []int) {
-	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{70}
+	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{71}
 }
 
 func (x *BookMetadata) GetIsbn13() string {
@@ -8295,7 +8398,7 @@ type Contributor struct {
 
 func (x *Contributor) Reset() {
 	*x = Contributor{}
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[71]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[72]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -8307,7 +8410,7 @@ func (x *Contributor) String() string {
 func (*Contributor) ProtoMessage() {}
 
 func (x *Contributor) ProtoReflect() protoreflect.Message {
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[71]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[72]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -8320,7 +8423,7 @@ func (x *Contributor) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Contributor.ProtoReflect.Descriptor instead.
 func (*Contributor) Descriptor() ([]byte, []int) {
-	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{71}
+	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{72}
 }
 
 func (x *Contributor) GetRole() string {
@@ -8355,7 +8458,7 @@ type Subject struct {
 
 func (x *Subject) Reset() {
 	*x = Subject{}
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[72]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[73]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -8367,7 +8470,7 @@ func (x *Subject) String() string {
 func (*Subject) ProtoMessage() {}
 
 func (x *Subject) ProtoReflect() protoreflect.Message {
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[72]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[73]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -8380,7 +8483,7 @@ func (x *Subject) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Subject.ProtoReflect.Descriptor instead.
 func (*Subject) Descriptor() ([]byte, []int) {
-	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{72}
+	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{73}
 }
 
 func (x *Subject) GetScheme() string {
@@ -8415,7 +8518,7 @@ type Price struct {
 
 func (x *Price) Reset() {
 	*x = Price{}
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[73]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[74]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -8427,7 +8530,7 @@ func (x *Price) String() string {
 func (*Price) ProtoMessage() {}
 
 func (x *Price) ProtoReflect() protoreflect.Message {
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[73]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[74]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -8440,7 +8543,7 @@ func (x *Price) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Price.ProtoReflect.Descriptor instead.
 func (*Price) Descriptor() ([]byte, []int) {
-	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{73}
+	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{74}
 }
 
 func (x *Price) GetPriceType() string {
@@ -8474,7 +8577,7 @@ type CreateNode struct {
 
 func (x *CreateNode) Reset() {
 	*x = CreateNode{}
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[74]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[75]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -8486,7 +8589,7 @@ func (x *CreateNode) String() string {
 func (*CreateNode) ProtoMessage() {}
 
 func (x *CreateNode) ProtoReflect() protoreflect.Message {
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[74]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[75]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -8499,7 +8602,7 @@ func (x *CreateNode) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateNode.ProtoReflect.Descriptor instead.
 func (*CreateNode) Descriptor() ([]byte, []int) {
-	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{74}
+	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{75}
 }
 
 func (x *CreateNode) GetNode() *Node {
@@ -8518,7 +8621,7 @@ type DeleteNode struct {
 
 func (x *DeleteNode) Reset() {
 	*x = DeleteNode{}
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[75]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[76]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -8530,7 +8633,7 @@ func (x *DeleteNode) String() string {
 func (*DeleteNode) ProtoMessage() {}
 
 func (x *DeleteNode) ProtoReflect() protoreflect.Message {
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[75]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[76]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -8543,7 +8646,7 @@ func (x *DeleteNode) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteNode.ProtoReflect.Descriptor instead.
 func (*DeleteNode) Descriptor() ([]byte, []int) {
-	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{75}
+	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{76}
 }
 
 func (x *DeleteNode) GetId() string {
@@ -8564,7 +8667,7 @@ type SetProperties struct {
 
 func (x *SetProperties) Reset() {
 	*x = SetProperties{}
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[76]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[77]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -8576,7 +8679,7 @@ func (x *SetProperties) String() string {
 func (*SetProperties) ProtoMessage() {}
 
 func (x *SetProperties) ProtoReflect() protoreflect.Message {
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[76]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[77]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -8589,7 +8692,7 @@ func (x *SetProperties) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SetProperties.ProtoReflect.Descriptor instead.
 func (*SetProperties) Descriptor() ([]byte, []int) {
-	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{76}
+	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{77}
 }
 
 func (x *SetProperties) GetId() string {
@@ -8641,7 +8744,7 @@ type SetText struct {
 
 func (x *SetText) Reset() {
 	*x = SetText{}
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[77]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[78]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -8653,7 +8756,7 @@ func (x *SetText) String() string {
 func (*SetText) ProtoMessage() {}
 
 func (x *SetText) ProtoReflect() protoreflect.Message {
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[77]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[78]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -8666,7 +8769,7 @@ func (x *SetText) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SetText.ProtoReflect.Descriptor instead.
 func (*SetText) Descriptor() ([]byte, []int) {
-	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{77}
+	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{78}
 }
 
 func (x *SetText) GetId() string {
@@ -8743,7 +8846,7 @@ type SetVectorPath struct {
 
 func (x *SetVectorPath) Reset() {
 	*x = SetVectorPath{}
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[78]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[79]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -8755,7 +8858,7 @@ func (x *SetVectorPath) String() string {
 func (*SetVectorPath) ProtoMessage() {}
 
 func (x *SetVectorPath) ProtoReflect() protoreflect.Message {
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[78]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[79]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -8768,7 +8871,7 @@ func (x *SetVectorPath) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SetVectorPath.ProtoReflect.Descriptor instead.
 func (*SetVectorPath) Descriptor() ([]byte, []int) {
-	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{78}
+	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{79}
 }
 
 func (x *SetVectorPath) GetId() string {
@@ -8810,7 +8913,7 @@ type ReparentNode struct {
 
 func (x *ReparentNode) Reset() {
 	*x = ReparentNode{}
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[79]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[80]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -8822,7 +8925,7 @@ func (x *ReparentNode) String() string {
 func (*ReparentNode) ProtoMessage() {}
 
 func (x *ReparentNode) ProtoReflect() protoreflect.Message {
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[79]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[80]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -8835,7 +8938,7 @@ func (x *ReparentNode) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ReparentNode.ProtoReflect.Descriptor instead.
 func (*ReparentNode) Descriptor() ([]byte, []int) {
-	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{79}
+	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{80}
 }
 
 func (x *ReparentNode) GetId() string {
@@ -8879,7 +8982,7 @@ type CreatePage struct {
 
 func (x *CreatePage) Reset() {
 	*x = CreatePage{}
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[80]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[81]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -8891,7 +8994,7 @@ func (x *CreatePage) String() string {
 func (*CreatePage) ProtoMessage() {}
 
 func (x *CreatePage) ProtoReflect() protoreflect.Message {
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[80]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[81]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -8904,7 +9007,7 @@ func (x *CreatePage) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreatePage.ProtoReflect.Descriptor instead.
 func (*CreatePage) Descriptor() ([]byte, []int) {
-	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{80}
+	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{81}
 }
 
 func (x *CreatePage) GetPage() *Page {
@@ -8927,7 +9030,7 @@ type DeletePage struct {
 
 func (x *DeletePage) Reset() {
 	*x = DeletePage{}
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[81]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[82]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -8939,7 +9042,7 @@ func (x *DeletePage) String() string {
 func (*DeletePage) ProtoMessage() {}
 
 func (x *DeletePage) ProtoReflect() protoreflect.Message {
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[81]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[82]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -8952,7 +9055,7 @@ func (x *DeletePage) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeletePage.ProtoReflect.Descriptor instead.
 func (*DeletePage) Descriptor() ([]byte, []int) {
-	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{81}
+	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{82}
 }
 
 func (x *DeletePage) GetId() string {
@@ -8972,7 +9075,7 @@ type RenamePage struct {
 
 func (x *RenamePage) Reset() {
 	*x = RenamePage{}
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[82]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[83]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -8984,7 +9087,7 @@ func (x *RenamePage) String() string {
 func (*RenamePage) ProtoMessage() {}
 
 func (x *RenamePage) ProtoReflect() protoreflect.Message {
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[82]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[83]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -8997,7 +9100,7 @@ func (x *RenamePage) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RenamePage.ProtoReflect.Descriptor instead.
 func (*RenamePage) Descriptor() ([]byte, []int) {
-	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{82}
+	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{83}
 }
 
 func (x *RenamePage) GetId() string {
@@ -9024,7 +9127,7 @@ type UpdatePage struct {
 
 func (x *UpdatePage) Reset() {
 	*x = UpdatePage{}
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[83]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[84]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -9036,7 +9139,7 @@ func (x *UpdatePage) String() string {
 func (*UpdatePage) ProtoMessage() {}
 
 func (x *UpdatePage) ProtoReflect() protoreflect.Message {
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[83]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[84]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -9049,7 +9152,7 @@ func (x *UpdatePage) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UpdatePage.ProtoReflect.Descriptor instead.
 func (*UpdatePage) Descriptor() ([]byte, []int) {
-	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{83}
+	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{84}
 }
 
 func (x *UpdatePage) GetPage() *Page {
@@ -9070,7 +9173,7 @@ type MovePage struct {
 
 func (x *MovePage) Reset() {
 	*x = MovePage{}
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[84]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[85]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -9082,7 +9185,7 @@ func (x *MovePage) String() string {
 func (*MovePage) ProtoMessage() {}
 
 func (x *MovePage) ProtoReflect() protoreflect.Message {
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[84]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[85]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -9095,7 +9198,7 @@ func (x *MovePage) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use MovePage.ProtoReflect.Descriptor instead.
 func (*MovePage) Descriptor() ([]byte, []int) {
-	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{84}
+	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{85}
 }
 
 func (x *MovePage) GetId() string {
@@ -9122,7 +9225,7 @@ type SetDocSettings struct {
 
 func (x *SetDocSettings) Reset() {
 	*x = SetDocSettings{}
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[85]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[86]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -9134,7 +9237,7 @@ func (x *SetDocSettings) String() string {
 func (*SetDocSettings) ProtoMessage() {}
 
 func (x *SetDocSettings) ProtoReflect() protoreflect.Message {
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[85]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[86]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -9147,7 +9250,7 @@ func (x *SetDocSettings) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SetDocSettings.ProtoReflect.Descriptor instead.
 func (*SetDocSettings) Descriptor() ([]byte, []int) {
-	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{85}
+	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{86}
 }
 
 func (x *SetDocSettings) GetSettings() *DocSettings {
@@ -9171,7 +9274,7 @@ type CreateComponent struct {
 
 func (x *CreateComponent) Reset() {
 	*x = CreateComponent{}
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[86]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[87]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -9183,7 +9286,7 @@ func (x *CreateComponent) String() string {
 func (*CreateComponent) ProtoMessage() {}
 
 func (x *CreateComponent) ProtoReflect() protoreflect.Message {
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[86]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[87]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -9196,7 +9299,7 @@ func (x *CreateComponent) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateComponent.ProtoReflect.Descriptor instead.
 func (*CreateComponent) Descriptor() ([]byte, []int) {
-	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{86}
+	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{87}
 }
 
 func (x *CreateComponent) GetComponentId() string {
@@ -9234,7 +9337,7 @@ type SetInstanceOverride struct {
 
 func (x *SetInstanceOverride) Reset() {
 	*x = SetInstanceOverride{}
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[87]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[88]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -9246,7 +9349,7 @@ func (x *SetInstanceOverride) String() string {
 func (*SetInstanceOverride) ProtoMessage() {}
 
 func (x *SetInstanceOverride) ProtoReflect() protoreflect.Message {
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[87]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[88]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -9259,7 +9362,7 @@ func (x *SetInstanceOverride) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SetInstanceOverride.ProtoReflect.Descriptor instead.
 func (*SetInstanceOverride) Descriptor() ([]byte, []int) {
-	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{87}
+	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{88}
 }
 
 func (x *SetInstanceOverride) GetInstanceId() string {
@@ -9287,7 +9390,7 @@ type SetFlow struct {
 
 func (x *SetFlow) Reset() {
 	*x = SetFlow{}
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[88]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[89]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -9299,7 +9402,7 @@ func (x *SetFlow) String() string {
 func (*SetFlow) ProtoMessage() {}
 
 func (x *SetFlow) ProtoReflect() protoreflect.Message {
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[88]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[89]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -9312,7 +9415,7 @@ func (x *SetFlow) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SetFlow.ProtoReflect.Descriptor instead.
 func (*SetFlow) Descriptor() ([]byte, []int) {
-	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{88}
+	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{89}
 }
 
 func (x *SetFlow) GetFlow() *Flow {
@@ -9332,7 +9435,7 @@ type DeleteFlow struct {
 
 func (x *DeleteFlow) Reset() {
 	*x = DeleteFlow{}
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[89]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[90]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -9344,7 +9447,7 @@ func (x *DeleteFlow) String() string {
 func (*DeleteFlow) ProtoMessage() {}
 
 func (x *DeleteFlow) ProtoReflect() protoreflect.Message {
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[89]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[90]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -9357,7 +9460,7 @@ func (x *DeleteFlow) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteFlow.ProtoReflect.Descriptor instead.
 func (*DeleteFlow) Descriptor() ([]byte, []int) {
-	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{89}
+	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{90}
 }
 
 func (x *DeleteFlow) GetId() string {
@@ -9376,7 +9479,7 @@ type SetTransition struct {
 
 func (x *SetTransition) Reset() {
 	*x = SetTransition{}
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[90]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[91]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -9388,7 +9491,7 @@ func (x *SetTransition) String() string {
 func (*SetTransition) ProtoMessage() {}
 
 func (x *SetTransition) ProtoReflect() protoreflect.Message {
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[90]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[91]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -9401,7 +9504,7 @@ func (x *SetTransition) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SetTransition.ProtoReflect.Descriptor instead.
 func (*SetTransition) Descriptor() ([]byte, []int) {
-	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{90}
+	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{91}
 }
 
 func (x *SetTransition) GetTransition() *Transition {
@@ -9420,7 +9523,7 @@ type DeleteTransition struct {
 
 func (x *DeleteTransition) Reset() {
 	*x = DeleteTransition{}
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[91]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[92]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -9432,7 +9535,7 @@ func (x *DeleteTransition) String() string {
 func (*DeleteTransition) ProtoMessage() {}
 
 func (x *DeleteTransition) ProtoReflect() protoreflect.Message {
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[91]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[92]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -9445,7 +9548,7 @@ func (x *DeleteTransition) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteTransition.ProtoReflect.Descriptor instead.
 func (*DeleteTransition) Descriptor() ([]byte, []int) {
-	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{91}
+	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{92}
 }
 
 func (x *DeleteTransition) GetId() string {
@@ -9465,7 +9568,7 @@ type SetClip struct {
 
 func (x *SetClip) Reset() {
 	*x = SetClip{}
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[92]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[93]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -9477,7 +9580,7 @@ func (x *SetClip) String() string {
 func (*SetClip) ProtoMessage() {}
 
 func (x *SetClip) ProtoReflect() protoreflect.Message {
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[92]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[93]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -9490,7 +9593,7 @@ func (x *SetClip) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SetClip.ProtoReflect.Descriptor instead.
 func (*SetClip) Descriptor() ([]byte, []int) {
-	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{92}
+	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{93}
 }
 
 func (x *SetClip) GetClip() *Clip {
@@ -9509,7 +9612,7 @@ type DeleteClip struct {
 
 func (x *DeleteClip) Reset() {
 	*x = DeleteClip{}
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[93]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[94]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -9521,7 +9624,7 @@ func (x *DeleteClip) String() string {
 func (*DeleteClip) ProtoMessage() {}
 
 func (x *DeleteClip) ProtoReflect() protoreflect.Message {
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[93]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[94]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -9534,7 +9637,7 @@ func (x *DeleteClip) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteClip.ProtoReflect.Descriptor instead.
 func (*DeleteClip) Descriptor() ([]byte, []int) {
-	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{93}
+	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{94}
 }
 
 func (x *DeleteClip) GetId() string {
@@ -9605,7 +9708,7 @@ type Op struct {
 
 func (x *Op) Reset() {
 	*x = Op{}
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[94]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[95]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -9617,7 +9720,7 @@ func (x *Op) String() string {
 func (*Op) ProtoMessage() {}
 
 func (x *Op) ProtoReflect() protoreflect.Message {
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[94]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[95]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -9630,7 +9733,7 @@ func (x *Op) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Op.ProtoReflect.Descriptor instead.
 func (*Op) Descriptor() ([]byte, []int) {
-	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{94}
+	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{95}
 }
 
 func (x *Op) GetOpId() string {
@@ -10410,7 +10513,7 @@ type Comment struct {
 
 func (x *Comment) Reset() {
 	*x = Comment{}
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[95]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[96]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -10422,7 +10525,7 @@ func (x *Comment) String() string {
 func (*Comment) ProtoMessage() {}
 
 func (x *Comment) ProtoReflect() protoreflect.Message {
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[95]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[96]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -10435,7 +10538,7 @@ func (x *Comment) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Comment.ProtoReflect.Descriptor instead.
 func (*Comment) Descriptor() ([]byte, []int) {
-	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{95}
+	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{96}
 }
 
 func (x *Comment) GetId() string {
@@ -10517,7 +10620,7 @@ type SetComment struct {
 
 func (x *SetComment) Reset() {
 	*x = SetComment{}
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[96]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[97]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -10529,7 +10632,7 @@ func (x *SetComment) String() string {
 func (*SetComment) ProtoMessage() {}
 
 func (x *SetComment) ProtoReflect() protoreflect.Message {
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[96]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[97]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -10542,7 +10645,7 @@ func (x *SetComment) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SetComment.ProtoReflect.Descriptor instead.
 func (*SetComment) Descriptor() ([]byte, []int) {
-	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{96}
+	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{97}
 }
 
 func (x *SetComment) GetComment() *Comment {
@@ -10561,7 +10664,7 @@ type DeleteComment struct {
 
 func (x *DeleteComment) Reset() {
 	*x = DeleteComment{}
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[97]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[98]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -10573,7 +10676,7 @@ func (x *DeleteComment) String() string {
 func (*DeleteComment) ProtoMessage() {}
 
 func (x *DeleteComment) ProtoReflect() protoreflect.Message {
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[97]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[98]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -10586,7 +10689,7 @@ func (x *DeleteComment) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteComment.ProtoReflect.Descriptor instead.
 func (*DeleteComment) Descriptor() ([]byte, []int) {
-	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{97}
+	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{98}
 }
 
 func (x *DeleteComment) GetId() string {
@@ -10611,7 +10714,7 @@ type SetInstance struct {
 
 func (x *SetInstance) Reset() {
 	*x = SetInstance{}
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[98]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[99]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -10623,7 +10726,7 @@ func (x *SetInstance) String() string {
 func (*SetInstance) ProtoMessage() {}
 
 func (x *SetInstance) ProtoReflect() protoreflect.Message {
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[98]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[99]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -10636,7 +10739,7 @@ func (x *SetInstance) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SetInstance.ProtoReflect.Descriptor instead.
 func (*SetInstance) Descriptor() ([]byte, []int) {
-	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{98}
+	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{99}
 }
 
 func (x *SetInstance) GetInstanceId() string {
@@ -10674,7 +10777,7 @@ type Annotation struct {
 
 func (x *Annotation) Reset() {
 	*x = Annotation{}
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[99]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[100]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -10686,7 +10789,7 @@ func (x *Annotation) String() string {
 func (*Annotation) ProtoMessage() {}
 
 func (x *Annotation) ProtoReflect() protoreflect.Message {
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[99]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[100]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -10699,7 +10802,7 @@ func (x *Annotation) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Annotation.ProtoReflect.Descriptor instead.
 func (*Annotation) Descriptor() ([]byte, []int) {
-	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{99}
+	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{100}
 }
 
 func (x *Annotation) GetId() string {
@@ -10760,7 +10863,7 @@ type ReadyForDev struct {
 
 func (x *ReadyForDev) Reset() {
 	*x = ReadyForDev{}
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[100]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[101]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -10772,7 +10875,7 @@ func (x *ReadyForDev) String() string {
 func (*ReadyForDev) ProtoMessage() {}
 
 func (x *ReadyForDev) ProtoReflect() protoreflect.Message {
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[100]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[101]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -10785,7 +10888,7 @@ func (x *ReadyForDev) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ReadyForDev.ProtoReflect.Descriptor instead.
 func (*ReadyForDev) Descriptor() ([]byte, []int) {
-	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{100}
+	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{101}
 }
 
 func (x *ReadyForDev) GetNodeId() string {
@@ -10832,7 +10935,7 @@ type SetAnnotation struct {
 
 func (x *SetAnnotation) Reset() {
 	*x = SetAnnotation{}
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[101]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[102]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -10844,7 +10947,7 @@ func (x *SetAnnotation) String() string {
 func (*SetAnnotation) ProtoMessage() {}
 
 func (x *SetAnnotation) ProtoReflect() protoreflect.Message {
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[101]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[102]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -10857,7 +10960,7 @@ func (x *SetAnnotation) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SetAnnotation.ProtoReflect.Descriptor instead.
 func (*SetAnnotation) Descriptor() ([]byte, []int) {
-	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{101}
+	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{102}
 }
 
 func (x *SetAnnotation) GetAnnotation() *Annotation {
@@ -10876,7 +10979,7 @@ type DeleteAnnotation struct {
 
 func (x *DeleteAnnotation) Reset() {
 	*x = DeleteAnnotation{}
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[102]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[103]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -10888,7 +10991,7 @@ func (x *DeleteAnnotation) String() string {
 func (*DeleteAnnotation) ProtoMessage() {}
 
 func (x *DeleteAnnotation) ProtoReflect() protoreflect.Message {
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[102]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[103]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -10901,7 +11004,7 @@ func (x *DeleteAnnotation) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteAnnotation.ProtoReflect.Descriptor instead.
 func (*DeleteAnnotation) Descriptor() ([]byte, []int) {
-	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{102}
+	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{103}
 }
 
 func (x *DeleteAnnotation) GetId() string {
@@ -10920,7 +11023,7 @@ type SetReadyForDev struct {
 
 func (x *SetReadyForDev) Reset() {
 	*x = SetReadyForDev{}
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[103]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[104]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -10932,7 +11035,7 @@ func (x *SetReadyForDev) String() string {
 func (*SetReadyForDev) ProtoMessage() {}
 
 func (x *SetReadyForDev) ProtoReflect() protoreflect.Message {
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[103]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[104]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -10945,7 +11048,7 @@ func (x *SetReadyForDev) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SetReadyForDev.ProtoReflect.Descriptor instead.
 func (*SetReadyForDev) Descriptor() ([]byte, []int) {
-	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{103}
+	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{104}
 }
 
 func (x *SetReadyForDev) GetReady() *ReadyForDev {
@@ -10964,7 +11067,7 @@ type ClearReadyForDev struct {
 
 func (x *ClearReadyForDev) Reset() {
 	*x = ClearReadyForDev{}
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[104]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[105]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -10976,7 +11079,7 @@ func (x *ClearReadyForDev) String() string {
 func (*ClearReadyForDev) ProtoMessage() {}
 
 func (x *ClearReadyForDev) ProtoReflect() protoreflect.Message {
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[104]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[105]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -10989,7 +11092,7 @@ func (x *ClearReadyForDev) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ClearReadyForDev.ProtoReflect.Descriptor instead.
 func (*ClearReadyForDev) Descriptor() ([]byte, []int) {
-	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{104}
+	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{105}
 }
 
 func (x *ClearReadyForDev) GetNodeId() string {
@@ -11014,7 +11117,7 @@ type ReadyChange struct {
 
 func (x *ReadyChange) Reset() {
 	*x = ReadyChange{}
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[105]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[106]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -11026,7 +11129,7 @@ func (x *ReadyChange) String() string {
 func (*ReadyChange) ProtoMessage() {}
 
 func (x *ReadyChange) ProtoReflect() protoreflect.Message {
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[105]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[106]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -11039,7 +11142,7 @@ func (x *ReadyChange) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ReadyChange.ProtoReflect.Descriptor instead.
 func (*ReadyChange) Descriptor() ([]byte, []int) {
-	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{105}
+	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{106}
 }
 
 func (x *ReadyChange) GetNodeId() string {
@@ -11094,7 +11197,7 @@ type CompareReadyRequest struct {
 
 func (x *CompareReadyRequest) Reset() {
 	*x = CompareReadyRequest{}
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[106]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[107]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -11106,7 +11209,7 @@ func (x *CompareReadyRequest) String() string {
 func (*CompareReadyRequest) ProtoMessage() {}
 
 func (x *CompareReadyRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[106]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[107]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -11119,7 +11222,7 @@ func (x *CompareReadyRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CompareReadyRequest.ProtoReflect.Descriptor instead.
 func (*CompareReadyRequest) Descriptor() ([]byte, []int) {
-	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{106}
+	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{107}
 }
 
 func (x *CompareReadyRequest) GetDocId() string {
@@ -11147,7 +11250,7 @@ type CompareReadyResponse struct {
 
 func (x *CompareReadyResponse) Reset() {
 	*x = CompareReadyResponse{}
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[107]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[108]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -11159,7 +11262,7 @@ func (x *CompareReadyResponse) String() string {
 func (*CompareReadyResponse) ProtoMessage() {}
 
 func (x *CompareReadyResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[107]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[108]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -11172,7 +11275,7 @@ func (x *CompareReadyResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CompareReadyResponse.ProtoReflect.Descriptor instead.
 func (*CompareReadyResponse) Descriptor() ([]byte, []int) {
-	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{107}
+	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{108}
 }
 
 func (x *CompareReadyResponse) GetNodeId() string {
@@ -11205,7 +11308,7 @@ type SetCollection struct {
 
 func (x *SetCollection) Reset() {
 	*x = SetCollection{}
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[108]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[109]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -11217,7 +11320,7 @@ func (x *SetCollection) String() string {
 func (*SetCollection) ProtoMessage() {}
 
 func (x *SetCollection) ProtoReflect() protoreflect.Message {
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[108]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[109]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -11230,7 +11333,7 @@ func (x *SetCollection) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SetCollection.ProtoReflect.Descriptor instead.
 func (*SetCollection) Descriptor() ([]byte, []int) {
-	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{108}
+	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{109}
 }
 
 func (x *SetCollection) GetCollection() *VariableCollection {
@@ -11249,7 +11352,7 @@ type DeleteCollection struct {
 
 func (x *DeleteCollection) Reset() {
 	*x = DeleteCollection{}
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[109]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[110]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -11261,7 +11364,7 @@ func (x *DeleteCollection) String() string {
 func (*DeleteCollection) ProtoMessage() {}
 
 func (x *DeleteCollection) ProtoReflect() protoreflect.Message {
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[109]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[110]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -11274,7 +11377,7 @@ func (x *DeleteCollection) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteCollection.ProtoReflect.Descriptor instead.
 func (*DeleteCollection) Descriptor() ([]byte, []int) {
-	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{109}
+	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{110}
 }
 
 func (x *DeleteCollection) GetId() string {
@@ -11293,7 +11396,7 @@ type SetVariable struct {
 
 func (x *SetVariable) Reset() {
 	*x = SetVariable{}
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[110]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[111]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -11305,7 +11408,7 @@ func (x *SetVariable) String() string {
 func (*SetVariable) ProtoMessage() {}
 
 func (x *SetVariable) ProtoReflect() protoreflect.Message {
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[110]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[111]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -11318,7 +11421,7 @@ func (x *SetVariable) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SetVariable.ProtoReflect.Descriptor instead.
 func (*SetVariable) Descriptor() ([]byte, []int) {
-	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{110}
+	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{111}
 }
 
 func (x *SetVariable) GetVariable() *Variable {
@@ -11337,7 +11440,7 @@ type DeleteVariable struct {
 
 func (x *DeleteVariable) Reset() {
 	*x = DeleteVariable{}
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[111]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[112]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -11349,7 +11452,7 @@ func (x *DeleteVariable) String() string {
 func (*DeleteVariable) ProtoMessage() {}
 
 func (x *DeleteVariable) ProtoReflect() protoreflect.Message {
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[111]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[112]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -11362,7 +11465,7 @@ func (x *DeleteVariable) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteVariable.ProtoReflect.Descriptor instead.
 func (*DeleteVariable) Descriptor() ([]byte, []int) {
-	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{111}
+	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{112}
 }
 
 func (x *DeleteVariable) GetId() string {
@@ -11381,7 +11484,7 @@ type SetFont struct {
 
 func (x *SetFont) Reset() {
 	*x = SetFont{}
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[112]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[113]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -11393,7 +11496,7 @@ func (x *SetFont) String() string {
 func (*SetFont) ProtoMessage() {}
 
 func (x *SetFont) ProtoReflect() protoreflect.Message {
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[112]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[113]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -11406,7 +11509,7 @@ func (x *SetFont) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SetFont.ProtoReflect.Descriptor instead.
 func (*SetFont) Descriptor() ([]byte, []int) {
-	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{112}
+	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{113}
 }
 
 func (x *SetFont) GetFont() *FontFace {
@@ -11425,7 +11528,7 @@ type DeleteFont struct {
 
 func (x *DeleteFont) Reset() {
 	*x = DeleteFont{}
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[113]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[114]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -11437,7 +11540,7 @@ func (x *DeleteFont) String() string {
 func (*DeleteFont) ProtoMessage() {}
 
 func (x *DeleteFont) ProtoReflect() protoreflect.Message {
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[113]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[114]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -11450,7 +11553,7 @@ func (x *DeleteFont) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteFont.ProtoReflect.Descriptor instead.
 func (*DeleteFont) Descriptor() ([]byte, []int) {
-	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{113}
+	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{114}
 }
 
 func (x *DeleteFont) GetId() string {
@@ -11469,7 +11572,7 @@ type SetTextStyleDef struct {
 
 func (x *SetTextStyleDef) Reset() {
 	*x = SetTextStyleDef{}
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[114]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[115]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -11481,7 +11584,7 @@ func (x *SetTextStyleDef) String() string {
 func (*SetTextStyleDef) ProtoMessage() {}
 
 func (x *SetTextStyleDef) ProtoReflect() protoreflect.Message {
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[114]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[115]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -11494,7 +11597,7 @@ func (x *SetTextStyleDef) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SetTextStyleDef.ProtoReflect.Descriptor instead.
 func (*SetTextStyleDef) Descriptor() ([]byte, []int) {
-	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{114}
+	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{115}
 }
 
 func (x *SetTextStyleDef) GetTextStyle() *TextStyleDef {
@@ -11513,7 +11616,7 @@ type DeleteTextStyleDef struct {
 
 func (x *DeleteTextStyleDef) Reset() {
 	*x = DeleteTextStyleDef{}
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[115]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[116]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -11525,7 +11628,7 @@ func (x *DeleteTextStyleDef) String() string {
 func (*DeleteTextStyleDef) ProtoMessage() {}
 
 func (x *DeleteTextStyleDef) ProtoReflect() protoreflect.Message {
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[115]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[116]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -11538,7 +11641,7 @@ func (x *DeleteTextStyleDef) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteTextStyleDef.ProtoReflect.Descriptor instead.
 func (*DeleteTextStyleDef) Descriptor() ([]byte, []int) {
-	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{115}
+	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{116}
 }
 
 func (x *DeleteTextStyleDef) GetId() string {
@@ -11557,7 +11660,7 @@ type SetPaintStyleDef struct {
 
 func (x *SetPaintStyleDef) Reset() {
 	*x = SetPaintStyleDef{}
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[116]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[117]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -11569,7 +11672,7 @@ func (x *SetPaintStyleDef) String() string {
 func (*SetPaintStyleDef) ProtoMessage() {}
 
 func (x *SetPaintStyleDef) ProtoReflect() protoreflect.Message {
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[116]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[117]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -11582,7 +11685,7 @@ func (x *SetPaintStyleDef) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SetPaintStyleDef.ProtoReflect.Descriptor instead.
 func (*SetPaintStyleDef) Descriptor() ([]byte, []int) {
-	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{116}
+	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{117}
 }
 
 func (x *SetPaintStyleDef) GetPaintStyle() *PaintStyleDef {
@@ -11601,7 +11704,7 @@ type DeletePaintStyleDef struct {
 
 func (x *DeletePaintStyleDef) Reset() {
 	*x = DeletePaintStyleDef{}
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[117]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[118]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -11613,7 +11716,7 @@ func (x *DeletePaintStyleDef) String() string {
 func (*DeletePaintStyleDef) ProtoMessage() {}
 
 func (x *DeletePaintStyleDef) ProtoReflect() protoreflect.Message {
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[117]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[118]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -11626,7 +11729,7 @@ func (x *DeletePaintStyleDef) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeletePaintStyleDef.ProtoReflect.Descriptor instead.
 func (*DeletePaintStyleDef) Descriptor() ([]byte, []int) {
-	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{117}
+	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{118}
 }
 
 func (x *DeletePaintStyleDef) GetId() string {
@@ -11645,7 +11748,7 @@ type SetEffectStyleDef struct {
 
 func (x *SetEffectStyleDef) Reset() {
 	*x = SetEffectStyleDef{}
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[118]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[119]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -11657,7 +11760,7 @@ func (x *SetEffectStyleDef) String() string {
 func (*SetEffectStyleDef) ProtoMessage() {}
 
 func (x *SetEffectStyleDef) ProtoReflect() protoreflect.Message {
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[118]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[119]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -11670,7 +11773,7 @@ func (x *SetEffectStyleDef) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SetEffectStyleDef.ProtoReflect.Descriptor instead.
 func (*SetEffectStyleDef) Descriptor() ([]byte, []int) {
-	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{118}
+	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{119}
 }
 
 func (x *SetEffectStyleDef) GetEffectStyle() *EffectStyleDef {
@@ -11689,7 +11792,7 @@ type DeleteEffectStyleDef struct {
 
 func (x *DeleteEffectStyleDef) Reset() {
 	*x = DeleteEffectStyleDef{}
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[119]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[120]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -11701,7 +11804,7 @@ func (x *DeleteEffectStyleDef) String() string {
 func (*DeleteEffectStyleDef) ProtoMessage() {}
 
 func (x *DeleteEffectStyleDef) ProtoReflect() protoreflect.Message {
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[119]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[120]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -11714,7 +11817,7 @@ func (x *DeleteEffectStyleDef) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteEffectStyleDef.ProtoReflect.Descriptor instead.
 func (*DeleteEffectStyleDef) Descriptor() ([]byte, []int) {
-	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{119}
+	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{120}
 }
 
 func (x *DeleteEffectStyleDef) GetId() string {
@@ -11733,7 +11836,7 @@ type SetObjectStyleDef struct {
 
 func (x *SetObjectStyleDef) Reset() {
 	*x = SetObjectStyleDef{}
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[120]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[121]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -11745,7 +11848,7 @@ func (x *SetObjectStyleDef) String() string {
 func (*SetObjectStyleDef) ProtoMessage() {}
 
 func (x *SetObjectStyleDef) ProtoReflect() protoreflect.Message {
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[120]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[121]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -11758,7 +11861,7 @@ func (x *SetObjectStyleDef) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SetObjectStyleDef.ProtoReflect.Descriptor instead.
 func (*SetObjectStyleDef) Descriptor() ([]byte, []int) {
-	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{120}
+	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{121}
 }
 
 func (x *SetObjectStyleDef) GetObjectStyle() *ObjectStyleDef {
@@ -11777,7 +11880,7 @@ type DeleteObjectStyleDef struct {
 
 func (x *DeleteObjectStyleDef) Reset() {
 	*x = DeleteObjectStyleDef{}
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[121]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[122]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -11789,7 +11892,7 @@ func (x *DeleteObjectStyleDef) String() string {
 func (*DeleteObjectStyleDef) ProtoMessage() {}
 
 func (x *DeleteObjectStyleDef) ProtoReflect() protoreflect.Message {
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[121]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[122]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -11802,7 +11905,7 @@ func (x *DeleteObjectStyleDef) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteObjectStyleDef.ProtoReflect.Descriptor instead.
 func (*DeleteObjectStyleDef) Descriptor() ([]byte, []int) {
-	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{121}
+	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{122}
 }
 
 func (x *DeleteObjectStyleDef) GetId() string {
@@ -11824,7 +11927,7 @@ type SetLayer struct {
 
 func (x *SetLayer) Reset() {
 	*x = SetLayer{}
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[122]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[123]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -11836,7 +11939,7 @@ func (x *SetLayer) String() string {
 func (*SetLayer) ProtoMessage() {}
 
 func (x *SetLayer) ProtoReflect() protoreflect.Message {
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[122]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[123]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -11849,7 +11952,7 @@ func (x *SetLayer) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SetLayer.ProtoReflect.Descriptor instead.
 func (*SetLayer) Descriptor() ([]byte, []int) {
-	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{122}
+	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{123}
 }
 
 func (x *SetLayer) GetLayer() *Layer {
@@ -11875,7 +11978,7 @@ type DeleteLayer struct {
 
 func (x *DeleteLayer) Reset() {
 	*x = DeleteLayer{}
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[123]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[124]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -11887,7 +11990,7 @@ func (x *DeleteLayer) String() string {
 func (*DeleteLayer) ProtoMessage() {}
 
 func (x *DeleteLayer) ProtoReflect() protoreflect.Message {
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[123]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[124]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -11900,7 +12003,7 @@ func (x *DeleteLayer) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteLayer.ProtoReflect.Descriptor instead.
 func (*DeleteLayer) Descriptor() ([]byte, []int) {
-	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{123}
+	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{124}
 }
 
 func (x *DeleteLayer) GetId() string {
@@ -11922,7 +12025,7 @@ type SetImage struct {
 
 func (x *SetImage) Reset() {
 	*x = SetImage{}
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[124]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[125]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -11934,7 +12037,7 @@ func (x *SetImage) String() string {
 func (*SetImage) ProtoMessage() {}
 
 func (x *SetImage) ProtoReflect() protoreflect.Message {
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[124]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[125]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -11947,7 +12050,7 @@ func (x *SetImage) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SetImage.ProtoReflect.Descriptor instead.
 func (*SetImage) Descriptor() ([]byte, []int) {
-	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{124}
+	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{125}
 }
 
 func (x *SetImage) GetId() string {
@@ -11978,7 +12081,7 @@ type OptionRename struct {
 
 func (x *OptionRename) Reset() {
 	*x = OptionRename{}
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[125]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[126]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -11990,7 +12093,7 @@ func (x *OptionRename) String() string {
 func (*OptionRename) ProtoMessage() {}
 
 func (x *OptionRename) ProtoReflect() protoreflect.Message {
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[125]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[126]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -12003,7 +12106,7 @@ func (x *OptionRename) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use OptionRename.ProtoReflect.Descriptor instead.
 func (*OptionRename) Descriptor() ([]byte, []int) {
-	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{125}
+	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{126}
 }
 
 func (x *OptionRename) GetAxis() string {
@@ -12038,7 +12141,7 @@ type SetComponentSet struct {
 
 func (x *SetComponentSet) Reset() {
 	*x = SetComponentSet{}
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[126]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[127]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -12050,7 +12153,7 @@ func (x *SetComponentSet) String() string {
 func (*SetComponentSet) ProtoMessage() {}
 
 func (x *SetComponentSet) ProtoReflect() protoreflect.Message {
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[126]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[127]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -12063,7 +12166,7 @@ func (x *SetComponentSet) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SetComponentSet.ProtoReflect.Descriptor instead.
 func (*SetComponentSet) Descriptor() ([]byte, []int) {
-	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{126}
+	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{127}
 }
 
 func (x *SetComponentSet) GetComponentSet() *ComponentSet {
@@ -12096,7 +12199,7 @@ type DeleteComponentSet struct {
 
 func (x *DeleteComponentSet) Reset() {
 	*x = DeleteComponentSet{}
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[127]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[128]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -12108,7 +12211,7 @@ func (x *DeleteComponentSet) String() string {
 func (*DeleteComponentSet) ProtoMessage() {}
 
 func (x *DeleteComponentSet) ProtoReflect() protoreflect.Message {
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[127]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[128]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -12121,7 +12224,7 @@ func (x *DeleteComponentSet) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteComponentSet.ProtoReflect.Descriptor instead.
 func (*DeleteComponentSet) Descriptor() ([]byte, []int) {
-	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{127}
+	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{128}
 }
 
 func (x *DeleteComponentSet) GetId() string {
@@ -12145,7 +12248,7 @@ type SetComponentDef struct {
 
 func (x *SetComponentDef) Reset() {
 	*x = SetComponentDef{}
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[128]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[129]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -12157,7 +12260,7 @@ func (x *SetComponentDef) String() string {
 func (*SetComponentDef) ProtoMessage() {}
 
 func (x *SetComponentDef) ProtoReflect() protoreflect.Message {
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[128]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[129]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -12170,7 +12273,7 @@ func (x *SetComponentDef) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SetComponentDef.ProtoReflect.Descriptor instead.
 func (*SetComponentDef) Descriptor() ([]byte, []int) {
-	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{128}
+	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{129}
 }
 
 func (x *SetComponentDef) GetComponentId() string {
@@ -12213,7 +12316,7 @@ type SetInstanceProps struct {
 
 func (x *SetInstanceProps) Reset() {
 	*x = SetInstanceProps{}
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[129]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[130]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -12225,7 +12328,7 @@ func (x *SetInstanceProps) String() string {
 func (*SetInstanceProps) ProtoMessage() {}
 
 func (x *SetInstanceProps) ProtoReflect() protoreflect.Message {
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[129]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[130]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -12238,7 +12341,7 @@ func (x *SetInstanceProps) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SetInstanceProps.ProtoReflect.Descriptor instead.
 func (*SetInstanceProps) Descriptor() ([]byte, []int) {
-	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{129}
+	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{130}
 }
 
 func (x *SetInstanceProps) GetInstanceId() string {
@@ -12274,7 +12377,7 @@ type OpRecord struct {
 
 func (x *OpRecord) Reset() {
 	*x = OpRecord{}
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[130]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[131]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -12286,7 +12389,7 @@ func (x *OpRecord) String() string {
 func (*OpRecord) ProtoMessage() {}
 
 func (x *OpRecord) ProtoReflect() protoreflect.Message {
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[130]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[131]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -12299,7 +12402,7 @@ func (x *OpRecord) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use OpRecord.ProtoReflect.Descriptor instead.
 func (*OpRecord) Descriptor() ([]byte, []int) {
-	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{130}
+	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{131}
 }
 
 func (x *OpRecord) GetSeq() uint64 {
@@ -12340,7 +12443,7 @@ type OpenRequest struct {
 
 func (x *OpenRequest) Reset() {
 	*x = OpenRequest{}
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[131]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[132]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -12352,7 +12455,7 @@ func (x *OpenRequest) String() string {
 func (*OpenRequest) ProtoMessage() {}
 
 func (x *OpenRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[131]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[132]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -12365,7 +12468,7 @@ func (x *OpenRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use OpenRequest.ProtoReflect.Descriptor instead.
 func (*OpenRequest) Descriptor() ([]byte, []int) {
-	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{131}
+	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{132}
 }
 
 func (x *OpenRequest) GetDocId() string {
@@ -12385,7 +12488,7 @@ type OpenResponse struct {
 
 func (x *OpenResponse) Reset() {
 	*x = OpenResponse{}
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[132]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[133]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -12397,7 +12500,7 @@ func (x *OpenResponse) String() string {
 func (*OpenResponse) ProtoMessage() {}
 
 func (x *OpenResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[132]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[133]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -12410,7 +12513,7 @@ func (x *OpenResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use OpenResponse.ProtoReflect.Descriptor instead.
 func (*OpenResponse) Descriptor() ([]byte, []int) {
-	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{132}
+	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{133}
 }
 
 func (x *OpenResponse) GetSnapshot() *Document {
@@ -12437,7 +12540,7 @@ type CreateDocumentRequest struct {
 
 func (x *CreateDocumentRequest) Reset() {
 	*x = CreateDocumentRequest{}
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[133]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[134]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -12449,7 +12552,7 @@ func (x *CreateDocumentRequest) String() string {
 func (*CreateDocumentRequest) ProtoMessage() {}
 
 func (x *CreateDocumentRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[133]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[134]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -12462,7 +12565,7 @@ func (x *CreateDocumentRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateDocumentRequest.ProtoReflect.Descriptor instead.
 func (*CreateDocumentRequest) Descriptor() ([]byte, []int) {
-	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{133}
+	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{134}
 }
 
 func (x *CreateDocumentRequest) GetName() string {
@@ -12495,7 +12598,7 @@ type DocInfo struct {
 
 func (x *DocInfo) Reset() {
 	*x = DocInfo{}
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[134]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[135]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -12507,7 +12610,7 @@ func (x *DocInfo) String() string {
 func (*DocInfo) ProtoMessage() {}
 
 func (x *DocInfo) ProtoReflect() protoreflect.Message {
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[134]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[135]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -12520,7 +12623,7 @@ func (x *DocInfo) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DocInfo.ProtoReflect.Descriptor instead.
 func (*DocInfo) Descriptor() ([]byte, []int) {
-	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{134}
+	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{135}
 }
 
 func (x *DocInfo) GetId() string {
@@ -12575,7 +12678,7 @@ type RenameDocumentRequest struct {
 
 func (x *RenameDocumentRequest) Reset() {
 	*x = RenameDocumentRequest{}
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[135]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[136]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -12587,7 +12690,7 @@ func (x *RenameDocumentRequest) String() string {
 func (*RenameDocumentRequest) ProtoMessage() {}
 
 func (x *RenameDocumentRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[135]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[136]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -12600,7 +12703,7 @@ func (x *RenameDocumentRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RenameDocumentRequest.ProtoReflect.Descriptor instead.
 func (*RenameDocumentRequest) Descriptor() ([]byte, []int) {
-	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{135}
+	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{136}
 }
 
 func (x *RenameDocumentRequest) GetDocId() string {
@@ -12626,7 +12729,7 @@ type DeleteDocumentRequest struct {
 
 func (x *DeleteDocumentRequest) Reset() {
 	*x = DeleteDocumentRequest{}
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[136]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[137]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -12638,7 +12741,7 @@ func (x *DeleteDocumentRequest) String() string {
 func (*DeleteDocumentRequest) ProtoMessage() {}
 
 func (x *DeleteDocumentRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[136]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[137]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -12651,7 +12754,7 @@ func (x *DeleteDocumentRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteDocumentRequest.ProtoReflect.Descriptor instead.
 func (*DeleteDocumentRequest) Descriptor() ([]byte, []int) {
-	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{136}
+	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{137}
 }
 
 func (x *DeleteDocumentRequest) GetDocId() string {
@@ -12669,7 +12772,7 @@ type DeleteDocumentResponse struct {
 
 func (x *DeleteDocumentResponse) Reset() {
 	*x = DeleteDocumentResponse{}
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[137]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[138]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -12681,7 +12784,7 @@ func (x *DeleteDocumentResponse) String() string {
 func (*DeleteDocumentResponse) ProtoMessage() {}
 
 func (x *DeleteDocumentResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[137]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[138]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -12694,7 +12797,7 @@ func (x *DeleteDocumentResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteDocumentResponse.ProtoReflect.Descriptor instead.
 func (*DeleteDocumentResponse) Descriptor() ([]byte, []int) {
-	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{137}
+	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{138}
 }
 
 type ListDocumentsRequest struct {
@@ -12705,7 +12808,7 @@ type ListDocumentsRequest struct {
 
 func (x *ListDocumentsRequest) Reset() {
 	*x = ListDocumentsRequest{}
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[138]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[139]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -12717,7 +12820,7 @@ func (x *ListDocumentsRequest) String() string {
 func (*ListDocumentsRequest) ProtoMessage() {}
 
 func (x *ListDocumentsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[138]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[139]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -12730,7 +12833,7 @@ func (x *ListDocumentsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListDocumentsRequest.ProtoReflect.Descriptor instead.
 func (*ListDocumentsRequest) Descriptor() ([]byte, []int) {
-	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{138}
+	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{139}
 }
 
 type ListDocumentsResponse struct {
@@ -12742,7 +12845,7 @@ type ListDocumentsResponse struct {
 
 func (x *ListDocumentsResponse) Reset() {
 	*x = ListDocumentsResponse{}
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[139]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[140]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -12754,7 +12857,7 @@ func (x *ListDocumentsResponse) String() string {
 func (*ListDocumentsResponse) ProtoMessage() {}
 
 func (x *ListDocumentsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[139]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[140]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -12767,7 +12870,7 @@ func (x *ListDocumentsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListDocumentsResponse.ProtoReflect.Descriptor instead.
 func (*ListDocumentsResponse) Descriptor() ([]byte, []int) {
-	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{139}
+	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{140}
 }
 
 func (x *ListDocumentsResponse) GetDocs() []*DocInfo {
@@ -12792,7 +12895,7 @@ type SubmitOpRequest struct {
 
 func (x *SubmitOpRequest) Reset() {
 	*x = SubmitOpRequest{}
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[140]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[141]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -12804,7 +12907,7 @@ func (x *SubmitOpRequest) String() string {
 func (*SubmitOpRequest) ProtoMessage() {}
 
 func (x *SubmitOpRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[140]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[141]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -12817,7 +12920,7 @@ func (x *SubmitOpRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SubmitOpRequest.ProtoReflect.Descriptor instead.
 func (*SubmitOpRequest) Descriptor() ([]byte, []int) {
-	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{140}
+	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{141}
 }
 
 func (x *SubmitOpRequest) GetDocId() string {
@@ -12850,7 +12953,7 @@ type SubmitOpResponse struct {
 
 func (x *SubmitOpResponse) Reset() {
 	*x = SubmitOpResponse{}
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[141]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[142]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -12862,7 +12965,7 @@ func (x *SubmitOpResponse) String() string {
 func (*SubmitOpResponse) ProtoMessage() {}
 
 func (x *SubmitOpResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[141]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[142]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -12875,7 +12978,7 @@ func (x *SubmitOpResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SubmitOpResponse.ProtoReflect.Descriptor instead.
 func (*SubmitOpResponse) Descriptor() ([]byte, []int) {
-	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{141}
+	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{142}
 }
 
 func (x *SubmitOpResponse) GetAck() *Ack {
@@ -12896,7 +12999,7 @@ type SubscribeRequest struct {
 
 func (x *SubscribeRequest) Reset() {
 	*x = SubscribeRequest{}
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[142]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[143]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -12908,7 +13011,7 @@ func (x *SubscribeRequest) String() string {
 func (*SubscribeRequest) ProtoMessage() {}
 
 func (x *SubscribeRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[142]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[143]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -12921,7 +13024,7 @@ func (x *SubscribeRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SubscribeRequest.ProtoReflect.Descriptor instead.
 func (*SubscribeRequest) Descriptor() ([]byte, []int) {
-	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{142}
+	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{143}
 }
 
 func (x *SubscribeRequest) GetDocId() string {
@@ -12955,7 +13058,7 @@ type Ack struct {
 
 func (x *Ack) Reset() {
 	*x = Ack{}
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[143]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[144]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -12967,7 +13070,7 @@ func (x *Ack) String() string {
 func (*Ack) ProtoMessage() {}
 
 func (x *Ack) ProtoReflect() protoreflect.Message {
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[143]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[144]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -12980,7 +13083,7 @@ func (x *Ack) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Ack.ProtoReflect.Descriptor instead.
 func (*Ack) Descriptor() ([]byte, []int) {
-	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{143}
+	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{144}
 }
 
 func (x *Ack) GetOpId() string {
@@ -13007,7 +13110,7 @@ type ErrorMsg struct {
 
 func (x *ErrorMsg) Reset() {
 	*x = ErrorMsg{}
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[144]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[145]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -13019,7 +13122,7 @@ func (x *ErrorMsg) String() string {
 func (*ErrorMsg) ProtoMessage() {}
 
 func (x *ErrorMsg) ProtoReflect() protoreflect.Message {
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[144]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[145]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -13032,7 +13135,7 @@ func (x *ErrorMsg) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ErrorMsg.ProtoReflect.Descriptor instead.
 func (*ErrorMsg) Descriptor() ([]byte, []int) {
-	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{144}
+	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{145}
 }
 
 func (x *ErrorMsg) GetOpId() string {
@@ -13063,7 +13166,7 @@ type ServerMsg struct {
 
 func (x *ServerMsg) Reset() {
 	*x = ServerMsg{}
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[145]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[146]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -13075,7 +13178,7 @@ func (x *ServerMsg) String() string {
 func (*ServerMsg) ProtoMessage() {}
 
 func (x *ServerMsg) ProtoReflect() protoreflect.Message {
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[145]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[146]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -13088,7 +13191,7 @@ func (x *ServerMsg) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ServerMsg.ProtoReflect.Descriptor instead.
 func (*ServerMsg) Descriptor() ([]byte, []int) {
-	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{145}
+	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{146}
 }
 
 func (x *ServerMsg) GetKind() isServerMsg_Kind {
@@ -13188,7 +13291,7 @@ type PresenceState struct {
 
 func (x *PresenceState) Reset() {
 	*x = PresenceState{}
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[146]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[147]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -13200,7 +13303,7 @@ func (x *PresenceState) String() string {
 func (*PresenceState) ProtoMessage() {}
 
 func (x *PresenceState) ProtoReflect() protoreflect.Message {
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[146]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[147]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -13213,7 +13316,7 @@ func (x *PresenceState) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PresenceState.ProtoReflect.Descriptor instead.
 func (*PresenceState) Descriptor() ([]byte, []int) {
-	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{146}
+	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{147}
 }
 
 func (x *PresenceState) GetClientId() string {
@@ -13355,7 +13458,7 @@ type PresenceEvent struct {
 
 func (x *PresenceEvent) Reset() {
 	*x = PresenceEvent{}
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[147]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[148]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -13367,7 +13470,7 @@ func (x *PresenceEvent) String() string {
 func (*PresenceEvent) ProtoMessage() {}
 
 func (x *PresenceEvent) ProtoReflect() protoreflect.Message {
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[147]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[148]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -13380,7 +13483,7 @@ func (x *PresenceEvent) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PresenceEvent.ProtoReflect.Descriptor instead.
 func (*PresenceEvent) Descriptor() ([]byte, []int) {
-	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{147}
+	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{148}
 }
 
 func (x *PresenceEvent) GetKind() isPresenceEvent_Kind {
@@ -13439,7 +13542,7 @@ type FlowIssue struct {
 
 func (x *FlowIssue) Reset() {
 	*x = FlowIssue{}
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[148]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[149]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -13451,7 +13554,7 @@ func (x *FlowIssue) String() string {
 func (*FlowIssue) ProtoMessage() {}
 
 func (x *FlowIssue) ProtoReflect() protoreflect.Message {
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[148]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[149]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -13464,7 +13567,7 @@ func (x *FlowIssue) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FlowIssue.ProtoReflect.Descriptor instead.
 func (*FlowIssue) Descriptor() ([]byte, []int) {
-	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{148}
+	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{149}
 }
 
 func (x *FlowIssue) GetKind() string {
@@ -13515,7 +13618,7 @@ type FlowPath struct {
 
 func (x *FlowPath) Reset() {
 	*x = FlowPath{}
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[149]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[150]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -13527,7 +13630,7 @@ func (x *FlowPath) String() string {
 func (*FlowPath) ProtoMessage() {}
 
 func (x *FlowPath) ProtoReflect() protoreflect.Message {
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[149]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[150]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -13540,7 +13643,7 @@ func (x *FlowPath) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FlowPath.ProtoReflect.Descriptor instead.
 func (*FlowPath) Descriptor() ([]byte, []int) {
-	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{149}
+	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{150}
 }
 
 func (x *FlowPath) GetTransitionIds() []string {
@@ -13578,7 +13681,7 @@ type FlowReport struct {
 
 func (x *FlowReport) Reset() {
 	*x = FlowReport{}
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[150]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[151]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -13590,7 +13693,7 @@ func (x *FlowReport) String() string {
 func (*FlowReport) ProtoMessage() {}
 
 func (x *FlowReport) ProtoReflect() protoreflect.Message {
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[150]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[151]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -13603,7 +13706,7 @@ func (x *FlowReport) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FlowReport.ProtoReflect.Descriptor instead.
 func (*FlowReport) Descriptor() ([]byte, []int) {
-	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{150}
+	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{151}
 }
 
 func (x *FlowReport) GetFlowId() string {
@@ -13659,7 +13762,7 @@ type AnalyzeFlowsRequest struct {
 
 func (x *AnalyzeFlowsRequest) Reset() {
 	*x = AnalyzeFlowsRequest{}
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[151]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[152]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -13671,7 +13774,7 @@ func (x *AnalyzeFlowsRequest) String() string {
 func (*AnalyzeFlowsRequest) ProtoMessage() {}
 
 func (x *AnalyzeFlowsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[151]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[152]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -13684,7 +13787,7 @@ func (x *AnalyzeFlowsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AnalyzeFlowsRequest.ProtoReflect.Descriptor instead.
 func (*AnalyzeFlowsRequest) Descriptor() ([]byte, []int) {
-	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{151}
+	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{152}
 }
 
 func (x *AnalyzeFlowsRequest) GetDocId() string {
@@ -13710,7 +13813,7 @@ type AnalyzeFlowsResponse struct {
 
 func (x *AnalyzeFlowsResponse) Reset() {
 	*x = AnalyzeFlowsResponse{}
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[152]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[153]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -13722,7 +13825,7 @@ func (x *AnalyzeFlowsResponse) String() string {
 func (*AnalyzeFlowsResponse) ProtoMessage() {}
 
 func (x *AnalyzeFlowsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[152]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[153]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -13735,7 +13838,7 @@ func (x *AnalyzeFlowsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AnalyzeFlowsResponse.ProtoReflect.Descriptor instead.
 func (*AnalyzeFlowsResponse) Descriptor() ([]byte, []int) {
-	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{152}
+	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{153}
 }
 
 func (x *AnalyzeFlowsResponse) GetReports() []*FlowReport {
@@ -13757,7 +13860,7 @@ type ExportFile struct {
 
 func (x *ExportFile) Reset() {
 	*x = ExportFile{}
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[153]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[154]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -13769,7 +13872,7 @@ func (x *ExportFile) String() string {
 func (*ExportFile) ProtoMessage() {}
 
 func (x *ExportFile) ProtoReflect() protoreflect.Message {
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[153]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[154]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -13782,7 +13885,7 @@ func (x *ExportFile) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ExportFile.ProtoReflect.Descriptor instead.
 func (*ExportFile) Descriptor() ([]byte, []int) {
-	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{153}
+	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{154}
 }
 
 func (x *ExportFile) GetPath() string {
@@ -13815,7 +13918,7 @@ type ExportCodeRequest struct {
 
 func (x *ExportCodeRequest) Reset() {
 	*x = ExportCodeRequest{}
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[154]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[155]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -13827,7 +13930,7 @@ func (x *ExportCodeRequest) String() string {
 func (*ExportCodeRequest) ProtoMessage() {}
 
 func (x *ExportCodeRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[154]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[155]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -13840,7 +13943,7 @@ func (x *ExportCodeRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ExportCodeRequest.ProtoReflect.Descriptor instead.
 func (*ExportCodeRequest) Descriptor() ([]byte, []int) {
-	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{154}
+	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{155}
 }
 
 func (x *ExportCodeRequest) GetDocId() string {
@@ -13876,7 +13979,7 @@ type ExportCodeResponse struct {
 
 func (x *ExportCodeResponse) Reset() {
 	*x = ExportCodeResponse{}
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[155]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[156]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -13888,7 +13991,7 @@ func (x *ExportCodeResponse) String() string {
 func (*ExportCodeResponse) ProtoMessage() {}
 
 func (x *ExportCodeResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[155]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[156]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -13901,7 +14004,7 @@ func (x *ExportCodeResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ExportCodeResponse.ProtoReflect.Descriptor instead.
 func (*ExportCodeResponse) Descriptor() ([]byte, []int) {
-	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{155}
+	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{156}
 }
 
 func (x *ExportCodeResponse) GetFiles() []*ExportFile {
@@ -13934,7 +14037,7 @@ type RenderDiagramRequest struct {
 
 func (x *RenderDiagramRequest) Reset() {
 	*x = RenderDiagramRequest{}
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[156]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[157]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -13946,7 +14049,7 @@ func (x *RenderDiagramRequest) String() string {
 func (*RenderDiagramRequest) ProtoMessage() {}
 
 func (x *RenderDiagramRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[156]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[157]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -13959,7 +14062,7 @@ func (x *RenderDiagramRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RenderDiagramRequest.ProtoReflect.Descriptor instead.
 func (*RenderDiagramRequest) Descriptor() ([]byte, []int) {
-	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{156}
+	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{157}
 }
 
 func (x *RenderDiagramRequest) GetSource() string {
@@ -13982,7 +14085,7 @@ type RenderDiagramResponse struct {
 
 func (x *RenderDiagramResponse) Reset() {
 	*x = RenderDiagramResponse{}
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[157]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[158]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -13994,7 +14097,7 @@ func (x *RenderDiagramResponse) String() string {
 func (*RenderDiagramResponse) ProtoMessage() {}
 
 func (x *RenderDiagramResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[157]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[158]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -14007,7 +14110,7 @@ func (x *RenderDiagramResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RenderDiagramResponse.ProtoReflect.Descriptor instead.
 func (*RenderDiagramResponse) Descriptor() ([]byte, []int) {
-	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{157}
+	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{158}
 }
 
 func (x *RenderDiagramResponse) GetNodes() []*Node {
@@ -14060,7 +14163,7 @@ type VersionInfo struct {
 
 func (x *VersionInfo) Reset() {
 	*x = VersionInfo{}
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[158]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[159]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -14072,7 +14175,7 @@ func (x *VersionInfo) String() string {
 func (*VersionInfo) ProtoMessage() {}
 
 func (x *VersionInfo) ProtoReflect() protoreflect.Message {
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[158]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[159]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -14085,7 +14188,7 @@ func (x *VersionInfo) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use VersionInfo.ProtoReflect.Descriptor instead.
 func (*VersionInfo) Descriptor() ([]byte, []int) {
-	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{158}
+	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{159}
 }
 
 func (x *VersionInfo) GetId() string {
@@ -14126,7 +14229,7 @@ type CreateVersionRequest struct {
 
 func (x *CreateVersionRequest) Reset() {
 	*x = CreateVersionRequest{}
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[159]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[160]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -14138,7 +14241,7 @@ func (x *CreateVersionRequest) String() string {
 func (*CreateVersionRequest) ProtoMessage() {}
 
 func (x *CreateVersionRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[159]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[160]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -14151,7 +14254,7 @@ func (x *CreateVersionRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateVersionRequest.ProtoReflect.Descriptor instead.
 func (*CreateVersionRequest) Descriptor() ([]byte, []int) {
-	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{159}
+	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{160}
 }
 
 func (x *CreateVersionRequest) GetDocId() string {
@@ -14177,7 +14280,7 @@ type ListVersionsRequest struct {
 
 func (x *ListVersionsRequest) Reset() {
 	*x = ListVersionsRequest{}
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[160]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[161]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -14189,7 +14292,7 @@ func (x *ListVersionsRequest) String() string {
 func (*ListVersionsRequest) ProtoMessage() {}
 
 func (x *ListVersionsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[160]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[161]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -14202,7 +14305,7 @@ func (x *ListVersionsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListVersionsRequest.ProtoReflect.Descriptor instead.
 func (*ListVersionsRequest) Descriptor() ([]byte, []int) {
-	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{160}
+	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{161}
 }
 
 func (x *ListVersionsRequest) GetDocId() string {
@@ -14221,7 +14324,7 @@ type ListVersionsResponse struct {
 
 func (x *ListVersionsResponse) Reset() {
 	*x = ListVersionsResponse{}
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[161]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[162]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -14233,7 +14336,7 @@ func (x *ListVersionsResponse) String() string {
 func (*ListVersionsResponse) ProtoMessage() {}
 
 func (x *ListVersionsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[161]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[162]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -14246,7 +14349,7 @@ func (x *ListVersionsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListVersionsResponse.ProtoReflect.Descriptor instead.
 func (*ListVersionsResponse) Descriptor() ([]byte, []int) {
-	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{161}
+	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{162}
 }
 
 func (x *ListVersionsResponse) GetVersions() []*VersionInfo {
@@ -14266,7 +14369,7 @@ type DeleteVersionRequest struct {
 
 func (x *DeleteVersionRequest) Reset() {
 	*x = DeleteVersionRequest{}
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[162]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[163]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -14278,7 +14381,7 @@ func (x *DeleteVersionRequest) String() string {
 func (*DeleteVersionRequest) ProtoMessage() {}
 
 func (x *DeleteVersionRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[162]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[163]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -14291,7 +14394,7 @@ func (x *DeleteVersionRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteVersionRequest.ProtoReflect.Descriptor instead.
 func (*DeleteVersionRequest) Descriptor() ([]byte, []int) {
-	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{162}
+	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{163}
 }
 
 func (x *DeleteVersionRequest) GetDocId() string {
@@ -14316,7 +14419,7 @@ type DeleteVersionResponse struct {
 
 func (x *DeleteVersionResponse) Reset() {
 	*x = DeleteVersionResponse{}
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[163]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[164]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -14328,7 +14431,7 @@ func (x *DeleteVersionResponse) String() string {
 func (*DeleteVersionResponse) ProtoMessage() {}
 
 func (x *DeleteVersionResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[163]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[164]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -14341,7 +14444,7 @@ func (x *DeleteVersionResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteVersionResponse.ProtoReflect.Descriptor instead.
 func (*DeleteVersionResponse) Descriptor() ([]byte, []int) {
-	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{163}
+	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{164}
 }
 
 // A new document seeded from a version (version_id empty = the document as it is now).
@@ -14356,7 +14459,7 @@ type BranchRequest struct {
 
 func (x *BranchRequest) Reset() {
 	*x = BranchRequest{}
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[164]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[165]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -14368,7 +14471,7 @@ func (x *BranchRequest) String() string {
 func (*BranchRequest) ProtoMessage() {}
 
 func (x *BranchRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[164]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[165]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -14381,7 +14484,7 @@ func (x *BranchRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use BranchRequest.ProtoReflect.Descriptor instead.
 func (*BranchRequest) Descriptor() ([]byte, []int) {
-	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{164}
+	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{165}
 }
 
 func (x *BranchRequest) GetDocId() string {
@@ -14424,7 +14527,7 @@ type AccessLink struct {
 
 func (x *AccessLink) Reset() {
 	*x = AccessLink{}
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[165]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[166]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -14436,7 +14539,7 @@ func (x *AccessLink) String() string {
 func (*AccessLink) ProtoMessage() {}
 
 func (x *AccessLink) ProtoReflect() protoreflect.Message {
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[165]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[166]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -14449,7 +14552,7 @@ func (x *AccessLink) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AccessLink.ProtoReflect.Descriptor instead.
 func (*AccessLink) Descriptor() ([]byte, []int) {
-	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{165}
+	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{166}
 }
 
 func (x *AccessLink) GetId() string {
@@ -14489,7 +14592,7 @@ type GetAccessRequest struct {
 
 func (x *GetAccessRequest) Reset() {
 	*x = GetAccessRequest{}
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[166]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[167]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -14501,7 +14604,7 @@ func (x *GetAccessRequest) String() string {
 func (*GetAccessRequest) ProtoMessage() {}
 
 func (x *GetAccessRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[166]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[167]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -14514,7 +14617,7 @@ func (x *GetAccessRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetAccessRequest.ProtoReflect.Descriptor instead.
 func (*GetAccessRequest) Descriptor() ([]byte, []int) {
-	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{166}
+	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{167}
 }
 
 func (x *GetAccessRequest) GetDocId() string {
@@ -14535,7 +14638,7 @@ type GetAccessResponse struct {
 
 func (x *GetAccessResponse) Reset() {
 	*x = GetAccessResponse{}
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[167]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[168]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -14547,7 +14650,7 @@ func (x *GetAccessResponse) String() string {
 func (*GetAccessResponse) ProtoMessage() {}
 
 func (x *GetAccessResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[167]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[168]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -14560,7 +14663,7 @@ func (x *GetAccessResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetAccessResponse.ProtoReflect.Descriptor instead.
 func (*GetAccessResponse) Descriptor() ([]byte, []int) {
-	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{167}
+	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{168}
 }
 
 func (x *GetAccessResponse) GetEnabled() bool {
@@ -14593,7 +14696,7 @@ type EnableAccessRequest struct {
 
 func (x *EnableAccessRequest) Reset() {
 	*x = EnableAccessRequest{}
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[168]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[169]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -14605,7 +14708,7 @@ func (x *EnableAccessRequest) String() string {
 func (*EnableAccessRequest) ProtoMessage() {}
 
 func (x *EnableAccessRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[168]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[169]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -14618,7 +14721,7 @@ func (x *EnableAccessRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use EnableAccessRequest.ProtoReflect.Descriptor instead.
 func (*EnableAccessRequest) Descriptor() ([]byte, []int) {
-	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{168}
+	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{169}
 }
 
 func (x *EnableAccessRequest) GetDocId() string {
@@ -14637,7 +14740,7 @@ type EnableAccessResponse struct {
 
 func (x *EnableAccessResponse) Reset() {
 	*x = EnableAccessResponse{}
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[169]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[170]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -14649,7 +14752,7 @@ func (x *EnableAccessResponse) String() string {
 func (*EnableAccessResponse) ProtoMessage() {}
 
 func (x *EnableAccessResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[169]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[170]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -14662,7 +14765,7 @@ func (x *EnableAccessResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use EnableAccessResponse.ProtoReflect.Descriptor instead.
 func (*EnableAccessResponse) Descriptor() ([]byte, []int) {
-	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{169}
+	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{170}
 }
 
 func (x *EnableAccessResponse) GetOwnerToken() string {
@@ -14681,7 +14784,7 @@ type DisableAccessRequest struct {
 
 func (x *DisableAccessRequest) Reset() {
 	*x = DisableAccessRequest{}
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[170]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[171]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -14693,7 +14796,7 @@ func (x *DisableAccessRequest) String() string {
 func (*DisableAccessRequest) ProtoMessage() {}
 
 func (x *DisableAccessRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[170]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[171]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -14706,7 +14809,7 @@ func (x *DisableAccessRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DisableAccessRequest.ProtoReflect.Descriptor instead.
 func (*DisableAccessRequest) Descriptor() ([]byte, []int) {
-	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{170}
+	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{171}
 }
 
 func (x *DisableAccessRequest) GetDocId() string {
@@ -14724,7 +14827,7 @@ type DisableAccessResponse struct {
 
 func (x *DisableAccessResponse) Reset() {
 	*x = DisableAccessResponse{}
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[171]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[172]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -14736,7 +14839,7 @@ func (x *DisableAccessResponse) String() string {
 func (*DisableAccessResponse) ProtoMessage() {}
 
 func (x *DisableAccessResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[171]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[172]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -14749,7 +14852,7 @@ func (x *DisableAccessResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DisableAccessResponse.ProtoReflect.Descriptor instead.
 func (*DisableAccessResponse) Descriptor() ([]byte, []int) {
-	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{171}
+	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{172}
 }
 
 type CreateShareLinkRequest struct {
@@ -14763,7 +14866,7 @@ type CreateShareLinkRequest struct {
 
 func (x *CreateShareLinkRequest) Reset() {
 	*x = CreateShareLinkRequest{}
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[172]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[173]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -14775,7 +14878,7 @@ func (x *CreateShareLinkRequest) String() string {
 func (*CreateShareLinkRequest) ProtoMessage() {}
 
 func (x *CreateShareLinkRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[172]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[173]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -14788,7 +14891,7 @@ func (x *CreateShareLinkRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateShareLinkRequest.ProtoReflect.Descriptor instead.
 func (*CreateShareLinkRequest) Descriptor() ([]byte, []int) {
-	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{172}
+	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{173}
 }
 
 func (x *CreateShareLinkRequest) GetDocId() string {
@@ -14822,7 +14925,7 @@ type CreateShareLinkResponse struct {
 
 func (x *CreateShareLinkResponse) Reset() {
 	*x = CreateShareLinkResponse{}
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[173]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[174]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -14834,7 +14937,7 @@ func (x *CreateShareLinkResponse) String() string {
 func (*CreateShareLinkResponse) ProtoMessage() {}
 
 func (x *CreateShareLinkResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[173]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[174]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -14847,7 +14950,7 @@ func (x *CreateShareLinkResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateShareLinkResponse.ProtoReflect.Descriptor instead.
 func (*CreateShareLinkResponse) Descriptor() ([]byte, []int) {
-	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{173}
+	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{174}
 }
 
 func (x *CreateShareLinkResponse) GetLink() *AccessLink {
@@ -14874,7 +14977,7 @@ type RevokeShareLinkRequest struct {
 
 func (x *RevokeShareLinkRequest) Reset() {
 	*x = RevokeShareLinkRequest{}
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[174]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[175]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -14886,7 +14989,7 @@ func (x *RevokeShareLinkRequest) String() string {
 func (*RevokeShareLinkRequest) ProtoMessage() {}
 
 func (x *RevokeShareLinkRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[174]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[175]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -14899,7 +15002,7 @@ func (x *RevokeShareLinkRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RevokeShareLinkRequest.ProtoReflect.Descriptor instead.
 func (*RevokeShareLinkRequest) Descriptor() ([]byte, []int) {
-	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{174}
+	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{175}
 }
 
 func (x *RevokeShareLinkRequest) GetDocId() string {
@@ -14924,7 +15027,7 @@ type RevokeShareLinkResponse struct {
 
 func (x *RevokeShareLinkResponse) Reset() {
 	*x = RevokeShareLinkResponse{}
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[175]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[176]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -14936,7 +15039,7 @@ func (x *RevokeShareLinkResponse) String() string {
 func (*RevokeShareLinkResponse) ProtoMessage() {}
 
 func (x *RevokeShareLinkResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[175]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[176]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -14949,7 +15052,7 @@ func (x *RevokeShareLinkResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RevokeShareLinkResponse.ProtoReflect.Descriptor instead.
 func (*RevokeShareLinkResponse) Descriptor() ([]byte, []int) {
-	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{175}
+	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{176}
 }
 
 // IMPORTING A FIGMA FILE (internal/figimport). EXPERIMENTAL: .fig is not a public format. The file's
@@ -14966,7 +15069,7 @@ type ImportFigRequest struct {
 
 func (x *ImportFigRequest) Reset() {
 	*x = ImportFigRequest{}
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[176]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[177]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -14978,7 +15081,7 @@ func (x *ImportFigRequest) String() string {
 func (*ImportFigRequest) ProtoMessage() {}
 
 func (x *ImportFigRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[176]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[177]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -14991,7 +15094,7 @@ func (x *ImportFigRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ImportFigRequest.ProtoReflect.Descriptor instead.
 func (*ImportFigRequest) Descriptor() ([]byte, []int) {
-	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{176}
+	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{177}
 }
 
 func (x *ImportFigRequest) GetDocId() string {
@@ -15032,7 +15135,7 @@ type ImportFigResponse struct {
 
 func (x *ImportFigResponse) Reset() {
 	*x = ImportFigResponse{}
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[177]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[178]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -15044,7 +15147,7 @@ func (x *ImportFigResponse) String() string {
 func (*ImportFigResponse) ProtoMessage() {}
 
 func (x *ImportFigResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[177]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[178]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -15057,7 +15160,7 @@ func (x *ImportFigResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ImportFigResponse.ProtoReflect.Descriptor instead.
 func (*ImportFigResponse) Descriptor() ([]byte, []int) {
-	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{177}
+	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{178}
 }
 
 func (x *ImportFigResponse) GetNodes() []*Node {
@@ -15116,7 +15219,7 @@ type GetBranchOriginRequest struct {
 
 func (x *GetBranchOriginRequest) Reset() {
 	*x = GetBranchOriginRequest{}
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[178]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[179]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -15128,7 +15231,7 @@ func (x *GetBranchOriginRequest) String() string {
 func (*GetBranchOriginRequest) ProtoMessage() {}
 
 func (x *GetBranchOriginRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[178]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[179]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -15141,7 +15244,7 @@ func (x *GetBranchOriginRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetBranchOriginRequest.ProtoReflect.Descriptor instead.
 func (*GetBranchOriginRequest) Descriptor() ([]byte, []int) {
-	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{178}
+	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{179}
 }
 
 func (x *GetBranchOriginRequest) GetDocId() string {
@@ -15164,7 +15267,7 @@ type GetBranchOriginResponse struct {
 
 func (x *GetBranchOriginResponse) Reset() {
 	*x = GetBranchOriginResponse{}
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[179]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[180]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -15176,7 +15279,7 @@ func (x *GetBranchOriginResponse) String() string {
 func (*GetBranchOriginResponse) ProtoMessage() {}
 
 func (x *GetBranchOriginResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[179]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[180]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -15189,7 +15292,7 @@ func (x *GetBranchOriginResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetBranchOriginResponse.ProtoReflect.Descriptor instead.
 func (*GetBranchOriginResponse) Descriptor() ([]byte, []int) {
-	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{179}
+	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{180}
 }
 
 func (x *GetBranchOriginResponse) GetIsBranch() bool {
@@ -15242,7 +15345,7 @@ type MergeChange struct {
 
 func (x *MergeChange) Reset() {
 	*x = MergeChange{}
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[180]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[181]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -15254,7 +15357,7 @@ func (x *MergeChange) String() string {
 func (*MergeChange) ProtoMessage() {}
 
 func (x *MergeChange) ProtoReflect() protoreflect.Message {
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[180]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[181]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -15267,7 +15370,7 @@ func (x *MergeChange) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use MergeChange.ProtoReflect.Descriptor instead.
 func (*MergeChange) Descriptor() ([]byte, []int) {
-	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{180}
+	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{181}
 }
 
 func (x *MergeChange) GetEntity() string {
@@ -15328,7 +15431,7 @@ type ReviewMergeRequest struct {
 
 func (x *ReviewMergeRequest) Reset() {
 	*x = ReviewMergeRequest{}
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[181]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[182]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -15340,7 +15443,7 @@ func (x *ReviewMergeRequest) String() string {
 func (*ReviewMergeRequest) ProtoMessage() {}
 
 func (x *ReviewMergeRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[181]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[182]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -15353,7 +15456,7 @@ func (x *ReviewMergeRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ReviewMergeRequest.ProtoReflect.Descriptor instead.
 func (*ReviewMergeRequest) Descriptor() ([]byte, []int) {
-	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{181}
+	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{182}
 }
 
 func (x *ReviewMergeRequest) GetDocId() string {
@@ -15375,7 +15478,7 @@ type ReviewMergeResponse struct {
 
 func (x *ReviewMergeResponse) Reset() {
 	*x = ReviewMergeResponse{}
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[182]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[183]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -15387,7 +15490,7 @@ func (x *ReviewMergeResponse) String() string {
 func (*ReviewMergeResponse) ProtoMessage() {}
 
 func (x *ReviewMergeResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[182]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[183]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -15400,7 +15503,7 @@ func (x *ReviewMergeResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ReviewMergeResponse.ProtoReflect.Descriptor instead.
 func (*ReviewMergeResponse) Descriptor() ([]byte, []int) {
-	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{182}
+	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{183}
 }
 
 func (x *ReviewMergeResponse) GetSourceDocId() string {
@@ -15441,7 +15544,7 @@ type MergeBranchRequest struct {
 
 func (x *MergeBranchRequest) Reset() {
 	*x = MergeBranchRequest{}
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[183]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[184]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -15453,7 +15556,7 @@ func (x *MergeBranchRequest) String() string {
 func (*MergeBranchRequest) ProtoMessage() {}
 
 func (x *MergeBranchRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[183]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[184]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -15466,7 +15569,7 @@ func (x *MergeBranchRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use MergeBranchRequest.ProtoReflect.Descriptor instead.
 func (*MergeBranchRequest) Descriptor() ([]byte, []int) {
-	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{183}
+	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{184}
 }
 
 func (x *MergeBranchRequest) GetDocId() string {
@@ -15493,7 +15596,7 @@ type MergeBranchResponse struct {
 
 func (x *MergeBranchResponse) Reset() {
 	*x = MergeBranchResponse{}
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[184]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[185]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -15505,7 +15608,7 @@ func (x *MergeBranchResponse) String() string {
 func (*MergeBranchResponse) ProtoMessage() {}
 
 func (x *MergeBranchResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[184]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[185]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -15518,7 +15621,7 @@ func (x *MergeBranchResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use MergeBranchResponse.ProtoReflect.Descriptor instead.
 func (*MergeBranchResponse) Descriptor() ([]byte, []int) {
-	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{184}
+	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{185}
 }
 
 func (x *MergeBranchResponse) GetApplied() uint32 {
@@ -15550,7 +15653,7 @@ type ReviewIssue struct {
 
 func (x *ReviewIssue) Reset() {
 	*x = ReviewIssue{}
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[185]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[186]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -15562,7 +15665,7 @@ func (x *ReviewIssue) String() string {
 func (*ReviewIssue) ProtoMessage() {}
 
 func (x *ReviewIssue) ProtoReflect() protoreflect.Message {
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[185]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[186]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -15575,7 +15678,7 @@ func (x *ReviewIssue) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ReviewIssue.ProtoReflect.Descriptor instead.
 func (*ReviewIssue) Descriptor() ([]byte, []int) {
-	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{185}
+	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{186}
 }
 
 func (x *ReviewIssue) GetRule() string {
@@ -15622,7 +15725,7 @@ type ReviewDesignRequest struct {
 
 func (x *ReviewDesignRequest) Reset() {
 	*x = ReviewDesignRequest{}
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[186]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[187]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -15634,7 +15737,7 @@ func (x *ReviewDesignRequest) String() string {
 func (*ReviewDesignRequest) ProtoMessage() {}
 
 func (x *ReviewDesignRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[186]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[187]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -15647,7 +15750,7 @@ func (x *ReviewDesignRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ReviewDesignRequest.ProtoReflect.Descriptor instead.
 func (*ReviewDesignRequest) Descriptor() ([]byte, []int) {
-	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{186}
+	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{187}
 }
 
 func (x *ReviewDesignRequest) GetDocId() string {
@@ -15666,7 +15769,7 @@ type ReviewDesignResponse struct {
 
 func (x *ReviewDesignResponse) Reset() {
 	*x = ReviewDesignResponse{}
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[187]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[188]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -15678,7 +15781,7 @@ func (x *ReviewDesignResponse) String() string {
 func (*ReviewDesignResponse) ProtoMessage() {}
 
 func (x *ReviewDesignResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[187]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[188]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -15691,7 +15794,7 @@ func (x *ReviewDesignResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ReviewDesignResponse.ProtoReflect.Descriptor instead.
 func (*ReviewDesignResponse) Descriptor() ([]byte, []int) {
-	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{187}
+	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{188}
 }
 
 func (x *ReviewDesignResponse) GetIssues() []*ReviewIssue {
@@ -15716,7 +15819,7 @@ type RenderBoardRequest struct {
 
 func (x *RenderBoardRequest) Reset() {
 	*x = RenderBoardRequest{}
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[188]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[189]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -15728,7 +15831,7 @@ func (x *RenderBoardRequest) String() string {
 func (*RenderBoardRequest) ProtoMessage() {}
 
 func (x *RenderBoardRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[188]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[189]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -15741,7 +15844,7 @@ func (x *RenderBoardRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RenderBoardRequest.ProtoReflect.Descriptor instead.
 func (*RenderBoardRequest) Descriptor() ([]byte, []int) {
-	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{188}
+	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{189}
 }
 
 func (x *RenderBoardRequest) GetKind() string {
@@ -15790,7 +15893,7 @@ type RenderBoardResponse struct {
 
 func (x *RenderBoardResponse) Reset() {
 	*x = RenderBoardResponse{}
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[189]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[190]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -15802,7 +15905,7 @@ func (x *RenderBoardResponse) String() string {
 func (*RenderBoardResponse) ProtoMessage() {}
 
 func (x *RenderBoardResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[189]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[190]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -15815,7 +15918,7 @@ func (x *RenderBoardResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RenderBoardResponse.ProtoReflect.Descriptor instead.
 func (*RenderBoardResponse) Descriptor() ([]byte, []int) {
-	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{189}
+	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{190}
 }
 
 func (x *RenderBoardResponse) GetNodes() []*Node {
@@ -15850,7 +15953,7 @@ type WatchPresenceRequest struct {
 
 func (x *WatchPresenceRequest) Reset() {
 	*x = WatchPresenceRequest{}
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[190]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[191]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -15862,7 +15965,7 @@ func (x *WatchPresenceRequest) String() string {
 func (*WatchPresenceRequest) ProtoMessage() {}
 
 func (x *WatchPresenceRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[190]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[191]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -15875,7 +15978,7 @@ func (x *WatchPresenceRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use WatchPresenceRequest.ProtoReflect.Descriptor instead.
 func (*WatchPresenceRequest) Descriptor() ([]byte, []int) {
-	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{190}
+	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{191}
 }
 
 func (x *WatchPresenceRequest) GetDocId() string {
@@ -15909,7 +16012,7 @@ type UpdatePresenceRequest struct {
 
 func (x *UpdatePresenceRequest) Reset() {
 	*x = UpdatePresenceRequest{}
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[191]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[192]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -15921,7 +16024,7 @@ func (x *UpdatePresenceRequest) String() string {
 func (*UpdatePresenceRequest) ProtoMessage() {}
 
 func (x *UpdatePresenceRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[191]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[192]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -15934,7 +16037,7 @@ func (x *UpdatePresenceRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UpdatePresenceRequest.ProtoReflect.Descriptor instead.
 func (*UpdatePresenceRequest) Descriptor() ([]byte, []int) {
-	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{191}
+	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{192}
 }
 
 func (x *UpdatePresenceRequest) GetDocId() string {
@@ -15959,7 +16062,7 @@ type UpdatePresenceResponse struct {
 
 func (x *UpdatePresenceResponse) Reset() {
 	*x = UpdatePresenceResponse{}
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[192]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[193]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -15971,7 +16074,7 @@ func (x *UpdatePresenceResponse) String() string {
 func (*UpdatePresenceResponse) ProtoMessage() {}
 
 func (x *UpdatePresenceResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[192]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[193]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -15984,7 +16087,7 @@ func (x *UpdatePresenceResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UpdatePresenceResponse.ProtoReflect.Descriptor instead.
 func (*UpdatePresenceResponse) Descriptor() ([]byte, []int) {
-	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{192}
+	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{193}
 }
 
 // ---------- editor jobs ----------
@@ -16005,7 +16108,7 @@ type EditorJob struct {
 
 func (x *EditorJob) Reset() {
 	*x = EditorJob{}
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[193]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[194]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -16017,7 +16120,7 @@ func (x *EditorJob) String() string {
 func (*EditorJob) ProtoMessage() {}
 
 func (x *EditorJob) ProtoReflect() protoreflect.Message {
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[193]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[194]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -16030,7 +16133,7 @@ func (x *EditorJob) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use EditorJob.ProtoReflect.Descriptor instead.
 func (*EditorJob) Descriptor() ([]byte, []int) {
-	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{193}
+	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{194}
 }
 
 func (x *EditorJob) GetJobId() string {
@@ -16078,7 +16181,7 @@ type WatchJobsRequest struct {
 
 func (x *WatchJobsRequest) Reset() {
 	*x = WatchJobsRequest{}
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[194]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[195]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -16090,7 +16193,7 @@ func (x *WatchJobsRequest) String() string {
 func (*WatchJobsRequest) ProtoMessage() {}
 
 func (x *WatchJobsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[194]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[195]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -16103,7 +16206,7 @@ func (x *WatchJobsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use WatchJobsRequest.ProtoReflect.Descriptor instead.
 func (*WatchJobsRequest) Descriptor() ([]byte, []int) {
-	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{194}
+	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{195}
 }
 
 func (x *WatchJobsRequest) GetDocId() string {
@@ -16134,7 +16237,7 @@ type RunJobRequest struct {
 
 func (x *RunJobRequest) Reset() {
 	*x = RunJobRequest{}
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[195]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[196]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -16146,7 +16249,7 @@ func (x *RunJobRequest) String() string {
 func (*RunJobRequest) ProtoMessage() {}
 
 func (x *RunJobRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[195]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[196]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -16159,7 +16262,7 @@ func (x *RunJobRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RunJobRequest.ProtoReflect.Descriptor instead.
 func (*RunJobRequest) Descriptor() ([]byte, []int) {
-	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{195}
+	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{196}
 }
 
 func (x *RunJobRequest) GetDocId() string {
@@ -16220,7 +16323,7 @@ type RunJobResponse struct {
 
 func (x *RunJobResponse) Reset() {
 	*x = RunJobResponse{}
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[196]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[197]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -16232,7 +16335,7 @@ func (x *RunJobResponse) String() string {
 func (*RunJobResponse) ProtoMessage() {}
 
 func (x *RunJobResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[196]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[197]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -16245,7 +16348,7 @@ func (x *RunJobResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RunJobResponse.ProtoReflect.Descriptor instead.
 func (*RunJobResponse) Descriptor() ([]byte, []int) {
-	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{196}
+	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{197}
 }
 
 func (x *RunJobResponse) GetOk() bool {
@@ -16321,7 +16424,7 @@ type CompleteJobRequest struct {
 
 func (x *CompleteJobRequest) Reset() {
 	*x = CompleteJobRequest{}
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[197]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[198]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -16333,7 +16436,7 @@ func (x *CompleteJobRequest) String() string {
 func (*CompleteJobRequest) ProtoMessage() {}
 
 func (x *CompleteJobRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[197]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[198]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -16346,7 +16449,7 @@ func (x *CompleteJobRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CompleteJobRequest.ProtoReflect.Descriptor instead.
 func (*CompleteJobRequest) Descriptor() ([]byte, []int) {
-	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{197}
+	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{198}
 }
 
 func (x *CompleteJobRequest) GetDocId() string {
@@ -16420,7 +16523,7 @@ type CompleteJobResponse struct {
 
 func (x *CompleteJobResponse) Reset() {
 	*x = CompleteJobResponse{}
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[198]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[199]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -16432,7 +16535,7 @@ func (x *CompleteJobResponse) String() string {
 func (*CompleteJobResponse) ProtoMessage() {}
 
 func (x *CompleteJobResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[198]
+	mi := &file_opendesigner_v1_opendesigner_proto_msgTypes[199]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -16445,7 +16548,7 @@ func (x *CompleteJobResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CompleteJobResponse.ProtoReflect.Descriptor instead.
 func (*CompleteJobResponse) Descriptor() ([]byte, []int) {
-	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{198}
+	return file_opendesigner_v1_opendesigner_proto_rawDescGZIP(), []int{199}
 }
 
 var File_opendesigner_v1_opendesigner_proto protoreflect.FileDescriptor
@@ -16543,7 +16646,15 @@ const file_opendesigner_v1_opendesigner_proto_rawDesc = "" +
 	"\x02y2\x18\x06 \x01(\x01R\x02y2\x12\x1e\n" +
 	"\n" +
 	"background\x18\a \x01(\bR\n" +
-	"background\"\xf1\x01\n" +
+	"background\"\x97\x01\n" +
+	"\x0fGradientFeather\x12#\n" +
+	"\rstart_opacity\x18\x01 \x01(\x01R\fstartOpacity\x12\x1f\n" +
+	"\vend_opacity\x18\x02 \x01(\x01R\n" +
+	"endOpacity\x12\x0e\n" +
+	"\x02x1\x18\x03 \x01(\x01R\x02x1\x12\x0e\n" +
+	"\x02y1\x18\x04 \x01(\x01R\x02y1\x12\x0e\n" +
+	"\x02x2\x18\x05 \x01(\x01R\x02x2\x12\x0e\n" +
+	"\x02y2\x18\x06 \x01(\x01R\x02y2\"\xf1\x01\n" +
 	"\x05Noise\x12.\n" +
 	"\x04mode\x18\x01 \x01(\x0e2\x1a.opendesigner.v1.NoiseModeR\x04mode\x12\x12\n" +
 	"\x04size\x18\x02 \x01(\x01R\x04size\x12\x18\n" +
@@ -16561,7 +16672,7 @@ const file_opendesigner_v1_opendesigner_proto_rawDesc = "" +
 	"\x05light\x18\x02 \x01(\x01R\x05light\x12\x1f\n" +
 	"\vlight_angle\x18\x03 \x01(\x01R\n" +
 	"lightAngle\x12\x14\n" +
-	"\x05noise\x18\x04 \x01(\x01R\x05noise\"\x81\x04\n" +
+	"\x05noise\x18\x04 \x01(\x01R\x05noise\"\xd0\x04\n" +
 	"\x06Effect\x12>\n" +
 	"\vdrop_shadow\x18\x01 \x01(\v2\x1b.opendesigner.v1.DropShadowH\x00R\n" +
 	"dropShadow\x12;\n" +
@@ -16572,7 +16683,8 @@ const file_opendesigner_v1_opendesigner_proto_rawDesc = "" +
 	"\x10progressive_blur\x18\x14 \x01(\v2 .opendesigner.v1.ProgressiveBlurH\x00R\x0fprogressiveBlur\x12.\n" +
 	"\x05noise\x18\x15 \x01(\v2\x16.opendesigner.v1.NoiseH\x00R\x05noise\x124\n" +
 	"\atexture\x18\x16 \x01(\v2\x18.opendesigner.v1.TextureH\x00R\atexture\x12.\n" +
-	"\x05glass\x18\x17 \x01(\v2\x16.opendesigner.v1.GlassH\x00R\x05glassB\x06\n" +
+	"\x05glass\x18\x17 \x01(\v2\x16.opendesigner.v1.GlassH\x00R\x05glass\x12M\n" +
+	"\x10gradient_feather\x18\x18 \x01(\v2 .opendesigner.v1.GradientFeatherH\x00R\x0fgradientFeatherB\x06\n" +
 	"\x04kind\"\x89\x01\n" +
 	"\vCornerRadii\x12\x19\n" +
 	"\btop_left\x18\x01 \x01(\x01R\atopLeft\x12\x1b\n" +
@@ -17880,7 +17992,7 @@ func file_opendesigner_v1_opendesigner_proto_rawDescGZIP() []byte {
 }
 
 var file_opendesigner_v1_opendesigner_proto_enumTypes = make([]protoimpl.EnumInfo, 24)
-var file_opendesigner_v1_opendesigner_proto_msgTypes = make([]protoimpl.MessageInfo, 226)
+var file_opendesigner_v1_opendesigner_proto_msgTypes = make([]protoimpl.MessageInfo, 227)
 var file_opendesigner_v1_opendesigner_proto_goTypes = []any{
 	(ImageScaleMode)(0),             // 0: opendesigner.v1.ImageScaleMode
 	(StrokeAlign)(0),                // 1: opendesigner.v1.StrokeAlign
@@ -17922,218 +18034,219 @@ var file_opendesigner_v1_opendesigner_proto_goTypes = []any{
 	(*InnerShadow)(nil),             // 37: opendesigner.v1.InnerShadow
 	(*BackgroundBlur)(nil),          // 38: opendesigner.v1.BackgroundBlur
 	(*ProgressiveBlur)(nil),         // 39: opendesigner.v1.ProgressiveBlur
-	(*Noise)(nil),                   // 40: opendesigner.v1.Noise
-	(*Texture)(nil),                 // 41: opendesigner.v1.Texture
-	(*Glass)(nil),                   // 42: opendesigner.v1.Glass
-	(*Effect)(nil),                  // 43: opendesigner.v1.Effect
-	(*CornerRadii)(nil),             // 44: opendesigner.v1.CornerRadii
-	(*RectNode)(nil),                // 45: opendesigner.v1.RectNode
-	(*EllipseNode)(nil),             // 46: opendesigner.v1.EllipseNode
-	(*PolygonNode)(nil),             // 47: opendesigner.v1.PolygonNode
-	(*StarNode)(nil),                // 48: opendesigner.v1.StarNode
-	(*GroupNode)(nil),               // 49: opendesigner.v1.GroupNode
-	(*AutoLayout)(nil),              // 50: opendesigner.v1.AutoLayout
-	(*GridTrack)(nil),               // 51: opendesigner.v1.GridTrack
-	(*GridPlacement)(nil),           // 52: opendesigner.v1.GridPlacement
-	(*FrameNode)(nil),               // 53: opendesigner.v1.FrameNode
-	(*TextStyle)(nil),               // 54: opendesigner.v1.TextStyle
-	(*TextNode)(nil),                // 55: opendesigner.v1.TextNode
-	(*TextRun)(nil),                 // 56: opendesigner.v1.TextRun
-	(*ImageNode)(nil),               // 57: opendesigner.v1.ImageNode
-	(*Anchor)(nil),                  // 58: opendesigner.v1.Anchor
-	(*SubPath)(nil),                 // 59: opendesigner.v1.SubPath
-	(*VectorNode)(nil),              // 60: opendesigner.v1.VectorNode
-	(*Component)(nil),               // 61: opendesigner.v1.Component
-	(*ComponentProperty)(nil),       // 62: opendesigner.v1.ComponentProperty
-	(*VariantAxis)(nil),             // 63: opendesigner.v1.VariantAxis
-	(*ComponentSet)(nil),            // 64: opendesigner.v1.ComponentSet
-	(*InstanceOverride)(nil),        // 65: opendesigner.v1.InstanceOverride
-	(*InstanceNode)(nil),            // 66: opendesigner.v1.InstanceNode
-	(*Node)(nil),                    // 67: opendesigner.v1.Node
-	(*LayoutGrid)(nil),              // 68: opendesigner.v1.LayoutGrid
-	(*Page)(nil),                    // 69: opendesigner.v1.Page
-	(*Guide)(nil),                   // 70: opendesigner.v1.Guide
-	(*FontFace)(nil),                // 71: opendesigner.v1.FontFace
-	(*TextStyleDef)(nil),            // 72: opendesigner.v1.TextStyleDef
-	(*PaintStyleDef)(nil),           // 73: opendesigner.v1.PaintStyleDef
-	(*EffectStyleDef)(nil),          // 74: opendesigner.v1.EffectStyleDef
-	(*ParagraphRule)(nil),           // 75: opendesigner.v1.ParagraphRule
-	(*TabStop)(nil),                 // 76: opendesigner.v1.TabStop
-	(*NestedStyle)(nil),             // 77: opendesigner.v1.NestedStyle
-	(*VariableMode)(nil),            // 78: opendesigner.v1.VariableMode
-	(*VariableCollection)(nil),      // 79: opendesigner.v1.VariableCollection
-	(*VariableValue)(nil),           // 80: opendesigner.v1.VariableValue
-	(*Variable)(nil),                // 81: opendesigner.v1.Variable
-	(*Cmyk)(nil),                    // 82: opendesigner.v1.Cmyk
-	(*Flow)(nil),                    // 83: opendesigner.v1.Flow
-	(*Transition)(nil),              // 84: opendesigner.v1.Transition
-	(*Keyframe)(nil),                // 85: opendesigner.v1.Keyframe
-	(*Track)(nil),                   // 86: opendesigner.v1.Track
-	(*Clip)(nil),                    // 87: opendesigner.v1.Clip
-	(*Document)(nil),                // 88: opendesigner.v1.Document
-	(*ObjectStyleDef)(nil),          // 89: opendesigner.v1.ObjectStyleDef
-	(*Layer)(nil),                   // 90: opendesigner.v1.Layer
-	(*DocSettings)(nil),             // 91: opendesigner.v1.DocSettings
-	(*TextCondition)(nil),           // 92: opendesigner.v1.TextCondition
-	(*TableStyle)(nil),              // 93: opendesigner.v1.TableStyle
-	(*BookMetadata)(nil),            // 94: opendesigner.v1.BookMetadata
-	(*Contributor)(nil),             // 95: opendesigner.v1.Contributor
-	(*Subject)(nil),                 // 96: opendesigner.v1.Subject
-	(*Price)(nil),                   // 97: opendesigner.v1.Price
-	(*CreateNode)(nil),              // 98: opendesigner.v1.CreateNode
-	(*DeleteNode)(nil),              // 99: opendesigner.v1.DeleteNode
-	(*SetProperties)(nil),           // 100: opendesigner.v1.SetProperties
-	(*SetText)(nil),                 // 101: opendesigner.v1.SetText
-	(*SetVectorPath)(nil),           // 102: opendesigner.v1.SetVectorPath
-	(*ReparentNode)(nil),            // 103: opendesigner.v1.ReparentNode
-	(*CreatePage)(nil),              // 104: opendesigner.v1.CreatePage
-	(*DeletePage)(nil),              // 105: opendesigner.v1.DeletePage
-	(*RenamePage)(nil),              // 106: opendesigner.v1.RenamePage
-	(*UpdatePage)(nil),              // 107: opendesigner.v1.UpdatePage
-	(*MovePage)(nil),                // 108: opendesigner.v1.MovePage
-	(*SetDocSettings)(nil),          // 109: opendesigner.v1.SetDocSettings
-	(*CreateComponent)(nil),         // 110: opendesigner.v1.CreateComponent
-	(*SetInstanceOverride)(nil),     // 111: opendesigner.v1.SetInstanceOverride
-	(*SetFlow)(nil),                 // 112: opendesigner.v1.SetFlow
-	(*DeleteFlow)(nil),              // 113: opendesigner.v1.DeleteFlow
-	(*SetTransition)(nil),           // 114: opendesigner.v1.SetTransition
-	(*DeleteTransition)(nil),        // 115: opendesigner.v1.DeleteTransition
-	(*SetClip)(nil),                 // 116: opendesigner.v1.SetClip
-	(*DeleteClip)(nil),              // 117: opendesigner.v1.DeleteClip
-	(*Op)(nil),                      // 118: opendesigner.v1.Op
-	(*Comment)(nil),                 // 119: opendesigner.v1.Comment
-	(*SetComment)(nil),              // 120: opendesigner.v1.SetComment
-	(*DeleteComment)(nil),           // 121: opendesigner.v1.DeleteComment
-	(*SetInstance)(nil),             // 122: opendesigner.v1.SetInstance
-	(*Annotation)(nil),              // 123: opendesigner.v1.Annotation
-	(*ReadyForDev)(nil),             // 124: opendesigner.v1.ReadyForDev
-	(*SetAnnotation)(nil),           // 125: opendesigner.v1.SetAnnotation
-	(*DeleteAnnotation)(nil),        // 126: opendesigner.v1.DeleteAnnotation
-	(*SetReadyForDev)(nil),          // 127: opendesigner.v1.SetReadyForDev
-	(*ClearReadyForDev)(nil),        // 128: opendesigner.v1.ClearReadyForDev
-	(*ReadyChange)(nil),             // 129: opendesigner.v1.ReadyChange
-	(*CompareReadyRequest)(nil),     // 130: opendesigner.v1.CompareReadyRequest
-	(*CompareReadyResponse)(nil),    // 131: opendesigner.v1.CompareReadyResponse
-	(*SetCollection)(nil),           // 132: opendesigner.v1.SetCollection
-	(*DeleteCollection)(nil),        // 133: opendesigner.v1.DeleteCollection
-	(*SetVariable)(nil),             // 134: opendesigner.v1.SetVariable
-	(*DeleteVariable)(nil),          // 135: opendesigner.v1.DeleteVariable
-	(*SetFont)(nil),                 // 136: opendesigner.v1.SetFont
-	(*DeleteFont)(nil),              // 137: opendesigner.v1.DeleteFont
-	(*SetTextStyleDef)(nil),         // 138: opendesigner.v1.SetTextStyleDef
-	(*DeleteTextStyleDef)(nil),      // 139: opendesigner.v1.DeleteTextStyleDef
-	(*SetPaintStyleDef)(nil),        // 140: opendesigner.v1.SetPaintStyleDef
-	(*DeletePaintStyleDef)(nil),     // 141: opendesigner.v1.DeletePaintStyleDef
-	(*SetEffectStyleDef)(nil),       // 142: opendesigner.v1.SetEffectStyleDef
-	(*DeleteEffectStyleDef)(nil),    // 143: opendesigner.v1.DeleteEffectStyleDef
-	(*SetObjectStyleDef)(nil),       // 144: opendesigner.v1.SetObjectStyleDef
-	(*DeleteObjectStyleDef)(nil),    // 145: opendesigner.v1.DeleteObjectStyleDef
-	(*SetLayer)(nil),                // 146: opendesigner.v1.SetLayer
-	(*DeleteLayer)(nil),             // 147: opendesigner.v1.DeleteLayer
-	(*SetImage)(nil),                // 148: opendesigner.v1.SetImage
-	(*OptionRename)(nil),            // 149: opendesigner.v1.OptionRename
-	(*SetComponentSet)(nil),         // 150: opendesigner.v1.SetComponentSet
-	(*DeleteComponentSet)(nil),      // 151: opendesigner.v1.DeleteComponentSet
-	(*SetComponentDef)(nil),         // 152: opendesigner.v1.SetComponentDef
-	(*SetInstanceProps)(nil),        // 153: opendesigner.v1.SetInstanceProps
-	(*OpRecord)(nil),                // 154: opendesigner.v1.OpRecord
-	(*OpenRequest)(nil),             // 155: opendesigner.v1.OpenRequest
-	(*OpenResponse)(nil),            // 156: opendesigner.v1.OpenResponse
-	(*CreateDocumentRequest)(nil),   // 157: opendesigner.v1.CreateDocumentRequest
-	(*DocInfo)(nil),                 // 158: opendesigner.v1.DocInfo
-	(*RenameDocumentRequest)(nil),   // 159: opendesigner.v1.RenameDocumentRequest
-	(*DeleteDocumentRequest)(nil),   // 160: opendesigner.v1.DeleteDocumentRequest
-	(*DeleteDocumentResponse)(nil),  // 161: opendesigner.v1.DeleteDocumentResponse
-	(*ListDocumentsRequest)(nil),    // 162: opendesigner.v1.ListDocumentsRequest
-	(*ListDocumentsResponse)(nil),   // 163: opendesigner.v1.ListDocumentsResponse
-	(*SubmitOpRequest)(nil),         // 164: opendesigner.v1.SubmitOpRequest
-	(*SubmitOpResponse)(nil),        // 165: opendesigner.v1.SubmitOpResponse
-	(*SubscribeRequest)(nil),        // 166: opendesigner.v1.SubscribeRequest
-	(*Ack)(nil),                     // 167: opendesigner.v1.Ack
-	(*ErrorMsg)(nil),                // 168: opendesigner.v1.ErrorMsg
-	(*ServerMsg)(nil),               // 169: opendesigner.v1.ServerMsg
-	(*PresenceState)(nil),           // 170: opendesigner.v1.PresenceState
-	(*PresenceEvent)(nil),           // 171: opendesigner.v1.PresenceEvent
-	(*FlowIssue)(nil),               // 172: opendesigner.v1.FlowIssue
-	(*FlowPath)(nil),                // 173: opendesigner.v1.FlowPath
-	(*FlowReport)(nil),              // 174: opendesigner.v1.FlowReport
-	(*AnalyzeFlowsRequest)(nil),     // 175: opendesigner.v1.AnalyzeFlowsRequest
-	(*AnalyzeFlowsResponse)(nil),    // 176: opendesigner.v1.AnalyzeFlowsResponse
-	(*ExportFile)(nil),              // 177: opendesigner.v1.ExportFile
-	(*ExportCodeRequest)(nil),       // 178: opendesigner.v1.ExportCodeRequest
-	(*ExportCodeResponse)(nil),      // 179: opendesigner.v1.ExportCodeResponse
-	(*RenderDiagramRequest)(nil),    // 180: opendesigner.v1.RenderDiagramRequest
-	(*RenderDiagramResponse)(nil),   // 181: opendesigner.v1.RenderDiagramResponse
-	(*VersionInfo)(nil),             // 182: opendesigner.v1.VersionInfo
-	(*CreateVersionRequest)(nil),    // 183: opendesigner.v1.CreateVersionRequest
-	(*ListVersionsRequest)(nil),     // 184: opendesigner.v1.ListVersionsRequest
-	(*ListVersionsResponse)(nil),    // 185: opendesigner.v1.ListVersionsResponse
-	(*DeleteVersionRequest)(nil),    // 186: opendesigner.v1.DeleteVersionRequest
-	(*DeleteVersionResponse)(nil),   // 187: opendesigner.v1.DeleteVersionResponse
-	(*BranchRequest)(nil),           // 188: opendesigner.v1.BranchRequest
-	(*AccessLink)(nil),              // 189: opendesigner.v1.AccessLink
-	(*GetAccessRequest)(nil),        // 190: opendesigner.v1.GetAccessRequest
-	(*GetAccessResponse)(nil),       // 191: opendesigner.v1.GetAccessResponse
-	(*EnableAccessRequest)(nil),     // 192: opendesigner.v1.EnableAccessRequest
-	(*EnableAccessResponse)(nil),    // 193: opendesigner.v1.EnableAccessResponse
-	(*DisableAccessRequest)(nil),    // 194: opendesigner.v1.DisableAccessRequest
-	(*DisableAccessResponse)(nil),   // 195: opendesigner.v1.DisableAccessResponse
-	(*CreateShareLinkRequest)(nil),  // 196: opendesigner.v1.CreateShareLinkRequest
-	(*CreateShareLinkResponse)(nil), // 197: opendesigner.v1.CreateShareLinkResponse
-	(*RevokeShareLinkRequest)(nil),  // 198: opendesigner.v1.RevokeShareLinkRequest
-	(*RevokeShareLinkResponse)(nil), // 199: opendesigner.v1.RevokeShareLinkResponse
-	(*ImportFigRequest)(nil),        // 200: opendesigner.v1.ImportFigRequest
-	(*ImportFigResponse)(nil),       // 201: opendesigner.v1.ImportFigResponse
-	(*GetBranchOriginRequest)(nil),  // 202: opendesigner.v1.GetBranchOriginRequest
-	(*GetBranchOriginResponse)(nil), // 203: opendesigner.v1.GetBranchOriginResponse
-	(*MergeChange)(nil),             // 204: opendesigner.v1.MergeChange
-	(*ReviewMergeRequest)(nil),      // 205: opendesigner.v1.ReviewMergeRequest
-	(*ReviewMergeResponse)(nil),     // 206: opendesigner.v1.ReviewMergeResponse
-	(*MergeBranchRequest)(nil),      // 207: opendesigner.v1.MergeBranchRequest
-	(*MergeBranchResponse)(nil),     // 208: opendesigner.v1.MergeBranchResponse
-	(*ReviewIssue)(nil),             // 209: opendesigner.v1.ReviewIssue
-	(*ReviewDesignRequest)(nil),     // 210: opendesigner.v1.ReviewDesignRequest
-	(*ReviewDesignResponse)(nil),    // 211: opendesigner.v1.ReviewDesignResponse
-	(*RenderBoardRequest)(nil),      // 212: opendesigner.v1.RenderBoardRequest
-	(*RenderBoardResponse)(nil),     // 213: opendesigner.v1.RenderBoardResponse
-	(*WatchPresenceRequest)(nil),    // 214: opendesigner.v1.WatchPresenceRequest
-	(*UpdatePresenceRequest)(nil),   // 215: opendesigner.v1.UpdatePresenceRequest
-	(*UpdatePresenceResponse)(nil),  // 216: opendesigner.v1.UpdatePresenceResponse
-	(*EditorJob)(nil),               // 217: opendesigner.v1.EditorJob
-	(*WatchJobsRequest)(nil),        // 218: opendesigner.v1.WatchJobsRequest
-	(*RunJobRequest)(nil),           // 219: opendesigner.v1.RunJobRequest
-	(*RunJobResponse)(nil),          // 220: opendesigner.v1.RunJobResponse
-	(*CompleteJobRequest)(nil),      // 221: opendesigner.v1.CompleteJobRequest
-	(*CompleteJobResponse)(nil),     // 222: opendesigner.v1.CompleteJobResponse
-	nil,                             // 223: opendesigner.v1.Component.VariantEntry
-	nil,                             // 224: opendesigner.v1.InstanceNode.PropertyValuesEntry
-	nil,                             // 225: opendesigner.v1.InstanceNode.VariantPropsEntry
-	nil,                             // 226: opendesigner.v1.Node.MetaEntry
-	nil,                             // 227: opendesigner.v1.Node.BindingsEntry
-	nil,                             // 228: opendesigner.v1.Node.ModesEntry
-	nil,                             // 229: opendesigner.v1.Variable.ValuesEntry
-	nil,                             // 230: opendesigner.v1.Document.NodesEntry
-	nil,                             // 231: opendesigner.v1.Document.ComponentsEntry
-	nil,                             // 232: opendesigner.v1.Document.FlowsEntry
-	nil,                             // 233: opendesigner.v1.Document.TransitionsEntry
-	nil,                             // 234: opendesigner.v1.Document.ClipsEntry
-	nil,                             // 235: opendesigner.v1.Document.CollectionsEntry
-	nil,                             // 236: opendesigner.v1.Document.VariablesEntry
-	nil,                             // 237: opendesigner.v1.Document.FontsEntry
-	nil,                             // 238: opendesigner.v1.Document.TextStylesEntry
-	nil,                             // 239: opendesigner.v1.Document.ComponentSetsEntry
-	nil,                             // 240: opendesigner.v1.Document.CommentsEntry
-	nil,                             // 241: opendesigner.v1.Document.PaintStylesEntry
-	nil,                             // 242: opendesigner.v1.Document.EffectStylesEntry
-	nil,                             // 243: opendesigner.v1.Document.AnnotationsEntry
-	nil,                             // 244: opendesigner.v1.Document.ReadyForDevEntry
-	nil,                             // 245: opendesigner.v1.Document.ObjectStylesEntry
-	nil,                             // 246: opendesigner.v1.SetComponentSet.AxisRenamesEntry
-	nil,                             // 247: opendesigner.v1.SetComponentDef.VariantEntry
-	nil,                             // 248: opendesigner.v1.SetInstanceProps.PropertyValuesEntry
-	nil,                             // 249: opendesigner.v1.SetInstanceProps.VariantPropsEntry
-	(*fieldmaskpb.FieldMask)(nil),   // 250: google.protobuf.FieldMask
-	(*timestamppb.Timestamp)(nil),   // 251: google.protobuf.Timestamp
+	(*GradientFeather)(nil),         // 40: opendesigner.v1.GradientFeather
+	(*Noise)(nil),                   // 41: opendesigner.v1.Noise
+	(*Texture)(nil),                 // 42: opendesigner.v1.Texture
+	(*Glass)(nil),                   // 43: opendesigner.v1.Glass
+	(*Effect)(nil),                  // 44: opendesigner.v1.Effect
+	(*CornerRadii)(nil),             // 45: opendesigner.v1.CornerRadii
+	(*RectNode)(nil),                // 46: opendesigner.v1.RectNode
+	(*EllipseNode)(nil),             // 47: opendesigner.v1.EllipseNode
+	(*PolygonNode)(nil),             // 48: opendesigner.v1.PolygonNode
+	(*StarNode)(nil),                // 49: opendesigner.v1.StarNode
+	(*GroupNode)(nil),               // 50: opendesigner.v1.GroupNode
+	(*AutoLayout)(nil),              // 51: opendesigner.v1.AutoLayout
+	(*GridTrack)(nil),               // 52: opendesigner.v1.GridTrack
+	(*GridPlacement)(nil),           // 53: opendesigner.v1.GridPlacement
+	(*FrameNode)(nil),               // 54: opendesigner.v1.FrameNode
+	(*TextStyle)(nil),               // 55: opendesigner.v1.TextStyle
+	(*TextNode)(nil),                // 56: opendesigner.v1.TextNode
+	(*TextRun)(nil),                 // 57: opendesigner.v1.TextRun
+	(*ImageNode)(nil),               // 58: opendesigner.v1.ImageNode
+	(*Anchor)(nil),                  // 59: opendesigner.v1.Anchor
+	(*SubPath)(nil),                 // 60: opendesigner.v1.SubPath
+	(*VectorNode)(nil),              // 61: opendesigner.v1.VectorNode
+	(*Component)(nil),               // 62: opendesigner.v1.Component
+	(*ComponentProperty)(nil),       // 63: opendesigner.v1.ComponentProperty
+	(*VariantAxis)(nil),             // 64: opendesigner.v1.VariantAxis
+	(*ComponentSet)(nil),            // 65: opendesigner.v1.ComponentSet
+	(*InstanceOverride)(nil),        // 66: opendesigner.v1.InstanceOverride
+	(*InstanceNode)(nil),            // 67: opendesigner.v1.InstanceNode
+	(*Node)(nil),                    // 68: opendesigner.v1.Node
+	(*LayoutGrid)(nil),              // 69: opendesigner.v1.LayoutGrid
+	(*Page)(nil),                    // 70: opendesigner.v1.Page
+	(*Guide)(nil),                   // 71: opendesigner.v1.Guide
+	(*FontFace)(nil),                // 72: opendesigner.v1.FontFace
+	(*TextStyleDef)(nil),            // 73: opendesigner.v1.TextStyleDef
+	(*PaintStyleDef)(nil),           // 74: opendesigner.v1.PaintStyleDef
+	(*EffectStyleDef)(nil),          // 75: opendesigner.v1.EffectStyleDef
+	(*ParagraphRule)(nil),           // 76: opendesigner.v1.ParagraphRule
+	(*TabStop)(nil),                 // 77: opendesigner.v1.TabStop
+	(*NestedStyle)(nil),             // 78: opendesigner.v1.NestedStyle
+	(*VariableMode)(nil),            // 79: opendesigner.v1.VariableMode
+	(*VariableCollection)(nil),      // 80: opendesigner.v1.VariableCollection
+	(*VariableValue)(nil),           // 81: opendesigner.v1.VariableValue
+	(*Variable)(nil),                // 82: opendesigner.v1.Variable
+	(*Cmyk)(nil),                    // 83: opendesigner.v1.Cmyk
+	(*Flow)(nil),                    // 84: opendesigner.v1.Flow
+	(*Transition)(nil),              // 85: opendesigner.v1.Transition
+	(*Keyframe)(nil),                // 86: opendesigner.v1.Keyframe
+	(*Track)(nil),                   // 87: opendesigner.v1.Track
+	(*Clip)(nil),                    // 88: opendesigner.v1.Clip
+	(*Document)(nil),                // 89: opendesigner.v1.Document
+	(*ObjectStyleDef)(nil),          // 90: opendesigner.v1.ObjectStyleDef
+	(*Layer)(nil),                   // 91: opendesigner.v1.Layer
+	(*DocSettings)(nil),             // 92: opendesigner.v1.DocSettings
+	(*TextCondition)(nil),           // 93: opendesigner.v1.TextCondition
+	(*TableStyle)(nil),              // 94: opendesigner.v1.TableStyle
+	(*BookMetadata)(nil),            // 95: opendesigner.v1.BookMetadata
+	(*Contributor)(nil),             // 96: opendesigner.v1.Contributor
+	(*Subject)(nil),                 // 97: opendesigner.v1.Subject
+	(*Price)(nil),                   // 98: opendesigner.v1.Price
+	(*CreateNode)(nil),              // 99: opendesigner.v1.CreateNode
+	(*DeleteNode)(nil),              // 100: opendesigner.v1.DeleteNode
+	(*SetProperties)(nil),           // 101: opendesigner.v1.SetProperties
+	(*SetText)(nil),                 // 102: opendesigner.v1.SetText
+	(*SetVectorPath)(nil),           // 103: opendesigner.v1.SetVectorPath
+	(*ReparentNode)(nil),            // 104: opendesigner.v1.ReparentNode
+	(*CreatePage)(nil),              // 105: opendesigner.v1.CreatePage
+	(*DeletePage)(nil),              // 106: opendesigner.v1.DeletePage
+	(*RenamePage)(nil),              // 107: opendesigner.v1.RenamePage
+	(*UpdatePage)(nil),              // 108: opendesigner.v1.UpdatePage
+	(*MovePage)(nil),                // 109: opendesigner.v1.MovePage
+	(*SetDocSettings)(nil),          // 110: opendesigner.v1.SetDocSettings
+	(*CreateComponent)(nil),         // 111: opendesigner.v1.CreateComponent
+	(*SetInstanceOverride)(nil),     // 112: opendesigner.v1.SetInstanceOverride
+	(*SetFlow)(nil),                 // 113: opendesigner.v1.SetFlow
+	(*DeleteFlow)(nil),              // 114: opendesigner.v1.DeleteFlow
+	(*SetTransition)(nil),           // 115: opendesigner.v1.SetTransition
+	(*DeleteTransition)(nil),        // 116: opendesigner.v1.DeleteTransition
+	(*SetClip)(nil),                 // 117: opendesigner.v1.SetClip
+	(*DeleteClip)(nil),              // 118: opendesigner.v1.DeleteClip
+	(*Op)(nil),                      // 119: opendesigner.v1.Op
+	(*Comment)(nil),                 // 120: opendesigner.v1.Comment
+	(*SetComment)(nil),              // 121: opendesigner.v1.SetComment
+	(*DeleteComment)(nil),           // 122: opendesigner.v1.DeleteComment
+	(*SetInstance)(nil),             // 123: opendesigner.v1.SetInstance
+	(*Annotation)(nil),              // 124: opendesigner.v1.Annotation
+	(*ReadyForDev)(nil),             // 125: opendesigner.v1.ReadyForDev
+	(*SetAnnotation)(nil),           // 126: opendesigner.v1.SetAnnotation
+	(*DeleteAnnotation)(nil),        // 127: opendesigner.v1.DeleteAnnotation
+	(*SetReadyForDev)(nil),          // 128: opendesigner.v1.SetReadyForDev
+	(*ClearReadyForDev)(nil),        // 129: opendesigner.v1.ClearReadyForDev
+	(*ReadyChange)(nil),             // 130: opendesigner.v1.ReadyChange
+	(*CompareReadyRequest)(nil),     // 131: opendesigner.v1.CompareReadyRequest
+	(*CompareReadyResponse)(nil),    // 132: opendesigner.v1.CompareReadyResponse
+	(*SetCollection)(nil),           // 133: opendesigner.v1.SetCollection
+	(*DeleteCollection)(nil),        // 134: opendesigner.v1.DeleteCollection
+	(*SetVariable)(nil),             // 135: opendesigner.v1.SetVariable
+	(*DeleteVariable)(nil),          // 136: opendesigner.v1.DeleteVariable
+	(*SetFont)(nil),                 // 137: opendesigner.v1.SetFont
+	(*DeleteFont)(nil),              // 138: opendesigner.v1.DeleteFont
+	(*SetTextStyleDef)(nil),         // 139: opendesigner.v1.SetTextStyleDef
+	(*DeleteTextStyleDef)(nil),      // 140: opendesigner.v1.DeleteTextStyleDef
+	(*SetPaintStyleDef)(nil),        // 141: opendesigner.v1.SetPaintStyleDef
+	(*DeletePaintStyleDef)(nil),     // 142: opendesigner.v1.DeletePaintStyleDef
+	(*SetEffectStyleDef)(nil),       // 143: opendesigner.v1.SetEffectStyleDef
+	(*DeleteEffectStyleDef)(nil),    // 144: opendesigner.v1.DeleteEffectStyleDef
+	(*SetObjectStyleDef)(nil),       // 145: opendesigner.v1.SetObjectStyleDef
+	(*DeleteObjectStyleDef)(nil),    // 146: opendesigner.v1.DeleteObjectStyleDef
+	(*SetLayer)(nil),                // 147: opendesigner.v1.SetLayer
+	(*DeleteLayer)(nil),             // 148: opendesigner.v1.DeleteLayer
+	(*SetImage)(nil),                // 149: opendesigner.v1.SetImage
+	(*OptionRename)(nil),            // 150: opendesigner.v1.OptionRename
+	(*SetComponentSet)(nil),         // 151: opendesigner.v1.SetComponentSet
+	(*DeleteComponentSet)(nil),      // 152: opendesigner.v1.DeleteComponentSet
+	(*SetComponentDef)(nil),         // 153: opendesigner.v1.SetComponentDef
+	(*SetInstanceProps)(nil),        // 154: opendesigner.v1.SetInstanceProps
+	(*OpRecord)(nil),                // 155: opendesigner.v1.OpRecord
+	(*OpenRequest)(nil),             // 156: opendesigner.v1.OpenRequest
+	(*OpenResponse)(nil),            // 157: opendesigner.v1.OpenResponse
+	(*CreateDocumentRequest)(nil),   // 158: opendesigner.v1.CreateDocumentRequest
+	(*DocInfo)(nil),                 // 159: opendesigner.v1.DocInfo
+	(*RenameDocumentRequest)(nil),   // 160: opendesigner.v1.RenameDocumentRequest
+	(*DeleteDocumentRequest)(nil),   // 161: opendesigner.v1.DeleteDocumentRequest
+	(*DeleteDocumentResponse)(nil),  // 162: opendesigner.v1.DeleteDocumentResponse
+	(*ListDocumentsRequest)(nil),    // 163: opendesigner.v1.ListDocumentsRequest
+	(*ListDocumentsResponse)(nil),   // 164: opendesigner.v1.ListDocumentsResponse
+	(*SubmitOpRequest)(nil),         // 165: opendesigner.v1.SubmitOpRequest
+	(*SubmitOpResponse)(nil),        // 166: opendesigner.v1.SubmitOpResponse
+	(*SubscribeRequest)(nil),        // 167: opendesigner.v1.SubscribeRequest
+	(*Ack)(nil),                     // 168: opendesigner.v1.Ack
+	(*ErrorMsg)(nil),                // 169: opendesigner.v1.ErrorMsg
+	(*ServerMsg)(nil),               // 170: opendesigner.v1.ServerMsg
+	(*PresenceState)(nil),           // 171: opendesigner.v1.PresenceState
+	(*PresenceEvent)(nil),           // 172: opendesigner.v1.PresenceEvent
+	(*FlowIssue)(nil),               // 173: opendesigner.v1.FlowIssue
+	(*FlowPath)(nil),                // 174: opendesigner.v1.FlowPath
+	(*FlowReport)(nil),              // 175: opendesigner.v1.FlowReport
+	(*AnalyzeFlowsRequest)(nil),     // 176: opendesigner.v1.AnalyzeFlowsRequest
+	(*AnalyzeFlowsResponse)(nil),    // 177: opendesigner.v1.AnalyzeFlowsResponse
+	(*ExportFile)(nil),              // 178: opendesigner.v1.ExportFile
+	(*ExportCodeRequest)(nil),       // 179: opendesigner.v1.ExportCodeRequest
+	(*ExportCodeResponse)(nil),      // 180: opendesigner.v1.ExportCodeResponse
+	(*RenderDiagramRequest)(nil),    // 181: opendesigner.v1.RenderDiagramRequest
+	(*RenderDiagramResponse)(nil),   // 182: opendesigner.v1.RenderDiagramResponse
+	(*VersionInfo)(nil),             // 183: opendesigner.v1.VersionInfo
+	(*CreateVersionRequest)(nil),    // 184: opendesigner.v1.CreateVersionRequest
+	(*ListVersionsRequest)(nil),     // 185: opendesigner.v1.ListVersionsRequest
+	(*ListVersionsResponse)(nil),    // 186: opendesigner.v1.ListVersionsResponse
+	(*DeleteVersionRequest)(nil),    // 187: opendesigner.v1.DeleteVersionRequest
+	(*DeleteVersionResponse)(nil),   // 188: opendesigner.v1.DeleteVersionResponse
+	(*BranchRequest)(nil),           // 189: opendesigner.v1.BranchRequest
+	(*AccessLink)(nil),              // 190: opendesigner.v1.AccessLink
+	(*GetAccessRequest)(nil),        // 191: opendesigner.v1.GetAccessRequest
+	(*GetAccessResponse)(nil),       // 192: opendesigner.v1.GetAccessResponse
+	(*EnableAccessRequest)(nil),     // 193: opendesigner.v1.EnableAccessRequest
+	(*EnableAccessResponse)(nil),    // 194: opendesigner.v1.EnableAccessResponse
+	(*DisableAccessRequest)(nil),    // 195: opendesigner.v1.DisableAccessRequest
+	(*DisableAccessResponse)(nil),   // 196: opendesigner.v1.DisableAccessResponse
+	(*CreateShareLinkRequest)(nil),  // 197: opendesigner.v1.CreateShareLinkRequest
+	(*CreateShareLinkResponse)(nil), // 198: opendesigner.v1.CreateShareLinkResponse
+	(*RevokeShareLinkRequest)(nil),  // 199: opendesigner.v1.RevokeShareLinkRequest
+	(*RevokeShareLinkResponse)(nil), // 200: opendesigner.v1.RevokeShareLinkResponse
+	(*ImportFigRequest)(nil),        // 201: opendesigner.v1.ImportFigRequest
+	(*ImportFigResponse)(nil),       // 202: opendesigner.v1.ImportFigResponse
+	(*GetBranchOriginRequest)(nil),  // 203: opendesigner.v1.GetBranchOriginRequest
+	(*GetBranchOriginResponse)(nil), // 204: opendesigner.v1.GetBranchOriginResponse
+	(*MergeChange)(nil),             // 205: opendesigner.v1.MergeChange
+	(*ReviewMergeRequest)(nil),      // 206: opendesigner.v1.ReviewMergeRequest
+	(*ReviewMergeResponse)(nil),     // 207: opendesigner.v1.ReviewMergeResponse
+	(*MergeBranchRequest)(nil),      // 208: opendesigner.v1.MergeBranchRequest
+	(*MergeBranchResponse)(nil),     // 209: opendesigner.v1.MergeBranchResponse
+	(*ReviewIssue)(nil),             // 210: opendesigner.v1.ReviewIssue
+	(*ReviewDesignRequest)(nil),     // 211: opendesigner.v1.ReviewDesignRequest
+	(*ReviewDesignResponse)(nil),    // 212: opendesigner.v1.ReviewDesignResponse
+	(*RenderBoardRequest)(nil),      // 213: opendesigner.v1.RenderBoardRequest
+	(*RenderBoardResponse)(nil),     // 214: opendesigner.v1.RenderBoardResponse
+	(*WatchPresenceRequest)(nil),    // 215: opendesigner.v1.WatchPresenceRequest
+	(*UpdatePresenceRequest)(nil),   // 216: opendesigner.v1.UpdatePresenceRequest
+	(*UpdatePresenceResponse)(nil),  // 217: opendesigner.v1.UpdatePresenceResponse
+	(*EditorJob)(nil),               // 218: opendesigner.v1.EditorJob
+	(*WatchJobsRequest)(nil),        // 219: opendesigner.v1.WatchJobsRequest
+	(*RunJobRequest)(nil),           // 220: opendesigner.v1.RunJobRequest
+	(*RunJobResponse)(nil),          // 221: opendesigner.v1.RunJobResponse
+	(*CompleteJobRequest)(nil),      // 222: opendesigner.v1.CompleteJobRequest
+	(*CompleteJobResponse)(nil),     // 223: opendesigner.v1.CompleteJobResponse
+	nil,                             // 224: opendesigner.v1.Component.VariantEntry
+	nil,                             // 225: opendesigner.v1.InstanceNode.PropertyValuesEntry
+	nil,                             // 226: opendesigner.v1.InstanceNode.VariantPropsEntry
+	nil,                             // 227: opendesigner.v1.Node.MetaEntry
+	nil,                             // 228: opendesigner.v1.Node.BindingsEntry
+	nil,                             // 229: opendesigner.v1.Node.ModesEntry
+	nil,                             // 230: opendesigner.v1.Variable.ValuesEntry
+	nil,                             // 231: opendesigner.v1.Document.NodesEntry
+	nil,                             // 232: opendesigner.v1.Document.ComponentsEntry
+	nil,                             // 233: opendesigner.v1.Document.FlowsEntry
+	nil,                             // 234: opendesigner.v1.Document.TransitionsEntry
+	nil,                             // 235: opendesigner.v1.Document.ClipsEntry
+	nil,                             // 236: opendesigner.v1.Document.CollectionsEntry
+	nil,                             // 237: opendesigner.v1.Document.VariablesEntry
+	nil,                             // 238: opendesigner.v1.Document.FontsEntry
+	nil,                             // 239: opendesigner.v1.Document.TextStylesEntry
+	nil,                             // 240: opendesigner.v1.Document.ComponentSetsEntry
+	nil,                             // 241: opendesigner.v1.Document.CommentsEntry
+	nil,                             // 242: opendesigner.v1.Document.PaintStylesEntry
+	nil,                             // 243: opendesigner.v1.Document.EffectStylesEntry
+	nil,                             // 244: opendesigner.v1.Document.AnnotationsEntry
+	nil,                             // 245: opendesigner.v1.Document.ReadyForDevEntry
+	nil,                             // 246: opendesigner.v1.Document.ObjectStylesEntry
+	nil,                             // 247: opendesigner.v1.SetComponentSet.AxisRenamesEntry
+	nil,                             // 248: opendesigner.v1.SetComponentDef.VariantEntry
+	nil,                             // 249: opendesigner.v1.SetInstanceProps.PropertyValuesEntry
+	nil,                             // 250: opendesigner.v1.SetInstanceProps.VariantPropsEntry
+	(*fieldmaskpb.FieldMask)(nil),   // 251: google.protobuf.FieldMask
+	(*timestamppb.Timestamp)(nil),   // 252: google.protobuf.Timestamp
 }
 var file_opendesigner_v1_opendesigner_proto_depIdxs = []int32{
 	24,  // 0: opendesigner.v1.SolidPaint.color:type_name -> opendesigner.v1.Color
@@ -18167,305 +18280,306 @@ var file_opendesigner_v1_opendesigner_proto_depIdxs = []int32{
 	37,  // 28: opendesigner.v1.Effect.inner_shadow:type_name -> opendesigner.v1.InnerShadow
 	38,  // 29: opendesigner.v1.Effect.background_blur:type_name -> opendesigner.v1.BackgroundBlur
 	39,  // 30: opendesigner.v1.Effect.progressive_blur:type_name -> opendesigner.v1.ProgressiveBlur
-	40,  // 31: opendesigner.v1.Effect.noise:type_name -> opendesigner.v1.Noise
-	41,  // 32: opendesigner.v1.Effect.texture:type_name -> opendesigner.v1.Texture
-	42,  // 33: opendesigner.v1.Effect.glass:type_name -> opendesigner.v1.Glass
-	44,  // 34: opendesigner.v1.RectNode.radii:type_name -> opendesigner.v1.CornerRadii
-	7,   // 35: opendesigner.v1.AutoLayout.direction:type_name -> opendesigner.v1.LayoutDirection
-	8,   // 36: opendesigner.v1.AutoLayout.main_align:type_name -> opendesigner.v1.LayoutAlign
-	8,   // 37: opendesigner.v1.AutoLayout.cross_align:type_name -> opendesigner.v1.LayoutAlign
-	9,   // 38: opendesigner.v1.AutoLayout.mode:type_name -> opendesigner.v1.LayoutMode
-	51,  // 39: opendesigner.v1.AutoLayout.columns:type_name -> opendesigner.v1.GridTrack
-	51,  // 40: opendesigner.v1.AutoLayout.rows:type_name -> opendesigner.v1.GridTrack
-	10,  // 41: opendesigner.v1.GridTrack.kind:type_name -> opendesigner.v1.GridTrackKind
-	50,  // 42: opendesigner.v1.FrameNode.auto_layout:type_name -> opendesigner.v1.AutoLayout
-	13,  // 43: opendesigner.v1.TextStyle.align:type_name -> opendesigner.v1.TextAlign
-	14,  // 44: opendesigner.v1.TextStyle.script:type_name -> opendesigner.v1.TextScript
-	24,  // 45: opendesigner.v1.TextStyle.color:type_name -> opendesigner.v1.Color
-	15,  // 46: opendesigner.v1.TextStyle.text_case:type_name -> opendesigner.v1.TextCase
-	14,  // 47: opendesigner.v1.TextStyle.text_script:type_name -> opendesigner.v1.TextScript
-	21,  // 48: opendesigner.v1.TextStyle.list_kind:type_name -> opendesigner.v1.ListKind
-	16,  // 49: opendesigner.v1.TextStyle.vertical_align:type_name -> opendesigner.v1.TextVAlign
-	54,  // 50: opendesigner.v1.TextNode.style:type_name -> opendesigner.v1.TextStyle
-	56,  // 51: opendesigner.v1.TextNode.runs:type_name -> opendesigner.v1.TextRun
-	58,  // 52: opendesigner.v1.SubPath.anchors:type_name -> opendesigner.v1.Anchor
-	59,  // 53: opendesigner.v1.VectorNode.subpaths:type_name -> opendesigner.v1.SubPath
-	223, // 54: opendesigner.v1.Component.variant:type_name -> opendesigner.v1.Component.VariantEntry
-	62,  // 55: opendesigner.v1.Component.properties:type_name -> opendesigner.v1.ComponentProperty
-	17,  // 56: opendesigner.v1.ComponentProperty.type:type_name -> opendesigner.v1.ComponentPropertyType
-	63,  // 57: opendesigner.v1.ComponentSet.axes:type_name -> opendesigner.v1.VariantAxis
-	30,  // 58: opendesigner.v1.InstanceOverride.fills:type_name -> opendesigner.v1.Paint
-	65,  // 59: opendesigner.v1.InstanceNode.overrides:type_name -> opendesigner.v1.InstanceOverride
-	224, // 60: opendesigner.v1.InstanceNode.property_values:type_name -> opendesigner.v1.InstanceNode.PropertyValuesEntry
-	225, // 61: opendesigner.v1.InstanceNode.variant_props:type_name -> opendesigner.v1.InstanceNode.VariantPropsEntry
-	30,  // 62: opendesigner.v1.Node.fills:type_name -> opendesigner.v1.Paint
-	32,  // 63: opendesigner.v1.Node.strokes:type_name -> opendesigner.v1.Stroke
-	43,  // 64: opendesigner.v1.Node.effects:type_name -> opendesigner.v1.Effect
-	45,  // 65: opendesigner.v1.Node.rect:type_name -> opendesigner.v1.RectNode
-	46,  // 66: opendesigner.v1.Node.ellipse:type_name -> opendesigner.v1.EllipseNode
-	55,  // 67: opendesigner.v1.Node.text:type_name -> opendesigner.v1.TextNode
-	49,  // 68: opendesigner.v1.Node.group:type_name -> opendesigner.v1.GroupNode
-	53,  // 69: opendesigner.v1.Node.frame:type_name -> opendesigner.v1.FrameNode
-	57,  // 70: opendesigner.v1.Node.image:type_name -> opendesigner.v1.ImageNode
-	60,  // 71: opendesigner.v1.Node.vector:type_name -> opendesigner.v1.VectorNode
-	66,  // 72: opendesigner.v1.Node.instance:type_name -> opendesigner.v1.InstanceNode
-	47,  // 73: opendesigner.v1.Node.polygon:type_name -> opendesigner.v1.PolygonNode
-	48,  // 74: opendesigner.v1.Node.star:type_name -> opendesigner.v1.StarNode
-	226, // 75: opendesigner.v1.Node.meta:type_name -> opendesigner.v1.Node.MetaEntry
-	227, // 76: opendesigner.v1.Node.bindings:type_name -> opendesigner.v1.Node.BindingsEntry
-	228, // 77: opendesigner.v1.Node.modes:type_name -> opendesigner.v1.Node.ModesEntry
-	12,  // 78: opendesigner.v1.Node.constraint_x:type_name -> opendesigner.v1.Constraint
-	12,  // 79: opendesigner.v1.Node.constraint_y:type_name -> opendesigner.v1.Constraint
-	11,  // 80: opendesigner.v1.Node.layout_sizing_x:type_name -> opendesigner.v1.LayoutSizing
-	11,  // 81: opendesigner.v1.Node.layout_sizing_y:type_name -> opendesigner.v1.LayoutSizing
-	6,   // 82: opendesigner.v1.Node.blend_mode:type_name -> opendesigner.v1.BlendMode
-	68,  // 83: opendesigner.v1.Node.layout_grids:type_name -> opendesigner.v1.LayoutGrid
-	18,  // 84: opendesigner.v1.Node.layout_positioning:type_name -> opendesigner.v1.LayoutPositioning
-	52,  // 85: opendesigner.v1.Node.grid_cell:type_name -> opendesigner.v1.GridPlacement
-	19,  // 86: opendesigner.v1.LayoutGrid.kind:type_name -> opendesigner.v1.LayoutGridKind
-	24,  // 87: opendesigner.v1.LayoutGrid.color:type_name -> opendesigner.v1.Color
-	70,  // 88: opendesigner.v1.Page.guides:type_name -> opendesigner.v1.Guide
-	54,  // 89: opendesigner.v1.TextStyleDef.style:type_name -> opendesigner.v1.TextStyle
-	20,  // 90: opendesigner.v1.TextStyleDef.kind:type_name -> opendesigner.v1.TextStyleKind
-	21,  // 91: opendesigner.v1.TextStyleDef.list_kind:type_name -> opendesigner.v1.ListKind
-	76,  // 92: opendesigner.v1.TextStyleDef.tab_stops:type_name -> opendesigner.v1.TabStop
-	77,  // 93: opendesigner.v1.TextStyleDef.nested_styles:type_name -> opendesigner.v1.NestedStyle
-	75,  // 94: opendesigner.v1.TextStyleDef.rule_above:type_name -> opendesigner.v1.ParagraphRule
-	75,  // 95: opendesigner.v1.TextStyleDef.rule_below:type_name -> opendesigner.v1.ParagraphRule
-	24,  // 96: opendesigner.v1.TextStyleDef.shading:type_name -> opendesigner.v1.Color
-	24,  // 97: opendesigner.v1.TextStyleDef.border_color:type_name -> opendesigner.v1.Color
-	30,  // 98: opendesigner.v1.PaintStyleDef.paints:type_name -> opendesigner.v1.Paint
-	43,  // 99: opendesigner.v1.EffectStyleDef.effects:type_name -> opendesigner.v1.Effect
-	24,  // 100: opendesigner.v1.ParagraphRule.color:type_name -> opendesigner.v1.Color
-	22,  // 101: opendesigner.v1.TabStop.align:type_name -> opendesigner.v1.TabAlign
-	78,  // 102: opendesigner.v1.VariableCollection.modes:type_name -> opendesigner.v1.VariableMode
-	24,  // 103: opendesigner.v1.VariableValue.color:type_name -> opendesigner.v1.Color
-	23,  // 104: opendesigner.v1.Variable.type:type_name -> opendesigner.v1.VariableType
-	229, // 105: opendesigner.v1.Variable.values:type_name -> opendesigner.v1.Variable.ValuesEntry
-	82,  // 106: opendesigner.v1.Variable.cmyk:type_name -> opendesigner.v1.Cmyk
-	85,  // 107: opendesigner.v1.Track.keyframes:type_name -> opendesigner.v1.Keyframe
-	86,  // 108: opendesigner.v1.Clip.tracks:type_name -> opendesigner.v1.Track
-	69,  // 109: opendesigner.v1.Document.pages:type_name -> opendesigner.v1.Page
-	230, // 110: opendesigner.v1.Document.nodes:type_name -> opendesigner.v1.Document.NodesEntry
-	231, // 111: opendesigner.v1.Document.components:type_name -> opendesigner.v1.Document.ComponentsEntry
-	232, // 112: opendesigner.v1.Document.flows:type_name -> opendesigner.v1.Document.FlowsEntry
-	233, // 113: opendesigner.v1.Document.transitions:type_name -> opendesigner.v1.Document.TransitionsEntry
-	234, // 114: opendesigner.v1.Document.clips:type_name -> opendesigner.v1.Document.ClipsEntry
-	235, // 115: opendesigner.v1.Document.collections:type_name -> opendesigner.v1.Document.CollectionsEntry
-	236, // 116: opendesigner.v1.Document.variables:type_name -> opendesigner.v1.Document.VariablesEntry
-	237, // 117: opendesigner.v1.Document.fonts:type_name -> opendesigner.v1.Document.FontsEntry
-	238, // 118: opendesigner.v1.Document.text_styles:type_name -> opendesigner.v1.Document.TextStylesEntry
-	239, // 119: opendesigner.v1.Document.component_sets:type_name -> opendesigner.v1.Document.ComponentSetsEntry
-	240, // 120: opendesigner.v1.Document.comments:type_name -> opendesigner.v1.Document.CommentsEntry
-	241, // 121: opendesigner.v1.Document.paint_styles:type_name -> opendesigner.v1.Document.PaintStylesEntry
-	242, // 122: opendesigner.v1.Document.effect_styles:type_name -> opendesigner.v1.Document.EffectStylesEntry
-	243, // 123: opendesigner.v1.Document.annotations:type_name -> opendesigner.v1.Document.AnnotationsEntry
-	244, // 124: opendesigner.v1.Document.ready_for_dev:type_name -> opendesigner.v1.Document.ReadyForDevEntry
-	91,  // 125: opendesigner.v1.Document.settings:type_name -> opendesigner.v1.DocSettings
-	245, // 126: opendesigner.v1.Document.object_styles:type_name -> opendesigner.v1.Document.ObjectStylesEntry
-	90,  // 127: opendesigner.v1.Document.layers:type_name -> opendesigner.v1.Layer
-	30,  // 128: opendesigner.v1.ObjectStyleDef.fills:type_name -> opendesigner.v1.Paint
-	32,  // 129: opendesigner.v1.ObjectStyleDef.strokes:type_name -> opendesigner.v1.Stroke
-	43,  // 130: opendesigner.v1.ObjectStyleDef.effects:type_name -> opendesigner.v1.Effect
-	6,   // 131: opendesigner.v1.ObjectStyleDef.blend_mode:type_name -> opendesigner.v1.BlendMode
-	94,  // 132: opendesigner.v1.DocSettings.book:type_name -> opendesigner.v1.BookMetadata
-	92,  // 133: opendesigner.v1.DocSettings.conditions:type_name -> opendesigner.v1.TextCondition
-	93,  // 134: opendesigner.v1.DocSettings.table_styles:type_name -> opendesigner.v1.TableStyle
-	95,  // 135: opendesigner.v1.BookMetadata.contributors:type_name -> opendesigner.v1.Contributor
-	96,  // 136: opendesigner.v1.BookMetadata.subjects:type_name -> opendesigner.v1.Subject
-	97,  // 137: opendesigner.v1.BookMetadata.prices:type_name -> opendesigner.v1.Price
-	67,  // 138: opendesigner.v1.CreateNode.node:type_name -> opendesigner.v1.Node
-	67,  // 139: opendesigner.v1.SetProperties.patch:type_name -> opendesigner.v1.Node
-	250, // 140: opendesigner.v1.SetProperties.mask:type_name -> google.protobuf.FieldMask
-	54,  // 141: opendesigner.v1.SetText.style:type_name -> opendesigner.v1.TextStyle
-	56,  // 142: opendesigner.v1.SetText.runs:type_name -> opendesigner.v1.TextRun
-	59,  // 143: opendesigner.v1.SetVectorPath.subpaths:type_name -> opendesigner.v1.SubPath
-	69,  // 144: opendesigner.v1.CreatePage.page:type_name -> opendesigner.v1.Page
-	69,  // 145: opendesigner.v1.UpdatePage.page:type_name -> opendesigner.v1.Page
-	91,  // 146: opendesigner.v1.SetDocSettings.settings:type_name -> opendesigner.v1.DocSettings
-	65,  // 147: opendesigner.v1.SetInstanceOverride.override:type_name -> opendesigner.v1.InstanceOverride
-	83,  // 148: opendesigner.v1.SetFlow.flow:type_name -> opendesigner.v1.Flow
-	84,  // 149: opendesigner.v1.SetTransition.transition:type_name -> opendesigner.v1.Transition
-	87,  // 150: opendesigner.v1.SetClip.clip:type_name -> opendesigner.v1.Clip
-	98,  // 151: opendesigner.v1.Op.create_node:type_name -> opendesigner.v1.CreateNode
-	100, // 152: opendesigner.v1.Op.set_props:type_name -> opendesigner.v1.SetProperties
-	99,  // 153: opendesigner.v1.Op.delete_node:type_name -> opendesigner.v1.DeleteNode
-	101, // 154: opendesigner.v1.Op.set_text:type_name -> opendesigner.v1.SetText
-	103, // 155: opendesigner.v1.Op.reparent_node:type_name -> opendesigner.v1.ReparentNode
-	104, // 156: opendesigner.v1.Op.create_page:type_name -> opendesigner.v1.CreatePage
-	105, // 157: opendesigner.v1.Op.delete_page:type_name -> opendesigner.v1.DeletePage
-	106, // 158: opendesigner.v1.Op.rename_page:type_name -> opendesigner.v1.RenamePage
-	102, // 159: opendesigner.v1.Op.set_vector_path:type_name -> opendesigner.v1.SetVectorPath
-	110, // 160: opendesigner.v1.Op.create_component:type_name -> opendesigner.v1.CreateComponent
-	111, // 161: opendesigner.v1.Op.set_instance_override:type_name -> opendesigner.v1.SetInstanceOverride
-	112, // 162: opendesigner.v1.Op.set_flow:type_name -> opendesigner.v1.SetFlow
-	113, // 163: opendesigner.v1.Op.delete_flow:type_name -> opendesigner.v1.DeleteFlow
-	114, // 164: opendesigner.v1.Op.set_transition:type_name -> opendesigner.v1.SetTransition
-	115, // 165: opendesigner.v1.Op.delete_transition:type_name -> opendesigner.v1.DeleteTransition
-	116, // 166: opendesigner.v1.Op.set_clip:type_name -> opendesigner.v1.SetClip
-	117, // 167: opendesigner.v1.Op.delete_clip:type_name -> opendesigner.v1.DeleteClip
-	132, // 168: opendesigner.v1.Op.set_collection:type_name -> opendesigner.v1.SetCollection
-	133, // 169: opendesigner.v1.Op.delete_collection:type_name -> opendesigner.v1.DeleteCollection
-	134, // 170: opendesigner.v1.Op.set_variable:type_name -> opendesigner.v1.SetVariable
-	135, // 171: opendesigner.v1.Op.delete_variable:type_name -> opendesigner.v1.DeleteVariable
-	136, // 172: opendesigner.v1.Op.set_font:type_name -> opendesigner.v1.SetFont
-	137, // 173: opendesigner.v1.Op.delete_font:type_name -> opendesigner.v1.DeleteFont
-	138, // 174: opendesigner.v1.Op.set_text_style_def:type_name -> opendesigner.v1.SetTextStyleDef
-	139, // 175: opendesigner.v1.Op.delete_text_style_def:type_name -> opendesigner.v1.DeleteTextStyleDef
-	150, // 176: opendesigner.v1.Op.set_component_set:type_name -> opendesigner.v1.SetComponentSet
-	151, // 177: opendesigner.v1.Op.delete_component_set:type_name -> opendesigner.v1.DeleteComponentSet
-	152, // 178: opendesigner.v1.Op.set_component_def:type_name -> opendesigner.v1.SetComponentDef
-	153, // 179: opendesigner.v1.Op.set_instance_props:type_name -> opendesigner.v1.SetInstanceProps
-	120, // 180: opendesigner.v1.Op.set_comment:type_name -> opendesigner.v1.SetComment
-	121, // 181: opendesigner.v1.Op.delete_comment:type_name -> opendesigner.v1.DeleteComment
-	140, // 182: opendesigner.v1.Op.set_paint_style_def:type_name -> opendesigner.v1.SetPaintStyleDef
-	141, // 183: opendesigner.v1.Op.delete_paint_style_def:type_name -> opendesigner.v1.DeletePaintStyleDef
-	142, // 184: opendesigner.v1.Op.set_effect_style_def:type_name -> opendesigner.v1.SetEffectStyleDef
-	143, // 185: opendesigner.v1.Op.delete_effect_style_def:type_name -> opendesigner.v1.DeleteEffectStyleDef
-	122, // 186: opendesigner.v1.Op.set_instance:type_name -> opendesigner.v1.SetInstance
-	125, // 187: opendesigner.v1.Op.set_annotation:type_name -> opendesigner.v1.SetAnnotation
-	126, // 188: opendesigner.v1.Op.delete_annotation:type_name -> opendesigner.v1.DeleteAnnotation
-	127, // 189: opendesigner.v1.Op.set_ready_for_dev:type_name -> opendesigner.v1.SetReadyForDev
-	128, // 190: opendesigner.v1.Op.clear_ready_for_dev:type_name -> opendesigner.v1.ClearReadyForDev
-	107, // 191: opendesigner.v1.Op.update_page:type_name -> opendesigner.v1.UpdatePage
-	109, // 192: opendesigner.v1.Op.set_doc_settings:type_name -> opendesigner.v1.SetDocSettings
-	108, // 193: opendesigner.v1.Op.move_page:type_name -> opendesigner.v1.MovePage
-	144, // 194: opendesigner.v1.Op.set_object_style_def:type_name -> opendesigner.v1.SetObjectStyleDef
-	145, // 195: opendesigner.v1.Op.delete_object_style_def:type_name -> opendesigner.v1.DeleteObjectStyleDef
-	146, // 196: opendesigner.v1.Op.set_layer:type_name -> opendesigner.v1.SetLayer
-	147, // 197: opendesigner.v1.Op.delete_layer:type_name -> opendesigner.v1.DeleteLayer
-	148, // 198: opendesigner.v1.Op.set_image:type_name -> opendesigner.v1.SetImage
-	119, // 199: opendesigner.v1.SetComment.comment:type_name -> opendesigner.v1.Comment
-	66,  // 200: opendesigner.v1.SetInstance.instance:type_name -> opendesigner.v1.InstanceNode
-	67,  // 201: opendesigner.v1.ReadyForDev.snapshot:type_name -> opendesigner.v1.Node
-	123, // 202: opendesigner.v1.SetAnnotation.annotation:type_name -> opendesigner.v1.Annotation
-	124, // 203: opendesigner.v1.SetReadyForDev.ready:type_name -> opendesigner.v1.ReadyForDev
-	129, // 204: opendesigner.v1.CompareReadyResponse.changes:type_name -> opendesigner.v1.ReadyChange
-	79,  // 205: opendesigner.v1.SetCollection.collection:type_name -> opendesigner.v1.VariableCollection
-	81,  // 206: opendesigner.v1.SetVariable.variable:type_name -> opendesigner.v1.Variable
-	71,  // 207: opendesigner.v1.SetFont.font:type_name -> opendesigner.v1.FontFace
-	72,  // 208: opendesigner.v1.SetTextStyleDef.text_style:type_name -> opendesigner.v1.TextStyleDef
-	73,  // 209: opendesigner.v1.SetPaintStyleDef.paint_style:type_name -> opendesigner.v1.PaintStyleDef
-	74,  // 210: opendesigner.v1.SetEffectStyleDef.effect_style:type_name -> opendesigner.v1.EffectStyleDef
-	89,  // 211: opendesigner.v1.SetObjectStyleDef.object_style:type_name -> opendesigner.v1.ObjectStyleDef
-	90,  // 212: opendesigner.v1.SetLayer.layer:type_name -> opendesigner.v1.Layer
-	57,  // 213: opendesigner.v1.SetImage.image:type_name -> opendesigner.v1.ImageNode
-	64,  // 214: opendesigner.v1.SetComponentSet.component_set:type_name -> opendesigner.v1.ComponentSet
-	246, // 215: opendesigner.v1.SetComponentSet.axis_renames:type_name -> opendesigner.v1.SetComponentSet.AxisRenamesEntry
-	149, // 216: opendesigner.v1.SetComponentSet.option_renames:type_name -> opendesigner.v1.OptionRename
-	247, // 217: opendesigner.v1.SetComponentDef.variant:type_name -> opendesigner.v1.SetComponentDef.VariantEntry
-	62,  // 218: opendesigner.v1.SetComponentDef.properties:type_name -> opendesigner.v1.ComponentProperty
-	248, // 219: opendesigner.v1.SetInstanceProps.property_values:type_name -> opendesigner.v1.SetInstanceProps.PropertyValuesEntry
-	249, // 220: opendesigner.v1.SetInstanceProps.variant_props:type_name -> opendesigner.v1.SetInstanceProps.VariantPropsEntry
-	251, // 221: opendesigner.v1.OpRecord.ts:type_name -> google.protobuf.Timestamp
-	118, // 222: opendesigner.v1.OpRecord.op:type_name -> opendesigner.v1.Op
-	88,  // 223: opendesigner.v1.OpenResponse.snapshot:type_name -> opendesigner.v1.Document
-	158, // 224: opendesigner.v1.ListDocumentsResponse.docs:type_name -> opendesigner.v1.DocInfo
-	118, // 225: opendesigner.v1.SubmitOpRequest.op:type_name -> opendesigner.v1.Op
-	167, // 226: opendesigner.v1.SubmitOpResponse.ack:type_name -> opendesigner.v1.Ack
-	154, // 227: opendesigner.v1.ServerMsg.applied:type_name -> opendesigner.v1.OpRecord
-	167, // 228: opendesigner.v1.ServerMsg.ack:type_name -> opendesigner.v1.Ack
-	168, // 229: opendesigner.v1.ServerMsg.error:type_name -> opendesigner.v1.ErrorMsg
-	170, // 230: opendesigner.v1.PresenceEvent.update:type_name -> opendesigner.v1.PresenceState
-	172, // 231: opendesigner.v1.FlowReport.issues:type_name -> opendesigner.v1.FlowIssue
-	173, // 232: opendesigner.v1.FlowReport.paths:type_name -> opendesigner.v1.FlowPath
-	174, // 233: opendesigner.v1.AnalyzeFlowsResponse.reports:type_name -> opendesigner.v1.FlowReport
-	177, // 234: opendesigner.v1.ExportCodeResponse.files:type_name -> opendesigner.v1.ExportFile
-	67,  // 235: opendesigner.v1.RenderDiagramResponse.nodes:type_name -> opendesigner.v1.Node
-	182, // 236: opendesigner.v1.ListVersionsResponse.versions:type_name -> opendesigner.v1.VersionInfo
-	189, // 237: opendesigner.v1.GetAccessResponse.links:type_name -> opendesigner.v1.AccessLink
-	189, // 238: opendesigner.v1.CreateShareLinkResponse.link:type_name -> opendesigner.v1.AccessLink
-	67,  // 239: opendesigner.v1.ImportFigResponse.nodes:type_name -> opendesigner.v1.Node
-	79,  // 240: opendesigner.v1.ImportFigResponse.collections:type_name -> opendesigner.v1.VariableCollection
-	81,  // 241: opendesigner.v1.ImportFigResponse.variables:type_name -> opendesigner.v1.Variable
-	204, // 242: opendesigner.v1.ReviewMergeResponse.changes:type_name -> opendesigner.v1.MergeChange
-	209, // 243: opendesigner.v1.ReviewDesignResponse.issues:type_name -> opendesigner.v1.ReviewIssue
-	67,  // 244: opendesigner.v1.RenderBoardResponse.nodes:type_name -> opendesigner.v1.Node
-	170, // 245: opendesigner.v1.UpdatePresenceRequest.state:type_name -> opendesigner.v1.PresenceState
-	80,  // 246: opendesigner.v1.Variable.ValuesEntry.value:type_name -> opendesigner.v1.VariableValue
-	67,  // 247: opendesigner.v1.Document.NodesEntry.value:type_name -> opendesigner.v1.Node
-	61,  // 248: opendesigner.v1.Document.ComponentsEntry.value:type_name -> opendesigner.v1.Component
-	83,  // 249: opendesigner.v1.Document.FlowsEntry.value:type_name -> opendesigner.v1.Flow
-	84,  // 250: opendesigner.v1.Document.TransitionsEntry.value:type_name -> opendesigner.v1.Transition
-	87,  // 251: opendesigner.v1.Document.ClipsEntry.value:type_name -> opendesigner.v1.Clip
-	79,  // 252: opendesigner.v1.Document.CollectionsEntry.value:type_name -> opendesigner.v1.VariableCollection
-	81,  // 253: opendesigner.v1.Document.VariablesEntry.value:type_name -> opendesigner.v1.Variable
-	71,  // 254: opendesigner.v1.Document.FontsEntry.value:type_name -> opendesigner.v1.FontFace
-	72,  // 255: opendesigner.v1.Document.TextStylesEntry.value:type_name -> opendesigner.v1.TextStyleDef
-	64,  // 256: opendesigner.v1.Document.ComponentSetsEntry.value:type_name -> opendesigner.v1.ComponentSet
-	119, // 257: opendesigner.v1.Document.CommentsEntry.value:type_name -> opendesigner.v1.Comment
-	73,  // 258: opendesigner.v1.Document.PaintStylesEntry.value:type_name -> opendesigner.v1.PaintStyleDef
-	74,  // 259: opendesigner.v1.Document.EffectStylesEntry.value:type_name -> opendesigner.v1.EffectStyleDef
-	123, // 260: opendesigner.v1.Document.AnnotationsEntry.value:type_name -> opendesigner.v1.Annotation
-	124, // 261: opendesigner.v1.Document.ReadyForDevEntry.value:type_name -> opendesigner.v1.ReadyForDev
-	89,  // 262: opendesigner.v1.Document.ObjectStylesEntry.value:type_name -> opendesigner.v1.ObjectStyleDef
-	212, // 263: opendesigner.v1.DocumentService.RenderBoard:input_type -> opendesigner.v1.RenderBoardRequest
-	210, // 264: opendesigner.v1.DocumentService.ReviewDesign:input_type -> opendesigner.v1.ReviewDesignRequest
-	130, // 265: opendesigner.v1.DocumentService.CompareReady:input_type -> opendesigner.v1.CompareReadyRequest
-	183, // 266: opendesigner.v1.DocumentService.CreateVersion:input_type -> opendesigner.v1.CreateVersionRequest
-	184, // 267: opendesigner.v1.DocumentService.ListVersions:input_type -> opendesigner.v1.ListVersionsRequest
-	186, // 268: opendesigner.v1.DocumentService.DeleteVersion:input_type -> opendesigner.v1.DeleteVersionRequest
-	188, // 269: opendesigner.v1.DocumentService.BranchDocument:input_type -> opendesigner.v1.BranchRequest
-	190, // 270: opendesigner.v1.DocumentService.GetAccess:input_type -> opendesigner.v1.GetAccessRequest
-	192, // 271: opendesigner.v1.DocumentService.EnableAccess:input_type -> opendesigner.v1.EnableAccessRequest
-	194, // 272: opendesigner.v1.DocumentService.DisableAccess:input_type -> opendesigner.v1.DisableAccessRequest
-	196, // 273: opendesigner.v1.DocumentService.CreateShareLink:input_type -> opendesigner.v1.CreateShareLinkRequest
-	198, // 274: opendesigner.v1.DocumentService.RevokeShareLink:input_type -> opendesigner.v1.RevokeShareLinkRequest
-	200, // 275: opendesigner.v1.DocumentService.ImportFig:input_type -> opendesigner.v1.ImportFigRequest
-	202, // 276: opendesigner.v1.DocumentService.GetBranchOrigin:input_type -> opendesigner.v1.GetBranchOriginRequest
-	205, // 277: opendesigner.v1.DocumentService.ReviewMerge:input_type -> opendesigner.v1.ReviewMergeRequest
-	207, // 278: opendesigner.v1.DocumentService.MergeBranch:input_type -> opendesigner.v1.MergeBranchRequest
-	162, // 279: opendesigner.v1.DocumentService.ListDocuments:input_type -> opendesigner.v1.ListDocumentsRequest
-	157, // 280: opendesigner.v1.DocumentService.CreateDocument:input_type -> opendesigner.v1.CreateDocumentRequest
-	159, // 281: opendesigner.v1.DocumentService.RenameDocument:input_type -> opendesigner.v1.RenameDocumentRequest
-	160, // 282: opendesigner.v1.DocumentService.DeleteDocument:input_type -> opendesigner.v1.DeleteDocumentRequest
-	155, // 283: opendesigner.v1.DocumentService.OpenDocument:input_type -> opendesigner.v1.OpenRequest
-	164, // 284: opendesigner.v1.DocumentService.SubmitOp:input_type -> opendesigner.v1.SubmitOpRequest
-	166, // 285: opendesigner.v1.DocumentService.Subscribe:input_type -> opendesigner.v1.SubscribeRequest
-	214, // 286: opendesigner.v1.DocumentService.WatchPresence:input_type -> opendesigner.v1.WatchPresenceRequest
-	215, // 287: opendesigner.v1.DocumentService.UpdatePresence:input_type -> opendesigner.v1.UpdatePresenceRequest
-	218, // 288: opendesigner.v1.DocumentService.WatchJobs:input_type -> opendesigner.v1.WatchJobsRequest
-	219, // 289: opendesigner.v1.DocumentService.RunJob:input_type -> opendesigner.v1.RunJobRequest
-	221, // 290: opendesigner.v1.DocumentService.CompleteJob:input_type -> opendesigner.v1.CompleteJobRequest
-	175, // 291: opendesigner.v1.DocumentService.AnalyzeFlows:input_type -> opendesigner.v1.AnalyzeFlowsRequest
-	178, // 292: opendesigner.v1.DocumentService.ExportCode:input_type -> opendesigner.v1.ExportCodeRequest
-	180, // 293: opendesigner.v1.DocumentService.RenderDiagram:input_type -> opendesigner.v1.RenderDiagramRequest
-	213, // 294: opendesigner.v1.DocumentService.RenderBoard:output_type -> opendesigner.v1.RenderBoardResponse
-	211, // 295: opendesigner.v1.DocumentService.ReviewDesign:output_type -> opendesigner.v1.ReviewDesignResponse
-	131, // 296: opendesigner.v1.DocumentService.CompareReady:output_type -> opendesigner.v1.CompareReadyResponse
-	182, // 297: opendesigner.v1.DocumentService.CreateVersion:output_type -> opendesigner.v1.VersionInfo
-	185, // 298: opendesigner.v1.DocumentService.ListVersions:output_type -> opendesigner.v1.ListVersionsResponse
-	187, // 299: opendesigner.v1.DocumentService.DeleteVersion:output_type -> opendesigner.v1.DeleteVersionResponse
-	158, // 300: opendesigner.v1.DocumentService.BranchDocument:output_type -> opendesigner.v1.DocInfo
-	191, // 301: opendesigner.v1.DocumentService.GetAccess:output_type -> opendesigner.v1.GetAccessResponse
-	193, // 302: opendesigner.v1.DocumentService.EnableAccess:output_type -> opendesigner.v1.EnableAccessResponse
-	195, // 303: opendesigner.v1.DocumentService.DisableAccess:output_type -> opendesigner.v1.DisableAccessResponse
-	197, // 304: opendesigner.v1.DocumentService.CreateShareLink:output_type -> opendesigner.v1.CreateShareLinkResponse
-	199, // 305: opendesigner.v1.DocumentService.RevokeShareLink:output_type -> opendesigner.v1.RevokeShareLinkResponse
-	201, // 306: opendesigner.v1.DocumentService.ImportFig:output_type -> opendesigner.v1.ImportFigResponse
-	203, // 307: opendesigner.v1.DocumentService.GetBranchOrigin:output_type -> opendesigner.v1.GetBranchOriginResponse
-	206, // 308: opendesigner.v1.DocumentService.ReviewMerge:output_type -> opendesigner.v1.ReviewMergeResponse
-	208, // 309: opendesigner.v1.DocumentService.MergeBranch:output_type -> opendesigner.v1.MergeBranchResponse
-	163, // 310: opendesigner.v1.DocumentService.ListDocuments:output_type -> opendesigner.v1.ListDocumentsResponse
-	158, // 311: opendesigner.v1.DocumentService.CreateDocument:output_type -> opendesigner.v1.DocInfo
-	158, // 312: opendesigner.v1.DocumentService.RenameDocument:output_type -> opendesigner.v1.DocInfo
-	161, // 313: opendesigner.v1.DocumentService.DeleteDocument:output_type -> opendesigner.v1.DeleteDocumentResponse
-	156, // 314: opendesigner.v1.DocumentService.OpenDocument:output_type -> opendesigner.v1.OpenResponse
-	165, // 315: opendesigner.v1.DocumentService.SubmitOp:output_type -> opendesigner.v1.SubmitOpResponse
-	169, // 316: opendesigner.v1.DocumentService.Subscribe:output_type -> opendesigner.v1.ServerMsg
-	171, // 317: opendesigner.v1.DocumentService.WatchPresence:output_type -> opendesigner.v1.PresenceEvent
-	216, // 318: opendesigner.v1.DocumentService.UpdatePresence:output_type -> opendesigner.v1.UpdatePresenceResponse
-	217, // 319: opendesigner.v1.DocumentService.WatchJobs:output_type -> opendesigner.v1.EditorJob
-	220, // 320: opendesigner.v1.DocumentService.RunJob:output_type -> opendesigner.v1.RunJobResponse
-	222, // 321: opendesigner.v1.DocumentService.CompleteJob:output_type -> opendesigner.v1.CompleteJobResponse
-	176, // 322: opendesigner.v1.DocumentService.AnalyzeFlows:output_type -> opendesigner.v1.AnalyzeFlowsResponse
-	179, // 323: opendesigner.v1.DocumentService.ExportCode:output_type -> opendesigner.v1.ExportCodeResponse
-	181, // 324: opendesigner.v1.DocumentService.RenderDiagram:output_type -> opendesigner.v1.RenderDiagramResponse
-	294, // [294:325] is the sub-list for method output_type
-	263, // [263:294] is the sub-list for method input_type
-	263, // [263:263] is the sub-list for extension type_name
-	263, // [263:263] is the sub-list for extension extendee
-	0,   // [0:263] is the sub-list for field type_name
+	41,  // 31: opendesigner.v1.Effect.noise:type_name -> opendesigner.v1.Noise
+	42,  // 32: opendesigner.v1.Effect.texture:type_name -> opendesigner.v1.Texture
+	43,  // 33: opendesigner.v1.Effect.glass:type_name -> opendesigner.v1.Glass
+	40,  // 34: opendesigner.v1.Effect.gradient_feather:type_name -> opendesigner.v1.GradientFeather
+	45,  // 35: opendesigner.v1.RectNode.radii:type_name -> opendesigner.v1.CornerRadii
+	7,   // 36: opendesigner.v1.AutoLayout.direction:type_name -> opendesigner.v1.LayoutDirection
+	8,   // 37: opendesigner.v1.AutoLayout.main_align:type_name -> opendesigner.v1.LayoutAlign
+	8,   // 38: opendesigner.v1.AutoLayout.cross_align:type_name -> opendesigner.v1.LayoutAlign
+	9,   // 39: opendesigner.v1.AutoLayout.mode:type_name -> opendesigner.v1.LayoutMode
+	52,  // 40: opendesigner.v1.AutoLayout.columns:type_name -> opendesigner.v1.GridTrack
+	52,  // 41: opendesigner.v1.AutoLayout.rows:type_name -> opendesigner.v1.GridTrack
+	10,  // 42: opendesigner.v1.GridTrack.kind:type_name -> opendesigner.v1.GridTrackKind
+	51,  // 43: opendesigner.v1.FrameNode.auto_layout:type_name -> opendesigner.v1.AutoLayout
+	13,  // 44: opendesigner.v1.TextStyle.align:type_name -> opendesigner.v1.TextAlign
+	14,  // 45: opendesigner.v1.TextStyle.script:type_name -> opendesigner.v1.TextScript
+	24,  // 46: opendesigner.v1.TextStyle.color:type_name -> opendesigner.v1.Color
+	15,  // 47: opendesigner.v1.TextStyle.text_case:type_name -> opendesigner.v1.TextCase
+	14,  // 48: opendesigner.v1.TextStyle.text_script:type_name -> opendesigner.v1.TextScript
+	21,  // 49: opendesigner.v1.TextStyle.list_kind:type_name -> opendesigner.v1.ListKind
+	16,  // 50: opendesigner.v1.TextStyle.vertical_align:type_name -> opendesigner.v1.TextVAlign
+	55,  // 51: opendesigner.v1.TextNode.style:type_name -> opendesigner.v1.TextStyle
+	57,  // 52: opendesigner.v1.TextNode.runs:type_name -> opendesigner.v1.TextRun
+	59,  // 53: opendesigner.v1.SubPath.anchors:type_name -> opendesigner.v1.Anchor
+	60,  // 54: opendesigner.v1.VectorNode.subpaths:type_name -> opendesigner.v1.SubPath
+	224, // 55: opendesigner.v1.Component.variant:type_name -> opendesigner.v1.Component.VariantEntry
+	63,  // 56: opendesigner.v1.Component.properties:type_name -> opendesigner.v1.ComponentProperty
+	17,  // 57: opendesigner.v1.ComponentProperty.type:type_name -> opendesigner.v1.ComponentPropertyType
+	64,  // 58: opendesigner.v1.ComponentSet.axes:type_name -> opendesigner.v1.VariantAxis
+	30,  // 59: opendesigner.v1.InstanceOverride.fills:type_name -> opendesigner.v1.Paint
+	66,  // 60: opendesigner.v1.InstanceNode.overrides:type_name -> opendesigner.v1.InstanceOverride
+	225, // 61: opendesigner.v1.InstanceNode.property_values:type_name -> opendesigner.v1.InstanceNode.PropertyValuesEntry
+	226, // 62: opendesigner.v1.InstanceNode.variant_props:type_name -> opendesigner.v1.InstanceNode.VariantPropsEntry
+	30,  // 63: opendesigner.v1.Node.fills:type_name -> opendesigner.v1.Paint
+	32,  // 64: opendesigner.v1.Node.strokes:type_name -> opendesigner.v1.Stroke
+	44,  // 65: opendesigner.v1.Node.effects:type_name -> opendesigner.v1.Effect
+	46,  // 66: opendesigner.v1.Node.rect:type_name -> opendesigner.v1.RectNode
+	47,  // 67: opendesigner.v1.Node.ellipse:type_name -> opendesigner.v1.EllipseNode
+	56,  // 68: opendesigner.v1.Node.text:type_name -> opendesigner.v1.TextNode
+	50,  // 69: opendesigner.v1.Node.group:type_name -> opendesigner.v1.GroupNode
+	54,  // 70: opendesigner.v1.Node.frame:type_name -> opendesigner.v1.FrameNode
+	58,  // 71: opendesigner.v1.Node.image:type_name -> opendesigner.v1.ImageNode
+	61,  // 72: opendesigner.v1.Node.vector:type_name -> opendesigner.v1.VectorNode
+	67,  // 73: opendesigner.v1.Node.instance:type_name -> opendesigner.v1.InstanceNode
+	48,  // 74: opendesigner.v1.Node.polygon:type_name -> opendesigner.v1.PolygonNode
+	49,  // 75: opendesigner.v1.Node.star:type_name -> opendesigner.v1.StarNode
+	227, // 76: opendesigner.v1.Node.meta:type_name -> opendesigner.v1.Node.MetaEntry
+	228, // 77: opendesigner.v1.Node.bindings:type_name -> opendesigner.v1.Node.BindingsEntry
+	229, // 78: opendesigner.v1.Node.modes:type_name -> opendesigner.v1.Node.ModesEntry
+	12,  // 79: opendesigner.v1.Node.constraint_x:type_name -> opendesigner.v1.Constraint
+	12,  // 80: opendesigner.v1.Node.constraint_y:type_name -> opendesigner.v1.Constraint
+	11,  // 81: opendesigner.v1.Node.layout_sizing_x:type_name -> opendesigner.v1.LayoutSizing
+	11,  // 82: opendesigner.v1.Node.layout_sizing_y:type_name -> opendesigner.v1.LayoutSizing
+	6,   // 83: opendesigner.v1.Node.blend_mode:type_name -> opendesigner.v1.BlendMode
+	69,  // 84: opendesigner.v1.Node.layout_grids:type_name -> opendesigner.v1.LayoutGrid
+	18,  // 85: opendesigner.v1.Node.layout_positioning:type_name -> opendesigner.v1.LayoutPositioning
+	53,  // 86: opendesigner.v1.Node.grid_cell:type_name -> opendesigner.v1.GridPlacement
+	19,  // 87: opendesigner.v1.LayoutGrid.kind:type_name -> opendesigner.v1.LayoutGridKind
+	24,  // 88: opendesigner.v1.LayoutGrid.color:type_name -> opendesigner.v1.Color
+	71,  // 89: opendesigner.v1.Page.guides:type_name -> opendesigner.v1.Guide
+	55,  // 90: opendesigner.v1.TextStyleDef.style:type_name -> opendesigner.v1.TextStyle
+	20,  // 91: opendesigner.v1.TextStyleDef.kind:type_name -> opendesigner.v1.TextStyleKind
+	21,  // 92: opendesigner.v1.TextStyleDef.list_kind:type_name -> opendesigner.v1.ListKind
+	77,  // 93: opendesigner.v1.TextStyleDef.tab_stops:type_name -> opendesigner.v1.TabStop
+	78,  // 94: opendesigner.v1.TextStyleDef.nested_styles:type_name -> opendesigner.v1.NestedStyle
+	76,  // 95: opendesigner.v1.TextStyleDef.rule_above:type_name -> opendesigner.v1.ParagraphRule
+	76,  // 96: opendesigner.v1.TextStyleDef.rule_below:type_name -> opendesigner.v1.ParagraphRule
+	24,  // 97: opendesigner.v1.TextStyleDef.shading:type_name -> opendesigner.v1.Color
+	24,  // 98: opendesigner.v1.TextStyleDef.border_color:type_name -> opendesigner.v1.Color
+	30,  // 99: opendesigner.v1.PaintStyleDef.paints:type_name -> opendesigner.v1.Paint
+	44,  // 100: opendesigner.v1.EffectStyleDef.effects:type_name -> opendesigner.v1.Effect
+	24,  // 101: opendesigner.v1.ParagraphRule.color:type_name -> opendesigner.v1.Color
+	22,  // 102: opendesigner.v1.TabStop.align:type_name -> opendesigner.v1.TabAlign
+	79,  // 103: opendesigner.v1.VariableCollection.modes:type_name -> opendesigner.v1.VariableMode
+	24,  // 104: opendesigner.v1.VariableValue.color:type_name -> opendesigner.v1.Color
+	23,  // 105: opendesigner.v1.Variable.type:type_name -> opendesigner.v1.VariableType
+	230, // 106: opendesigner.v1.Variable.values:type_name -> opendesigner.v1.Variable.ValuesEntry
+	83,  // 107: opendesigner.v1.Variable.cmyk:type_name -> opendesigner.v1.Cmyk
+	86,  // 108: opendesigner.v1.Track.keyframes:type_name -> opendesigner.v1.Keyframe
+	87,  // 109: opendesigner.v1.Clip.tracks:type_name -> opendesigner.v1.Track
+	70,  // 110: opendesigner.v1.Document.pages:type_name -> opendesigner.v1.Page
+	231, // 111: opendesigner.v1.Document.nodes:type_name -> opendesigner.v1.Document.NodesEntry
+	232, // 112: opendesigner.v1.Document.components:type_name -> opendesigner.v1.Document.ComponentsEntry
+	233, // 113: opendesigner.v1.Document.flows:type_name -> opendesigner.v1.Document.FlowsEntry
+	234, // 114: opendesigner.v1.Document.transitions:type_name -> opendesigner.v1.Document.TransitionsEntry
+	235, // 115: opendesigner.v1.Document.clips:type_name -> opendesigner.v1.Document.ClipsEntry
+	236, // 116: opendesigner.v1.Document.collections:type_name -> opendesigner.v1.Document.CollectionsEntry
+	237, // 117: opendesigner.v1.Document.variables:type_name -> opendesigner.v1.Document.VariablesEntry
+	238, // 118: opendesigner.v1.Document.fonts:type_name -> opendesigner.v1.Document.FontsEntry
+	239, // 119: opendesigner.v1.Document.text_styles:type_name -> opendesigner.v1.Document.TextStylesEntry
+	240, // 120: opendesigner.v1.Document.component_sets:type_name -> opendesigner.v1.Document.ComponentSetsEntry
+	241, // 121: opendesigner.v1.Document.comments:type_name -> opendesigner.v1.Document.CommentsEntry
+	242, // 122: opendesigner.v1.Document.paint_styles:type_name -> opendesigner.v1.Document.PaintStylesEntry
+	243, // 123: opendesigner.v1.Document.effect_styles:type_name -> opendesigner.v1.Document.EffectStylesEntry
+	244, // 124: opendesigner.v1.Document.annotations:type_name -> opendesigner.v1.Document.AnnotationsEntry
+	245, // 125: opendesigner.v1.Document.ready_for_dev:type_name -> opendesigner.v1.Document.ReadyForDevEntry
+	92,  // 126: opendesigner.v1.Document.settings:type_name -> opendesigner.v1.DocSettings
+	246, // 127: opendesigner.v1.Document.object_styles:type_name -> opendesigner.v1.Document.ObjectStylesEntry
+	91,  // 128: opendesigner.v1.Document.layers:type_name -> opendesigner.v1.Layer
+	30,  // 129: opendesigner.v1.ObjectStyleDef.fills:type_name -> opendesigner.v1.Paint
+	32,  // 130: opendesigner.v1.ObjectStyleDef.strokes:type_name -> opendesigner.v1.Stroke
+	44,  // 131: opendesigner.v1.ObjectStyleDef.effects:type_name -> opendesigner.v1.Effect
+	6,   // 132: opendesigner.v1.ObjectStyleDef.blend_mode:type_name -> opendesigner.v1.BlendMode
+	95,  // 133: opendesigner.v1.DocSettings.book:type_name -> opendesigner.v1.BookMetadata
+	93,  // 134: opendesigner.v1.DocSettings.conditions:type_name -> opendesigner.v1.TextCondition
+	94,  // 135: opendesigner.v1.DocSettings.table_styles:type_name -> opendesigner.v1.TableStyle
+	96,  // 136: opendesigner.v1.BookMetadata.contributors:type_name -> opendesigner.v1.Contributor
+	97,  // 137: opendesigner.v1.BookMetadata.subjects:type_name -> opendesigner.v1.Subject
+	98,  // 138: opendesigner.v1.BookMetadata.prices:type_name -> opendesigner.v1.Price
+	68,  // 139: opendesigner.v1.CreateNode.node:type_name -> opendesigner.v1.Node
+	68,  // 140: opendesigner.v1.SetProperties.patch:type_name -> opendesigner.v1.Node
+	251, // 141: opendesigner.v1.SetProperties.mask:type_name -> google.protobuf.FieldMask
+	55,  // 142: opendesigner.v1.SetText.style:type_name -> opendesigner.v1.TextStyle
+	57,  // 143: opendesigner.v1.SetText.runs:type_name -> opendesigner.v1.TextRun
+	60,  // 144: opendesigner.v1.SetVectorPath.subpaths:type_name -> opendesigner.v1.SubPath
+	70,  // 145: opendesigner.v1.CreatePage.page:type_name -> opendesigner.v1.Page
+	70,  // 146: opendesigner.v1.UpdatePage.page:type_name -> opendesigner.v1.Page
+	92,  // 147: opendesigner.v1.SetDocSettings.settings:type_name -> opendesigner.v1.DocSettings
+	66,  // 148: opendesigner.v1.SetInstanceOverride.override:type_name -> opendesigner.v1.InstanceOverride
+	84,  // 149: opendesigner.v1.SetFlow.flow:type_name -> opendesigner.v1.Flow
+	85,  // 150: opendesigner.v1.SetTransition.transition:type_name -> opendesigner.v1.Transition
+	88,  // 151: opendesigner.v1.SetClip.clip:type_name -> opendesigner.v1.Clip
+	99,  // 152: opendesigner.v1.Op.create_node:type_name -> opendesigner.v1.CreateNode
+	101, // 153: opendesigner.v1.Op.set_props:type_name -> opendesigner.v1.SetProperties
+	100, // 154: opendesigner.v1.Op.delete_node:type_name -> opendesigner.v1.DeleteNode
+	102, // 155: opendesigner.v1.Op.set_text:type_name -> opendesigner.v1.SetText
+	104, // 156: opendesigner.v1.Op.reparent_node:type_name -> opendesigner.v1.ReparentNode
+	105, // 157: opendesigner.v1.Op.create_page:type_name -> opendesigner.v1.CreatePage
+	106, // 158: opendesigner.v1.Op.delete_page:type_name -> opendesigner.v1.DeletePage
+	107, // 159: opendesigner.v1.Op.rename_page:type_name -> opendesigner.v1.RenamePage
+	103, // 160: opendesigner.v1.Op.set_vector_path:type_name -> opendesigner.v1.SetVectorPath
+	111, // 161: opendesigner.v1.Op.create_component:type_name -> opendesigner.v1.CreateComponent
+	112, // 162: opendesigner.v1.Op.set_instance_override:type_name -> opendesigner.v1.SetInstanceOverride
+	113, // 163: opendesigner.v1.Op.set_flow:type_name -> opendesigner.v1.SetFlow
+	114, // 164: opendesigner.v1.Op.delete_flow:type_name -> opendesigner.v1.DeleteFlow
+	115, // 165: opendesigner.v1.Op.set_transition:type_name -> opendesigner.v1.SetTransition
+	116, // 166: opendesigner.v1.Op.delete_transition:type_name -> opendesigner.v1.DeleteTransition
+	117, // 167: opendesigner.v1.Op.set_clip:type_name -> opendesigner.v1.SetClip
+	118, // 168: opendesigner.v1.Op.delete_clip:type_name -> opendesigner.v1.DeleteClip
+	133, // 169: opendesigner.v1.Op.set_collection:type_name -> opendesigner.v1.SetCollection
+	134, // 170: opendesigner.v1.Op.delete_collection:type_name -> opendesigner.v1.DeleteCollection
+	135, // 171: opendesigner.v1.Op.set_variable:type_name -> opendesigner.v1.SetVariable
+	136, // 172: opendesigner.v1.Op.delete_variable:type_name -> opendesigner.v1.DeleteVariable
+	137, // 173: opendesigner.v1.Op.set_font:type_name -> opendesigner.v1.SetFont
+	138, // 174: opendesigner.v1.Op.delete_font:type_name -> opendesigner.v1.DeleteFont
+	139, // 175: opendesigner.v1.Op.set_text_style_def:type_name -> opendesigner.v1.SetTextStyleDef
+	140, // 176: opendesigner.v1.Op.delete_text_style_def:type_name -> opendesigner.v1.DeleteTextStyleDef
+	151, // 177: opendesigner.v1.Op.set_component_set:type_name -> opendesigner.v1.SetComponentSet
+	152, // 178: opendesigner.v1.Op.delete_component_set:type_name -> opendesigner.v1.DeleteComponentSet
+	153, // 179: opendesigner.v1.Op.set_component_def:type_name -> opendesigner.v1.SetComponentDef
+	154, // 180: opendesigner.v1.Op.set_instance_props:type_name -> opendesigner.v1.SetInstanceProps
+	121, // 181: opendesigner.v1.Op.set_comment:type_name -> opendesigner.v1.SetComment
+	122, // 182: opendesigner.v1.Op.delete_comment:type_name -> opendesigner.v1.DeleteComment
+	141, // 183: opendesigner.v1.Op.set_paint_style_def:type_name -> opendesigner.v1.SetPaintStyleDef
+	142, // 184: opendesigner.v1.Op.delete_paint_style_def:type_name -> opendesigner.v1.DeletePaintStyleDef
+	143, // 185: opendesigner.v1.Op.set_effect_style_def:type_name -> opendesigner.v1.SetEffectStyleDef
+	144, // 186: opendesigner.v1.Op.delete_effect_style_def:type_name -> opendesigner.v1.DeleteEffectStyleDef
+	123, // 187: opendesigner.v1.Op.set_instance:type_name -> opendesigner.v1.SetInstance
+	126, // 188: opendesigner.v1.Op.set_annotation:type_name -> opendesigner.v1.SetAnnotation
+	127, // 189: opendesigner.v1.Op.delete_annotation:type_name -> opendesigner.v1.DeleteAnnotation
+	128, // 190: opendesigner.v1.Op.set_ready_for_dev:type_name -> opendesigner.v1.SetReadyForDev
+	129, // 191: opendesigner.v1.Op.clear_ready_for_dev:type_name -> opendesigner.v1.ClearReadyForDev
+	108, // 192: opendesigner.v1.Op.update_page:type_name -> opendesigner.v1.UpdatePage
+	110, // 193: opendesigner.v1.Op.set_doc_settings:type_name -> opendesigner.v1.SetDocSettings
+	109, // 194: opendesigner.v1.Op.move_page:type_name -> opendesigner.v1.MovePage
+	145, // 195: opendesigner.v1.Op.set_object_style_def:type_name -> opendesigner.v1.SetObjectStyleDef
+	146, // 196: opendesigner.v1.Op.delete_object_style_def:type_name -> opendesigner.v1.DeleteObjectStyleDef
+	147, // 197: opendesigner.v1.Op.set_layer:type_name -> opendesigner.v1.SetLayer
+	148, // 198: opendesigner.v1.Op.delete_layer:type_name -> opendesigner.v1.DeleteLayer
+	149, // 199: opendesigner.v1.Op.set_image:type_name -> opendesigner.v1.SetImage
+	120, // 200: opendesigner.v1.SetComment.comment:type_name -> opendesigner.v1.Comment
+	67,  // 201: opendesigner.v1.SetInstance.instance:type_name -> opendesigner.v1.InstanceNode
+	68,  // 202: opendesigner.v1.ReadyForDev.snapshot:type_name -> opendesigner.v1.Node
+	124, // 203: opendesigner.v1.SetAnnotation.annotation:type_name -> opendesigner.v1.Annotation
+	125, // 204: opendesigner.v1.SetReadyForDev.ready:type_name -> opendesigner.v1.ReadyForDev
+	130, // 205: opendesigner.v1.CompareReadyResponse.changes:type_name -> opendesigner.v1.ReadyChange
+	80,  // 206: opendesigner.v1.SetCollection.collection:type_name -> opendesigner.v1.VariableCollection
+	82,  // 207: opendesigner.v1.SetVariable.variable:type_name -> opendesigner.v1.Variable
+	72,  // 208: opendesigner.v1.SetFont.font:type_name -> opendesigner.v1.FontFace
+	73,  // 209: opendesigner.v1.SetTextStyleDef.text_style:type_name -> opendesigner.v1.TextStyleDef
+	74,  // 210: opendesigner.v1.SetPaintStyleDef.paint_style:type_name -> opendesigner.v1.PaintStyleDef
+	75,  // 211: opendesigner.v1.SetEffectStyleDef.effect_style:type_name -> opendesigner.v1.EffectStyleDef
+	90,  // 212: opendesigner.v1.SetObjectStyleDef.object_style:type_name -> opendesigner.v1.ObjectStyleDef
+	91,  // 213: opendesigner.v1.SetLayer.layer:type_name -> opendesigner.v1.Layer
+	58,  // 214: opendesigner.v1.SetImage.image:type_name -> opendesigner.v1.ImageNode
+	65,  // 215: opendesigner.v1.SetComponentSet.component_set:type_name -> opendesigner.v1.ComponentSet
+	247, // 216: opendesigner.v1.SetComponentSet.axis_renames:type_name -> opendesigner.v1.SetComponentSet.AxisRenamesEntry
+	150, // 217: opendesigner.v1.SetComponentSet.option_renames:type_name -> opendesigner.v1.OptionRename
+	248, // 218: opendesigner.v1.SetComponentDef.variant:type_name -> opendesigner.v1.SetComponentDef.VariantEntry
+	63,  // 219: opendesigner.v1.SetComponentDef.properties:type_name -> opendesigner.v1.ComponentProperty
+	249, // 220: opendesigner.v1.SetInstanceProps.property_values:type_name -> opendesigner.v1.SetInstanceProps.PropertyValuesEntry
+	250, // 221: opendesigner.v1.SetInstanceProps.variant_props:type_name -> opendesigner.v1.SetInstanceProps.VariantPropsEntry
+	252, // 222: opendesigner.v1.OpRecord.ts:type_name -> google.protobuf.Timestamp
+	119, // 223: opendesigner.v1.OpRecord.op:type_name -> opendesigner.v1.Op
+	89,  // 224: opendesigner.v1.OpenResponse.snapshot:type_name -> opendesigner.v1.Document
+	159, // 225: opendesigner.v1.ListDocumentsResponse.docs:type_name -> opendesigner.v1.DocInfo
+	119, // 226: opendesigner.v1.SubmitOpRequest.op:type_name -> opendesigner.v1.Op
+	168, // 227: opendesigner.v1.SubmitOpResponse.ack:type_name -> opendesigner.v1.Ack
+	155, // 228: opendesigner.v1.ServerMsg.applied:type_name -> opendesigner.v1.OpRecord
+	168, // 229: opendesigner.v1.ServerMsg.ack:type_name -> opendesigner.v1.Ack
+	169, // 230: opendesigner.v1.ServerMsg.error:type_name -> opendesigner.v1.ErrorMsg
+	171, // 231: opendesigner.v1.PresenceEvent.update:type_name -> opendesigner.v1.PresenceState
+	173, // 232: opendesigner.v1.FlowReport.issues:type_name -> opendesigner.v1.FlowIssue
+	174, // 233: opendesigner.v1.FlowReport.paths:type_name -> opendesigner.v1.FlowPath
+	175, // 234: opendesigner.v1.AnalyzeFlowsResponse.reports:type_name -> opendesigner.v1.FlowReport
+	178, // 235: opendesigner.v1.ExportCodeResponse.files:type_name -> opendesigner.v1.ExportFile
+	68,  // 236: opendesigner.v1.RenderDiagramResponse.nodes:type_name -> opendesigner.v1.Node
+	183, // 237: opendesigner.v1.ListVersionsResponse.versions:type_name -> opendesigner.v1.VersionInfo
+	190, // 238: opendesigner.v1.GetAccessResponse.links:type_name -> opendesigner.v1.AccessLink
+	190, // 239: opendesigner.v1.CreateShareLinkResponse.link:type_name -> opendesigner.v1.AccessLink
+	68,  // 240: opendesigner.v1.ImportFigResponse.nodes:type_name -> opendesigner.v1.Node
+	80,  // 241: opendesigner.v1.ImportFigResponse.collections:type_name -> opendesigner.v1.VariableCollection
+	82,  // 242: opendesigner.v1.ImportFigResponse.variables:type_name -> opendesigner.v1.Variable
+	205, // 243: opendesigner.v1.ReviewMergeResponse.changes:type_name -> opendesigner.v1.MergeChange
+	210, // 244: opendesigner.v1.ReviewDesignResponse.issues:type_name -> opendesigner.v1.ReviewIssue
+	68,  // 245: opendesigner.v1.RenderBoardResponse.nodes:type_name -> opendesigner.v1.Node
+	171, // 246: opendesigner.v1.UpdatePresenceRequest.state:type_name -> opendesigner.v1.PresenceState
+	81,  // 247: opendesigner.v1.Variable.ValuesEntry.value:type_name -> opendesigner.v1.VariableValue
+	68,  // 248: opendesigner.v1.Document.NodesEntry.value:type_name -> opendesigner.v1.Node
+	62,  // 249: opendesigner.v1.Document.ComponentsEntry.value:type_name -> opendesigner.v1.Component
+	84,  // 250: opendesigner.v1.Document.FlowsEntry.value:type_name -> opendesigner.v1.Flow
+	85,  // 251: opendesigner.v1.Document.TransitionsEntry.value:type_name -> opendesigner.v1.Transition
+	88,  // 252: opendesigner.v1.Document.ClipsEntry.value:type_name -> opendesigner.v1.Clip
+	80,  // 253: opendesigner.v1.Document.CollectionsEntry.value:type_name -> opendesigner.v1.VariableCollection
+	82,  // 254: opendesigner.v1.Document.VariablesEntry.value:type_name -> opendesigner.v1.Variable
+	72,  // 255: opendesigner.v1.Document.FontsEntry.value:type_name -> opendesigner.v1.FontFace
+	73,  // 256: opendesigner.v1.Document.TextStylesEntry.value:type_name -> opendesigner.v1.TextStyleDef
+	65,  // 257: opendesigner.v1.Document.ComponentSetsEntry.value:type_name -> opendesigner.v1.ComponentSet
+	120, // 258: opendesigner.v1.Document.CommentsEntry.value:type_name -> opendesigner.v1.Comment
+	74,  // 259: opendesigner.v1.Document.PaintStylesEntry.value:type_name -> opendesigner.v1.PaintStyleDef
+	75,  // 260: opendesigner.v1.Document.EffectStylesEntry.value:type_name -> opendesigner.v1.EffectStyleDef
+	124, // 261: opendesigner.v1.Document.AnnotationsEntry.value:type_name -> opendesigner.v1.Annotation
+	125, // 262: opendesigner.v1.Document.ReadyForDevEntry.value:type_name -> opendesigner.v1.ReadyForDev
+	90,  // 263: opendesigner.v1.Document.ObjectStylesEntry.value:type_name -> opendesigner.v1.ObjectStyleDef
+	213, // 264: opendesigner.v1.DocumentService.RenderBoard:input_type -> opendesigner.v1.RenderBoardRequest
+	211, // 265: opendesigner.v1.DocumentService.ReviewDesign:input_type -> opendesigner.v1.ReviewDesignRequest
+	131, // 266: opendesigner.v1.DocumentService.CompareReady:input_type -> opendesigner.v1.CompareReadyRequest
+	184, // 267: opendesigner.v1.DocumentService.CreateVersion:input_type -> opendesigner.v1.CreateVersionRequest
+	185, // 268: opendesigner.v1.DocumentService.ListVersions:input_type -> opendesigner.v1.ListVersionsRequest
+	187, // 269: opendesigner.v1.DocumentService.DeleteVersion:input_type -> opendesigner.v1.DeleteVersionRequest
+	189, // 270: opendesigner.v1.DocumentService.BranchDocument:input_type -> opendesigner.v1.BranchRequest
+	191, // 271: opendesigner.v1.DocumentService.GetAccess:input_type -> opendesigner.v1.GetAccessRequest
+	193, // 272: opendesigner.v1.DocumentService.EnableAccess:input_type -> opendesigner.v1.EnableAccessRequest
+	195, // 273: opendesigner.v1.DocumentService.DisableAccess:input_type -> opendesigner.v1.DisableAccessRequest
+	197, // 274: opendesigner.v1.DocumentService.CreateShareLink:input_type -> opendesigner.v1.CreateShareLinkRequest
+	199, // 275: opendesigner.v1.DocumentService.RevokeShareLink:input_type -> opendesigner.v1.RevokeShareLinkRequest
+	201, // 276: opendesigner.v1.DocumentService.ImportFig:input_type -> opendesigner.v1.ImportFigRequest
+	203, // 277: opendesigner.v1.DocumentService.GetBranchOrigin:input_type -> opendesigner.v1.GetBranchOriginRequest
+	206, // 278: opendesigner.v1.DocumentService.ReviewMerge:input_type -> opendesigner.v1.ReviewMergeRequest
+	208, // 279: opendesigner.v1.DocumentService.MergeBranch:input_type -> opendesigner.v1.MergeBranchRequest
+	163, // 280: opendesigner.v1.DocumentService.ListDocuments:input_type -> opendesigner.v1.ListDocumentsRequest
+	158, // 281: opendesigner.v1.DocumentService.CreateDocument:input_type -> opendesigner.v1.CreateDocumentRequest
+	160, // 282: opendesigner.v1.DocumentService.RenameDocument:input_type -> opendesigner.v1.RenameDocumentRequest
+	161, // 283: opendesigner.v1.DocumentService.DeleteDocument:input_type -> opendesigner.v1.DeleteDocumentRequest
+	156, // 284: opendesigner.v1.DocumentService.OpenDocument:input_type -> opendesigner.v1.OpenRequest
+	165, // 285: opendesigner.v1.DocumentService.SubmitOp:input_type -> opendesigner.v1.SubmitOpRequest
+	167, // 286: opendesigner.v1.DocumentService.Subscribe:input_type -> opendesigner.v1.SubscribeRequest
+	215, // 287: opendesigner.v1.DocumentService.WatchPresence:input_type -> opendesigner.v1.WatchPresenceRequest
+	216, // 288: opendesigner.v1.DocumentService.UpdatePresence:input_type -> opendesigner.v1.UpdatePresenceRequest
+	219, // 289: opendesigner.v1.DocumentService.WatchJobs:input_type -> opendesigner.v1.WatchJobsRequest
+	220, // 290: opendesigner.v1.DocumentService.RunJob:input_type -> opendesigner.v1.RunJobRequest
+	222, // 291: opendesigner.v1.DocumentService.CompleteJob:input_type -> opendesigner.v1.CompleteJobRequest
+	176, // 292: opendesigner.v1.DocumentService.AnalyzeFlows:input_type -> opendesigner.v1.AnalyzeFlowsRequest
+	179, // 293: opendesigner.v1.DocumentService.ExportCode:input_type -> opendesigner.v1.ExportCodeRequest
+	181, // 294: opendesigner.v1.DocumentService.RenderDiagram:input_type -> opendesigner.v1.RenderDiagramRequest
+	214, // 295: opendesigner.v1.DocumentService.RenderBoard:output_type -> opendesigner.v1.RenderBoardResponse
+	212, // 296: opendesigner.v1.DocumentService.ReviewDesign:output_type -> opendesigner.v1.ReviewDesignResponse
+	132, // 297: opendesigner.v1.DocumentService.CompareReady:output_type -> opendesigner.v1.CompareReadyResponse
+	183, // 298: opendesigner.v1.DocumentService.CreateVersion:output_type -> opendesigner.v1.VersionInfo
+	186, // 299: opendesigner.v1.DocumentService.ListVersions:output_type -> opendesigner.v1.ListVersionsResponse
+	188, // 300: opendesigner.v1.DocumentService.DeleteVersion:output_type -> opendesigner.v1.DeleteVersionResponse
+	159, // 301: opendesigner.v1.DocumentService.BranchDocument:output_type -> opendesigner.v1.DocInfo
+	192, // 302: opendesigner.v1.DocumentService.GetAccess:output_type -> opendesigner.v1.GetAccessResponse
+	194, // 303: opendesigner.v1.DocumentService.EnableAccess:output_type -> opendesigner.v1.EnableAccessResponse
+	196, // 304: opendesigner.v1.DocumentService.DisableAccess:output_type -> opendesigner.v1.DisableAccessResponse
+	198, // 305: opendesigner.v1.DocumentService.CreateShareLink:output_type -> opendesigner.v1.CreateShareLinkResponse
+	200, // 306: opendesigner.v1.DocumentService.RevokeShareLink:output_type -> opendesigner.v1.RevokeShareLinkResponse
+	202, // 307: opendesigner.v1.DocumentService.ImportFig:output_type -> opendesigner.v1.ImportFigResponse
+	204, // 308: opendesigner.v1.DocumentService.GetBranchOrigin:output_type -> opendesigner.v1.GetBranchOriginResponse
+	207, // 309: opendesigner.v1.DocumentService.ReviewMerge:output_type -> opendesigner.v1.ReviewMergeResponse
+	209, // 310: opendesigner.v1.DocumentService.MergeBranch:output_type -> opendesigner.v1.MergeBranchResponse
+	164, // 311: opendesigner.v1.DocumentService.ListDocuments:output_type -> opendesigner.v1.ListDocumentsResponse
+	159, // 312: opendesigner.v1.DocumentService.CreateDocument:output_type -> opendesigner.v1.DocInfo
+	159, // 313: opendesigner.v1.DocumentService.RenameDocument:output_type -> opendesigner.v1.DocInfo
+	162, // 314: opendesigner.v1.DocumentService.DeleteDocument:output_type -> opendesigner.v1.DeleteDocumentResponse
+	157, // 315: opendesigner.v1.DocumentService.OpenDocument:output_type -> opendesigner.v1.OpenResponse
+	166, // 316: opendesigner.v1.DocumentService.SubmitOp:output_type -> opendesigner.v1.SubmitOpResponse
+	170, // 317: opendesigner.v1.DocumentService.Subscribe:output_type -> opendesigner.v1.ServerMsg
+	172, // 318: opendesigner.v1.DocumentService.WatchPresence:output_type -> opendesigner.v1.PresenceEvent
+	217, // 319: opendesigner.v1.DocumentService.UpdatePresence:output_type -> opendesigner.v1.UpdatePresenceResponse
+	218, // 320: opendesigner.v1.DocumentService.WatchJobs:output_type -> opendesigner.v1.EditorJob
+	221, // 321: opendesigner.v1.DocumentService.RunJob:output_type -> opendesigner.v1.RunJobResponse
+	223, // 322: opendesigner.v1.DocumentService.CompleteJob:output_type -> opendesigner.v1.CompleteJobResponse
+	177, // 323: opendesigner.v1.DocumentService.AnalyzeFlows:output_type -> opendesigner.v1.AnalyzeFlowsResponse
+	180, // 324: opendesigner.v1.DocumentService.ExportCode:output_type -> opendesigner.v1.ExportCodeResponse
+	182, // 325: opendesigner.v1.DocumentService.RenderDiagram:output_type -> opendesigner.v1.RenderDiagramResponse
+	295, // [295:326] is the sub-list for method output_type
+	264, // [264:295] is the sub-list for method input_type
+	264, // [264:264] is the sub-list for extension type_name
+	264, // [264:264] is the sub-list for extension extendee
+	0,   // [0:264] is the sub-list for field type_name
 }
 
 func init() { file_opendesigner_v1_opendesigner_proto_init() }
@@ -18482,7 +18596,7 @@ func file_opendesigner_v1_opendesigner_proto_init() {
 		(*Paint_Angular)(nil),
 		(*Paint_Diamond)(nil),
 	}
-	file_opendesigner_v1_opendesigner_proto_msgTypes[19].OneofWrappers = []any{
+	file_opendesigner_v1_opendesigner_proto_msgTypes[20].OneofWrappers = []any{
 		(*Effect_DropShadow)(nil),
 		(*Effect_LayerBlur)(nil),
 		(*Effect_InnerShadow)(nil),
@@ -18491,8 +18605,9 @@ func file_opendesigner_v1_opendesigner_proto_init() {
 		(*Effect_Noise)(nil),
 		(*Effect_Texture)(nil),
 		(*Effect_Glass)(nil),
+		(*Effect_GradientFeather)(nil),
 	}
-	file_opendesigner_v1_opendesigner_proto_msgTypes[43].OneofWrappers = []any{
+	file_opendesigner_v1_opendesigner_proto_msgTypes[44].OneofWrappers = []any{
 		(*Node_Rect)(nil),
 		(*Node_Ellipse)(nil),
 		(*Node_Text)(nil),
@@ -18504,13 +18619,13 @@ func file_opendesigner_v1_opendesigner_proto_init() {
 		(*Node_Polygon)(nil),
 		(*Node_Star)(nil),
 	}
-	file_opendesigner_v1_opendesigner_proto_msgTypes[56].OneofWrappers = []any{
+	file_opendesigner_v1_opendesigner_proto_msgTypes[57].OneofWrappers = []any{
 		(*VariableValue_Color)(nil),
 		(*VariableValue_Number)(nil),
 		(*VariableValue_Text)(nil),
 		(*VariableValue_Boolean)(nil),
 	}
-	file_opendesigner_v1_opendesigner_proto_msgTypes[94].OneofWrappers = []any{
+	file_opendesigner_v1_opendesigner_proto_msgTypes[95].OneofWrappers = []any{
 		(*Op_CreateNode)(nil),
 		(*Op_SetProps)(nil),
 		(*Op_DeleteNode)(nil),
@@ -18560,12 +18675,12 @@ func file_opendesigner_v1_opendesigner_proto_init() {
 		(*Op_DeleteLayer)(nil),
 		(*Op_SetImage)(nil),
 	}
-	file_opendesigner_v1_opendesigner_proto_msgTypes[145].OneofWrappers = []any{
+	file_opendesigner_v1_opendesigner_proto_msgTypes[146].OneofWrappers = []any{
 		(*ServerMsg_Applied)(nil),
 		(*ServerMsg_Ack)(nil),
 		(*ServerMsg_Error)(nil),
 	}
-	file_opendesigner_v1_opendesigner_proto_msgTypes[147].OneofWrappers = []any{
+	file_opendesigner_v1_opendesigner_proto_msgTypes[148].OneofWrappers = []any{
 		(*PresenceEvent_Update)(nil),
 		(*PresenceEvent_LeftClientId)(nil),
 	}
@@ -18575,7 +18690,7 @@ func file_opendesigner_v1_opendesigner_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_opendesigner_v1_opendesigner_proto_rawDesc), len(file_opendesigner_v1_opendesigner_proto_rawDesc)),
 			NumEnums:      24,
-			NumMessages:   226,
+			NumMessages:   227,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

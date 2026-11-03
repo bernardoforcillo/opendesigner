@@ -181,6 +181,18 @@ message ProgressiveBlur {
   bool background = 7;
 }
 
+// Gradient feather: the node's own opacity (everything it draws) ramps linearly from
+// start_opacity at (x1, y1) to end_opacity at (x2, y2), points in the node's unit box;
+// before the start and past the end it stays. A soft edge that fades along a direction.
+message GradientFeather {
+  double start_opacity = 1; // 0..1
+  double end_opacity = 2;   // 0..1
+  double x1 = 3;
+  double y1 = 4;
+  double x2 = 5;
+  double y2 = 6;
+}
+
 enum NoiseMode {
   NOISE_MODE_UNSPECIFIED = 0; // MONO
   NOISE_MODE_MONO = 1;        // grey grains
@@ -226,6 +238,7 @@ message Effect {
     Noise noise = 21;
     Texture texture = 22;
     Glass glass = 23;
+    GradientFeather gradient_feather = 24;
   }
 }
 
