@@ -191,21 +191,23 @@ func (s *Session) ExportIdml(ctx context.Context, in ExportFileInput) (JobOutput
 
 type ExportImageInput struct {
 	OutPath string   `json:"outPath,omitempty" jsonschema:"file path, or a directory to put the file in; empty = do not write, return downloadPath"`
-	Format  string   `json:"format,omitempty" jsonschema:"png (default) | svg"`
+	Format  string   `json:"format,omitempty" jsonschema:"png (default) | svg | eps (vector; base-14 fonts, no images or transparency)"`
 	PageId  string   `json:"pageId,omitempty" jsonschema:"the page to export (default: the page the editor is on)"`
 	NodeIds []string `json:"nodeIds,omitempty" jsonschema:"export only these nodes (they must be on the page)"`
 	Scale   int      `json:"scale,omitempty" jsonschema:"png only: 1 (default), 2 or 3"`
 }
 
-// ExportImage makes a PNG or SVG of a page or of nodes in an editor.
+// ExportImage makes a PNG, SVG or EPS of a page or of nodes in an editor.
 func (s *Session) ExportImage(ctx context.Context, in ExportImageInput) (JobOutput, error) {
 	kind := "export_png"
 	switch in.Format {
 	case "", "png":
 	case "svg":
 		kind = "export_svg"
+	case "eps":
+		kind = "export_eps"
 	default:
-		return JobOutput{}, fmt.Errorf("export_image: format must be png or svg, got %q", in.Format)
+		return JobOutput{}, fmt.Errorf("export_image: format must be png, svg or eps, got %q", in.Format)
 	}
 	o := map[string]any{}
 	if in.PageId != "" {
@@ -264,6 +266,6 @@ func registerJobTools(srv *mcp.Server, s *Session) {
 	addTool(srv, "export_pptx", "Export the document as a PowerPoint deck, one slide per page: rectangles, ellipses, vectors, text boxes, PNG/JPEG images, solid and linear-gradient fills, strokes, opacity, rotation. Effects, masks, auto layout and rich-text styles are not carried over; fonts are named, not embedded."+jobNote+"Writes to outPath.", s.ExportPptx)
 	addTool(srv, "export_idml", "Export the document as an InDesign IDML package: one spread per page with rectangles, ellipses, vectors (bezier), text frames (font, size, bold/italic, colour, alignment) and RGB swatches. Images, effects, master pages' items, character styles and tables are not carried over. The structure follows the IDML specification but was checked by reading it back with import_idml, not by opening it in InDesign."+jobNote+"Writes to outPath.", s.ExportIdml)
 	addTool(srv, "export_epub", "Export the document as EPUB 3: mode fixed (default, every page as it looks) or reflowable (the stories as text with headings, CSS from the styles, footnotes, navigation). Book metadata (set_document_settings book) fills the package metadata."+jobNote+"Writes to outPath.", s.ExportEpub)
-	addTool(srv, "export_image", "Export a page, or some nodes of it, as PNG (scale 1-3) or SVG."+jobNote+"Writes to outPath.", s.ExportImage)
+	addTool(srv, "export_image", "Export a page, or some nodes of it, as PNG (scale 1-3), SVG or EPS (vector only)."+jobNote+"Writes to outPath.", s.ExportImage)
 	addTool(srv, "preflight", "Check the document for print: fonts that cannot be embedded, overset text, pages without size or bleed, images under 150 ppi, missing glyphs, transparency under X-1a / X-3, RGB under X-1a, effects a PDF cannot reproduce. A checklist of known problems, not a PDF/X validator."+jobNote, s.Preflight)
 }

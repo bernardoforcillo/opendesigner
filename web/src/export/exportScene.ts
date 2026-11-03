@@ -14,6 +14,7 @@ import { buildPptx, type PptxImage } from "@/export/pptx";
 import { buildEpub, type EpubPage } from "@/export/epub";
 import { buildReflowEpub, buildReflowHtml, type ReflowImage } from "@/export/epubReflow";
 import { dataUrlBytes } from "@/pdf/write/pdfImages";
+import { nodesToEps } from "@/export/eps";
 import { nodesToSvg, type MeasureText, type ResolveImageHref } from "@/export/svg";
 import { canvasToPngBlob, renderRegionToCanvas, type ExportScale } from "@/export/png";
 import { hasErrors, preflightReport, preflightScene, type PreflightIssue } from "@/export/preflight";
@@ -39,7 +40,8 @@ import type { Rasterize } from "@/pdf/write/pdfImages";
 
 // "pdf" is a real PDF written by pdf/write: vector, fonts embedded, images as the original bytes,
 // CMYK/spot paints kept, the document's pages and boxes. It draws from the same nodes as the SVG.
-export type ExportFormat = "png" | "svg" | "pdf";
+// "eps" is Encapsulated PostScript Level 2 (export/eps.ts): vector shapes and text in base-14 fonts, no images.
+export type ExportFormat = "png" | "svg" | "pdf" | "eps";
 
 export interface ExportRequest {
   format: ExportFormat;
@@ -361,6 +363,12 @@ export async function runExport(req: ExportRequest, deps: ExportDeps = {}): Prom
       if (holes > 0) useScene.setState({ notice: missingImagesNotice(holes) });
       return true;
     }
+    if (req.format === "eps") {
+      const { eps, warnings } = nodesToEps(region.nodes, region.bounds, measure, scene.name);
+      (deps.download ?? downloadBlob)(new Blob([eps], { type: EPS_MIME }), exportFileName(scene.name, req));
+      if (warnings.length > 0) useScene.setState({ notice: `EPS written with limits: ${warnings.join("; ")}` });
+      return true;
+    }
     const assets = await resolveAssets(region.nodes, scene.id, req.format, deps);
     const blob = await exportBlob(region, req, deps, createCanvas, measure, assets);
     (deps.download ?? downloadBlob)(blob, exportFileName(scene.name, req));
@@ -387,6 +395,7 @@ export interface DocumentExportDeps extends ExportDeps {
 
 const EPUB_MIME = "application/epub+zip";
 const PDF_MIME = "application/pdf";
+const EPS_MIME = "application/postscript";
 const IDML_MIME = "application/vnd.adobe.indesign-idml-package";
 const PPTX_MIME = "application/vnd.openxmlformats-officedocument.presentationml.presentation";
 

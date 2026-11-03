@@ -23,6 +23,7 @@ const FORMATS: readonly { value: ExportFormat; label: string }[] = [
   { value: "png", label: "PNG" },
   { value: "svg", label: "SVG" },
   { value: "pdf", label: "PDF" },
+  { value: "eps", label: "EPS" },
 ];
 
 const ROW_CLASS = "flex items-center gap-2";

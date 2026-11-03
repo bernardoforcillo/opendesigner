@@ -18,7 +18,7 @@ export interface JobResult {
   text?: string;
 }
 
-const MIME: Record<string, string> = { png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg", gif: "image/gif", webp: "image/webp", svg: "image/svg+xml", pdf: "application/pdf", ttf: "font/ttf", otf: "font/otf", woff: "font/woff", woff2: "font/woff2" };
+const MIME: Record<string, string> = { png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg", gif: "image/gif", webp: "image/webp", svg: "image/svg+xml", pdf: "application/pdf", eps: "application/postscript", ttf: "font/ttf", otf: "font/otf", woff: "font/woff", woff2: "font/woff2" };
 const mimeOf = (name: string) => MIME[name.slice(name.lastIndexOf(".") + 1).toLowerCase()] ?? "";
 
 const STANDARDS = new Set(["none", "x1a", "x3", "x4"]);
@@ -83,13 +83,14 @@ export async function executeJob(kind: string, optionsJson: string, deps: Docume
         ok = await runDocumentExport("epub-reflow", capture);
         break;
       case "export_png":
-      case "export_svg": {
+      case "export_svg":
+      case "export_eps": {
         const scale = o.scale === undefined ? 1 : o.scale;
         if (scale !== 1 && scale !== 2 && scale !== 3) return { ok: false, message: "scale must be 1, 2 or 3" };
         if (o.pageId !== undefined && typeof o.pageId !== "string") return { ok: false, message: "pageId must be a string" };
         if (o.nodeIds !== undefined && !(Array.isArray(o.nodeIds) && o.nodeIds.every((x) => typeof x === "string"))) return { ok: false, message: "nodeIds must be a list of ids" };
         ok = await runExport({
-          format: kind === "export_png" ? "png" : "svg", scope: o.nodeIds ? "selection" : "page", scale,
+          format: kind === "export_png" ? "png" : kind === "export_eps" ? "eps" : "svg", scope: o.nodeIds ? "selection" : "page", scale,
           ...(o.pageId ? { pageId: o.pageId as string } : {}), ...(o.nodeIds ? { nodeIds: o.nodeIds as string[] } : {}),
         }, capture);
         break;
