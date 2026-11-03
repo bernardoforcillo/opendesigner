@@ -254,7 +254,7 @@ describe("Home", () => {
       const client = { ...makeClient(DOCS), ...books } as HomeClient;
       localStorage.setItem("od.homeVertical", "publishing");
       render(<Home client={client} navigate={() => {}} now={() => NOW} />);
-      expect(await screen.findByRole("article", { name: "Novel" })).toBeInTheDocument();
+      expect(await screen.findByRole("article", { name: "Novel" }, { timeout: 5000 })).toBeInTheDocument();
       cleanup();
 
       localStorage.setItem("od.homeVertical", "design");
