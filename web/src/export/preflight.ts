@@ -90,9 +90,11 @@ export function preflightScene(scene: SceneState, opts: PreflightOptions = {}, m
   if (scene.layers.some((l) => l.hidden)) out.push({ severity: "info", code: "hidden-layer", ...msg("Hidden layers are not exported.") });
 
   if (x && scene.settings?.colorMode !== "cmyk" && (opts.pdfx === "x1a")) {
-    out.push({ severity: "info", code: "convert-cmyk", ...msg("PDF/X-1a is CMYK only: RGB colours are converted with the plain device conversion (no ICC profile is applied).") });
+    out.push({ severity: "info", code: "convert-cmyk", ...msg(scene.settings?.iccProfileAsset
+      ? "PDF/X-1a is CMYK only: RGB colours are converted through the document's ICC profile."
+      : "PDF/X-1a is CMYK only: RGB colours are converted with the plain device conversion (no ICC profile is applied).") });
   }
-  if (x && !scene.settings?.iccProfile) {
+  if (x && !scene.settings?.iccProfile && !scene.settings?.iccProfileAsset) {
     out.push({ severity: "warning", code: "no-condition", ...msg('No output condition (ICC profile name) is set in Swatches and colour mode; the output intent will read "Custom".') });
   }
   for (const n of scene.nodes.values()) {
@@ -122,6 +124,7 @@ export function preflightReport(report: PdfReport, opts: PreflightOptions = {}, 
   if (missingFonts > 0) out.push({ severity: "warning", code: "font-unreadable", ...msg("{n} uploaded font could not be read.", { n: missingFonts }, true) });
   if (report.transparency && (opts.pdfx === "x1a" || opts.pdfx === "x3")) out.push({ severity: "error", code: "transparency", ...msg("{mode} does not allow transparency (opacity, blend modes); this file uses it. Use PDF/X-4 or flatten.", { mode: opts.pdfx === "x1a" ? "PDF/X-1a" : "PDF/X-3" }) });
   if (report.usesRgb && opts.pdfx === "x1a") out.push({ severity: "error", code: "rgb", ...msg("RGB content remains (images); PDF/X-1a is CMYK only.") });
+  if (report.transparencyFlattened && (opts.pdfx === "x1a" || opts.pdfx === "x3")) out.push({ severity: "warning", code: "transparency-flattened", ...msg("Opacity was flattened onto white paper for {mode}: translucent areas print lighter than on screen.", { mode: opts.pdfx === "x1a" ? "PDF/X-1a" : "PDF/X-3" }) });
   if (report.flattened.length > 0) out.push({ severity: "warning", code: "effects", ...msg("{n} object uses blur or inner-shadow effects the PDF cannot reproduce (drop shadows are drawn hard-edged).", { n: report.flattened.length }, true) });
   return out;
 }

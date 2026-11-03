@@ -2,13 +2,17 @@ import type { FontLite, TextStyleLite } from "@/store/types";
 import { fontFamilyOf, fontWeightOf } from "@/renderer/text";
 import { sfntKind, sfntTables, unicodeCmap } from "@/pdf/sfnt";
 import { num, pdfName, type PdfFile } from "@/pdf/write/pdfFile";
+import { subsetTag, subsetTrueType } from "@/pdf/write/fontSubset";
+import { parseFeatures, readGsub, type Glyph, type Gsub } from "@/pdf/write/fontLayout";
 
 // FONTS IN A PDF. An UPLOADED font (a FontFace asset of the document) is embedded whole as a CID font
 // with Identity-H encoding, so the file draws the same glyphs on any machine; its width table and a
 // ToUnicode map are written so text stays searchable and copyable. Anything else falls back to the
 // standard-14 faces (Helvetica / Times / Courier, WinAnsi), which every viewer has but which are NOT
-// embedded -- the preflight reports those. Honest limits: no subsetting (the full font program goes
-// in), no OpenType layout (ligatures, alternates) and no variable-font instancing.
+// embedded -- the preflight reports those. TrueType fonts are SUBSET to the glyphs used (fontSubset.ts) and the GSUB
+// ligatures / alternates the style asks for are applied (fontLayout.ts: `liga` and `clig` by default, `fontFeatures` for
+// the rest). Honest limits: CFF (OTTO) fonts are embedded whole, no GPOS kerning or contextual substitution, and no
+// variable-font instancing.
 
 export interface FontMetrics {
   unitsPerEm: number; ascent: number; descent: number; capHeight: number;
@@ -94,7 +98,8 @@ export interface PdfFontRef {
 
 interface Embedded {
   face: FontLite; data: Uint8Array; m: FontMetrics; res: string;
-  used: Map<number, number>; // gid -> unicode
+  used: Map<number, string>; // gid -> the text it stands for (several characters for a ligature)
+  gsub: Gsub | null;
 }
 
 export class PdfFonts {
@@ -104,6 +109,8 @@ export class PdfFonts {
   /** Faces the document uses that are not embedded, and characters an embedded font lacks: the preflight reads these. */
   readonly substituted = new Set<string>();
   readonly missingGlyphs = new Set<string>();
+  /** Bytes the subsetting saved over embedding the fonts whole (known after `emit`). */
+  subsetBytes = 0;
 
   /** `faces` are the document's uploaded fonts with their bytes already loaded. */
   constructor(private faces: readonly { face: FontLite; data: Uint8Array }[]) {}
@@ -128,20 +135,28 @@ export class PdfFonts {
       if (m) {
         let e = this.embedded.get(hit.face.id);
         if (!e) {
-          e = { face: hit.face, data: hit.data, m, res: `F${++this.n}`, used: new Map() };
+          e = { face: hit.face, data: hit.data, m, res: `F${++this.n}`, used: new Map(), gsub: readGsub(hit.data) };
           this.embedded.set(hit.face.id, e);
         }
         const emb = e;
+        // Ligatures are on by default (as in a browser) unless letter-spacing is set; the style's features override.
+        const spaced = (style.letterSpacing ?? 0) !== 0;
+        const features = new Map<string, number>([["liga", spaced ? 0 : 1], ["clig", spaced ? 0 : 1]]);
+        for (const [tag, val] of parseFeatures(style.fontFeatures)) features.set(tag, val);
         return {
           res: emb.res, embedded: true,
           encode: (text) => {
-            let hex = "";
+            let glyphs: Glyph[] = [];
             for (const ch of text) {
-              const cp = ch.codePointAt(0)!;
-              const gid = emb.m.glyph(cp);
+              const gid = emb.m.glyph(ch.codePointAt(0)!);
               if (gid === 0 && ch.trim() !== "") this.missingGlyphs.add(`${hit.face.family}: ${ch}`);
-              emb.used.set(gid, cp);
-              hex += gid.toString(16).padStart(4, "0");
+              glyphs.push({ gid, text: ch });
+            }
+            if (emb.gsub) glyphs = emb.gsub.apply(glyphs, features);
+            let hex = "";
+            for (const g of glyphs) {
+              if (!emb.used.has(g.gid)) emb.used.set(g.gid, g.text);
+              hex += g.gid.toString(16).padStart(4, "0");
             }
             return `<${hex}>`;
           },
@@ -171,14 +186,18 @@ export class PdfFonts {
     for (const e of this.embedded.values()) {
       const { m } = e;
       const k = 1000 / m.unitsPerEm;
-      const ps = e.face.family.replace(/[^A-Za-z0-9]/g, "") + "-" + (e.face.weight || "400") + (e.face.style === "italic" ? "Italic" : "");
-      const fileId = file.stream(m.cff ? "/Subtype/OpenType" : `/Length1 ${e.data.length}`, e.data);
+      const gids = [...e.used.keys()].sort((a, b) => a - b);
+      const subset = m.cff ? null : subsetTrueType(e.data, gids);
+      const program = subset ?? e.data;
+      const base = e.face.family.replace(/[^A-Za-z0-9]/g, "") + "-" + (e.face.weight || "400") + (e.face.style === "italic" ? "Italic" : "");
+      const ps = subset ? `${subsetTag(gids)}+${base}` : base;
+      if (subset) this.subsetBytes += e.data.length - subset.length;
+      const fileId = file.stream(m.cff ? "/Subtype/OpenType" : `/Length1 ${program.length}`, program);
       const desc = file.add(
         `<</Type/FontDescriptor/FontName${pdfName(ps)}/Flags 4/FontBBox[${m.bbox.map((b) => num(b * k)).join(" ")}]` +
         `/ItalicAngle ${e.face.style === "italic" ? -12 : 0}/Ascent ${num(m.ascent * k)}/Descent ${num(m.descent * k)}` +
         `/CapHeight ${num(m.capHeight * k)}/StemV 80/${m.cff ? "FontFile3" : "FontFile2"} ${fileId} 0 R>>`,
       );
-      const gids = [...e.used.keys()].sort((a, b) => a - b);
       const w = gids.map((g) => `${g}[${num(m.advance(g) * k)}]`).join(" ");
       const cid = file.add(
         `<</Type/Font/Subtype/${m.cff ? "CIDFontType0" : "CIDFontType2"}/BaseFont${pdfName(ps)}` +
@@ -194,15 +213,15 @@ export class PdfFonts {
 }
 
 const hex4 = (n: number) => n.toString(16).padStart(4, "0");
-const utf16hex = (cp: number) => (cp > 0xffff ? hex4(0xd800 + ((cp - 0x10000) >> 10)) + hex4(0xdc00 + ((cp - 0x10000) & 0x3ff)) : hex4(cp));
+const utf16hex = (text: string) => { let o = ""; for (let i = 0; i < text.length; i++) o += hex4(text.charCodeAt(i)); return o; };
 
 /** A ToUnicode CMap for the glyphs used: how a viewer turns glyph ids back into text for search and copy. */
-export function toUnicodeCMap(used: ReadonlyMap<number, number>): string {
+export function toUnicodeCMap(used: ReadonlyMap<number, string>): string {
   const entries = [...used].filter(([g]) => g !== 0).sort((a, b) => a[0] - b[0]);
   const chunks: string[] = [];
   for (let i = 0; i < entries.length; i += 100) {
     const part = entries.slice(i, i + 100);
-    chunks.push(`${part.length} beginbfchar\n${part.map(([g, cp]) => `<${hex4(g)}> <${utf16hex(cp)}>`).join("\n")}\nendbfchar`);
+    chunks.push(`${part.length} beginbfchar\n${part.map(([g, text]) => `<${hex4(g)}> <${utf16hex(text)}>`).join("\n")}\nendbfchar`);
   }
   return (
     "/CIDInit /ProcSet findresource begin\n12 dict begin\nbegincmap\n/CIDSystemInfo<</Registry(Adobe)/Ordering(UCS)/Supplement 0>> def\n" +

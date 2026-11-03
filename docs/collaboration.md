@@ -53,6 +53,18 @@ Who may protect a document, since there are no accounts: **the machine running t
 
 The server can be exposed to the Internet **by you**: `opendesigner serve -tls-cert cert.pem -tls-key key.pem` serves HTTPS (HTTP/2 included, which the live streams need), or put it behind a TLS-terminating proxy; protect the documents you share and give people links. That is a **self-hosted** route and everything stays on your machine. What is **not** there is a relay that connects two editors across NATs without a reachable server (a hosted relay or a peer-to-peer rendezvous): that needs infrastructure this project does not run, and was not built.
 
+## Simultaneous edits: property-level conflict resolution
+
+Every property of every layer is a **last-writer-wins register** on the hub (`internal/server/propversions.go`). `Op.base_seq` is the highest oplog seq the editor had applied when the user made the edit; with the client id it forms a Lamport-style stamp `(base_seq, client_id)`.
+
+- Of two **concurrent** writes to the same property (same layer, same mask path; text content counts as one property) the higher stamp wins **whatever order they reach the server in**. A writer who had already seen the other's change has the higher `base_seq`, so a stale client can no longer overwrite a newer value. Equal bases are broken by client id, so the result is deterministic.
+- Different properties of one layer never conflict (the field mask already guaranteed it).
+- The loser's path is **removed from the recorded op**, so the oplog, every subscriber and a later replay all agree. An op that loses everything is still recorded (empty mask) and takes a seq, which is what confirms it for its sender: the sender's echo rolls its optimistic value back to the winner's. Undo/redo and presence are untouched; undo of a lost write is a harmless no-op on the property.
+- `base_seq` 0 (agents, merges, old clients) means "saw everything": plain arrival order, as before.
+- Registers live in memory only: after a server restart the first write to each property wins. Deleting or re-creating a layer resets its registers.
+
+Tests: `internal/server/propversions_test.go` (incl. a 16-writer race under `-race`) and `web/src/rpc/syncClient.test.ts`.
+
 ## What is not there
 
-Real-time merging of simultaneous edits to the *same* property (the last op to reach the server still wins while people are online together; the merge above is for branches), per-person accounts, and a hosted relay for use across NATs.
+Per-person accounts and a hosted relay for use across NATs. Not covered by the property registers: structural ops (reparenting and reordering, creates and deletes) and list-valued fields edited whole still resolve by arrival order, and an edit whose mask path is a whole list is a single register.

@@ -160,6 +160,12 @@ function toEffects(v: unknown): EffectLite[] {
         kind: "progressiveBlur", startRadius: Math.max(0, num(e.startRadius, 0)), endRadius: Math.max(0, num(e.endRadius, 0)),
         x1: num(e.x1, 0.5), y1: num(e.y1, 0), x2: num(e.x2, 0.5), y2: num(e.y2, 1), background: e.background === true,
       });
+    } else if (e.kind === "gradientFeather") {
+      const unit = (v: unknown, d: number) => Math.min(1, Math.max(0, num(v, d)));
+      out.push({
+        kind: "gradientFeather", startOpacity: unit(e.startOpacity, 1), endOpacity: unit(e.endOpacity, 0),
+        x1: num(e.x1, 0.5), y1: num(e.y1, 0), x2: num(e.x2, 0.5), y2: num(e.y2, 1),
+      });
     } else if (e.kind === "noise") {
       const rgba = (v: unknown, d: number) => {
         const c = (v ?? {}) as Record<string, unknown>;
@@ -244,7 +250,11 @@ function pickTextExtras(s: Record<string, unknown>): Partial<TextStyleLite> {
   const textScript = oneOf(s.textScript, ["super", "sub"] as const);
   const listKind = oneOf(s.listKind, ["bullet", "numbered"] as const);
   const verticalAlign = oneOf(s.verticalAlign, ["middle", "bottom"] as const);
+  const direction = oneOf(s.direction, ["ltr", "rtl"] as const);
+  const writingMode = oneOf(s.writingMode, ["vertical"] as const);
   return {
+    ...(direction ? { direction } : {}),
+    ...(writingMode ? { writingMode } : {}),
     ...(textCase ? { textCase } : {}),
     ...(textScript ? { textScript } : {}),
     ...(listKind ? { listKind } : {}),

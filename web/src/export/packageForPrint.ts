@@ -83,13 +83,14 @@ export async function buildPackage(input: PackageInput, deps: PackageDeps): Prom
     `Created: ${input.now.toISOString()}`,
     "",
     `PDF: ${root}.pdf — ${r.pages} page${r.pages === 1 ? "" : "s"}, standard: ${r.pdfx === "none" ? "none" : r.pdfx.toUpperCase().replace("X", "X-")} (ready, not validated)`,
-    `Colour mode: ${scene.settings?.colorMode === "cmyk" ? "CMYK" : "RGB"}; output condition: ${scene.settings?.iccProfile || "none set"} (recorded, no profile embedded)`,
+    `Colour mode: ${scene.settings?.colorMode === "cmyk" ? "CMYK" : "RGB"}; output condition: ${scene.settings?.iccProfile || "none set"} (${scene.settings?.iccProfileAsset ? "profile embedded in the PDF" : "recorded, no profile embedded"})`,
     `Colours used in the PDF: ${[r.usesRgb ? "RGB" : "", r.usesCmyk ? "CMYK" : "", ...r.spots.map((s) => `spot ${s}`)].filter(Boolean).join(", ") || "none"}`,
     `Transparency: ${r.transparency ? "yes" : "no"}`,
     "",
     "Fonts (uploaded):", ...(fontLines.length ? fontLines : ["  none"]),
     ...(r.substitutedFonts.length ? ["Fonts NOT embedded (standard faces used):", ...r.substitutedFonts.map((s) => `  ${s}`)] : []),
     "",
+    ...validationLines(r),
     "Links (placed images):", ...(linkLines.length ? linkLines : ["  none"]),
     "",
     "Preflight:", ...(input.issues.length ? input.issues.map((i) => `  [${i.severity}] ${i.message}`) : ["  no problems found"]),
@@ -97,4 +98,18 @@ export async function buildPackage(input: PackageInput, deps: PackageDeps): Prom
   ];
   entries.push({ name: `${root}/Report.txt`, data: enc.encode(lines.join("\n")) });
   return { bytes: zipStore(entries), missing };
+}
+
+const MARK = { pass: "ok  ", warn: "warn", fail: "FAIL" } as const;
+
+/** The PDF/X and PDF/UA checks of the writer's report as text lines (not a full validation, see pdfValidate.ts). */
+function validationLines(r: PdfReport): string[] {
+  const out: string[] = [];
+  for (const v of [r.validation.pdfx, r.validation.pdfua]) {
+    if (!v) continue;
+    out.push(`${v.standard} checks (what the writer can verify; ${v.conformant ? "no failures" : "not conformant"}):`);
+    for (const k of v.checks) out.push(`  [${MARK[k.status]}] ${k.id}${k.detail ? ` — ${k.detail}` : ""}`);
+    out.push("");
+  }
+  return out;
 }

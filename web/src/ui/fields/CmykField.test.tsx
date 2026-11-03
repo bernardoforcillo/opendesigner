@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { resetActiveProfile, setActiveProfile } from "@/color/activeProfile";
 import { CmykField } from "@/ui/fields/CmykField";
 
 afterEach(cleanup);
@@ -13,7 +14,21 @@ describe("CmykField", () => {
     const group = screen.getByRole("group", { name: "CMYK" });
     const values = Array.from(group.querySelectorAll("input")).map((i) => i.value);
     expect(values).toEqual(["0", "100", "100", "0"]);
-    expect(screen.getByText(/printer's profile is not applied/)).toBeInTheDocument();
+    expect(screen.getByText(/Plain conversion from RGB/)).toBeInTheDocument();
+  });
+
+  it("reads the color through the document's ICC profile when one is loaded", () => {
+    const bytes = new Uint8Array(200);
+    act(() => setActiveProfile({ bytes, components: 4, managed: { colorSpace: "CMYK", description: "Stub", rgbToCmyk: () => ({ c: 11, m: 22, y: 33, k: 44 }), cmykToRgb: () => ({ r: 0, g: 0, b: 0 }) } }));
+    try {
+      render(<CmykField value={{ r: 1, g: 0, b: 0 }} onCommit={vi.fn()} />);
+      fireEvent.click(screen.getByRole("button", { name: "CMYK" }));
+      const values = Array.from(screen.getByRole("group", { name: "CMYK" }).querySelectorAll("input")).map((i) => i.value);
+      expect(values).toEqual(["11", "22", "33", "44"]);
+      expect(screen.getByText(/through the document's ICC profile/)).toBeInTheDocument();
+    } finally {
+      act(() => resetActiveProfile());
+    }
   });
 
   it("commits an edited channel as RGB", () => {

@@ -110,6 +110,9 @@ func (h *Hub) versionStore() (*store.Bundle, bool) {
 
 // Hub serializes the Ops of ONE document and rebroadcasts them to the subscribers.
 type Hub struct {
+	// versions: per-property LWW registers; guarded by writeMu (see propversions.go).
+	versions propVersions
+
 	// writeMu admits one submitter at a time and is held for the whole of
 	// Submit, bundle.Append included, so the order in which records are
 	// assigned seqs is the order in which they are appended and published.
@@ -207,7 +210,22 @@ func (h *Hub) Submit(clientID string, op *opendesignerv1.Op) (*opendesignerv1.Op
 	// in. See writeMu for why this is not h.mu.
 	h.writeMu.Lock()
 	defer h.writeMu.Unlock()
+	return h.applyLocked(clientID, op)
+}
 
+// submitLocked applies ops one after the other with writeMu already held by the caller, which is how a
+// multi-op change (a library import) is planned against the state it is applied to.
+func (h *Hub) submitLocked(clientID string, ops []*opendesignerv1.Op) error {
+	for _, op := range ops {
+		if _, err := h.applyLocked(clientID, op); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// applyLocked is Submit's body; writeMu must be held.
+func (h *Hub) applyLocked(clientID string, op *opendesignerv1.Op) (*opendesignerv1.OpRecord, error) {
 	// h.doc and h.seq are written only by a Submit, so writeMu already pins
 	// them for the rest of this call; h.mu is taken for the read itself so a
 	// concurrent reader never sees a torn (doc, seq) pair -- and so the two
@@ -239,6 +257,13 @@ func (h *Hub) Submit(clientID string, op *opendesignerv1.Op) (*opendesignerv1.Op
 	// (O(N) but cheap) and only the nodes the op writes are really cloned
 	// (core.ApplyShared). The deep clone of the whole document was 85% of
 	// a Submit at 5,000 nodes.
+	//
+	// Per-property conflict resolution comes first: losing mask paths are
+	// dropped from the op that is applied AND recorded (see propVersions).
+	if h.versions == nil {
+		h.versions = propVersions{}
+	}
+	op, commitVersions := h.versions.resolve(clientID, op, baseSeq)
 	next := cowClone(base)
 	if err := core.ApplyShared(next, proto.Clone(op).(*opendesignerv1.Op), core.NewShared()); err != nil {
 		return nil, err
@@ -290,6 +315,7 @@ func (h *Hub) Submit(clientID string, op *opendesignerv1.Op) (*opendesignerv1.Op
 	// become visible in one hold of h.mu, so a Subscribe either registers
 	// before it (and receives rec on its channel) or after it (and finds rec
 	// in its catch-up backlog), never neither and never both.
+	commitVersions()
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	h.doc = next

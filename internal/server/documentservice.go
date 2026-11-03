@@ -18,6 +18,7 @@ import (
 	"github.com/bernardoforcillo/opendesigner/internal/diagram"
 	"github.com/bernardoforcillo/opendesigner/internal/figimport"
 	"github.com/bernardoforcillo/opendesigner/internal/flow"
+	"github.com/bernardoforcillo/opendesigner/internal/library"
 )
 
 type DocumentService struct{ m *Manager }
@@ -61,6 +62,46 @@ func (s *DocumentService) RenameDocument(_ context.Context, req *connect.Request
 		return nil, connect.NewError(connect.CodeNotFound, err)
 	default:
 		return nil, connect.NewError(connect.CodeInternal, err)
+	}
+}
+
+// SetLibrary publishes a document as a shared library, or withdraws it.
+func (s *DocumentService) SetLibrary(_ context.Context, req *connect.Request[opendesignerv1.SetLibraryRequest]) (*connect.Response[opendesignerv1.DocInfo], error) {
+	info, err := s.m.SetLibrary(req.Msg.GetDocId(), req.Msg.GetLibrary())
+	if err != nil {
+		return nil, libraryError(err)
+	}
+	return connect.NewResponse(info), nil
+}
+
+// GetLibrary lists what a library document offers.
+func (s *DocumentService) GetLibrary(_ context.Context, req *connect.Request[opendesignerv1.GetLibraryRequest]) (*connect.Response[opendesignerv1.GetLibraryResponse], error) {
+	r, err := s.m.GetLibrary(req.Msg.GetDocId())
+	if err != nil {
+		return nil, libraryError(err)
+	}
+	return connect.NewResponse(r), nil
+}
+
+// ImportFromLibrary copies items of a library into a document.
+func (s *DocumentService) ImportFromLibrary(_ context.Context, req *connect.Request[opendesignerv1.ImportFromLibraryRequest]) (*connect.Response[opendesignerv1.ImportFromLibraryResponse], error) {
+	r, err := s.m.ImportFromLibrary(req.Msg)
+	if err != nil {
+		return nil, libraryError(err)
+	}
+	return connect.NewResponse(r), nil
+}
+
+func libraryError(err error) error {
+	switch {
+	case errors.Is(err, errInvalidDocID), errors.Is(err, ErrDocNotFound), errors.Is(err, library.ErrItemNotFound):
+		return connect.NewError(connect.CodeNotFound, err)
+	case errors.Is(err, ErrNotALibrary):
+		return connect.NewError(connect.CodeFailedPrecondition, err)
+	case errors.Is(err, ErrLibrarySelf), errors.Is(err, library.ErrNoItems), errors.Is(err, library.ErrComponentCycle):
+		return connect.NewError(connect.CodeInvalidArgument, err)
+	default:
+		return connect.NewError(connect.CodeInternal, err)
 	}
 }
 

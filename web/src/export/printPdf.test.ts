@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { emptyScene, type PageLite, type SceneState } from "@/store/types";
-import { BLANK_PAGE, bookletGroups } from "@/export/printPdf";
+import { BLANK_PAGE, bookletGroups, creepShift } from "@/export/printPdf";
 
 const sceneOf = (n: number): SceneState => {
   const s = emptyScene("d", "d");
@@ -8,6 +8,21 @@ const sceneOf = (n: number): SceneState => {
   return { ...s, pages };
 };
 const names = (s: SceneState) => bookletGroups(s).map((g) => g.map((p) => (p.id.startsWith(BLANK_PAGE) ? "-" : p.name)).join("|"));
+
+describe("creepShift", () => {
+  it("leaves the outermost sheet alone and moves inner sheets toward the spine", () => {
+    // sides 0 and 1 are the outer sheet; 2 and 3 the next one in.
+    expect(creepShift(0, 2, "left")).toBe(0);
+    expect(creepShift(1, 2, "right")).toBe(0);
+    expect(creepShift(2, 2, "left")).toBe(2);
+    expect(creepShift(3, 2, "right")).toBe(-2);
+    expect(creepShift(4, 2, "left")).toBe(4);
+  });
+  it("is zero without creep", () => {
+    expect(creepShift(5, 0, "left")).toBe(0);
+    expect(creepShift(5, -1, "right")).toBe(0);
+  });
+});
 
 describe("bookletGroups", () => {
   it("pairs 8 pages as saddle-stitch sheets", () => {

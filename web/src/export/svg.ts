@@ -10,6 +10,7 @@ import type { Bounds } from "@/canvas/geometry";
 import { firstBlur, firstShadow, resolvedFill } from "@/renderer/canvasRenderer";
 import { cssFeatureSettings, cssVariationSettings, fontFamilyOf, fontFeaturesOf, fontSizeOf, fontWeightOf, hscaleOf, paragraphDecorations, piecesOfSegment, placeTextLines } from "@/renderer/text";
 import type { MeasureText } from "@/renderer/text";
+import { directionOf } from "@/renderer/textIntl";
 import { hasRealStroke, vectorStyleOf } from "@/renderer/vectorStyle";
 import { subPathsToD } from "@/svg/pathData";
 import { meshBitmap } from "@/renderer/mesh";
@@ -512,6 +513,8 @@ function textElement(n: NodeLite, measure: MeasureText, defs: string[]): string 
     ...(style.letterSpacing ? [attr("letter-spacing", style.letterSpacing)] : []),
     h === 1 ? null : attr("transform", `scale(${h} 1)`),
     ...declarations([
+      // Mixed-direction text is reordered by the viewer from its first strong character; the lines keep their absolute x.
+      directionOf(n.text?.content ?? "", style) === "rtl" && /[\u0590-\u08ff\ufb1d-\ufdff\ufe70-\ufeff]/.test(n.text?.content ?? "") ? "unicode-bidi:plaintext" : "",
       rootFeatures === "" ? "" : `font-feature-settings:${cssFeatureSettings(rootFeatures) || "normal"}`,
       style.fontVariations ? `font-variation-settings:${cssVariationSettings(style.fontVariations)}` : "",
     ].filter(Boolean)),
@@ -672,6 +675,7 @@ export function nodesToSvg(
   // MASKS: a mask node is not drawn; its outline becomes a <clipPath> and the nodes
   // above it under the same parent are wrapped in a <g clip-path>.
   const clipOf = new Map<string, string>();
+  const frameClips = new Map<string, string>();
   const body = nodes
     .map((n) => {
       if (n.isMask) {
@@ -683,9 +687,23 @@ export function nodesToSvg(
           return "";
         }
       }
-      const out = element(n, measure, href, defs);
+      let out = element(n, measure, href, defs);
       const clip = clipOf.get(n.parentId);
-      return out !== "" && clip ? `<g clip-path="url(#${clip})">${out}</g>` : out;
+      if (out !== "" && clip) out = `<g clip-path="url(#${clip})">${out}</g>`;
+      // Frames that clip their content: one nested <g> per frame around the node, innermost last (the clips intersect).
+      for (const c of [...(n.exportClips ?? [])].reverse()) {
+        if (out === "") break;
+        const key = `${c.x},${c.y},${c.width},${c.height},${c.rotation}`;
+        let id = frameClips.get(key);
+        if (id === undefined) {
+          id = `f${frameClips.size}`;
+          frameClips.set(key, id);
+          const turn = c.rotation % 360 === 0 ? null : attr("transform", `rotate(${fmt(c.rotation)} ${fmt(c.x + c.width / 2)} ${fmt(c.y + c.height / 2)})`);
+          defs.push(`<clipPath${attrs([attr("id", id)])}><rect${attrs([attr("x", c.x), attr("y", c.y), attr("width", c.width), attr("height", c.height), turn])}/></clipPath>`);
+        }
+        out = `<g clip-path="url(#${id})">${out}</g>`;
+      }
+      return out;
     })
     .filter((s) => s !== "")
     .map((s) => `  ${s}`)

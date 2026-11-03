@@ -245,5 +245,22 @@ describe("Home", () => {
       expect(within(cards[0]).getByText("Publication")).toBeInTheDocument();
       expect(within(cards[1]).getByText("3 screens · 1 flow")).toBeInTheDocument();
     });
+
+    it("shows the books of a publishing workspace, and nothing for the other kinds of work", async () => {
+      const books = {
+        listBooks: vi.fn(async () => ({ books: [{ id: "bk", name: "Novel", docIds: [ID_A], styleSourceId: "", startNumber: 0 }] })),
+        getBook: vi.fn(async () => ({ chapters: [{ docId: ID_A, name: "Old", pages: 1, firstPageNumber: 1, missing: false, numbered: true, stylesBehind: 0 }] })),
+      };
+      const client = { ...makeClient(DOCS), ...books } as HomeClient;
+      localStorage.setItem("od.homeVertical", "publishing");
+      render(<Home client={client} navigate={() => {}} now={() => NOW} />);
+      expect(await screen.findByRole("article", { name: "Novel" }, { timeout: 5000 })).toBeInTheDocument();
+      cleanup();
+
+      localStorage.setItem("od.homeVertical", "design");
+      render(<Home client={client} navigate={() => {}} now={() => NOW} />);
+      await screen.findAllByRole("article");
+      expect(screen.queryByRole("article", { name: "Novel" })).toBeNull();
+    });
   });
 });

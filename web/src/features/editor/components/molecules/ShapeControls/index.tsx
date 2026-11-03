@@ -1,9 +1,13 @@
 import { useScene } from "@/store/store";
+import { currentT } from "@/i18n";
 import type { Op } from "@/gen/opendesigner/v1/opendesigner_pb";
 import type { ArrowHeadLite } from "@/store/types";
 import { Section } from "@/ui/ds";
 import { NumberField } from "@/ui/fields/NumberField";
 import { arcOps, arrowheadOps, cornerRadiiOps, cornerSmoothingOps, polygonSidesOps, starOps, strokeSidesOps } from "@/ui/shapeOps";
+
+// Names the shared controls cannot translate on their own (options, text nodes). See docs/localization.md.
+const tr = (key: string, vars?: Record<string, string | number>) => currentT().tx(key, vars);
 
 const lookup = (id: string) => useScene.getState().scene?.nodes.at(id);
 type Run = (build: (ids: readonly string[]) => Op[]) => void;
@@ -29,14 +33,14 @@ export function ShapeControls({ run }: { run: Run }) {
   if (!n) return null;
   if (n.kind === "polygon") {
     return (
-      <Section title="Polygon">
+      <Section title={tr("Polygon")}>
         <NumberField label="Sides" value={n.sides ?? 3} minValue={3} onCommit={(v) => run((ids) => polygonSidesOps(ids, lookup, v))} />
       </Section>
     );
   }
   if (n.kind === "star") {
     return (
-      <Section title="Star">
+      <Section title={tr("Star")}>
         <div className="grid grid-cols-2 gap-1.5">
           <NumberField label="Points" value={n.points ?? 5} minValue={3} onCommit={(v) => run((ids) => starOps(ids, lookup, { points: v }))} />
           <NumberField
@@ -49,7 +53,7 @@ export function ShapeControls({ run }: { run: Run }) {
   }
   if (n.kind === "ellipse") {
     return (
-      <Section title="Arc">
+      <Section title={tr("Arc")}>
         <div className="grid grid-cols-2 gap-1.5">
           <NumberField label="Start" suffix="°" value={n.arcStart ?? 0} onCommit={(v) => run((ids) => arcOps(ids, lookup, { start: v }))} />
           <NumberField
@@ -73,7 +77,7 @@ export function ShapeControls({ run }: { run: Run }) {
       />
     );
     return (
-      <Section title="Corners">
+      <Section title={tr("Corners")}>
         <div className="flex flex-col gap-1.5">
           <NumberField
             label="Smoothing" suffix="%" value={Math.round((n.cornerSmoothing ?? 0) * 100)} minValue={0}
@@ -81,10 +85,10 @@ export function ShapeControls({ run }: { run: Run }) {
           />
           <label className="flex items-center gap-2 text-[12px] text-fg-muted">
             <input
-              type="checkbox" aria-label="Independent corners" checked={radii !== undefined}
+              type="checkbox" aria-label={tr("Independent corners")} checked={radii !== undefined}
               onChange={(e) => run((ids) => cornerRadiiOps(ids, lookup, e.target.checked ? {} : null))}
             />
-            Independent corners
+            {tr("Independent corners")}
           </label>
           {radii && (
             <div className="grid grid-cols-2 gap-1.5">
@@ -108,9 +112,9 @@ export function ArrowheadControls({ run }: { run: Run }) {
   const stroke = n.strokes[0];
   const pick = (label: string, value: ArrowHeadLite | undefined, set: (v: ArrowHeadLite | null) => (ids: readonly string[]) => Op[]) => (
     <label className="flex items-center gap-2 text-[11px] text-fg-subtle">
-      <span className="w-16 shrink-0">{label}</span>
+      <span className="w-16 shrink-0">{tr(label)}</span>
       <select
-        aria-label={label} className={SELECT} value={value ?? "none"}
+        aria-label={tr(label)} className={SELECT} value={value ?? "none"}
         onChange={(e) => run(set(e.target.value === "none" ? null : (e.target.value as ArrowHeadLite)))}
       >
         {ARROWHEADS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
@@ -140,10 +144,10 @@ export function StrokeSidesControls({ run }: { run: Run }) {
     <div className="flex flex-col gap-1.5">
       <label className="flex items-center gap-2 text-[12px] text-fg-muted">
         <input
-          type="checkbox" aria-label="Per-side weights" checked={sides !== undefined}
+          type="checkbox" aria-label={tr("Per-side weights")} checked={sides !== undefined}
           onChange={(e) => run((ids) => strokeSidesOps(ids, lookup, e.target.checked ? {} : null))}
         />
-        Per-side weights
+        {tr("Per-side weights")}
       </label>
       {sides && (
         <div className="grid grid-cols-2 gap-1.5">

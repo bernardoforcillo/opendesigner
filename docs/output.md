@@ -9,7 +9,7 @@ Everything here lives in the **document menu**, except the single-page **Downloa
 | Carried into the PDF | How |
 |---|---|
 | text | real text, laid out by the editor's own composer; character style colour, decoration, tracking, horizontal scale, baseline shift |
-| fonts | **uploaded fonts are embedded whole** (CID font, Identity-H, widths and a ToUnicode map, so text is searchable); everything else becomes Helvetica / Times / Courier (WinAnsi), **not embedded**, and the preflight says so |
+| fonts | **uploaded TrueType fonts are subset to the glyphs used** (CID font, Identity-H, widths and a ToUnicode map, so text is searchable; CFF/`OTTO` fonts are embedded whole); GSUB ligatures and alternates are applied; everything else becomes Helvetica / Times / Courier (WinAnsi), **not embedded**, and the preflight says so |
 | images | JPEG as it is (CMYK JPEGs stay CMYK); PNG without alpha or interlacing as its own data; others (alpha PNG, WebP, GIF) decoded through a canvas into RGB plus a soft mask |
 | shapes | rectangles with radius, ellipses, vectors (fill rule, caps, joins, miter, dashes), strokes |
 | gradients | linear and radial as true shadings with stitched stops; mesh gradients as a small bitmap |
@@ -17,7 +17,7 @@ Everything here lives in the **document menu**, except the single-page **Downloa
 | colour | a swatch with CMYK → DeviceCMYK as typed; a spot swatch (or its tint) → a Separation named after the spot; a CMYK document → plain colours converted with the device conversion; else RGB |
 | layers | a layer marked **do not print** is left out; hidden layers are not exported |
 
-Not carried over (and reported by the preflight where it can be seen): blur and inner shadows (a drop shadow is drawn hard-edged, offset), transparency in gradient stops, OpenType features (ligatures, alternates), font subsetting (files are larger), text on a path's glyph shaping beyond per-segment rotation.
+Under X-1a and X-3 transparency is flattened against white paper (see pdf-epub.md). Not carried over (and reported by the preflight where it can be seen): blur on vectors and text and background blur (a drop shadow is drawn hard-edged, offset), GPOS kerning and contextual substitution, text on a path's glyph shaping beyond per-segment rotation.
 
 ## Export PDF for print…
 
@@ -56,6 +56,6 @@ Write `{{Field}}` in the text of a page (or in a node's `link.url`), paste or op
 ## What is not here
 
 - **Book** (several documents with shared styles and continuous numbering): not built. It needs a server-side entity and cross-document style sync. A single document already has sections with their own numbering.
-- HTML export of text, PDF/X validation, an embedded ICC profile, font subsetting, forms, blur in the PDF.
+- HTML export of text, a full PDF/X validator, forms, flattening against the real backdrop.
 
 Code: `web/src/pdf/write/{pdfFile,pdfFonts,pdfColor,pdfImages,pdfPage,pdfDocument}.ts`, `web/src/export/{printPdf,preflight,packageForPrint,epubReflow}.ts`, `web/src/tools/dataMerge.ts`, `web/src/ui/{PrintPdfDialog,DataMergeDialog}.tsx`, `runDocumentExport` / `runPackage` in `web/src/export/exportScene.ts`.

@@ -5,6 +5,7 @@ import type { EffectLite, NodeLite } from "@/store/types";
 // nothing here touches a canvas, so all of it is checked in Node.
 
 export type ProgressiveBlurLite = Extract<EffectLite, { kind: "progressiveBlur" }>;
+export type GradientFeatherLite = Extract<EffectLite, { kind: "gradientFeather" }>;
 export type NoiseLite = Extract<EffectLite, { kind: "noise" }>;
 export type TextureLite = Extract<EffectLite, { kind: "texture" }>;
 export type GlassLite = Extract<EffectLite, { kind: "glass" }>;
@@ -102,6 +103,56 @@ export function blurBands(n: NodeLite, e: ProgressiveBlurLite, overlap = 0.5): B
 export function withBandBlur(n: NodeLite, e: ProgressiveBlurLite, radius: number): NodeLite {
   const rest = (n.effects ?? []).filter((x) => x !== e && !(x.kind === "layerBlur"));
   return { ...n, effects: [{ kind: "layerBlur", radius }, ...rest] };
+}
+
+// ---- gradient feather ---------------------------------------------------------------
+
+/** How many strips a gradient feather is drawn with: each strip has one opacity. */
+export const FEATHER_BANDS = 24;
+
+/** The first feather that actually changes something (a ramp from 1 to 1 does not). */
+export function gradientFeather(n: NodeLite): GradientFeatherLite | undefined {
+  return n.effects?.find((e): e is GradientFeatherLite =>
+    e.kind === "gradientFeather" && !(e.startOpacity >= 1 && e.endOpacity >= 1));
+}
+
+/** The factor at parameter t (0 at the start point, 1 at the end), held before and after. */
+export function rampOpacity(e: GradientFeatherLite, t: number): number {
+  return clamp(e.startOpacity + (e.endOpacity - e.startOpacity) * clamp(t, 0, 1), 0, 1);
+}
+
+export interface FeatherBand {
+  /** Multiplies the node's opacity inside the band. */
+  opacity: number;
+  /** The band's polygon in world coordinates. */
+  polygon: [number, number][];
+}
+
+/**
+ * The strips a gradient feather is drawn with: FEATHER_BANDS strips across the ramp, the
+ * first and last reaching out to infinity, each with the opacity at its middle. They do not
+ * overlap (an overlap would draw twice and darken the seam).
+ */
+export function featherBands(n: NodeLite, e: GradientFeatherLite): FeatherBand[] {
+  const p1x = n.x + e.x1 * n.width;
+  const p1y = n.y + e.y1 * n.height;
+  const dx = (e.x2 - e.x1) * n.width;
+  const dy = (e.y2 - e.y1) * n.height;
+  const len = Math.hypot(dx, dy);
+  const far = (n.width + n.height) * 4 + 4096;
+  if (!(len > 1e-9)) return [{ opacity: rampOpacity(e, 0), polygon: [[n.x - far, n.y - far], [n.x + far, n.y - far], [n.x + far, n.y + far], [n.x - far, n.y + far]] }];
+  const ux = dx / len;
+  const uy = dy / len;
+  const vx = -uy;
+  const vy = ux;
+  const bands: FeatherBand[] = [];
+  for (let i = 0; i < FEATHER_BANDS; i++) {
+    const s0 = i === 0 ? -far : (i / FEATHER_BANDS) * len;
+    const s1 = i === FEATHER_BANDS - 1 ? far + len : ((i + 1) / FEATHER_BANDS) * len;
+    const pt = (s: number, side: number): [number, number] => [p1x + ux * s + vx * far * side, p1y + uy * s + vy * far * side];
+    bands.push({ opacity: rampOpacity(e, (i + 0.5) / FEATHER_BANDS), polygon: [pt(s0, -1), pt(s1, -1), pt(s1, 1), pt(s0, 1)] });
+  }
+  return bands;
 }
 
 // ---- noise and texture ---------------------------------------------------------------

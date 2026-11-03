@@ -135,12 +135,26 @@ A character style cannot carry `list_kind`, `indent`, `vertical_align` or `inset
 
 Declared approximations: the editing textarea shows the raw content (no case, no marker); runs are measured by scaling the base-size width, so kerning across a run boundary is lost; a numbered marker column is sized from the widest marker; the CSS script shift is a padding approximation.
 
+### Kerning on the GPU renderer
+
+`renderer/ck/shaping.ts` (`TextShaper`) measures and draws text through CanvasKit's
+Paragraph (HarfBuzz), which applies the font's pair kerning. The shared layout
+(`renderer/text.ts`) only asks "how wide is this string", so `CanvasKitRenderer.measureFor`
+answers with the shaped advance and `putText` draws the piece as a one-line Paragraph with
+the node's paint (gradients included). Exceptions, which keep the old glyph-by-glyph
+path: the style's `noKerning`, a piece with letter spacing, and a CanvasKit build without
+Paragraph. The `FontBook` keeps each face's file bytes because the Paragraph font provider
+registers fonts by bytes. Cost: a Paragraph is built per drawn piece (the measure is
+cached per font and string); caching painted paragraphs is not done.
+
 ## Not yet
 
 - Letter spacing, text decoration, paragraph spacing, per-range styling
   (one style per text node today), tabular figures and stylistic sets
   on the 2D canvas / GPU renderer (CSS and SVG only), and variable fonts' axes.
-- Kerning and shaping in the GPU renderer (it measures glyph by glyph).
+- In the GPU renderer, shaping beyond pair kerning (ligatures and OpenType features
+  other than kerning go through the same Paragraph, but no feature list is passed
+  yet), and kerning inside a piece with letter spacing (those draw per character).
 - A text style that overrides only some properties (a style replaces the node's
   whole style).
 - Font subsetting and licence metadata in the export.

@@ -23,6 +23,7 @@ func TestEffectValuesAreValidated(t *testing.T) {
 		{Kind: &opendesignerv1.Effect_Noise{Noise: &opendesignerv1.Noise{Mode: opendesignerv1.NoiseMode_NOISE_MODE_DUO, Size: 2, Density: 0.5, Opacity: 0.3, Seed: 7}}},
 		{Kind: &opendesignerv1.Effect_Texture{Texture: &opendesignerv1.Texture{Scale: 8, Intensity: 0.4}}},
 		{Kind: &opendesignerv1.Effect_Glass{Glass: &opendesignerv1.Glass{Frost: 12, Light: 0.5, LightAngle: -30, Noise: 0.2}}},
+		{Kind: &opendesignerv1.Effect_GradientFeather{GradientFeather: &opendesignerv1.GradientFeather{StartOpacity: 1, EndOpacity: 0, Y2: 1}}},
 		{Kind: &opendesignerv1.Effect_LayerBlur{LayerBlur: &opendesignerv1.LayerBlur{Radius: -3}}}, // historical leniency
 	}
 	if err := setEffects(t, doc, good...); err != nil {
@@ -40,6 +41,8 @@ func TestEffectValuesAreValidated(t *testing.T) {
 		"noise density":   {Kind: &opendesignerv1.Effect_Noise{Noise: &opendesignerv1.Noise{Density: 1.5}}},
 		"noise opacity":   {Kind: &opendesignerv1.Effect_Noise{Noise: &opendesignerv1.Noise{Opacity: -0.1}}},
 		"noise size":      {Kind: &opendesignerv1.Effect_Noise{Noise: &opendesignerv1.Noise{Size: -1}}},
+		"feather opacity": {Kind: &opendesignerv1.Effect_GradientFeather{GradientFeather: &opendesignerv1.GradientFeather{EndOpacity: 1.5}}},
+		"feather point":   {Kind: &opendesignerv1.Effect_GradientFeather{GradientFeather: &opendesignerv1.GradientFeather{Y2: math.Inf(1)}}},
 		"texture":         {Kind: &opendesignerv1.Effect_Texture{Texture: &opendesignerv1.Texture{Intensity: 2}}},
 		"glass light":     {Kind: &opendesignerv1.Effect_Glass{Glass: &opendesignerv1.Glass{Light: 3}}},
 		"glass angle":     {Kind: &opendesignerv1.Effect_Glass{Glass: &opendesignerv1.Glass{LightAngle: math.Inf(1)}}},

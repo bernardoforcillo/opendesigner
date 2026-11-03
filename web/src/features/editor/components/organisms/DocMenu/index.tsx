@@ -32,9 +32,11 @@ import { InkManagerDialog } from "@/ui/InkManagerDialog";
 import { InsertTableDialog } from "@/ui/InsertTableDialog";
 import { generateContentsOps } from "@/tools/contents";
 import { VersionsDialog } from "@/ui/VersionsDialog";
+import { LibrariesDialog } from "@features/editor/components/organisms/LibrariesDialog";
 import { PluginsDialog } from "@/ui/PluginsDialog";
 import { ShareDialog } from "@/ui/ShareDialog";
 import { BoardDialog } from "@/ui/BoardDialog";
+import { GenerateDialog } from "@features/generate/components/organisms/GenerateDialog";
 import { useAppNavigate } from "@/home/nav";
 import { verticalOf } from "@/store/docSettings";
 import { makeSetDocSettingsOp } from "@/tools/ops";
@@ -74,9 +76,11 @@ export function DocMenu({ onNewDocument }: { onNewDocument: () => void }) {
   const [stylesOpen, setStylesOpen] = useState(false);
   const [pageSetupOpen, setPageSetupOpen] = useState(false);
   const [versionsOpen, setVersionsOpen] = useState(false);
+  const [librariesOpen, setLibrariesOpen] = useState(false);
   const [pluginsOpen, setPluginsOpen] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
   const [boardOpen, setBoardOpen] = useState(false);
+  const [generateOpen, setGenerateOpen] = useState(false);
   const [findOpen, setFindOpen] = useState(false);
   const [swatchesOpen, setSwatchesOpen] = useState(false);
   const [objectStylesOpen, setObjectStylesOpen] = useState(false);
@@ -156,9 +160,11 @@ export function DocMenu({ onNewDocument }: { onNewDocument: () => void }) {
           else if (k === "table") setTableOpen(true);
           else if (k === "contents" || k === "index" || k === "endnotes") generateContents(k === "contents" ? "toc" : k === "index" ? "index" : "endnotes");
           else if (k === "versions") setVersionsOpen(true);
+          else if (k === "libraries") setLibrariesOpen(true);
           else if (k === "plugins") setPluginsOpen(true);
           else if (k === "share") setShareOpen(true);
           else if (k === "board") setBoardOpen(true);
+          else if (k === "generate") setGenerateOpen(true);
           else if (typeof k === "string" && k.startsWith("vertical:")) {
             const v = k.slice("vertical:".length) as (typeof VERTICAL_LIST)[number]["id"];
             const st = useScene.getState();
@@ -245,6 +251,9 @@ export function DocMenu({ onNewDocument }: { onNewDocument: () => void }) {
                 <Icon name="plus" size={14} /> {t("Whiteboard (sticky, table, kanban…)…")}
               </MenuItem>
               )}
+              <MenuItem id="generate" className={ITEM}>
+                <Icon name="plus" size={14} /> {t("Generate screen from the kit…")}
+              </MenuItem>
               {show("variables") && (
                 <MenuItem id="variables" className={ITEM}>
                 <Icon name="plus" size={14} /> {t("Variables…")}
@@ -304,6 +313,9 @@ export function DocMenu({ onNewDocument }: { onNewDocument: () => void }) {
               )}
               <MenuItem id="versions" className={ITEM}>
                 <Icon name="page" size={14} /> {t("Versions…")}
+              </MenuItem>
+              <MenuItem id="libraries" className={ITEM}>
+                <Icon name="component" size={14} /> {t("Libraries…")}
               </MenuItem>
               <MenuItem id="share" className={ITEM}>
                 <Icon name="share" size={14} /> {t("Share…")}
@@ -366,9 +378,11 @@ export function DocMenu({ onNewDocument }: { onNewDocument: () => void }) {
     <StylesDialog isOpen={stylesOpen} onOpenChange={setStylesOpen} />
     <PageSetupDialog isOpen={pageSetupOpen} onOpenChange={setPageSetupOpen} />
     <VersionsDialog isOpen={versionsOpen} onOpenChange={setVersionsOpen} />
+    <LibrariesDialog isOpen={librariesOpen} onOpenChange={setLibrariesOpen} />
     <PluginsDialog isOpen={pluginsOpen} onOpenChange={setPluginsOpen} />
     <ShareDialog isOpen={shareOpen} onOpenChange={setShareOpen} />
     <BoardDialog isOpen={boardOpen} onOpenChange={setBoardOpen} />
+    <GenerateDialog isOpen={generateOpen} onOpenChange={setGenerateOpen} />
     <FindReplaceDialog isOpen={findOpen} onOpenChange={setFindOpen} />
     <SwatchesDialog isOpen={swatchesOpen} onOpenChange={setSwatchesOpen} />
     <ObjectStylesDialog isOpen={objectStylesOpen} onOpenChange={setObjectStylesOpen} />

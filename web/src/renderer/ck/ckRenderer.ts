@@ -21,7 +21,7 @@ import { brushStrokeCommands } from "@/vector/brush";
 import { GRADIENT_BITMAP_SIZE, angularStart, gradientBitmap } from "@/renderer/gradientBitmap";
 import { VECTOR_STROKE_PX, inkIsBox, nodeCenter } from "@/renderer/shapes";
 import { decorationBars, fontSizeOf, hscaleOf, paragraphDecorations, piecesOfLine, piecesOfSegment, placeTextLines, trackedOffsets, type MeasureFor } from "@/renderer/text";
-import { FX_TILE, blurBands, overlayEffects, overlayTile, progressiveBlur, tileUnit, withBandBlur, withExpandedGlass } from "@/renderer/effectsFx";
+import { FX_TILE, blurBands, featherBands, gradientFeather, overlayEffects, overlayTile, progressiveBlur, tileUnit, withBandBlur, withExpandedGlass } from "@/renderer/effectsFx";
 import { buildFx, type BuiltFx } from "@/animation/fx/apply";
 import { DISPLACE_SKSL } from "@/animation/fx/timeFx";
 import { makeLutShader, readHistogram } from "@/animation/fx/lutImage";
@@ -33,6 +33,7 @@ import { builtInPath } from "@/animation/fx/kernelsText";
 import { pathPointsFor } from "@/store/textPath";
 import { hasRealStroke, vectorStyleOf } from "@/renderer/vectorStyle";
 import type { FontBook } from "@/renderer/ck/canvaskit";
+import { TextShaper } from "@/renderer/ck/shaping";
 
 // THE GPU RENDERER: the same drawing as renderer/canvasRenderer.ts, but with
 // CanvasKit (Skia in WebAssembly) on a WebGL context instead of Canvas 2D.
@@ -42,7 +43,8 @@ import type { FontBook } from "@/renderer/ck/canvaskit";
 // detail, same order (fill, strokes; text; image; vector),
 // same rules for instances, overrides, clipping frames and transparent frames --
 // and only the primitives change. Where the two differ it is declared:
-//   - text uses Inter (the only font the WASM has), without kerning;
+//   - text uses Inter (the only font the WASM has); pieces are shaped (kerning) through
+//     CanvasKit's Paragraph (ck/shaping.ts), except with letter spacing or a path;
 //   - shadow and blur apply to the WHOLE node (a layer saved with a
 //     filter), not to every single draw pass;
 //   - the inner/outer stroke clips with the exact outline, not with a
@@ -89,6 +91,7 @@ export class CanvasKitRenderer {
   private readonly runtimeEffects = new Map<string, RuntimeEffect | null>();
   private readonly skImages = new Map<HTMLImageElement, SkImage>();
   private widths = new Map<Font, Map<string, number>>();
+  private readonly shaper: TextShaper;
   private textLines = new WeakMap<NodeLite, ReturnType<typeof placeTextLines>>();
   lost = false;
   /** The last frame's cost: `walkMs` is the JS walk plus the calls into CanvasKit, `flushMs` the submit to the GPU. */
@@ -116,6 +119,7 @@ export class CanvasKitRenderer {
     if (!handle) throw new Error("WebGL not available");
     this.grCtx = CK.MakeGrContext(handle);
     if (!this.grCtx) throw new Error("Skia context not created");
+    this.shaper = new TextShaper(CK, (font) => fonts.bytesOf(font));
     this.fillP = new CK.Paint();
     this.fillP.setAntiAlias(true);
     this.strokeP = new CK.Paint();
@@ -133,6 +137,7 @@ export class CanvasKitRenderer {
   fontsChanged(): void {
     this.dropSnapshot();
     this.widths = new Map();
+    this.shaper.reset();
     this.textLines = new WeakMap();
   }
 
@@ -482,21 +487,38 @@ export class CanvasKitRenderer {
       }
     };
     const pb = progressiveBlur(eff, false);
-    if (pb) {
-      // A progressive layer blur: the node once per band, clipped to it, with the band's radius.
-      for (const band of blurBands(eff, pb, 1 / f.px)) {
-        sk.save();
-        this.clipPolygon(sk, band.polygon);
-        const layered = this.beginEffects(sk, withBandBlur(eff, pb, band.radius));
+    const drawLayer = () => {
+      if (pb) {
+        // A progressive layer blur: the node once per band, clipped to it, with the band's radius.
+        for (const band of blurBands(eff, pb, 1 / f.px)) {
+          sk.save();
+          this.clipPolygon(sk, band.polygon);
+          const layered = this.beginEffects(sk, withBandBlur(eff, pb, band.radius));
+          this.drawLayerBody(sk, eff, layered, drawBody);
+          if (layered) this.endEffects(sk);
+          sk.restore();
+        }
+      } else {
+        const layered = this.beginEffects(sk, eff);
         this.drawLayerBody(sk, eff, layered, drawBody);
         if (layered) this.endEffects(sk);
+      }
+    };
+    const ft = gradientFeather(eff);
+    if (ft) {
+      // A gradient feather: everything above once per strip across the ramp, composited at the strip's opacity.
+      for (const band of featherBands(eff, ft)) {
+        sk.save();
+        this.clipPolygon(sk, band.polygon);
+        const lp = new this.CK.Paint();
+        lp.setAlphaf(band.opacity);
+        f.garbage.push(lp);
+        sk.saveLayer(lp);
+        drawLayer();
+        sk.restore();
         sk.restore();
       }
-    } else {
-      const layered = this.beginEffects(sk, eff);
-      this.drawLayerBody(sk, eff, layered, drawBody);
-      if (layered) this.endEffects(sk);
-    }
+    } else drawLayer();
     if (outline) this.drawInnerShadows(sk, eff, outline);
     if (outline || eff.kind === "image") this.drawOverlays(sk, eff, outline);
     if (rotated) sk.restore();
@@ -1137,7 +1159,10 @@ export class CanvasKitRenderer {
 
   // --- testo -----------------------------------------------------------------
 
-  private measureFor(font: Font): (s: string) => number {
+  // The width of a string in a font. Shaped (pair kerning) unless the style turns kerning off
+  // or the build cannot shape; those fall back to the sum of glyph widths.
+  private measureFor(font: Font, kerning = true): (s: string) => number {
+    if (kerning && this.shaper.available) return (s) => this.shaper.measure(font, s);
     let cache = this.widths.get(font);
     if (!cache) {
       cache = new Map();
@@ -1173,6 +1198,11 @@ export class CanvasKitRenderer {
     this.drawStrokes(sk, n, null);
   }
 
+  // A run without letter spacing: shaped through Paragraph (kerning) unless the style turns kerning off.
+  private putText(sk: Canvas, text: string, x: number, y: number, p: Paint, f: Font, style: TextStyleLite): void {
+    if (style.noKerning || !this.shaper.draw(sk, f, text, x, y, p)) sk.drawText(text, x, y, p, f);
+  }
+
   private paintText(sk: Canvas, n: NodeLite, paint: Paint): void {
     const t = n.text;
     if (n.kind !== "text" || !t || t.content === "") return;
@@ -1180,7 +1210,7 @@ export class CanvasKitRenderer {
     if (!font) return;
     let lines = this.textLines.get(n);
     if (!lines) {
-      lines = placeTextLines(this.measureFor(font), n, this.styleMeasure);
+      lines = placeTextLines(this.measureFor(font, !t.style.noKerning), n, this.styleMeasure);
       this.textLines.set(n, lines);
     }
     // A piece with letter spacing goes character by character, as on the 2D canvas.
@@ -1197,10 +1227,10 @@ export class CanvasKitRenderer {
         sk.translate(x, y);
         if (angle) sk.rotate((angle * 180) / Math.PI, 0, 0);
         sk.scale(sx, 1);
-        if (!spacing) sk.drawText(text, 0, 0, p, f);
+        if (!spacing) this.putText(sk, text, 0, 0, p, f, style);
         else for (const c of trackedOffsets(text, 0, spacing / sx, this.measureFor(f))) sk.drawText(c.ch, c.x, 0, p, f);
         sk.restore();
-      } else if (!spacing) sk.drawText(text, x, y, p, f);
+      } else if (!spacing) this.putText(sk, text, x, y, p, f, style);
       else for (const c of trackedOffsets(text, x, spacing, this.measureFor(f))) sk.drawText(c.ch, c.x, y, p, f);
       own?.delete();
     };
@@ -1229,7 +1259,7 @@ export class CanvasKitRenderer {
   // The measure of any style (rich text lays out pieces in several fonts); no font -> an estimate.
   private readonly styleMeasure: MeasureFor = (style) => {
     const f = this.fonts.fontFor(style.fontWeight, fontSizeOf(style), style.fontFamily, style.italic === true);
-    return f ? this.measureFor(f) : (s) => s.length * fontSizeOf(style) * 0.55;
+    return f ? this.measureFor(f, !style.noKerning) : (s) => s.length * fontSizeOf(style) * 0.55;
   };
 
   // Underline / strikethrough bars under pieces whose style asks for them.
@@ -1410,6 +1440,7 @@ export class CanvasKitRenderer {
     this.skImages.clear();
     this.fillP.delete();
     this.strokeP.delete();
+    this.shaper.dispose();
     this.dropSnapshot();
     this.surface?.delete();
     this.surface = null;

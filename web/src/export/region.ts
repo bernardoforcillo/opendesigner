@@ -1,7 +1,9 @@
 import { NodeMap } from "@/store/nodeMap";
 import type { NodeLite, SceneState } from "@/store/types";
-import { type Bounds, boundsOfNode, unionBounds } from "@/canvas/geometry";
-import { sortedVisible } from "@/renderer/canvasRenderer";
+import { type Bounds, boundsOfNode, intersectBounds, unionBounds } from "@/canvas/geometry";
+import { applyTransform, compose, IDENTITY, localTransformOf, rotatedAabb, type Transform } from "@/canvas/transform";
+import { childIndexOf } from "@/store/tree";
+import type { ClipBox } from "@/store/types";
 import { isPaintable } from "@/renderer/shapes";
 import { textPaintBounds, type MeasureText } from "@/renderer/text";
 
@@ -77,17 +79,69 @@ export function exportRegion(
   // cropped, an empty sheet is still a page), not the bounding box of what is drawn on it.
   sheet: Bounds | null = null,
 ): ExportRegion | null {
-  const drawn = sortedVisible(scene).filter(isPaintable);
-  // The ALREADY sorted list is filtered instead of mapping the selection: the draw
-  // order is that of orderKey, not the one in which the user clicked.
-  const nodes =
-    scope === "selection" ? drawn.filter((n) => selection.includes(n.id)) : drawn;
-  const bounds = scope === "page" && sheet ? sheet : unionBounds(nodes.map((n) => exportBounds(n, measure)));
+  const walked = walkTree(scene, scope === "selection" ? new Set(selection) : null);
+  // A node clipped away entirely by a frame around it paints nothing: it neither widens the bounds nor reaches the file.
+  const visible = walked.filter((w) => isPaintable(w.flat) && !clippedAway(w.flat, measure));
+  const nodes = visible.map((w) => w.flat);
+  const bounds = scope === "page" && sheet ? sheet : unionBounds(nodes.map((n) => visibleBounds(n, measure)).filter((b): b is Bounds => b !== null));
   if (bounds === null) return null;
   return {
     scope,
     nodes,
     bounds,
-    scene: { ...scene, nodes: NodeMap.from(nodes.map((n) => [n.id, n] as const)) },
+    scene: { ...scene, nodes: NodeMap.from(visible.map((w) => [w.tree.id, w.tree] as const)) },
   };
+}
+
+// NESTED FRAMES. The model keeps a child's box in its PARENT's space, but the file formats that read `nodes` (SVG, PDF) draw
+// flat: so every node leaves here already in WORLD space (position, accumulated rotation), in tree draw order (a container, then
+// its children, siblings by order key), carrying the clipping frames around it. `tree` is the same node as the canvas draws it
+// (relative to its parent) for the PNG, which reuses drawScene; a selected node whose parent is not exported is lifted to the
+// world there, so it is not orphaned.
+interface Walked { flat: NodeLite; tree: NodeLite }
+
+function walkTree(scene: SceneState, selected: ReadonlySet<string> | null): Walked[] {
+  const children = childIndexOf(scene);
+  const out: Walked[] = [];
+  const seen = new Set<string>();
+  const roots = [...scene.nodes.values()].filter((n) => !scene.nodes.has(n.parentId)).sort((a, b) => (a.orderKey < b.orderKey ? -1 : a.orderKey > b.orderKey ? 1 : 0));
+  const visit = (n: NodeLite, t: Transform, clips: readonly ClipBox[], inSel: boolean, lifted: boolean, pageId: string): void => {
+    if (!n.visible || seen.has(n.id)) return;
+    seen.add(n.id);
+    let nClips = clips, nInSel = inSel, nLifted = lifted;
+    // A selection root: what is exported starts here, so the frames around it do not cut it.
+    if (selected && !inSel && selected.has(n.id)) { nInSel = true; nClips = []; nLifted = true; }
+    const world = placeInWorld(n, t);
+    if (nInSel) {
+      const flat = nClips.length > 0 ? { ...world, exportClips: nClips } : world;
+      const tree = nLifted && !inSel ? { ...world, parentId: pageId } : n;
+      out.push({ flat, tree });
+    }
+    const inner = compose(t, localTransformOf(n));
+    if (n.kind === "frame" && n.clipsContent) nClips = [...nClips, { x: world.x, y: world.y, width: n.width, height: n.height, rotation: world.rotation }];
+    for (const k of children.get(n.id) ?? []) visit(k, inner, nClips, nInSel, nLifted, pageId);
+  };
+  for (const r of roots) visit(r, IDENTITY, [], selected === null, false, r.parentId);
+  return out;
+}
+
+// The node with its box in world space: where the centre of its box lands and the rotation accumulated from the containers.
+function placeInWorld(n: NodeLite, parent: Transform): NodeLite {
+  if (parent === IDENTITY) return n;
+  const c = applyTransform(parent, n.x + n.width / 2, n.y + n.height / 2);
+  const turn = (Math.atan2(parent.b, parent.a) * 180) / Math.PI;
+  return { ...n, x: c.x - n.width / 2, y: c.y - n.height / 2, rotation: n.rotation + (Math.abs(turn) < 1e-9 ? 0 : turn) };
+}
+
+const clipAabb = (c: ClipBox): Bounds => rotatedAabb({ x: c.x, y: c.y, width: c.width, height: c.height }, c.rotation);
+
+// The part of the node inside every clipping frame around it; null when nothing is left.
+function visibleBounds(n: NodeLite, measure: MeasureText): Bounds | null {
+  let b: Bounds | null = exportBounds(n, measure);
+  for (const c of n.exportClips ?? []) b = b && intersectBounds(b, clipAabb(c));
+  return b;
+}
+
+function clippedAway(n: NodeLite, measure: MeasureText): boolean {
+  return n.exportClips !== undefined && visibleBounds(n, measure) === null;
 }

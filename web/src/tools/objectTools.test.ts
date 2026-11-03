@@ -79,6 +79,32 @@ describe("frame fitting", () => {
   });
 });
 
+describe("nested frame fitting", () => {
+  const frameOp = (id: string, parentId: string, x: number, y: number, w: number, h: number, key = TOP) =>
+    makeCreateNodeOp(create(NodeSchema, { id, parentId, orderKey: key, name: id, visible: true, opacity: 1, x, y, width: w, height: h, shape: { case: "frame", value: { clipsContent: true } } }));
+  it("frame-to-children wraps the children and keeps them in place on the page", () => {
+    const s = run(emptyScene("d", "d"), [frameOp("f", "page1", 100, 100, 500, 500), rectOp("r", 20, 30, 40, 50, undefined, "f")]);
+    const after = run(s, fitOps(s, "f", "frame-to-children") as Op[]);
+    const f = after.nodes.get("f")!, r = after.nodes.get("r")!;
+    expect([f.x, f.y, f.width, f.height]).toEqual([120, 130, 40, 50]);
+    expect([r.x, r.y]).toEqual([0, 0]);
+    expect(fitOps(after, "f", "frame-to-children")).toEqual([]);
+  });
+  it("frame-to-children works on a frame inside a frame and refuses what it cannot do", () => {
+    const s = run(emptyScene("d", "d"), [frameOp("o", "page1", 0, 0, 300, 300), frameOp("i", "o", 50, 60, 200, 200), rectOp("r", 10, 10, 30, 30, undefined, "i")]);
+    const after = run(s, fitOps(s, "i", "frame-to-children") as Op[]);
+    expect([after.nodes.get("i")!.x, after.nodes.get("i")!.y, after.nodes.get("i")!.width]).toEqual([60, 70, 30]);
+    expect(fitOps(s, "r", "frame-to-children")).toMatch(/needs a frame/);
+    expect(fitOps(run(emptyScene("d", "d"), [frameOp("e", "page1", 0, 0, 5, 5)]), "e", "frame-to-children")).toMatch(/no visible children/);
+  });
+  it("fit-in-parent scales a child to the largest size inside its frame, centred", () => {
+    const s = run(emptyScene("d", "d"), [frameOp("p", "page1", 0, 0, 200, 100), rectOp("r", 5, 5, 50, 50, undefined, "p")]);
+    const r = run(s, fitOps(s, "r", "fit-in-parent") as Op[]).nodes.get("r")!;
+    expect([r.x, r.y, r.width, r.height]).toEqual([50, 0, 100, 100]);
+    expect(fitOps(s, "p", "fit-in-parent")).toMatch(/inside a frame/);
+  });
+});
+
 describe("clipping path", () => {
   it("groups the shape under its content as a mask, and releases it", () => {
     const s = scene3();

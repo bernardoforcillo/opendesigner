@@ -181,6 +181,18 @@ message ProgressiveBlur {
   bool background = 7;
 }
 
+// Gradient feather: the node's own opacity (everything it draws) ramps linearly from
+// start_opacity at (x1, y1) to end_opacity at (x2, y2), points in the node's unit box;
+// before the start and past the end it stays. A soft edge that fades along a direction.
+message GradientFeather {
+  double start_opacity = 1; // 0..1
+  double end_opacity = 2;   // 0..1
+  double x1 = 3;
+  double y1 = 4;
+  double x2 = 5;
+  double y2 = 6;
+}
+
 enum NoiseMode {
   NOISE_MODE_UNSPECIFIED = 0; // MONO
   NOISE_MODE_MONO = 1;        // grey grains
@@ -226,6 +238,7 @@ message Effect {
     Noise noise = 21;
     Texture texture = 22;
     Glass glass = 23;
+    GradientFeather gradient_feather = 24;
   }
 }
 
@@ -467,6 +480,23 @@ message TextStyle {
   // Horizontal scale of the glyphs in percent: 0 => 100 (unscaled), otherwise 1..1000. Widens or narrows
   // every glyph (and so the layout) without changing the height of the line.
   double text_scale = 30;
+
+  // Fields 31..39 are the international-text range (docs/text-international.md).
+  TextDirection direction = 31;     // UNSPECIFIED => auto (the first strong character decides)
+  WritingMode writing_mode = 32;    // UNSPECIFIED => horizontal
+}
+
+// Paragraph direction. In a right-to-left paragraph LEFT and RIGHT alignment mean start and end.
+enum TextDirection {
+  TEXT_DIRECTION_UNSPECIFIED = 0; // auto: the first strong character decides
+  TEXT_DIRECTION_LTR = 1;
+  TEXT_DIRECTION_RTL = 2;
+}
+
+// Writing mode: vertical-rl stacks upright characters top to bottom in columns that run right to left.
+enum WritingMode {
+  WRITING_MODE_UNSPECIFIED = 0; // horizontal
+  WRITING_MODE_VERTICAL_RL = 1;
 }
 
 // Text case: a transform of what is DRAWN, the content keeps its capitalisation.
@@ -1187,6 +1217,10 @@ message DocSettings {
   // "generic") | "generic" | "phone" | "tablet" | "desktop" | "none". The document's choice; a person's own
   // pick in the player (kept in their browser) overrides it for them.
   string present_device = 10;
+  // The output profile ITSELF: the hash of the ICC profile file in the document's asset store (uploaded inside the
+  // "ODICC" container, internal/store/assets.go), "" = none. When set, RGB <-> CMYK conversions go through it and
+  // the PDF output intent embeds it; `icc_profile` stays the human-readable name (docs/color-management.md).
+  string icc_profile_asset = 11;
 }
 
 // A condition of conditional text. A name no condition defines counts as visible. Hidden text is left out of the
@@ -1357,6 +1391,13 @@ message DeleteClip { string id = 1; }
 message Op {
   string op_id = 1;
   string doc_id = 2;
+  // Highest oplog seq the submitting client had applied when it made the op. The hub
+  // uses it, with client_id, as the Lamport-style stamp of a per-property LWW register
+  // (internal/server/propversions.go): of two CONCURRENT writes to the same property the
+  // one with the higher (base_seq, client_id) wins whatever order they arrive in; the
+  // loser's path is dropped from the broadcast record. 0 = unknown (agents, merges):
+  // treated as having seen everything, i.e. plain arrival order.
+  uint64 base_seq = 3;
   oneof kind {
     CreateNode    create_node = 10;
     SetProperties set_props   = 11;
@@ -1551,12 +1592,82 @@ message OpenResponse { Document snapshot = 1; uint64 seq = 2; }
 message CreateDocumentRequest { string name = 1; string vertical = 2; }
 // updated_at (unix seconds, 0 = unknown), screens (top-level frames) and
 // flows are for the Home page: a document's card shows them without opening it.
-message DocInfo { string id = 1; string name = 2; int64 updated_at = 3; uint32 screens = 4; uint32 flows = 5; string vertical = 6; }
+message DocInfo { string id = 1; string name = 2; int64 updated_at = 3; uint32 screens = 4; uint32 flows = 5; string vertical = 6; bool library = 7; }
+
+// ---------- shared libraries ----------
+// A document can be PUBLISHED AS A LIBRARY (DocInfo.library, kept in the document's identity, not in its op-log).
+// What a library offers: its components, text / paint / effect / object styles and variable collections.
+// Another document IMPORTS what it needs: the server copies the items (and what they depend on: nested
+// components and the other members of a component set, the styles and variables a master uses, uploaded fonts
+// and images) into the importing document as ordinary ops, so the copy is editable, undoable and shared with
+// every collaborator. Items keep their ids: importing again updates styles, variables, sets and fonts in place,
+// while a component that is already there is left alone (its masters may have been edited since).
+enum LibraryItemKind {
+  LIBRARY_ITEM_KIND_UNSPECIFIED = 0;
+  LIBRARY_ITEM_KIND_COMPONENT = 1;
+  LIBRARY_ITEM_KIND_TEXT_STYLE = 2;
+  LIBRARY_ITEM_KIND_PAINT_STYLE = 3;
+  LIBRARY_ITEM_KIND_EFFECT_STYLE = 4;
+  LIBRARY_ITEM_KIND_OBJECT_STYLE = 5;
+  LIBRARY_ITEM_KIND_COLLECTION = 6;   // a variable collection, with all its variables
+}
+message LibraryItem { LibraryItemKind kind = 1; string id = 2; string name = 3; string group = 4; }
+message SetLibraryRequest { string doc_id = 1; bool library = 2; }
+message GetLibraryRequest { string doc_id = 1; }
+message GetLibraryResponse { DocInfo info = 1; repeated LibraryItem items = 2; }
+message ImportFromLibraryRequest {
+  string doc_id = 1;               // the document that receives the items
+  string library_doc_id = 2;
+  repeated LibraryItem items = 3;  // kind + id of what to import
+}
+message ImportFromLibraryResponse {
+  repeated LibraryItem imported = 1;  // everything written, dependencies included
+  repeated LibraryItem skipped = 2;   // components that were already in the document
+  string page_id = 3;                 // the page that holds the imported masters ("" when none)
+}
+
 message RenameDocumentRequest { string doc_id = 1; string name = 2; }
 message DeleteDocumentRequest { string doc_id = 1; }
 message DeleteDocumentResponse {}
 message ListDocumentsRequest {}
 message ListDocumentsResponse { repeated DocInfo docs = 1; }
+
+// ---------- books ----------
+// A BOOK groups several documents (the chapters, in reading order) so that they share styles and one page
+// count. It is an entity of the workspace, not a part of any document: it lives next to the documents and
+// only names them. Syncing a book (SyncBook) copies the text, paint, effect and object styles of the
+// style source into every other chapter and numbers the chapters one after the other (the first page of each
+// starts at the number after the last page of the one before). Documents stay editable on their own.
+message Book {
+  string id = 1;
+  string name = 2;
+  repeated string doc_ids = 3;     // the chapters, in order; each at most once
+  string style_source_id = 4;      // the chapter whose styles are the book's; empty = the first
+  uint32 start_number = 5;         // number of the first page of the first chapter; 0 = 1
+  int64 updated_at = 6;            // unix seconds, set by the server
+}
+// One chapter as the book sees it. first_page_number is where its numbering starts (the book's start plus the
+// pages of the chapters before); pages counts the pages that are not masters. missing: the document is gone.
+message BookChapter {
+  string doc_id = 1;
+  string name = 2;
+  uint32 pages = 3;
+  uint32 first_page_number = 4;
+  bool missing = 5;
+  bool numbered = 6;               // the document's first page already starts at first_page_number
+  uint32 styles_behind = 7;        // styles of the source that this chapter lacks or has different
+}
+message ListBooksRequest {}
+message ListBooksResponse { repeated Book books = 1; }
+message GetBookRequest { string book_id = 1; }
+message GetBookResponse { Book book = 1; repeated BookChapter chapters = 2; }
+// Creates the book when book.id is empty, otherwise replaces the book with that id.
+message SaveBookRequest { Book book = 1; }
+message DeleteBookRequest { string book_id = 1; }
+message DeleteBookResponse {}
+// styles / numbering: what to bring into line (both false = both). All or nothing.
+message SyncBookRequest { string book_id = 1; bool styles = 2; bool numbering = 3; }
+message SyncBookResponse { repeated BookChapter chapters = 1; uint32 styles_applied = 2; uint32 numbering_applied = 3; }
 
 // The live channel is split into two RPCs instead of a bidirectional stream:
 // browsers' `fetch` does not support streaming request bodies, so a bidi is not
@@ -1821,7 +1932,7 @@ message EditorJob {
 message WatchJobsRequest { string doc_id = 1; string client_id = 2; }
 message RunJobRequest {
   string doc_id = 1;
-  string kind = 2;          // export_pdf | export_package | export_epub | export_epub_reflow | export_html | export_html_text | export_pptx | export_idml | export_png | export_svg | preflight | command
+  string kind = 2;          // export_pdf | export_package | export_epub | export_epub_reflow | export_html | export_html_text | export_pptx | export_idml | export_png | export_svg | export_eps | preflight | command
   string options_json = 3;  // the kind's options, a JSON object
   uint32 timeout_seconds = 4; // 0 => 120
   bytes payload = 5;        // an input file for kinds that take one (command: place_image, import_pdf...)
@@ -1876,6 +1987,10 @@ service DocumentService {
   rpc MergeBranch(MergeBranchRequest) returns (MergeBranchResponse);
   rpc ListDocuments(ListDocumentsRequest) returns (ListDocumentsResponse);
   rpc CreateDocument(CreateDocumentRequest) returns (DocInfo);
+  // Shared libraries: publish a document as a library, read what it offers, import items into another document.
+  rpc SetLibrary(SetLibraryRequest) returns (DocInfo);
+  rpc GetLibrary(GetLibraryRequest) returns (GetLibraryResponse);
+  rpc ImportFromLibrary(ImportFromLibraryRequest) returns (ImportFromLibraryResponse);
   // Renames a document (meta.json + the hub's in-memory name).
   rpc RenameDocument(RenameDocumentRequest) returns (DocInfo);
   // Deletes a document by MOVING the bundle to <workspace>/.trash (never rm -rf).
@@ -1905,4 +2020,10 @@ service DocumentService {
   // Draws a diagram (flowchart, UML classes, UML sequence, UML states) from
   // Mermaid text. Pure and stateless: see RenderDiagramRequest.
   rpc RenderDiagram(RenderDiagramRequest) returns (RenderDiagramResponse);
+  // Books: several documents with shared styles and continuous page numbering (docs/book.md).
+  rpc ListBooks(ListBooksRequest) returns (ListBooksResponse);
+  rpc GetBook(GetBookRequest) returns (GetBookResponse);
+  rpc SaveBook(SaveBookRequest) returns (Book);
+  rpc DeleteBook(DeleteBookRequest) returns (DeleteBookResponse);
+  rpc SyncBook(SyncBookRequest) returns (SyncBookResponse);
 }

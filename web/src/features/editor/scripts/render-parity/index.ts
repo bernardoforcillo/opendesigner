@@ -14,8 +14,8 @@ import { chromium } from "playwright-core";
 
 const PORT = 5199;
 const ZOOMS = [1, 2, 0.35, 0.08];
-// These are expected sub-pixel differences in text (CanvasKit does not do kerning):
-// with today's gallery they stay below 1%. Beyond that, something is drawn differently.
+// These are expected sub-pixel differences in text (hinting and rasterisation differ; kerning
+// is shaped on both sides): with today's gallery they stay below 1%. Beyond that, something is drawn differently.
 const MAX_DIFFERING_PCT = 1.5;
 const OUT = path.resolve("parity-out");
 

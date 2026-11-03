@@ -77,6 +77,7 @@ export function overlay(base: TextStyleLite, over: TextStyleLite): TextStyleLite
     textCase: over.textCase ?? base.textCase, textScript: over.textScript ?? base.textScript, listKind: over.listKind ?? base.listKind,
     indent: over.indent || base.indent, fontFeatures: over.fontFeatures || base.fontFeatures,
     verticalAlign: over.verticalAlign ?? base.verticalAlign, inset: over.inset || base.inset, textScale: over.textScale || base.textScale,
+    direction: over.direction ?? base.direction, writingMode: over.writingMode ?? base.writingMode,
   };
   for (const [k, v] of Object.entries(extra)) if (v !== undefined && v !== "") (out as unknown as Record<string, unknown>)[k] = v;
   if (over.smallCaps || base.smallCaps) out.smallCaps = true;

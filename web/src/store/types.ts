@@ -1,6 +1,6 @@
 import { NodeMap } from "@/store/nodeMap";
 import { create } from "@bufbuild/protobuf";
-import { AnnotationSchema, ReadyForDevSchema, BlendMode, ImageScaleMode, TextStyleKind, ArrowHead, PaintStyleDefSchema, EffectStyleDefSchema, LayoutGridKind, CommentSchema, ClipSchema, Constraint, LayoutPositioning, LayoutSizing, ComponentPropertySchema, ComponentPropertyType, ComponentSetSchema, FlowSchema, FontFaceSchema, TextStyleDefSchema, VariableCollectionSchema, VariableSchema, VariableType, TransitionSchema, LayoutAlign, LayoutDirection, NodeSchema, StrokeAlign, TextAlign, TextCase, TextScript, ListKind, TextVAlign, NoiseMode, LayoutMode, GridTrackKind, BrushKind, BrushTip, LayerSchema, ObjectStyleDefSchema, TabAlign, ParagraphRuleSchema } from "@/gen/opendesigner/v1/opendesigner_pb";
+import { AnnotationSchema, ReadyForDevSchema, BlendMode, ImageScaleMode, TextStyleKind, ArrowHead, PaintStyleDefSchema, EffectStyleDefSchema, LayoutGridKind, CommentSchema, ClipSchema, Constraint, LayoutPositioning, LayoutSizing, ComponentPropertySchema, ComponentPropertyType, ComponentSetSchema, FlowSchema, FontFaceSchema, TextStyleDefSchema, VariableCollectionSchema, VariableSchema, VariableType, TransitionSchema, LayoutAlign, LayoutDirection, NodeSchema, StrokeAlign, TextAlign, TextCase, TextScript, ListKind, TextVAlign, TextDirection, WritingMode, NoiseMode, LayoutMode, GridTrackKind, BrushKind, BrushTip, LayerSchema, ObjectStyleDefSchema, TabAlign, ParagraphRuleSchema } from "@/gen/opendesigner/v1/opendesigner_pb";
 import type {
   Annotation as PbAnnotation, ReadyForDev as PbReady, Document, Component as PbComponent, ComponentProperty as PbComponentProperty, ComponentSet as PbComponentSet, FontFace as PbFont, TextStyleDef as PbTextStyleDef, PaintStyleDef as PbPaintStyleDef, EffectStyleDef as PbEffectStyleDef, VariableCollection as PbCollection, Variable as PbVariable, Clip as PbClip, Flow as PbFlow, Transition as PbTransition, Node as PbNode, Comment as PbComment, LayoutGrid as PbLayoutGrid, Paint as PbPaint, Stroke as PbStroke, Brush as PbBrush, Effect as PbEffect, AutoLayout as PbAutoLayout, TextNode as PbTextNode, TextStyle as PbTextStyle, ObjectStyleDef as PbObjectStyleDef, Layer as PbLayer, ParagraphRule as PbParagraphRule,
   SubPath as PbSubPath, VectorNode as PbVectorNode,
@@ -43,7 +43,7 @@ export interface TableStyleLite {
   headerObjectStyleId?: string; bodyObjectStyleId?: string; altObjectStyleId?: string;
   headerTextStyleId?: string; bodyTextStyleId?: string;
 }
-export interface DocSettingsLite { vertical?: Exclude<Vertical, "product">; baselineIncrement?: number; baselineStart?: number; facingPages?: boolean; colorMode?: "cmyk"; iccProfile?: string; book?: BookLite; presentDevice?: string; conditions?: TextConditionLite[]; tableStyles?: TableStyleLite[] }
+export interface DocSettingsLite { vertical?: Exclude<Vertical, "product">; baselineIncrement?: number; baselineStart?: number; facingPages?: boolean; colorMode?: "cmyk"; iccProfile?: string; iccProfileAsset?: string; book?: BookLite; presentDevice?: string; conditions?: TextConditionLite[]; tableStyles?: TableStyleLite[] }
 export interface GradientStopLite { color: { r: number; g: number; b: number; a: number }; position: number; }
 // A gradient in NORMALIZED box coordinates (see GradientPaint in the proto).
 // Linear: axis (x1,y1)->(x2,y2). Radial: center (x1,y1), radius = |p2-p1| in
@@ -149,6 +149,8 @@ export type EffectLite =
   | { kind: "backgroundBlur"; radius: number }
   // The radius ramps from startRadius at (x1,y1) to endRadius at (x2,y2), points in the node's unit box.
   | { kind: "progressiveBlur"; startRadius: number; endRadius: number; x1: number; y1: number; x2: number; y2: number; background: boolean }
+  // The node's opacity ramps from startOpacity at (x1,y1) to endOpacity at (x2,y2), points in the node's unit box.
+  | { kind: "gradientFeather"; startOpacity: number; endOpacity: number; x1: number; y1: number; x2: number; y2: number }
   | { kind: "noise"; mode: NoiseModeLite; size: number; density: number; opacity: number; color: RgbaLite; color2: RgbaLite; seed: number }
   | { kind: "texture"; scale: number; intensity: number; seed: number }
   // Frosted backdrop + grain + light edge; drawn as those effects (renderer/effectsFx.ts::expandGlass).
@@ -188,6 +190,10 @@ export interface TextStyleLite {
   inset?: number;
   /** Horizontal scale of the glyphs in percent (proto 30); absent = 100. */
   textScale?: number;
+  /** Paragraph direction (proto 31); absent = auto, the first strong character decides. */
+  direction?: TextDirectionLite;
+  /** Writing mode (proto 32); absent = horizontal. */
+  writingMode?: WritingModeLite;
   /** Lowercase letters drawn as smaller capitals. */
   smallCaps?: boolean;
   /** Smaller and raised / lowered. */
@@ -207,6 +213,8 @@ export type TextCaseLite = "upper" | "lower" | "title" | "smallCaps";
 export type TextScriptLite = "super" | "sub";
 export type ListKindLite = "bullet" | "numbered";
 export type TextVAlignLite = "middle" | "bottom";
+export type TextDirectionLite = "ltr" | "rtl";
+export type WritingModeLite = "vertical";
 
 // RICH TEXT (store/richText.ts). `paragraphStyles` / `runs` are the document's; `rich` is DERIVED by
 // resolveScene (never written, never in an op) and carries them resolved, so the layout needs no scene.
@@ -355,7 +363,12 @@ export interface ComponentPropertyLite {
 export interface VariantAxisLite { name: string; options: string[] }
 export interface ComponentSetLite { id: string; name: string; axes: VariantAxisLite[] }
 
+/** A box in WORLD space (x, y, size, rotation in degrees around its centre): where a clipping frame cuts what is inside it. */
+export interface ClipBox { x: number; y: number; width: number; height: number; rotation: number }
+
 export interface NodeLite {
+  // DERIVED only (export/region.ts): the clipping frames around this node, outermost first, in world space. Only on export nodes.
+  exportClips?: readonly ClipBox[];
   // DERIVED only (store/masters.ts), never in a document: a copy of a master page's node drawn on a page that applies it.
   fromMaster?: boolean;
   // DERIVED only (store/threads.ts): the last frame of a text thread that has text left over.
@@ -670,7 +683,7 @@ export interface BookMsg {
   prices: { priceType: string; amount: string; currency: string }[]; senderName: string; senderEmail: string; productForm: string;
 }
 export interface TableStyleMsg { id: string; name: string; headerObjectStyleId: string; bodyObjectStyleId: string; altObjectStyleId: string; headerTextStyleId: string; bodyTextStyleId: string }
-export interface DocSettingsMsg { vertical: string; baselineIncrement: number; baselineStart: number; facingPages?: boolean; presentDevice?: string; colorMode?: string; iccProfile?: string; book?: BookMsg; conditions?: { name: string; visible: boolean }[]; tableStyles?: TableStyleMsg[] }
+export interface DocSettingsMsg { vertical: string; baselineIncrement: number; baselineStart: number; facingPages?: boolean; presentDevice?: string; colorMode?: string; iccProfile?: string; iccProfileAsset?: string; book?: BookMsg; conditions?: { name: string; visible: boolean }[]; tableStyles?: TableStyleMsg[] }
 
 /** The message form of a book record (every field written). */
 export function bookToMsg(b: BookLite): BookMsg {
@@ -705,7 +718,7 @@ export function bookOf(m: BookMsg | undefined): BookLite | undefined {
 export function settingsToMsg(s: DocSettingsLite): DocSettingsMsg {
   return {
     vertical: s.vertical ?? "", baselineIncrement: s.baselineIncrement ?? 0, baselineStart: s.baselineStart ?? 0,
-    facingPages: s.facingPages === true, presentDevice: s.presentDevice ?? "", colorMode: s.colorMode ?? "", iccProfile: s.iccProfile ?? "",
+    facingPages: s.facingPages === true, presentDevice: s.presentDevice ?? "", colorMode: s.colorMode ?? "", iccProfile: s.iccProfile ?? "", iccProfileAsset: s.iccProfileAsset ?? "",
     ...(s.book ? { book: bookToMsg(s.book) } : {}),
     ...(s.conditions?.length ? { conditions: s.conditions.map((c) => ({ name: c.name, visible: c.visible })) } : {}),
     ...(s.tableStyles?.length ? {
@@ -727,6 +740,7 @@ export function settingsOf(s: DocSettingsMsg): DocSettingsLite {
     ...(s.presentDevice && s.presentDevice !== "generic" ? { presentDevice: s.presentDevice } : {}),
     ...(s.colorMode === "cmyk" ? { colorMode: "cmyk" as const } : {}),
     ...(s.iccProfile ? { iccProfile: s.iccProfile } : {}),
+    ...(s.iccProfileAsset ? { iccProfileAsset: s.iccProfileAsset } : {}),
     ...(bookOf(s.book) ? { book: bookOf(s.book)! } : {}),
     ...(s.conditions?.length ? { conditions: s.conditions.map((c) => ({ name: c.name, visible: c.visible })) } : {}),
     ...(s.tableStyles?.length ? {
@@ -793,11 +807,15 @@ const LIST_TO_PB: Record<ListKindLite, ListKind> = { bullet: ListKind.BULLET, nu
 const VALIGN_TO_LITE: Partial<Record<TextVAlign, TextVAlignLite>> = { [TextVAlign.MIDDLE]: "middle", [TextVAlign.BOTTOM]: "bottom" };
 const VALIGN_TO_PB: Record<TextVAlignLite, TextVAlign> = { middle: TextVAlign.MIDDLE, bottom: TextVAlign.BOTTOM };
 
+const DIR_TO_LITE: Partial<Record<TextDirection, TextDirectionLite>> = { [TextDirection.LTR]: "ltr", [TextDirection.RTL]: "rtl" };
+const DIR_TO_PB: Record<TextDirectionLite, TextDirection> = { ltr: TextDirection.LTR, rtl: TextDirection.RTL };
+
 export function toTextStyleLite(s: PbTextStyle | undefined): TextStyleLite {
   const tc = CASE_TO_LITE[s?.textCase ?? TextCase.UNSPECIFIED];
   const ts = SCRIPT_TO_LITE[s?.textScript ?? TextScript.UNSPECIFIED];
   const lk = LIST_TO_LITE[s?.listKind ?? ListKind.UNSPECIFIED];
   const va = VALIGN_TO_LITE[s?.verticalAlign ?? TextVAlign.UNSPECIFIED];
+  const dir = DIR_TO_LITE[s?.direction ?? TextDirection.UNSPECIFIED];
   return {
     fontFamily: s?.fontFamily ?? "",
     fontSize: s?.fontSize ?? 0,
@@ -813,6 +831,8 @@ export function toTextStyleLite(s: PbTextStyle | undefined): TextStyleLite {
     ...(va ? { verticalAlign: va } : {}),
     ...(s && s.inset > 0 ? { inset: s.inset } : {}),
     ...(s && s.textScale > 0 ? { textScale: s.textScale } : {}),
+    ...(dir ? { direction: dir } : {}),
+    ...(s?.writingMode === WritingMode.VERTICAL_RL ? { writingMode: "vertical" as const } : {}),
     ...(s?.underline ? { underline: true } : {}),
     ...(s?.strikethrough ? { strikethrough: true } : {}),
     ...(s?.letterSpacing ? { letterSpacing: s.letterSpacing } : {}),
@@ -947,6 +967,8 @@ export function toPbTextStyle(s: TextStyleLite) {
     verticalAlign: s.verticalAlign ? VALIGN_TO_PB[s.verticalAlign] : TextVAlign.UNSPECIFIED,
     inset: s.inset ?? 0,
     textScale: s.textScale ?? 0,
+    direction: s.direction ? DIR_TO_PB[s.direction] : TextDirection.UNSPECIFIED,
+    writingMode: s.writingMode === "vertical" ? WritingMode.VERTICAL_RL : WritingMode.UNSPECIFIED,
     underline: s.underline === true,
     strikethrough: s.strikethrough === true,
     letterSpacing: s.letterSpacing ?? 0,
@@ -999,6 +1021,8 @@ export function toPbEffects(effects: readonly EffectLite[]) {
         return { kind: { case: "backgroundBlur" as const, value: { radius: e.radius } } };
       case "progressiveBlur":
         return { kind: { case: "progressiveBlur" as const, value: { startRadius: e.startRadius, endRadius: e.endRadius, x1: e.x1, y1: e.y1, x2: e.x2, y2: e.y2, background: e.background } } };
+      case "gradientFeather":
+        return { kind: { case: "gradientFeather" as const, value: { startOpacity: e.startOpacity, endOpacity: e.endOpacity, x1: e.x1, y1: e.y1, x2: e.x2, y2: e.y2 } } };
       case "noise":
         return { kind: { case: "noise" as const, value: { mode: NOISE_TO_PB[e.mode], size: e.size, density: e.density, opacity: e.opacity, color: { ...e.color }, color2: { ...e.color2 }, seed: e.seed } } };
       case "texture":
@@ -1086,6 +1110,10 @@ export function toEffectLite(e: PbEffect): EffectLite {
   if (k.case === "progressiveBlur") {
     const v = k.value;
     return { kind: "progressiveBlur", startRadius: v.startRadius, endRadius: v.endRadius, x1: v.x1, y1: v.y1, x2: v.x2, y2: v.y2, background: v.background };
+  }
+  if (k.case === "gradientFeather") {
+    const v = k.value;
+    return { kind: "gradientFeather", startOpacity: v.startOpacity, endOpacity: v.endOpacity, x1: v.x1, y1: v.y1, x2: v.x2, y2: v.y2 };
   }
   if (k.case === "noise") {
     const v = k.value;

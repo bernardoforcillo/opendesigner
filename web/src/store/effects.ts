@@ -19,6 +19,12 @@ export function areValidEffects(effects: readonly PbEffect[]): boolean {
         if (![p.x1, p.y1, p.x2, p.y2].every(Number.isFinite)) return false;
         break;
       }
+      case "gradientFeather": {
+        const g = k.value;
+        if (!unit(g.startOpacity) || !unit(g.endOpacity)) return false;
+        if (![g.x1, g.y1, g.x2, g.y2].every(Number.isFinite)) return false;
+        break;
+      }
       case "noise": {
         const n = k.value;
         if (!(n.mode >= 0 && n.mode <= 3) || !finiteNonNeg(n.size) || !unit(n.density) || !unit(n.opacity)) return false;

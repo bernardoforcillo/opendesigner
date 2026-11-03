@@ -1,5 +1,6 @@
 import type { FillLite, NodeLite, SceneState } from "@/store/types";
 import { rgbToCmyk } from "@/color/cmyk";
+import type { IccProfile } from "@/color/icc";
 import { num, pdfName, type PdfFile } from "@/pdf/write/pdfFile";
 
 // COLOUR IN A PDF. Three kinds of paint come out of a document:
@@ -8,8 +9,9 @@ import { num, pdfName, type PdfFile } from "@/pdf/write/pdfFile";
 //     printer gets a real separation plate, with DeviceCMYK as the on-screen alternate;
 //   - anything else                    -> DeviceRGB, or DeviceCMYK through the plain device
 //     conversion when the document's colour mode is CMYK.
-// A swatch is known by the node's binding on the paint slot (`fills.0` / `strokes.0`). There is no ICC
-// profile applied -- the profile is recorded as the output intent's name only.
+// A swatch is known by the node's binding on the paint slot (`fills.0` / `strokes.0`). When the document carries a
+// CMYK ICC profile the RGB -> CMYK step goes through it (`managed`); without one it is the plain device
+// conversion. CMYK numbers the user typed are never converted.
 
 export type PdfPaint =
   | { kind: "rgb"; r: number; g: number; b: number }
@@ -18,15 +20,30 @@ export type PdfPaint =
 
 const c01 = (v: number) => Math.min(1, Math.max(0, v));
 
+/** `p` at opacity `a` over white paper: RGB mixes toward 1, CMYK and spot tints scale toward 0 ink. */
+export function onWhite(p: PdfPaint, a: number): PdfPaint {
+  if (a >= 1) return p;
+  const t = c01(a);
+  if (p.kind === "rgb") return { kind: "rgb", r: 1 - t * (1 - p.r), g: 1 - t * (1 - p.g), b: 1 - t * (1 - p.b) };
+  if (p.kind === "cmyk") return { kind: "cmyk", c: p.c * t, m: p.m * t, y: p.y * t, k: p.k * t };
+  return { ...p, tint: p.tint * t };
+}
+
 export class PdfColors {
   /** Spot names in use and whether the file uses RGB / CMYK: the preflight and the output intent read these. */
   readonly spots = new Set<string>();
   usesRgb = false;
   usesCmyk = false;
+  /**
+   * Transparency flattening (PDF/X-1a, X-3): the alpha the next fills / strokes are painted with. Instead of an
+   * ExtGState, the colour itself is lightened toward white paper (a tint), so the file holds no transparency.
+   */
+  fillAlpha = 1;
+  strokeAlpha = 1;
   private spaces = new Map<string, string>(); // spot name -> resource name
   private n = 0;
 
-  constructor(private scene: Pick<SceneState, "variables" | "collections">, readonly cmykDocument: boolean) {}
+  constructor(private scene: Pick<SceneState, "variables" | "collections">, readonly cmykDocument: boolean, private managed?: Pick<IccProfile, "rgbToCmyk">) {}
 
   /** The paint for a node's paint slot whose resolved value is `f`. */
   paintOf(n: NodeLite, slot: string, f: { r: number; g: number; b: number }): PdfPaint {
@@ -39,15 +56,13 @@ export class PdfColors {
       if (base?.spotName && cm) return { kind: "spot", name: base.spotName, alt: [cm.c, cm.m, cm.y, cm.k], tint };
       if (cm) return { kind: "cmyk", c: cm.c * tint, m: cm.m * tint, y: cm.y * tint, k: cm.k * tint };
     }
-    if (this.cmykDocument) {
-      const k = rgbToCmyk(f);
-      return { kind: "cmyk", c: k.c / 100, m: k.m / 100, y: k.y / 100, k: k.k / 100 };
-    }
+    if (this.cmykDocument) return this.plainCmyk(f);
     return { kind: "rgb", r: c01(f.r), g: c01(f.g), b: c01(f.b) };
   }
 
   /** Fill (`stroke` false) or stroke colour operators for `p`. */
   ops(p: PdfPaint, stroke: boolean): string {
+    p = onWhite(p, stroke ? this.strokeAlpha : this.fillAlpha);
     if (p.kind === "rgb") { this.usesRgb = true; return `${num(p.r)} ${num(p.g)} ${num(p.b)} ${stroke ? "RG" : "rg"}\n`; }
     if (p.kind === "cmyk") { this.usesCmyk = true; return `${num(p.c)} ${num(p.m)} ${num(p.y)} ${num(p.k)} ${stroke ? "K" : "k"}\n`; }
     this.spots.add(p.name);
@@ -64,7 +79,7 @@ export class PdfColors {
   }
 
   private plainCmyk(f: { r: number; g: number; b: number }): PdfPaint {
-    const k = rgbToCmyk(f);
+    const k = (this.managed ?? { rgbToCmyk }).rgbToCmyk(f);
     return { kind: "cmyk", c: k.c / 100, m: k.m / 100, y: k.y / 100, k: k.k / 100 };
   }
 

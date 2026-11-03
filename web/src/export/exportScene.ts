@@ -13,7 +13,9 @@ import { buildIdml } from "@/export/idml";
 import { buildPptx, type PptxImage } from "@/export/pptx";
 import { buildEpub, type EpubPage } from "@/export/epub";
 import { buildReflowEpub, buildReflowHtml, type ReflowImage } from "@/export/epubReflow";
+import { encodePng } from "@/export/rawPng";
 import { dataUrlBytes } from "@/pdf/write/pdfImages";
+import { nodesToEps } from "@/export/eps";
 import { nodesToSvg, type MeasureText, type ResolveImageHref } from "@/export/svg";
 import { canvasToPngBlob, renderRegionToCanvas, type ExportScale } from "@/export/png";
 import { hasErrors, preflightReport, preflightScene, type PreflightIssue } from "@/export/preflight";
@@ -39,7 +41,8 @@ import type { Rasterize } from "@/pdf/write/pdfImages";
 
 // "pdf" is a real PDF written by pdf/write: vector, fonts embedded, images as the original bytes,
 // CMYK/spot paints kept, the document's pages and boxes. It draws from the same nodes as the SVG.
-export type ExportFormat = "png" | "svg" | "pdf";
+// "eps" is Encapsulated PostScript Level 2 (export/eps.ts): vector shapes and text in base-14 fonts, no images.
+export type ExportFormat = "png" | "svg" | "pdf" | "eps";
 
 export interface ExportRequest {
   format: ExportFormat;
@@ -361,6 +364,12 @@ export async function runExport(req: ExportRequest, deps: ExportDeps = {}): Prom
       if (holes > 0) useScene.setState({ notice: missingImagesNotice(holes) });
       return true;
     }
+    if (req.format === "eps") {
+      const { eps, warnings } = nodesToEps(region.nodes, region.bounds, measure, scene.name);
+      (deps.download ?? downloadBlob)(new Blob([eps], { type: EPS_MIME }), exportFileName(scene.name, req));
+      if (warnings.length > 0) useScene.setState({ notice: `EPS written with limits: ${warnings.join("; ")}` });
+      return true;
+    }
     const assets = await resolveAssets(region.nodes, scene.id, req.format, deps);
     const blob = await exportBlob(region, req, deps, createCanvas, measure, assets);
     (deps.download ?? downloadBlob)(blob, exportFileName(scene.name, req));
@@ -387,11 +396,35 @@ export interface DocumentExportDeps extends ExportDeps {
 
 const EPUB_MIME = "application/epub+zip";
 const PDF_MIME = "application/pdf";
+const EPS_MIME = "application/postscript";
 const IDML_MIME = "application/vnd.adobe.indesign-idml-package";
 const PPTX_MIME = "application/vnd.openxmlformats-officedocument.presentationml.presentation";
 
 function printDeps(deps: ExportDeps, measure: MeasureText) {
   return { measure, loadAssetDataUrl: deps.loadAssetDataUrl ?? fetchAssetDataUrl, rasterize: deps.rasterize ?? canvasRasterize };
+}
+
+/**
+ * The bytes of every image the document uses, for the PPTX and IDML writers. PNG and JPEG go in as
+ * they are; any other type (WebP, GIF...) is decoded and re-encoded as PNG, so it is not lost.
+ * An unreachable or undecodable image is left out; the writer reports it.
+ */
+async function loadDeckImages(raw: SceneState, deps: DocumentExportDeps): Promise<Map<string, PptxImage>> {
+  const load = deps.loadAssetDataUrl ?? fetchAssetDataUrl;
+  const rasterize = deps.rasterize ?? canvasRasterize;
+  const images = new Map<string, PptxImage>();
+  const hashes = [...new Set([...raw.nodes.values()].filter((n) => n.kind === "image" && n.image?.assetHash).map((n) => n.image!.assetHash))];
+  await Promise.all(hashes.map(async (hash) => {
+    try {
+      const uri = await load(raw.id, hash);
+      const d = uri === null ? null : dataUrlBytes(uri);
+      if (!d) return;
+      if (d.mime === "image/png" || d.mime === "image/jpeg") { images.set(hash, { bytes: d.bytes, mime: d.mime }); return; }
+      const px = await rasterize(d.bytes, d.mime);
+      images.set(hash, px && px.width > 0 && px.height > 0 ? { bytes: encodePng(px.width, px.height, px.rgba), mime: "image/png" } : d);
+    } catch { /* an unreachable image is left out */ }
+  }));
+  return images;
 }
 
 /** The download name of a whole-document export (`<name>.epub`). */
@@ -440,15 +473,7 @@ export async function runDocumentExport(
     }
 
     if (format === "pptx") {
-      const load = deps.loadAssetDataUrl ?? fetchAssetDataUrl;
-      const images = new Map<string, PptxImage>();
-      await Promise.all([...new Set([...raw.nodes.values()].filter((n) => n.kind === "image" && n.image?.assetHash).map((n) => n.image!.assetHash))].map(async (hash) => {
-        try {
-          const uri = await load(raw.id, hash);
-          const d = uri === null ? null : dataUrlBytes(uri);
-          if (d) images.set(hash, { bytes: d.bytes, mime: d.mime });
-        } catch { /* an unreachable image is left out of the deck */ }
-      }));
+      const images = await loadDeckImages(raw, deps);
       const deck = buildPptx(scene, images, scene.name || FALLBACK_NAME);
       if (!deck) {
         useScene.setState({ notice: "nothing to export: the document has no pages" });
@@ -461,13 +486,13 @@ export async function runDocumentExport(
     }
 
     if (format === "idml") {
-      const pkg = buildIdml(scene, scene.name || FALLBACK_NAME);
+      const pkg = buildIdml(scene, scene.name || FALLBACK_NAME, undefined, await loadDeckImages(raw, deps));
       if (!pkg) {
         useScene.setState({ notice: "nothing to export: the document has no pages" });
         return false;
       }
       (deps.download ?? downloadBlob)(new Blob([pkg.bytes as BlobPart], { type: IDML_MIME }), documentFileName(scene.name, "idml"));
-      useScene.setState({ notice: `IDML written (${pkg.pages} page${pkg.pages === 1 ? "" : "s"}). Not carried over: images, effects, master pages' items, character styles, tables.${pkg.skipped.length ? ` Also left out here: ${pkg.skipped.join(", ")}.` : ""}` });
+      useScene.setState({ notice: `IDML written (${pkg.pages} page${pkg.pages === 1 ? "" : "s"}). Images are embedded as PNG/JPEG. Not carried over: effects, master pages' items, character styles, tables.${pkg.skipped.length ? ` Also left out here: ${pkg.skipped.join(", ")}.` : ""}` });
       return true;
     }
 

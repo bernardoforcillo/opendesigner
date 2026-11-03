@@ -33,7 +33,9 @@ Nothing is queued: **with no editor open the tool fails at once**, saying so. A 
 
 `export_onix` (ONIX 3.1 / 3.0 from the book record, byte-identical to the editor's, checked against shared fixtures in `testdata/onix`), `data_merge` (a template page repeated per record of a CSV, sharing cases with the editor in `testdata/merge`), `duplicate_page`, `set_document_settings { book }` for the book record, and `set_properties` with `strokes` and `layoutGrids`.
 
-Documents, versions and branches: `list_documents`, `create_document`, `rename_document`, `delete_document` (needs the id and `confirm: true`, never defaults to the session's own document), `list_versions`, `create_version`, `delete_version`, `branch_document`, `get_branch_origin`, `review_merge`, `merge_branch`, `get_access`.
+Documents, versions and branches: `list_documents`, `create_document`, `rename_document`, `delete_document` (needs the id and `confirm: true`, never defaults to the session's own document), `list_versions`, `create_version`, `delete_version`, `branch_document`, `get_branch_origin`, `review_merge`, `merge_branch`, `get_access`. Shared libraries (see [libraries.md](libraries.md)): `set_library`, `get_library`, `import_from_library`.
+
+Books (several documents with shared styles and continuous page numbering; see book.md): `list_books`, `get_book`, `save_book`, `delete_book` (needs `confirm: true`), `sync_book`.
 
 **Left to a person on purpose:** protecting a document and making or revoking share links. An agent can read who may open a document (`get_access`) but not change it.
 

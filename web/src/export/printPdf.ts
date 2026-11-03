@@ -6,6 +6,7 @@ import { isRightPage, pageNumbers } from "@/store/pageNumbers";
 import { buildPdf, MARKS_MARGIN, type PdfLink, type PdfOutlineItem, type PdfPageSpec, type PdfReport, type PdfXMode } from "@/pdf/write/pdfDocument";
 import { dataUrlBytes, prepareImage, type PreparedImage, type Rasterize } from "@/pdf/write/pdfImages";
 import type { MeasureText } from "@/renderer/text";
+import { loadStoredProfile, type LoadedProfile } from "@/color/profileAsset";
 import { contributorNames } from "@/export/onix";
 import type { ExportRegion } from "@/export/region";
 
@@ -28,6 +29,8 @@ export interface PrintPdfOptions {
   interactive?: boolean;
   /** Booklet imposition: two pages per sheet side in saddle-stitch order (padded with blanks to a multiple of 4); overrides `spreads`. */
   booklet?: boolean;
+  /** Booklet creep: how far (world units) each sheet nested inside the previous one moves its content toward the spine, to make up for the paper the fold pushes out. 0 = none. Needs `booklet`. */
+  creep?: number;
   /** Tagged PDF: marked content and a structure tree (headings, paragraphs, figures with alt text). */
   tagged?: boolean;
 }
@@ -82,6 +85,17 @@ async function loadImages(nodes: readonly NodeLite[], docId: string, deps: Print
   return { images, missing };
 }
 
+/** The document's ICC output profile (the stored asset), or null when it has none or the asset is gone: the export then keeps the plain conversion. */
+async function loadOutputProfile(scene: SceneState, deps: PrintPdfDeps): Promise<LoadedProfile | null> {
+  const hash = scene.settings?.iccProfileAsset;
+  if (!hash) return null;
+  try {
+    const uri = await deps.loadAssetDataUrl(scene.id, hash);
+    const data = uri === null ? null : dataUrlBytes(uri);
+    return loadStoredProfile(data ? data.bytes : null);
+  } catch { return null; }
+}
+
 async function loadFaces(fonts: Record<string, FontLite>, docId: string, deps: PrintPdfDeps) {
   const faces: { face: FontLite; data: Uint8Array }[] = [];
   let missing = 0;
@@ -97,7 +111,7 @@ async function loadFaces(fonts: Record<string, FontLite>, docId: string, deps: P
   return { faces, missing };
 }
 
-const shift = (n: NodeLite, dx: number): NodeLite => (dx === 0 ? n : { ...n, x: n.x + dx });
+const shift = (n: NodeLite, dx: number): NodeLite => (dx === 0 ? n : { ...n, x: n.x + dx, ...(n.exportClips ? { exportClips: n.exportClips.map((c) => ({ ...c, x: c.x + dx })) } : {}) });
 
 export interface PageGroup { pages: PageLite[]; width: number; height: number }
 
@@ -137,6 +151,18 @@ export function bookletGroups(scene: SceneState): PageLite[][] {
 }
 
 /**
+ * Creep of the pages of one imposed side. The outermost sheet (index 0) does not move; every sheet nested inside it
+ * moves its content `creep` further toward the spine: the left page of a side to the right (+), the right page to
+ * the left (-). `side` is the index of the side in `bookletGroups` (two sides per sheet).
+ */
+export function creepShift(side: number, creep: number, position: "left" | "right"): number {
+  if (!(creep > 0)) return 0;
+  const sheet = Math.floor(side / 2);
+  if (sheet === 0) return 0; // not -0
+  return (position === "left" ? 1 : -1) * creep * sheet;
+}
+
+/**
  * The whole document as a PDF, or null when every page is empty. `regionOf(pageId, sheet)` returns the page's
  * region for a given sheet rectangle (null sheet = the bounds of what is drawn), as export/region.ts builds it.
  */
@@ -152,7 +178,8 @@ export async function buildDocumentPdf(
   const noPrint = new Set(scene.layers.filter((l) => l.noPrint).map((l) => l.id));
   const regions: ExportRegion[] = [];
 
-  for (const group of opts.booklet ? bookletGroups(scene) : groupPages(scene, opts.spreads === true)) {
+  const groups = opts.booklet ? bookletGroups(scene) : groupPages(scene, opts.spreads === true);
+  for (const [side, group] of groups.entries()) {
     const w = group.reduce((s, p) => s + (p.width ?? 0), 0);
     const h = Math.max(...group.map((p) => p.height ?? 0));
     const sized = group.every((p) => (p.width ?? 0) > 0 && (p.height ?? 0) > 0);
@@ -163,8 +190,9 @@ export async function buildDocumentPdf(
     let x = 0;
     const nodes: NodeLite[] = [];
     let trim: Bounds | null = sized ? { x: 0, y: 0, width: w, height: h } : null;
-    for (const p of group) {
+    for (const [slot, p] of group.entries()) {
       if (p.id.startsWith(BLANK_PAGE)) { x += p.width ?? 0; continue; }
+      const creepDx = opts.booklet ? creepShift(side, opts.creep ?? 0, slot === 0 ? "left" : "right") : 0;
       // An unbounded page is exported as what is drawn on it (its bounds become the trim).
       const probe = sized ? null : regionOf(p.id, null);
       if (!sized && !probe) continue;
@@ -172,7 +200,7 @@ export async function buildDocumentPdf(
       if (!region) continue;
       if (!sized) trim = probe!.bounds;
       regions.push(region);
-      nodes.push(...region.nodes.map((n) => shift(n, x)));
+      nodes.push(...region.nodes.map((n) => shift(n, x + creepDx)));
       offsetOf.set(p.id, x);
       pageIndex.set(p.id, specs.length);
       x += p.width ?? 0;
@@ -189,7 +217,7 @@ export async function buildDocumentPdf(
   if (specs.length === 0) return null;
 
   const allNodes = specs.flatMap((s) => s.nodes);
-  const [{ images, missing }, { faces, missing: missingFonts }] = await Promise.all([loadImages(allNodes, scene.id, deps), loadFaces(scene.fonts, scene.id, deps)]);
+  const [{ images, missing }, { faces, missing: missingFonts }, profile] = await Promise.all([loadImages(allNodes, scene.id, deps), loadFaces(scene.fonts, scene.id, deps), loadOutputProfile(scene, deps)]);
 
   if (opts.interactive !== false) addInteractivity(scene, specs, pageIndex, offsetOf);
   const outline: PdfOutlineItem[] = opts.interactive === false ? [] : headingsOf(scene).flatMap((h) => {
@@ -202,7 +230,7 @@ export async function buildDocumentPdf(
     pages: specs, images, faces, scene, measure: deps.measure,
     title: scene.settings?.book?.title || scene.name || "opendesigner", created: (deps.now?.() ?? new Date()),
     author: contributorNames(scene.settings?.book).join(", ") || undefined, subject: scene.settings?.book?.description,
-    cmyk: scene.settings?.colorMode === "cmyk", pdfx: opts.pdfx ?? "none", condition: scene.settings?.iccProfile,
+    cmyk: scene.settings?.colorMode === "cmyk", pdfx: opts.pdfx ?? "none", condition: scene.settings?.iccProfile || profile?.managed?.description || undefined, profile: profile ?? undefined,
     marks: opts.marks === true, outline, docId: scene.id, tagged: opts.tagged === true, language: scene.settings?.book?.language || undefined, headingOf: (n) => headingLevelOf(scene, n),
     skip: (n) => !!n.layerId && noPrint.has(n.layerId),
   });
@@ -241,12 +269,12 @@ function addInteractivity(scene: SceneState, specs: PdfPageSpec[], pageIndex: Ma
 /** A single region (a selection, or the page on screen) as a one-page PDF. */
 export async function buildRegionPdf(scene: SceneState, region: ExportRegion, deps: PrintPdfDeps): Promise<PrintPdfResult> {
   const noPrint = new Set(scene.layers.filter((l) => l.noPrint).map((l) => l.id));
-  const [{ images, missing }, { faces, missing: missingFonts }] = await Promise.all([loadImages(region.nodes, scene.id, deps), loadFaces(scene.fonts, scene.id, deps)]);
+  const [{ images, missing }, { faces, missing: missingFonts }, profile] = await Promise.all([loadImages(region.nodes, scene.id, deps), loadFaces(scene.fonts, scene.id, deps), loadOutputProfile(scene, deps)]);
   const { bytes, report } = await buildPdf({
     pages: [{ name: scene.name, media: region.bounds, trim: region.bounds, bleed: 0, nodes: region.nodes }],
     images, faces, scene, measure: deps.measure, title: scene.settings?.book?.title || scene.name || "opendesigner", created: deps.now?.() ?? new Date(),
     author: contributorNames(scene.settings?.book).join(", ") || undefined, subject: scene.settings?.book?.description,
-    cmyk: scene.settings?.colorMode === "cmyk", docId: scene.id, skip: (n) => !!n.layerId && noPrint.has(n.layerId),
+    profile: profile ?? undefined, cmyk: scene.settings?.colorMode === "cmyk", docId: scene.id, skip: (n) => !!n.layerId && noPrint.has(n.layerId),
   });
   return { bytes, report, missingImages: missing, missingFonts };
 }

@@ -125,6 +125,7 @@ type FindChangeInput struct {
 	MatchCase bool    `json:"matchCase,omitempty"`
 	WholeWord bool    `json:"wholeWord,omitempty"`
 	Regex     bool    `json:"regex,omitempty"`
+	Grep      bool    `json:"grep,omitempty" jsonschema:"InDesign-style GREP dialect, wins over regex: ~m ~_ \\u \\l \\h \\< \\> [[:alpha:]] \\x{00A0}; replace uses $0..$9"`
 	Limit     int     `json:"limit,omitempty" jsonschema:"matches listed, 1..500 (default 100)"`
 }
 
@@ -145,7 +146,7 @@ type FindChangeOutput struct {
 
 // FindChange searches the text of the whole document and optionally changes it.
 func (s *Session) FindChange(ctx context.Context, in FindChangeInput) (FindChangeOutput, error) {
-	args := map[string]any{"query": in.Query, "matchCase": in.MatchCase, "wholeWord": in.WholeWord, "regex": in.Regex}
+	args := map[string]any{"query": in.Query, "matchCase": in.MatchCase, "wholeWord": in.WholeWord, "regex": in.Regex, "grep": in.Grep}
 	if in.Replace != nil {
 		args["replace"] = *in.Replace
 	}
@@ -506,7 +507,7 @@ func (s *Session) SetGap(ctx context.Context, in SetGapInput) (MovedCountOutput,
 
 type FitFrameInput struct {
 	NodeId string `json:"nodeId"`
-	Mode   string `json:"mode" jsonschema:"fill (image fill covers the frame) | fit (whole image inside the frame) | tile | frame-to-content (resize an image node to the image's own proportions, keeping its width)"`
+	Mode   string `json:"mode" jsonschema:"fill (image fill covers the frame) | fit (whole image inside the frame) | tile | frame-to-content (resize an image node to the image's own proportions, keeping its width) | frame-to-children (a frame wraps its visible children, which stay in place on the page) | fit-in-parent (scale a childless node to the largest size inside its parent frame, centred)"`
 }
 
 type ChangedOutput struct {
@@ -678,6 +679,52 @@ type ExportSnippetOutput struct {
 func (s *Session) ExportSnippet(ctx context.Context, in NodeIdsInput) (ExportSnippetOutput, error) {
 	var out ExportSnippetOutput
 	return out, s.runCommand(ctx, "export_snippet", "export_snippet", map[string]any{"nodeIds": in.NodeIds}, &out)
+}
+
+type ObjectLibraryInput struct {
+	Action   string   `json:"action" jsonschema:"list | save | place | delete"`
+	Name     string   `json:"name,omitempty" jsonschema:"the item's name (save: required; place and delete: name or id)"`
+	Id       string   `json:"id,omitempty" jsonschema:"place and delete: the item's id instead of its name"`
+	NodeIds  []string `json:"nodeIds,omitempty" jsonschema:"save: the nodes to keep (their children come along)"`
+	X        float64  `json:"x,omitempty" jsonschema:"place: where its top-left corner goes"`
+	Y        float64  `json:"y,omitempty"`
+	PageId   string   `json:"pageId,omitempty"`
+	ParentId string   `json:"parentId,omitempty"`
+}
+
+// ObjectLibraryOutput is the union of the action results; unused fields stay empty.
+type ObjectLibraryOutput struct {
+	Items    []map[string]any `json:"items,omitempty"`
+	Id       string           `json:"id,omitempty"`
+	Name     string           `json:"name,omitempty"`
+	Replaced bool             `json:"replaced,omitempty"`
+	Deleted  bool             `json:"deleted,omitempty"`
+	NodeIds  []string         `json:"nodeIds,omitempty"`
+}
+
+// ObjectLibrary keeps snippets by name in the editor's browser, shared by every document opened there.
+func (s *Session) ObjectLibrary(ctx context.Context, in ObjectLibraryInput) (ObjectLibraryOutput, error) {
+	a := map[string]any{"action": in.Action}
+	if in.Name != "" {
+		a["item"] = in.Name // "name" is the command's own name in the job
+	}
+	if in.Id != "" {
+		a["id"] = in.Id
+	}
+	if len(in.NodeIds) > 0 {
+		a["nodeIds"] = in.NodeIds
+	}
+	if in.Action == "place" {
+		a["x"], a["y"] = in.X, in.Y
+	}
+	if in.PageId != "" {
+		a["pageId"] = in.PageId
+	}
+	if in.ParentId != "" {
+		a["parentId"] = in.ParentId
+	}
+	var out ObjectLibraryOutput
+	return out, s.runCommand(ctx, "object_library", "object_library", a, &out)
 }
 
 type PlaceSnippetInput struct {
@@ -886,7 +933,7 @@ func registerCommandTools(srv *mcp.Server, s *Session) {
 	addTool(srv, "generate_contents", "Write (or refresh) the document's table of contents or index into a generated text frame. The contents lists the headings (paragraphs whose paragraph style has an outline level, set_text_style outlineLevel) with page numbers; the index lists the terms marked [#term] in the text."+jobNote, s.GenerateContents)
 	addTool(srv, "insert_table", "Build a table (rows x cols of equal cells, header rows) on a page. A table is a group of rectangles and texts; edit it with edit_table and set_text on its cells."+jobNote, s.InsertTable)
 	addTool(srv, "edit_table", "Add, delete or resize a row or column of a table made with insert_table."+jobNote, s.EditTable)
-	addTool(srv, "find_change", "Find (and optionally change) text across every text of the document, master pages included, in reading order: plain, whole word or regular expression, with or without case. Without `replace` it lists the matches; with it, it replaces them all in one undo step and keeps the formatting."+jobNote, s.FindChange)
+	addTool(srv, "find_change", "Find (and optionally change) text across every text of the document, master pages included, in reading order: plain, whole word, regular expression or InDesign-style GREP (`grep`), with or without case. Without `replace` it lists the matches; with it, it replaces them all in one undo step and keeps the formatting."+jobNote, s.FindChange)
 	addTool(srv, "place_image", "Upload an image file (PNG, JPEG, GIF, WebP) and place it as an image node, scaled down to at most 512 px on its long side. An SVG is imported as editable nodes instead (import_svg)."+jobNote, s.PlaceImage)
 	addTool(srv, "import_svg", "Import an SVG file as editable nodes (shapes, text, gradients, embedded images), centred at x, y."+jobNote, s.ImportSvg)
 	addTool(srv, "place_document", "Place a Word (.docx), RTF or Excel (.xlsx) file: Word/RTF become one text frame with paragraph styles (Heading 1-3 get an outline level, so the contents list them) and bold/italic runs; the first Excel sheet becomes a table. Images, tables and footnotes inside Word files, fonts, colours and formulas are not carried over (Excel gives cached values)."+jobNote, s.PlaceDocument)
@@ -900,12 +947,13 @@ func registerCommandTools(srv *mcp.Server, s *Session) {
 	addTool(srv, "list_editorial_notes", "The editorial notes written [!comment] in the text: never drawn, exported or printed. Write one with set_text; remove it by editing the text."+jobNote, s.ListEditorialNotes)
 	addTool(srv, "step_and_repeat", "Step and Repeat: make N copies of nodes, each offset (dx, dy) from the previous (a row, a column, a staircase). Groups are copied with their children."+jobNote, s.StepAndRepeat)
 	addTool(srv, "set_gap", "The Gap tool: set the exact space between neighbouring objects along x or y, keeping the first one in place."+jobNote, s.SetGap)
-	addTool(srv, "fit_frame", "Frame fitting: make an image fill cover or fit inside its frame, tile it, or resize an image node to the image's own proportions."+jobNote, s.FitFrame)
+	addTool(srv, "fit_frame", "Frame fitting: make an image fill cover or fit inside its frame, tile it, resize an image node to the image's own proportions, wrap a frame around its children, or fit a node inside its parent frame."+jobNote, s.FitFrame)
 	addTool(srv, "clip_with_shape", "Clipping path: use a shape's outline to clip other nodes (they are grouped with it, the shape as a mask below them); release it with release=true."+jobNote, s.ClipWithShape)
 	addTool(srv, "create_qr_code", "Draw a QR code (ISO 18004, byte mode, versions 1-10) as vectors: a background square and one vector for the dark modules, so it prints sharp at any size."+jobNote, s.CreateQRCode)
 	addTool(srv, "find_objects", "Find nodes by kind, layer name (regex) or solid fill/stroke colour."+jobNote, s.FindObjects)
 	addTool(srv, "change_objects", "Find/change on objects: find nodes as find_objects does and change fill, stroke, stroke weight, opacity, visibility or name in one undo step. With a fill colour in the query, only fills of that colour are replaced."+jobNote, s.ChangeObjects)
 	addTool(srv, "export_snippet", "Turn nodes and their children into a snippet (text) to keep in a library and place later, here or in another document. Images keep their asset reference, so they show only where that asset exists."+jobNote, s.ExportSnippet)
+	addTool(srv, "object_library", "The object library: named snippets kept in the editor's browser and shared by every document opened there (not synced across browsers). action list | save (name + nodeIds) | place (name or id, x, y, pageId/parentId) | delete (name or id). Saving an existing name replaces it."+jobNote, s.ObjectLibrary)
 	addTool(srv, "place_snippet", "Place a snippet made by export_snippet with its top-left corner at x, y."+jobNote, s.PlaceSnippet)
 	addTool(srv, "ink_report", "The ink manager's list: process inks (swatches and objects in CMYK), spot inks with their swatches, objects and CMYK alternate, objects set to overprint, and swatches over the total-ink limit."+jobNote, s.InkReport)
 	addTool(srv, "convert_spots_to_process", "Turn spot inks into process colours (their CMYK alternate), all or the named ones; they then print on the four process plates."+jobNote, s.ConvertSpotsToProcess)

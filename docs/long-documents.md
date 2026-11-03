@@ -25,4 +25,4 @@ Not a dictionary spell check: no word list ships with the editor, so words are n
 `set_document_settings` (`conditions`, `table_styles`), `set_text` (markers), `generate_contents` (`toc`, `index`, `endnotes`), `apply_table_style`, `check_text`, `list_editorial_notes`. Editor commands need an open editor (see mcp-editor.md).
 
 ## Limits
-Editorial notes are not flagged on the canvas. Conditions are inline markers, not character-style attributes. No multi-document book.
+Editorial notes are not flagged on the canvas. Conditions are inline markers, not character-style attributes. A book of several documents is in book.md.

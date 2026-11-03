@@ -246,6 +246,23 @@ var agentPrompts = []promptDef{
 		},
 	},
 	{
+		name: "generate_screen", desc: "Build a screen from a description or a screenshot, using only the document's own components and tokens.",
+		args: []*mcp.PromptArgument{
+			promptArg("description", "what the screen is and what it contains, or what the attached screenshot shows", true),
+			promptArg("width", "screen width in px (default 393)", false),
+		},
+		build: func(a func(string, string) string) string {
+			return fmt.Sprintf(`Generate this screen from the document's own kit: %s
+
+1. get_design_kit: the components, color variables and text styles you may use. If the kit is empty or has no fit for a part, say so and ask rather than inventing values.
+2. If a screenshot is attached, read it for structure (sections, order, which parts repeat), not for exact pixels or colors: map each part to the nearest component, color variable and text style of the kit.
+3. generate_screen with width %s: one flat list of nodes, parents before children. Use a vertical autoLayout on the screen and on sections; a component becomes an instance (set variant and properties, e.g. the label); a text takes a textStyle and a color variable; backgrounds are fill variables. Never write a literal color.
+4. A tool error lists the names the document has: correct the spec and call again (nothing was created).
+5. review_design on the new screen and fix what it reports; token_usage should show your variables in use.
+6. Tell the person which components and tokens you used and which parts you could not cover from the kit.`, a("description", ""), a("width", "393"))
+		},
+	},
+	{
 		name: "token_cleanup", desc: "Turn repeated literal values into design tokens and remove unused ones.",
 		build: func(a func(string, string) string) string {
 			return `Tidy the design tokens.

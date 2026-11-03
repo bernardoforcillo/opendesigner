@@ -19,10 +19,12 @@ type TextFormat struct {
 	VerticalAlign string   `json:"verticalAlign,omitempty" jsonschema:"top (default) | middle | bottom: where the text sits in a box taller than it"`
 	Inset         *float64 `json:"inset,omitempty" jsonschema:"padding between the text box and the text, on every side (>= 0)"`
 	TextScale     *float64 `json:"textScale,omitempty" jsonschema:"horizontal scale of the glyphs in percent (1..1000, 100 = unscaled); 0 clears"`
+	Direction     string   `json:"direction,omitempty" jsonschema:"auto (first strong character decides) | ltr | rtl; in rtl, left/right alignment mean start/end"`
+	WritingMode   string   `json:"writingMode,omitempty" jsonschema:"horizontal (default) | vertical: upright characters in columns running right to left"`
 }
 
 func (f TextFormat) given() bool {
-	return f.TextCase != "" || f.Script != "" || f.List != "" || f.Indent != nil || f.FontFeatures != nil || f.VerticalAlign != "" || f.Inset != nil || f.TextScale != nil
+	return f.TextCase != "" || f.Script != "" || f.List != "" || f.Indent != nil || f.FontFeatures != nil || f.VerticalAlign != "" || f.Inset != nil || f.TextScale != nil || f.Direction != "" || f.WritingMode != ""
 }
 
 // apply overlays the given fields onto style, rejecting a bad name or value.
@@ -84,6 +86,26 @@ func (f TextFormat) apply(style *opendesignerv1.TextStyle) error {
 	default:
 		return fmt.Errorf("verticalAlign must be top, middle or bottom, got %q", f.VerticalAlign)
 	}
+	switch f.Direction {
+	case "":
+	case "auto":
+		style.Direction = opendesignerv1.TextDirection_TEXT_DIRECTION_UNSPECIFIED
+	case "ltr":
+		style.Direction = opendesignerv1.TextDirection_TEXT_DIRECTION_LTR
+	case "rtl":
+		style.Direction = opendesignerv1.TextDirection_TEXT_DIRECTION_RTL
+	default:
+		return fmt.Errorf("direction must be auto, ltr or rtl, got %q", f.Direction)
+	}
+	switch f.WritingMode {
+	case "":
+	case "horizontal":
+		style.WritingMode = opendesignerv1.WritingMode_WRITING_MODE_UNSPECIFIED
+	case "vertical":
+		style.WritingMode = opendesignerv1.WritingMode_WRITING_MODE_VERTICAL_RL
+	default:
+		return fmt.Errorf("writingMode must be horizontal or vertical, got %q", f.WritingMode)
+	}
 	if f.Indent != nil {
 		if !(*f.Indent >= 0) {
 			return fmt.Errorf("indent must be >= 0, got %v", *f.Indent)
@@ -144,6 +166,15 @@ func formatOf(st *opendesignerv1.TextStyle) TextFormat {
 		f.VerticalAlign = "middle"
 	case opendesignerv1.TextVAlign_TEXT_V_ALIGN_BOTTOM:
 		f.VerticalAlign = "bottom"
+	}
+	switch st.GetDirection() {
+	case opendesignerv1.TextDirection_TEXT_DIRECTION_LTR:
+		f.Direction = "ltr"
+	case opendesignerv1.TextDirection_TEXT_DIRECTION_RTL:
+		f.Direction = "rtl"
+	}
+	if st.GetWritingMode() == opendesignerv1.WritingMode_WRITING_MODE_VERTICAL_RL {
+		f.WritingMode = "vertical"
 	}
 	if v := st.GetIndent(); v > 0 {
 		f.Indent = &v

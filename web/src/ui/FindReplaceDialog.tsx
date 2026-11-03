@@ -25,9 +25,10 @@ export function FindReplaceDialog({ isOpen, onOpenChange }: { isOpen: boolean; o
   const [matchCase, setMatchCase] = useState(false);
   const [wholeWord, setWholeWord] = useState(false);
   const [regex, setRegex] = useState(false);
+  const [grep, setGrep] = useState(false);
   const [at, setAt] = useState(0);
-  const opts: FindOptions = { query, matchCase, wholeWord, regex };
-  const found = useMemo(() => (isOpen && scene ? findAll(scene, { query, matchCase, wholeWord, regex }) : []), [isOpen, scene, query, matchCase, wholeWord, regex]);
+  const opts: FindOptions = { query, matchCase, wholeWord, regex, grep };
+  const found = useMemo(() => (isOpen && scene ? findAll(scene, { query, matchCase, wholeWord, regex, grep }) : []), [isOpen, scene, query, matchCase, wholeWord, regex, grep]);
   if (!scene) return null;
   const error = Array.isArray(found) ? null : found.error;
   const matches = Array.isArray(found) ? found : [];
@@ -51,9 +52,9 @@ export function FindReplaceDialog({ isOpen, onOpenChange }: { isOpen: boolean; o
           <h2 className="text-[14px] font-semibold">{t("Find and change")}</h2>
           <input aria-label={t("Find")} autoFocus className={cls.input} value={query} placeholder={t("Find")} onChange={(e) => { setQuery(e.target.value); setAt(0); }}
             onKeyDown={(e) => { if (e.key === "Enter") go(e.shiftKey ? at - 1 : at + 1); }} />
-          <input aria-label={t("Change to")} className={cls.input} value={replacement} placeholder={regex ? t("Change to (use $1 for groups)") : t("Change to")} onChange={(e) => setReplacement(e.target.value)} />
+          <input aria-label={t("Change to")} className={cls.input} value={replacement} placeholder={regex || grep ? t("Change to (use $1 for groups)") : t("Change to")} onChange={(e) => setReplacement(e.target.value)} />
           <div className="flex flex-wrap gap-4">
-            {([[t("Match case"), matchCase, setMatchCase], [t("Whole word"), wholeWord, setWholeWord], [t("Regular expression"), regex, setRegex]] as const).map(([label, value, set]) => (
+            {([[t("Match case"), matchCase, setMatchCase], [t("Whole word"), wholeWord, setWholeWord], [t("Regular expression"), regex, setRegex], [t("GREP"), grep, setGrep]] as const).map(([label, value, set]) => (
               <label key={label} className="flex items-center gap-1.5">
                 <input type="checkbox" aria-label={label} checked={value} onChange={(e) => { set(e.target.checked); setAt(0); }} /> {label}
               </label>

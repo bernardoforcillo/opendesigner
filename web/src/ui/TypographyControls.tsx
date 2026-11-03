@@ -1,3 +1,4 @@
+import { useT } from "@/i18n";
 import { useScene } from "@/store/store";
 import type { NodeLite, TextStyleLite } from "@/store/types";
 import { Button, cls } from "@/ui/ds";
@@ -35,6 +36,7 @@ function same<T>(values: readonly T[]): T | typeof MIXED {
 export function TypographyControls() {
   const scene = useScene((s) => s.scene);
   const selection = useScene((s) => s.selection);
+  const { t } = useT();
   if (!scene || selection.length === 0) return null;
   const nodes = selection.map((id) => scene.nodes.at(id)).filter((n): n is NodeLite => n !== undefined);
   if (nodes.length === 0 || nodes.length !== selection.length || nodes.some((n) => n.kind !== "text" || !n.text)) return null;
@@ -49,6 +51,8 @@ export function TypographyControls() {
   const script = same(styles.map((s) => s.textScript ?? ""));
   const list = same(styles.map((s) => s.listKind ?? ""));
   const valign = same(styles.map((s) => s.verticalAlign ?? ""));
+  const direction = same(styles.map((s) => s.direction ?? ""));
+  const writing = same(styles.map((s) => s.writingMode ?? ""));
   const indent = same(styles.map((s) => s.indent ?? 0));
   const inset = same(styles.map((s) => s.inset ?? 0));
   const textScale = same(styles.map((s) => s.textScale ?? 100));
@@ -171,6 +175,19 @@ export function TypographyControls() {
           <option value="">Align top</option>
           <option value="middle">Align middle</option>
           <option value="bottom">Align bottom</option>
+        </select>
+        <select aria-label={t("Direction")} className={cls.select} value={direction}
+          onChange={(e) => run(styleOps(scene, selection, { direction: e.target.value === "" ? undefined : e.target.value as TextStyleLite["direction"] }))}>
+          {direction === MIXED && <option value={MIXED} disabled>{t("Mixed")}</option>}
+          <option value="">{t("Auto")}</option>
+          <option value="ltr">{t("Left to right")}</option>
+          <option value="rtl">{t("Right to left")}</option>
+        </select>
+        <select aria-label={t("Writing mode")} className={cls.select} value={writing}
+          onChange={(e) => run(styleOps(scene, selection, { writingMode: e.target.value === "" ? undefined : e.target.value as TextStyleLite["writingMode"] }))}>
+          {writing === MIXED && <option value={MIXED} disabled>{t("Mixed")}</option>}
+          <option value="">{t("Horizontal")}</option>
+          <option value="vertical">{t("Vertical")}</option>
         </select>
         <NumberField label="Indent" minValue={0} value={indent === MIXED ? NaN : indent}
           placeholder={indent === MIXED ? "Mixed" : undefined}

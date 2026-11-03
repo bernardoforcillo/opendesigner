@@ -23,6 +23,7 @@ import { nextOrderKey } from "@/store/orderKey";
 import { normalizeVector } from "@/store/vectorGeometry";
 import { toPbFills, toPbStrokes, toPbSubPaths, type FillLite, type SubPathLite } from "@/store/types";
 import { makeCreateNodeOp, makeSetVectorPathOp, uuid } from "@/tools/ops";
+import { findItem, loadLibrary, removeItem, saveItem } from "@/store/objectLibrary";
 import { changeObjectsOps, clipWithShapeOps, exportSnippet, findObjects, fitOps, gapOps, placeSnippetOps, qrOps, releaseClipOps, stepRepeatOps, type FitMode, type ObjectChange, type ObjectQuery } from "@/tools/objectTools";
 import { QR_LEVELS, type QrLevel } from "@/tools/qrcode";
 import { PlaceError, parseDocx, parseRtf, parseXlsx, placeTableOps, placeTextOps } from "@/tools/placeDocument";
@@ -102,7 +103,7 @@ function pageIdFrom(o: Record<string, unknown>): string | string[] {
 }
 
 /** Every command the editor runs (kept in step with the switch below by a test). */
-const COMMAND_NAMES = ["align_nodes", "apply_table_style", "batch", "boolean_operation", "change_objects", "check_text", "clip_with_shape", "convert_spots_to_process", "create_qr_code", "create_vector", "duplicate_nodes", "edit_table", "export_snippet", "find_change", "find_objects", "fit_frame", "flatten_boolean", "generate_contents", "group_nodes", "ink_report", "insert_table", "list_commands", "list_editorial_notes", "merge_spot_inks", "outline_stroke", "override_master_item", "place_snippet", "reorder_node", "set_gap", "set_overprint", "set_vector_path", "step_and_repeat", "ungroup_nodes"];
+const COMMAND_NAMES = ["align_nodes", "apply_table_style", "batch", "boolean_operation", "change_objects", "check_text", "clip_with_shape", "convert_spots_to_process", "create_qr_code", "create_vector", "duplicate_nodes", "edit_table", "export_snippet", "find_change", "find_objects", "fit_frame", "flatten_boolean", "generate_contents", "group_nodes", "ink_report", "insert_table", "list_commands", "list_editorial_notes", "merge_spot_inks", "object_library", "outline_stroke", "override_master_item", "place_snippet", "reorder_node", "set_gap", "set_overprint", "set_vector_path", "step_and_repeat", "ungroup_nodes"];
 
 /** Commands that read an input file sent with the job. */
 const FILE_COMMANDS = new Set(["place_image", "relink_image", "import_svg", "import_pdf", "import_fig", "upload_font", "place_document", "import_idml"]);
@@ -269,9 +270,9 @@ export async function runCommand(o: Record<string, unknown>, file: File | null =
     }
     case "find_change": {
       if (!isStr(o.query) || o.query === "") return fail("query is required");
-      for (const k of ["matchCase", "wholeWord", "regex"] as const) if (o[k] !== undefined && !isBool(o[k])) return fail(`${k} must be true or false`);
+      for (const k of ["matchCase", "wholeWord", "regex", "grep"] as const) if (o[k] !== undefined && !isBool(o[k])) return fail(`${k} must be true or false`);
       if (o.replace !== undefined && !isStr(o.replace)) return fail("replace must be a string");
-      const opts = { query: o.query, matchCase: o.matchCase === true, wholeWord: o.wholeWord === true, regex: o.regex === true };
+      const opts = { query: o.query, matchCase: o.matchCase === true, wholeWord: o.wholeWord === true, regex: o.regex === true, grep: o.grep === true };
       const found = findAll(scene, opts);
       if ("error" in found) return fail(`invalid pattern: ${found.error}`);
       const limit = isNum(o.limit) ? Math.max(1, Math.min(500, Math.floor(o.limit))) : 100;
@@ -503,6 +504,43 @@ export async function runCommand(o: Record<string, unknown>, file: File | null =
       if (typeof ids === "string") return fail(ids);
       const text = exportSnippet(scene, ids);
       return text ? ok({ snippet: text }) : fail("nothing to export");
+    }
+    case "object_library": {
+      const items = loadLibrary();
+      const itemName = isStr(o.item) ? o.item : ""; // "name" is the command's own name
+      const nameOrId = itemName !== "" ? itemName : isStr(o.id) ? o.id : "";
+      // if-chain, not a switch: the command-list test counts `case "..."` lines.
+      const act = o.action;
+      if (act === "list")
+        return ok({ items: items.map((i) => ({ id: i.id, name: i.name, createdAt: i.createdAt, characters: i.snippet.length })) });
+      if (act === "save") {
+        if (itemName.trim() === "") return fail("name is required");
+        const ids = nodeIdsOf(o, scene);
+        if (typeof ids === "string") return fail(ids);
+        const text = exportSnippet(scene, ids);
+        if (!text) return fail("nothing to export");
+        const saved = saveItem(itemName, text);
+        return typeof saved === "string" ? fail(saved) : ok({ id: saved.id, name: saved.name, replaced: items.some((i) => i.id === saved.id) });
+      }
+      if (act === "delete") {
+        if (nameOrId === "") return fail("name or id is required");
+        const done = removeItem(nameOrId);
+        return typeof done === "string" ? fail(done) : done ? ok({ deleted: true }) : fail(`no library item "${nameOrId}"`);
+      }
+      if (act === "place") {
+        if (nameOrId === "") return fail("name or id is required");
+        const item = findItem(items, nameOrId);
+        if (!item) return fail(`no library item "${nameOrId}"`);
+        const page = pageIdFrom(o);
+        if (Array.isArray(page)) return fail(page[0]!);
+        const parent = o.parentId === undefined ? page : o.parentId;
+        if (!isStr(parent) || (!scene.nodes.has(parent) && !scene.pages.some((p) => p.id === parent))) return fail("parentId is not a page or a node");
+        const made = placeSnippetOps(scene, item.snippet, isNum(o.x) ? o.x : 0, isNum(o.y) ? o.y : 0, parent);
+        if (typeof made === "string") return fail(made);
+        commit(made.ops);
+        return ok({ nodeIds: made.ids });
+      }
+      return fail("action must be list, save, place or delete");
     }
     case "place_snippet": {
       if (!isStr(o.snippet)) return fail("snippet is required");
