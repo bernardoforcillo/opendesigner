@@ -994,4 +994,16 @@ export const ptBR: Record<MessageKey, Message> = {
   "No dots yet.": "Ainda não há pontos.",
   // Generate screen dialog
   "Generate screen from the kit…": "Gerar tela a partir do kit…", "Generate screen": "Gerar tela", "Describe a screen. A connected agent builds it from this document's own components, colors and text styles, nothing else.": "Descreva uma tela. Um agente conectado a constrói só com os componentes, cores e estilos de texto deste documento.", "Design kit": "Kit de design", "Components": "Componentes", "Color variables": "Variáveis de cor", "Text styles": "Estilos de texto", "The kit is empty. Create components, color variables and text styles first, or the agent has nothing to build from.": "O kit está vazio. Crie antes componentes, variáveis de cor e estilos de texto, ou o agente não terá com o que construir.", "Description": "Descrição", "e.g. A sign in screen with an email field, a password field and a primary button": "ex.: Uma tela de login com campo de e-mail, campo de senha e um botão principal", "I will attach a screenshot to the agent": "Vou anexar uma captura de tela ao agente", "Copied. Paste it to the agent that is connected to this document.": "Copiado. Cole no agente conectado a este documento.", "Could not copy to the clipboard.": "Não foi possível copiar para a área de transferência.", "Close": "Fechar", "Copy prompt for the agent": "Copiar o prompt para o agente",
+  "Writing mode": "Modo de escrita",
+  "Auto": "Auto",
+  "Left to right": "Da esquerda para a direita",
+  "Right to left": "Da direita para a esquerda",
+  "Separations": "Separações",
+  "Nothing is painted yet.": "Nada foi pintado ainda.",
+  "Trapping": "Trapping",
+  "No touching shapes need a trap.": "Nenhuma forma em contato precisa de trapping.",
+  "into": "em",
+  "Advice only; nothing is changed.": "Apenas um aviso; nada é alterado.",
+  "{n} objects on this plate": { one: "{n} objeto nesta chapa", other: "{n} objetos nesta chapa" },
+  "{n} edges could show a white gap if the plates misregister:": { one: "{n} borda pode mostrar uma falha branca se as chapas não registrarem:", other: "{n} bordas podem mostrar uma falha branca se as chapas não registrarem:" },
 };

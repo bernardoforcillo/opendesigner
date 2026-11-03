@@ -994,4 +994,16 @@ export const es: Record<MessageKey, Message> = {
   "No dots yet.": "Aún no hay puntos.",
   // Generate screen dialog
   "Generate screen from the kit…": "Generar pantalla desde el kit…", "Generate screen": "Generar pantalla", "Describe a screen. A connected agent builds it from this document's own components, colors and text styles, nothing else.": "Describe una pantalla. Un agente conectado la construye con los componentes, colores y estilos de texto de este documento, nada más.", "Design kit": "Kit de diseño", "Components": "Componentes", "Color variables": "Variables de color", "Text styles": "Estilos de texto", "The kit is empty. Create components, color variables and text styles first, or the agent has nothing to build from.": "El kit está vacío. Crea primero componentes, variables de color y estilos de texto, o el agente no tendrá con qué construir.", "Description": "Descripción", "e.g. A sign in screen with an email field, a password field and a primary button": "p. ej. Una pantalla de inicio de sesión con campo de correo, campo de contraseña y un botón principal", "I will attach a screenshot to the agent": "Adjuntaré una captura de pantalla al agente", "Copied. Paste it to the agent that is connected to this document.": "Copiado. Pégalo al agente conectado a este documento.", "Could not copy to the clipboard.": "No se pudo copiar al portapapeles.", "Close": "Cerrar", "Copy prompt for the agent": "Copiar el prompt para el agente",
+  "Writing mode": "Modo de escritura",
+  "Auto": "Auto",
+  "Left to right": "De izquierda a derecha",
+  "Right to left": "De derecha a izquierda",
+  "Separations": "Separaciones",
+  "Nothing is painted yet.": "Aún no se ha pintado nada.",
+  "Trapping": "Trapping",
+  "No touching shapes need a trap.": "Ninguna forma en contacto necesita trapping.",
+  "into": "sobre",
+  "Advice only; nothing is changed.": "Solo un consejo; no se cambia nada.",
+  "{n} objects on this plate": { one: "{n} objeto en esta plancha", other: "{n} objetos en esta plancha" },
+  "{n} edges could show a white gap if the plates misregister:": { one: "{n} borde podría mostrar un hueco blanco si las planchas no registran bien:", other: "{n} bordes podrían mostrar un hueco blanco si las planchas no registran bien:" },
 };

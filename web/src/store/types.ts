@@ -1,6 +1,6 @@
 import { NodeMap } from "@/store/nodeMap";
 import { create } from "@bufbuild/protobuf";
-import { AnnotationSchema, ReadyForDevSchema, BlendMode, ImageScaleMode, TextStyleKind, ArrowHead, PaintStyleDefSchema, EffectStyleDefSchema, LayoutGridKind, CommentSchema, ClipSchema, Constraint, LayoutPositioning, LayoutSizing, ComponentPropertySchema, ComponentPropertyType, ComponentSetSchema, FlowSchema, FontFaceSchema, TextStyleDefSchema, VariableCollectionSchema, VariableSchema, VariableType, TransitionSchema, LayoutAlign, LayoutDirection, NodeSchema, StrokeAlign, TextAlign, TextCase, TextScript, ListKind, TextVAlign, NoiseMode, LayoutMode, GridTrackKind, BrushKind, BrushTip, LayerSchema, ObjectStyleDefSchema, TabAlign, ParagraphRuleSchema } from "@/gen/opendesigner/v1/opendesigner_pb";
+import { AnnotationSchema, ReadyForDevSchema, BlendMode, ImageScaleMode, TextStyleKind, ArrowHead, PaintStyleDefSchema, EffectStyleDefSchema, LayoutGridKind, CommentSchema, ClipSchema, Constraint, LayoutPositioning, LayoutSizing, ComponentPropertySchema, ComponentPropertyType, ComponentSetSchema, FlowSchema, FontFaceSchema, TextStyleDefSchema, VariableCollectionSchema, VariableSchema, VariableType, TransitionSchema, LayoutAlign, LayoutDirection, NodeSchema, StrokeAlign, TextAlign, TextCase, TextScript, ListKind, TextVAlign, TextDirection, WritingMode, NoiseMode, LayoutMode, GridTrackKind, BrushKind, BrushTip, LayerSchema, ObjectStyleDefSchema, TabAlign, ParagraphRuleSchema } from "@/gen/opendesigner/v1/opendesigner_pb";
 import type {
   Annotation as PbAnnotation, ReadyForDev as PbReady, Document, Component as PbComponent, ComponentProperty as PbComponentProperty, ComponentSet as PbComponentSet, FontFace as PbFont, TextStyleDef as PbTextStyleDef, PaintStyleDef as PbPaintStyleDef, EffectStyleDef as PbEffectStyleDef, VariableCollection as PbCollection, Variable as PbVariable, Clip as PbClip, Flow as PbFlow, Transition as PbTransition, Node as PbNode, Comment as PbComment, LayoutGrid as PbLayoutGrid, Paint as PbPaint, Stroke as PbStroke, Brush as PbBrush, Effect as PbEffect, AutoLayout as PbAutoLayout, TextNode as PbTextNode, TextStyle as PbTextStyle, ObjectStyleDef as PbObjectStyleDef, Layer as PbLayer, ParagraphRule as PbParagraphRule,
   SubPath as PbSubPath, VectorNode as PbVectorNode,
@@ -190,6 +190,10 @@ export interface TextStyleLite {
   inset?: number;
   /** Horizontal scale of the glyphs in percent (proto 30); absent = 100. */
   textScale?: number;
+  /** Paragraph direction (proto 31); absent = auto, the first strong character decides. */
+  direction?: TextDirectionLite;
+  /** Writing mode (proto 32); absent = horizontal. */
+  writingMode?: WritingModeLite;
   /** Lowercase letters drawn as smaller capitals. */
   smallCaps?: boolean;
   /** Smaller and raised / lowered. */
@@ -209,6 +213,8 @@ export type TextCaseLite = "upper" | "lower" | "title" | "smallCaps";
 export type TextScriptLite = "super" | "sub";
 export type ListKindLite = "bullet" | "numbered";
 export type TextVAlignLite = "middle" | "bottom";
+export type TextDirectionLite = "ltr" | "rtl";
+export type WritingModeLite = "vertical";
 
 // RICH TEXT (store/richText.ts). `paragraphStyles` / `runs` are the document's; `rich` is DERIVED by
 // resolveScene (never written, never in an op) and carries them resolved, so the layout needs no scene.
@@ -801,11 +807,15 @@ const LIST_TO_PB: Record<ListKindLite, ListKind> = { bullet: ListKind.BULLET, nu
 const VALIGN_TO_LITE: Partial<Record<TextVAlign, TextVAlignLite>> = { [TextVAlign.MIDDLE]: "middle", [TextVAlign.BOTTOM]: "bottom" };
 const VALIGN_TO_PB: Record<TextVAlignLite, TextVAlign> = { middle: TextVAlign.MIDDLE, bottom: TextVAlign.BOTTOM };
 
+const DIR_TO_LITE: Partial<Record<TextDirection, TextDirectionLite>> = { [TextDirection.LTR]: "ltr", [TextDirection.RTL]: "rtl" };
+const DIR_TO_PB: Record<TextDirectionLite, TextDirection> = { ltr: TextDirection.LTR, rtl: TextDirection.RTL };
+
 export function toTextStyleLite(s: PbTextStyle | undefined): TextStyleLite {
   const tc = CASE_TO_LITE[s?.textCase ?? TextCase.UNSPECIFIED];
   const ts = SCRIPT_TO_LITE[s?.textScript ?? TextScript.UNSPECIFIED];
   const lk = LIST_TO_LITE[s?.listKind ?? ListKind.UNSPECIFIED];
   const va = VALIGN_TO_LITE[s?.verticalAlign ?? TextVAlign.UNSPECIFIED];
+  const dir = DIR_TO_LITE[s?.direction ?? TextDirection.UNSPECIFIED];
   return {
     fontFamily: s?.fontFamily ?? "",
     fontSize: s?.fontSize ?? 0,
@@ -821,6 +831,8 @@ export function toTextStyleLite(s: PbTextStyle | undefined): TextStyleLite {
     ...(va ? { verticalAlign: va } : {}),
     ...(s && s.inset > 0 ? { inset: s.inset } : {}),
     ...(s && s.textScale > 0 ? { textScale: s.textScale } : {}),
+    ...(dir ? { direction: dir } : {}),
+    ...(s?.writingMode === WritingMode.VERTICAL_RL ? { writingMode: "vertical" as const } : {}),
     ...(s?.underline ? { underline: true } : {}),
     ...(s?.strikethrough ? { strikethrough: true } : {}),
     ...(s?.letterSpacing ? { letterSpacing: s.letterSpacing } : {}),
@@ -955,6 +967,8 @@ export function toPbTextStyle(s: TextStyleLite) {
     verticalAlign: s.verticalAlign ? VALIGN_TO_PB[s.verticalAlign] : TextVAlign.UNSPECIFIED,
     inset: s.inset ?? 0,
     textScale: s.textScale ?? 0,
+    direction: s.direction ? DIR_TO_PB[s.direction] : TextDirection.UNSPECIFIED,
+    writingMode: s.writingMode === "vertical" ? WritingMode.VERTICAL_RL : WritingMode.UNSPECIFIED,
     underline: s.underline === true,
     strikethrough: s.strikethrough === true,
     letterSpacing: s.letterSpacing ?? 0,

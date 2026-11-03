@@ -307,7 +307,15 @@ const PLAIN = [
   "or choose a file",
   "Table file",
   "fields: {fields}",
-  "No column for {fields}; those stay as written.",
+  "No column for {fields  "Separations": "Separations",
+  "Nothing is painted yet.": "Nothing is painted yet.",
+  "Trapping": "Trapping",
+  "No touching shapes need a trap.": "No touching shapes need a trap.",
+  "into": "into",
+  "Advice only; nothing is changed.": "Advice only; nothing is changed.",
+  "{n} objects on this plate": { one: "{n} object on this plate", other: "{n} objects on this plate" },
+  "{n} edges could show a white gap if the plates misregister:": { one: "{n} edge could show a white gap if the plates misregister:", other: "{n} edges could show a white gap if the plates misregister:" },
+}; those stay as written.",
   "Create merged pages",
   "no column for {fields}",
   "Preflight",
@@ -935,6 +943,11 @@ const PLAIN = [
   "No dots yet.",
   // Generate screen dialog
   "Generate screen from the kit…", "Generate screen", "Describe a screen. A connected agent builds it from this document's own components, colors and text styles, nothing else.", "Design kit", "Components", "Color variables", "Text styles", "The kit is empty. Create components, color variables and text styles first, or the agent has nothing to build from.", "Description", "e.g. A sign in screen with an email field, a password field and a primary button", "I will attach a screenshot to the agent", "Copied. Paste it to the agent that is connected to this document.", "Could not copy to the clipboard.", "Close", "Copy prompt for the agent",
+  // International text
+  "Writing mode",
+  "Auto",
+  "Left to right",
+  "Right to left",
 ] as const;
 
 const PLURALS = {

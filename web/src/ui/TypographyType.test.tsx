@@ -45,6 +45,16 @@ describe("font feature helpers", () => {
 });
 
 describe("TypographyControls — type extras", () => {
+  it("sets and clears the paragraph direction and the writing mode", () => {
+    render(<TypographyControls />);
+    const pick = (name: string, value: string) => fireEvent.change(screen.getByRole("combobox", { name }), { target: { value } });
+    pick("Direction", "rtl");
+    pick("Writing mode", "vertical");
+    expect(styleOf("a")).toMatchObject({ direction: "rtl", writingMode: "vertical" });
+    pick("Direction", "");
+    expect(styleOf("a").direction).toBeUndefined();
+  });
+
   it("sets and clears case, script, list and vertical alignment, one undo step each", () => {
     render(<TypographyControls />);
     const pick = (name: string, value: string) => fireEvent.change(screen.getByRole("combobox", { name }), { target: { value } });

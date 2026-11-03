@@ -30,9 +30,30 @@ export function cjkBreaks(text: string): number[] {
   return out;
 }
 
+/** Thai, Lao, Khmer and Myanmar: written without spaces between words, so the line may break only at a word boundary. */
+export const hasSpacelessScript = (s: string): boolean => /[\u0e00-\u0eff\u1000-\u109f\u1780-\u17ff]/.test(s);
+
+type Segmenter = { segment(s: string): Iterable<{ segment: string; isWordLike?: boolean }> };
+let wordSegmenter: Segmenter | null | undefined;
+/** The platform's word segmenter (Intl.Segmenter, dictionary based for these scripts); null where it is missing. */
+function segmenter(): Segmenter | null {
+  if (wordSegmenter !== undefined) return wordSegmenter;
+  try {
+    const I = (Intl as unknown as { Segmenter?: new (l: string, o: { granularity: string }) => Segmenter }).Segmenter;
+    wordSegmenter = I ? new I("th", { granularity: "word" }) : null;
+  } catch { wordSegmenter = null; }
+  return wordSegmenter;
+}
+
 /** `text` cut at its break opportunities (a Latin-only word comes back whole). */
 export function cjkSplit(text: string): string[] {
-  if (!hasCjk(text)) return [text];
+  if (!hasCjk(text)) {
+    // Words of a script without spaces: cut at the word boundaries the platform knows. Never cut inside a cluster.
+    const seg = hasSpacelessScript(text) ? segmenter() : null;
+    if (!seg) return [text];
+    const parts = [...seg.segment(text)].map((p) => p.segment);
+    return parts.length > 1 ? parts : [text];
+  }
   const cuts = cjkBreaks(text);
   const out: string[] = [];
   let from = 0;

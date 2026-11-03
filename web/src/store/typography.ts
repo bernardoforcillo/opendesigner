@@ -107,6 +107,7 @@ export function isValidTextStyleDef(state: SceneState, d: PbTextStyleDef | undef
   // core.validateTextExtras: enums in range, finite non-negative indent/inset, a well-formed feature string.
   if (!(st.textCase >= 0 && st.textCase <= 4 && st.textScript >= 0 && st.textScript <= 2 &&
     st.listKind >= 0 && st.listKind <= 2 && st.verticalAlign >= 0 && st.verticalAlign <= 2 &&
+    st.direction >= 0 && st.direction <= 2 && st.writingMode >= 0 && st.writingMode <= 1 &&
     finiteNonNeg(st.indent) && finiteNonNeg(st.inset) &&
     (st.textScale === 0 || (st.textScale >= 1 && st.textScale <= 1000)))) return false;
   if (!Number.isFinite(st.letterSpacing) || Math.abs(st.letterSpacing) > 1000) return false;

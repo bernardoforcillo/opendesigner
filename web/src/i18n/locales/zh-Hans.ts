@@ -994,4 +994,16 @@ export const zhHans: Record<MessageKey, Message> = {
   "No dots yet.": "还没有点数。",
   // Generate screen dialog
   "Generate screen from the kit…": "从套件生成界面…", "Generate screen": "生成界面", "Describe a screen. A connected agent builds it from this document's own components, colors and text styles, nothing else.": "描述一个界面。已连接的代理只会用本文档的组件、颜色和文本样式来构建。", "Design kit": "设计套件", "Components": "组件", "Color variables": "颜色变量", "Text styles": "文本样式", "The kit is empty. Create components, color variables and text styles first, or the agent has nothing to build from.": "套件为空。请先创建组件、颜色变量和文本样式，否则代理无从构建。", "Description": "描述", "e.g. A sign in screen with an email field, a password field and a primary button": "例如：带邮箱栏、密码栏和主按钮的登录界面", "I will attach a screenshot to the agent": "我会向代理附上截图", "Copied. Paste it to the agent that is connected to this document.": "已复制。请粘贴给与本文档相连的代理。", "Could not copy to the clipboard.": "无法复制到剪贴板。", "Close": "关闭", "Copy prompt for the agent": "复制给代理的提示词",
+  "Writing mode": "书写模式",
+  "Auto": "自动",
+  "Left to right": "从左到右",
+  "Right to left": "从右到左",
+  "Separations": "分色",
+  "Nothing is painted yet.": "尚未绘制任何内容。",
+  "Trapping": "陷印",
+  "No touching shapes need a trap.": "没有需要陷印的相接形状。",
+  "into": "压入",
+  "Advice only; nothing is changed.": "仅供建议；不会更改任何内容。",
+  "{n} objects on this plate": { one: "此印版上有 {n} 个对象", other: "此印版上有 {n} 个对象" },
+  "{n} edges could show a white gap if the plates misregister:": { one: "若印版套准不佳，{n} 条边可能出现白缝：", other: "若印版套准不佳，{n} 条边可能出现白缝：" },
 };

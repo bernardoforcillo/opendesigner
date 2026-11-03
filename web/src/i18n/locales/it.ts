@@ -994,4 +994,16 @@ export const it: Record<MessageKey, Message> = {
   "No dots yet.": "Ancora nessun punto.",
   // Generate screen dialog
   "Generate screen from the kit…": "Genera schermata dal kit…", "Generate screen": "Genera schermata", "Describe a screen. A connected agent builds it from this document's own components, colors and text styles, nothing else.": "Descrivi una schermata. Un agente collegato la costruisce con i componenti, i colori e gli stili di testo di questo documento, nient'altro.", "Design kit": "Kit di design", "Components": "Componenti", "Color variables": "Variabili colore", "Text styles": "Stili di testo", "The kit is empty. Create components, color variables and text styles first, or the agent has nothing to build from.": "Il kit è vuoto. Crea prima componenti, variabili colore e stili di testo, altrimenti l'agente non ha nulla con cui costruire.", "Description": "Descrizione", "e.g. A sign in screen with an email field, a password field and a primary button": "es. Una schermata di accesso con campo email, campo password e un pulsante primario", "I will attach a screenshot to the agent": "Allegherò uno screenshot all'agente", "Copied. Paste it to the agent that is connected to this document.": "Copiato. Incollalo all'agente collegato a questo documento.", "Could not copy to the clipboard.": "Impossibile copiare negli appunti.", "Close": "Chiudi", "Copy prompt for the agent": "Copia il prompt per l'agente",
+  "Writing mode": "Modalità di scrittura",
+  "Auto": "Auto",
+  "Left to right": "Da sinistra a destra",
+  "Right to left": "Da destra a sinistra",
+  "Separations": "Separazioni",
+  "Nothing is painted yet.": "Non è ancora stato dipinto nulla.",
+  "Trapping": "Trapping",
+  "No touching shapes need a trap.": "Nessuna forma a contatto richiede un trap.",
+  "into": "in",
+  "Advice only; nothing is changed.": "Solo un consiglio; non viene modificato nulla.",
+  "{n} objects on this plate": { one: "{n} oggetto su questa lastra", other: "{n} oggetti su questa lastra" },
+  "{n} edges could show a white gap if the plates misregister:": { one: "{n} bordo potrebbe mostrare uno spazio bianco se le lastre non sono registrate:", other: "{n} bordi potrebbero mostrare uno spazio bianco se le lastre non sono registrate:" },
 };

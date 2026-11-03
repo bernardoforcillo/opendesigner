@@ -994,4 +994,16 @@ export const de: Record<MessageKey, Message> = {
   "No dots yet.": "Noch keine Punkte.",
   // Generate screen dialog
   "Generate screen from the kit…": "Bildschirm aus dem Kit erzeugen…", "Generate screen": "Bildschirm erzeugen", "Describe a screen. A connected agent builds it from this document's own components, colors and text styles, nothing else.": "Beschreibe einen Bildschirm. Ein verbundener Agent baut ihn nur aus den Komponenten, Farben und Textstilen dieses Dokuments.", "Design kit": "Design-Kit", "Components": "Komponenten", "Color variables": "Farbvariablen", "Text styles": "Textstile", "The kit is empty. Create components, color variables and text styles first, or the agent has nothing to build from.": "Das Kit ist leer. Lege zuerst Komponenten, Farbvariablen und Textstile an, sonst hat der Agent nichts zum Bauen.", "Description": "Beschreibung", "e.g. A sign in screen with an email field, a password field and a primary button": "z. B. Ein Anmeldebildschirm mit E-Mail-Feld, Passwortfeld und einer Hauptschaltfläche", "I will attach a screenshot to the agent": "Ich hänge dem Agenten einen Screenshot an", "Copied. Paste it to the agent that is connected to this document.": "Kopiert. Füge es beim Agenten ein, der mit diesem Dokument verbunden ist.", "Could not copy to the clipboard.": "Kopieren in die Zwischenablage nicht möglich.", "Close": "Schließen", "Copy prompt for the agent": "Prompt für den Agenten kopieren",
+  "Writing mode": "Schreibmodus",
+  "Auto": "Auto",
+  "Left to right": "Links nach rechts",
+  "Right to left": "Rechts nach links",
+  "Separations": "Separationen",
+  "Nothing is painted yet.": "Noch nichts gemalt.",
+  "Trapping": "Überfüllung",
+  "No touching shapes need a trap.": "Keine sich berührenden Formen brauchen eine Überfüllung.",
+  "into": "in",
+  "Advice only; nothing is changed.": "Nur ein Hinweis; es wird nichts geändert.",
+  "{n} objects on this plate": { one: "{n} Objekt auf dieser Platte", other: "{n} Objekte auf dieser Platte" },
+  "{n} edges could show a white gap if the plates misregister:": { one: "{n} Kante könnte eine weiße Lücke zeigen, wenn die Platten nicht passen:", other: "{n} Kanten könnten eine weiße Lücke zeigen, wenn die Platten nicht passen:" },
 };

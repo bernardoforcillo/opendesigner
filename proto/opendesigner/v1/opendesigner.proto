@@ -480,6 +480,23 @@ message TextStyle {
   // Horizontal scale of the glyphs in percent: 0 => 100 (unscaled), otherwise 1..1000. Widens or narrows
   // every glyph (and so the layout) without changing the height of the line.
   double text_scale = 30;
+
+  // Fields 31..39 are the international-text range (docs/text-international.md).
+  TextDirection direction = 31;     // UNSPECIFIED => auto (the first strong character decides)
+  WritingMode writing_mode = 32;    // UNSPECIFIED => horizontal
+}
+
+// Paragraph direction. In a right-to-left paragraph LEFT and RIGHT alignment mean start and end.
+enum TextDirection {
+  TEXT_DIRECTION_UNSPECIFIED = 0; // auto: the first strong character decides
+  TEXT_DIRECTION_LTR = 1;
+  TEXT_DIRECTION_RTL = 2;
+}
+
+// Writing mode: vertical-rl stacks upright characters top to bottom in columns that run right to left.
+enum WritingMode {
+  WRITING_MODE_UNSPECIFIED = 0; // horizontal
+  WRITING_MODE_VERTICAL_RL = 1;
 }
 
 // Text case: a transform of what is DRAWN, the content keeps its capitalisation.

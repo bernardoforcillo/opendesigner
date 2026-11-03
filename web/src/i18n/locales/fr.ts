@@ -995,4 +995,16 @@ export const fr: Record<MessageKey, Message> = {
   "No dots yet.": "Aucun point pour l’instant.",
   // Generate screen dialog
   "Generate screen from the kit…": "Générer un écran depuis le kit…", "Generate screen": "Générer un écran", "Describe a screen. A connected agent builds it from this document's own components, colors and text styles, nothing else.": "Décrivez un écran. Un agent connecté le construit uniquement avec les composants, couleurs et styles de texte de ce document.", "Design kit": "Kit de design", "Components": "Composants", "Color variables": "Variables de couleur", "Text styles": "Styles de texte", "The kit is empty. Create components, color variables and text styles first, or the agent has nothing to build from.": "Le kit est vide. Créez d'abord des composants, des variables de couleur et des styles de texte, sinon l'agent n'a rien pour construire.", "Description": "Description", "e.g. A sign in screen with an email field, a password field and a primary button": "p. ex. Un écran de connexion avec un champ e-mail, un champ mot de passe et un bouton principal", "I will attach a screenshot to the agent": "Je joindrai une capture d'écran à l'agent", "Copied. Paste it to the agent that is connected to this document.": "Copié. Collez-le à l'agent connecté à ce document.", "Could not copy to the clipboard.": "Impossible de copier dans le presse-papiers.", "Close": "Fermer", "Copy prompt for the agent": "Copier le prompt pour l'agent",
+  "Writing mode": "Mode d'écriture",
+  "Auto": "Auto",
+  "Left to right": "De gauche à droite",
+  "Right to left": "De droite à gauche",
+  "Separations": "Séparations",
+  "Nothing is painted yet.": "Rien n'est encore peint.",
+  "Trapping": "Recouvrement",
+  "No touching shapes need a trap.": "Aucune forme en contact n'a besoin de recouvrement.",
+  "into": "dans",
+  "Advice only; nothing is changed.": "Simple conseil ; rien n'est modifié.",
+  "{n} objects on this plate": { one: "{n} objet sur cette plaque", other: "{n} objets sur cette plaque" },
+  "{n} edges could show a white gap if the plates misregister:": { one: "{n} bord pourrait laisser un blanc si les plaques sont mal repérées :", other: "{n} bords pourraient laisser un blanc si les plaques sont mal repérées :" },
 };

@@ -994,4 +994,16 @@ export const ja: Record<MessageKey, Message> = {
   "No dots yet.": "まだドットがありません。",
   // Generate screen dialog
   "Generate screen from the kit…": "キットから画面を生成…", "Generate screen": "画面を生成", "Describe a screen. A connected agent builds it from this document's own components, colors and text styles, nothing else.": "画面を説明してください。接続したエージェントが、このドキュメントのコンポーネント、色、テキストスタイルだけで作ります。", "Design kit": "デザインキット", "Components": "コンポーネント", "Color variables": "カラー変数", "Text styles": "テキストスタイル", "The kit is empty. Create components, color variables and text styles first, or the agent has nothing to build from.": "キットが空です。先にコンポーネント、カラー変数、テキストスタイルを作成してください。そうしないとエージェントは何も組み立てられません。", "Description": "説明", "e.g. A sign in screen with an email field, a password field and a primary button": "例: メール欄、パスワード欄、メインボタンのあるサインイン画面", "I will attach a screenshot to the agent": "エージェントにスクリーンショットを添付します", "Copied. Paste it to the agent that is connected to this document.": "コピーしました。このドキュメントに接続したエージェントに貼り付けてください。", "Could not copy to the clipboard.": "クリップボードにコピーできませんでした。", "Close": "閉じる", "Copy prompt for the agent": "エージェント用プロンプトをコピー",
+  "Writing mode": "書字方向",
+  "Auto": "自動",
+  "Left to right": "左から右",
+  "Right to left": "右から左",
+  "Separations": "色分解",
+  "Nothing is painted yet.": "まだ何も描かれていません。",
+  "Trapping": "トラッピング",
+  "No touching shapes need a trap.": "トラッピングが必要な接する図形はありません。",
+  "into": "へ",
+  "Advice only; nothing is changed.": "助言のみです。何も変更されません。",
+  "{n} objects on this plate": { one: "このプレートに{n}個のオブジェクト", other: "このプレートに{n}個のオブジェクト" },
+  "{n} edges could show a white gap if the plates misregister:": { one: "版ずれがあると{n}個の縁に白い隙間が出る可能性があります:", other: "版ずれがあると{n}個の縁に白い隙間が出る可能性があります:" },
 };
