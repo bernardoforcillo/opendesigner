@@ -31,7 +31,7 @@ Legend: [x] done · [ ] to do
 - [x] Constraints and responsive resize (min/max/stretch/center/scale per axis, recursive, exact undo); see docs/layout.md
 - [x] Variants and component properties: component sets with axes, instances that choose a variant, boolean (show/hide) and text properties, editor dialog and instance controls, MCP tools, exported code; see docs/components.md
 - [x] Instance swap (carrying over the overrides that fit), detach instance, reset overrides (all / per layer), go to main component; see docs/components.md
-- [ ] Shared libraries across documents
+- [x] Shared libraries across documents: publish a document as a library, import components, styles, variables, fonts and images with their dependencies as ordinary undoable ops; editor dialog and MCP `set_library` / `get_library` / `import_from_library`; docs/libraries.md
 - [x] Variables / design tokens with modes: color and number variables in collections with modes, bound to fills, strokes, opacity, rotation, radius and stroke width, pinned per subtree; editor dialog and panel, MCP tools, resolved in canvas/export/code, see docs/variables.md
 - [x] Variables: string (text content) and boolean (visibility) variables, spacing / padding bindings that the auto layout engine reads per mode (density), aliases; see docs/variables.md
 - [x] Variables: CSS custom properties per mode in the exported code (html target, `-css-vars`: `var(--collection-name, fallback)` plus a `:root` and a `[data-mode-...]` rule per mode; docs/codegen.md)
@@ -72,8 +72,10 @@ Legend: [x] done · [ ] to do
 - [x] Gradient mesh (a color grid blended over the box; the points do not move; code export uses the average color)
 - [x] SVG export and PDF (a real PDF writer, docs/output.md)
 - [x] PDF import (editable text with embedded fonts and shared text styles, shapes and images, one page per PDF page), and export of all pages as PDF or EPUB (fixed layout); see docs/pdf-epub.md
-- [ ] AI/EPS export
-- [ ] Color: ICC profiles and color-managed print (CMYK read-out/entry exists, plain conversion only)
+- [x] EPS export (PostScript Level 2, vector pages; export panel, `export_eps` job, `export_image` format eps; docs/eps.md)
+- [ ] Native .ai export; EPS carries no transparency, gradient meshes, blur or embedded fonts
+- [x] Color: ICC profile stored with the document, CMYK<->RGB conversion through it and embedded in the PDF output intent (docs/color-management.md)
+- [ ] ICC: v4 and matrix/TRC profiles, soft proofing, images converted through the profile, checked against a real printer profile
 
 ## 1c. Whiteboard (Miro parity)
 - [x] Sticky notes (six colors) and arrows (flow and user-flow templates) as plain nodes; see docs/whiteboard.md
@@ -131,11 +133,14 @@ Graphics and colour
 - [x] Image frame fitting (`fit_frame`: fill, fit, tile, frame to content)
 - [x] Swatches (process CMYK, RGB, spot, tints that follow their base), CMYK document mode and a recorded output profile
 - [x] Overprint (written to the PDF, Ink manager UI)
-- [ ] Gradient swatches and profile-managed conversion
+- [x] Gradient swatches (shared paint styles with a gradient paint) and profile-managed conversion for CMYK mft1/mft2 profiles
+- [ ] Gradient swatches that follow later edits of the swatches they were built from
 - [x] Object styles (fill, stroke, effects, opacity, corner radius, blend mode; based-on)
 - [x] Frame fitting (`fit_frame`)
-- [ ] Nested frames
-- [ ] Transparency flattening for print, blur and inner shadows in PDF output (opacity, blend modes and hard-edged drop shadows are written; blur is reported by the preflight)
+- [x] Nested frames: clipping and placement in SVG and PDF, `fit_frame` frame-to-children and fit-in-parent (docs/nested-frames.md)
+- [ ] Nested frames: corner radius in the clip, fit with auto layout or rotated frames
+- [x] PDF output: blurred shadows, inner shadows, layer blur and gradient alpha stops; transparency flattened against white under PDF/X-1a and X-3
+- [ ] Transparency flattening against the real backdrop; blur on vectors beyond rectangles and ellipses
 
 Output (docs/output.md)
 - [x] PDF writer: fonts embedded (uploaded fonts, whole, no subsetting), original JPEG/PNG bytes, gradients as true shadings, opacity and blend modes, masks, CMYK and spot paints (Separation), page boxes, layers that do not print left out
@@ -148,17 +153,18 @@ Output (docs/output.md)
 - [x] ONIX 3.0 book metadata: record in the document, ONIX message export, EPUB and PDF metadata; see docs/onix.md (not validated against the schema or code lists)
 - [x] Everything available over MCP: outputs, imports and editing commands run by an editor on request, ONIX / data merge / duplicate page by the server; see docs/mcp-editor.md
 - [x] HTML export of text (`export_html` mode `text`; File menu "Export text as HTML")
-- [ ] Book (several documents with shared styles and continuous numbering): not built. A document already holds sections with their own numbering; a multi-document book needs a server-side entity and cross-document style sync
-- [ ] PDF/X validation and an embedded ICC profile; font subsetting; OpenType layout (ligatures, alternates) in the PDF; blur and inner shadows; gradient transparency stops
+- [x] Book: server-side entity grouping documents with shared styles and continuous page numbering, Home section, MCP tools, booklet creep in imposition (docs/book.md)
+- [x] PDF: ICC output profile embedded, TrueType font subsetting, GSUB ligatures and alternates, PDF/X and PDF/UA validation report on the written file (docs/pdf-fonts-validation.md)
+- [ ] A full PDF/X validator (this is a report of the checks the writer can answer, not a certified validator); GPOS kerning and contextual substitution in the PDF
 
 ## 2. Collaboration
 - [x] Multiplayer on the same network: nickname, avatar, others' cursors and selections, `/doc/<id>` link to join the same document (no accounts, on purpose)
 - [x] MCP agents show up as people in presence (name with `-nickname`, default "Claude"; they highlight the node they are editing)
-- [ ] Conflicts on the same property: today the last op to reach the server wins
+- [x] Conflicts on the same property: per-property last-writer-wins registers on the server, ops stamped with `base_seq`, a losing optimistic value rolled back (docs/collaboration.md)
 - [x] Comments on the canvas: pins on a node or free on a page, threads with replies, resolve, in the Comments tab and as MCP tools (`list_comments`, `add_comment`, `resolve_comment`, `delete_comment`); see docs/collaboration.md
 - [x] Named versions and branching: frozen copies of the document, opened as a branch (a new document)
 - [x] Review and merge of a branch back into its source (three-way, conflicts flagged; docs/collaboration.md)
-- [ ] Property-level merge in REAL TIME (CRDT or equivalent) instead of last-write-wins (the branch merge is property-level; live edits are still last-write-wins)
+- [ ] Property-level merge in REAL TIME for structural ops (reparent, reorder, create, delete), list fields and text: those still resolve by arrival order; registers are in memory and reset on a server restart
 - [x] Permissions without accounts: share links with view / comment / edit / owner roles, enforced by the server (optional; open stays the default); per-person accounts are not there
 
 ## 3. Handoff and ecosystem
@@ -171,35 +177,41 @@ Output (docs/output.md)
 - [x] Plugin API for agents: `describe_plugin_api`, `validate_plugin`, `list_ui_languages` (read-only; running plugins and switching language stay editor-only); see docs/handoff.md, docs/localization.md
 - [x] WebAssembly plugins (import-free modules run in a terminable Worker, capped memory, commands through the same bridge, one undo step; docs/handoff.md)
 - [x] Tokens in and out: W3C Design Tokens (DTCG) JSON and CSS custom properties, with modes; import of a DTCG file as collections (variables dialog); see docs/handoff.md
-- [ ] Syncing components with the code
+- [x] Syncing components with the code: map components to code files and detect drift (CLI `sync` and MCP)
 - [x] Localization layer: typed catalogs, live language switch, language from the browser or the document menu / Home, plurals; menus, tool dock, Home and panel headings translated into es, fr, de, it, pt-BR, ja, zh-Hans (machine drafts); see docs/localization.md
 - [x] Localization: dates, numbers and relative times by interface language (docs/localization.md)
-- [ ] Localization: translate the remaining dialogs and panels (Versions, Share, Insert table, Comments, Page setup, Fonts, Variables, Styles, Find and change, Data merge, Preflight, Export PDF, Object styles, Layers and Pages panels, the page bar, the properties panel (frame, segmented controls and the per-section controls) and the prototype player are done), review the drafts with native speakers
+- [x] Localization: the remaining dialogs and panels named here, the Components panel and the facilitation bar translated
+- [ ] Localization: Flow panel, Presence bar, typography / layout / brush / path / connector controls; review of all machine drafts with native speakers
 
 ## 4. Performance
 - [x] Invalidation-driven rendering, incremental scene index, discarding what is not visible, levels of detail, image reuse during pan/zoom; test bench on 20,000 nodes (see docs/performance.md)
 - [x] Optional GPU renderer with CanvasKit (WebGL), parity verified with `pnpm parity`; to be measured on a real GPU before making it the default
 - [x] User-loadable fonts (also in the GPU renderer)
-- [ ] Kerning and text shaping in the GPU renderer (CanvasKit's Paragraph)
+- [x] Kerning in the GPU renderer through CanvasKit Paragraph (pair kerning; docs/typography.md)
+- [ ] GPU renderer: OpenType features and shaping beyond pair kerning, kerning with letter spacing, `pnpm parity` run on a real GPU
 - [x] Persistent data structures for the scene (`store/nodeMap.ts`: a persistent 256-bucket map, an edit copies the touched buckets; the server's `core.ApplyShared` is copy-on-write; docs/performance.md)
 
 ## 5. Differentiators
 - [x] MCP AI agent: `review_consistency` and `token_usage` tools, prompts `consistency_review`, `design_variants`, `token_cleanup`; see docs/mcp.md
 - [x] Design review: text contrast (WCAG), tap targets and token consistency, as a Develop panel and the `review_design` MCP tool; see docs/handoff.md
-- [ ] Generate screens from text or screenshot using the document's own components and tokens
+- [x] Generate screens from the document's own kit: MCP `get_design_kit` / `generate_screen` and a Document menu entry; the text or screenshot is read by the connected agent
 - [x] Playwright tests generated from flow paths (`opendesigner flow`, react and leptos targets)
-- [ ] One pipeline that runs prototype -> codegen -> Playwright end to end
+- [x] One pipeline prototype -> codegen -> Playwright (`opendesigner pipeline`, MCP tool; react target)
+- [ ] Pipeline: run the real npm install and Playwright path end to end, leptos target
 - [x] Git-versionable bundle format: `opendesigner pack` / `unpack` (one JSON file per node, stable bytes); see docs/handoff.md
 
 ## Object tools (block 8)
 - [x] Step and Repeat, Gap tool, frame fitting, clipping path, QR code, find/change objects, snippets (see docs/object-tools.md; all over MCP)
-- [ ] Gradient feather, InDesign-style GREP dialect, shared object library
+- [x] Gradient feather (effect, MCP, paste; drawn as strips), InDesign-style GREP dialect in find/change, shared object library (per browser, `object_library` command)
+- [ ] Object library panel and sync across browsers; a smooth alpha mask for feather and its inspector controls
 
 ## Formats (block 9)
 - [x] HTML, PowerPoint and IDML export; IDML import; place Word, RTF and Excel; tagged PDF; booklet imposition (see docs/formats.md; all over MCP)
-- [ ] images in IDML/PPTX-other-types, PDF/UA validation, creep for booklets
+- [x] Images in IDML and PPTX export, PDF/UA validation report, booklet creep
+- [ ] IDML import of placed pictures
 
 ## Platform (block 10)
 - [x] Ink manager (spot -> process, aliases, total ink), overprint in the PDF; CJK line breaking with kinsoku; Arabic shaping and bidi ordering in the PDF; `batch` and `list_editor_commands` (see docs/platform.md)
 - [x] Bidi and Arabic shaping in the PDF
-- [ ] Paragraph direction control, vertical writing, ruby, Indic/Thai shaping, separation preview, trapping, overprint preview
+- [x] Paragraph direction control, vertical writing (vertical-rl), Thai / Lao / Khmer / Myanmar word breaking, separation preview, trapping suggestions and overprint merge colour as functions (docs/text-international.md, docs/print-preview.md)
+- [ ] Ruby, Indic conjuncts and Thai mark positioning in the PDF, vertical text in rich-text runs and threaded frames, a canvas overlay for plate / overprint preview, creating a trap from a suggestion
