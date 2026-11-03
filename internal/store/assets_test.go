@@ -371,6 +371,20 @@ func TestAudioFilesAreAcceptedWithTheirOwnContentType(t *testing.T) {
 	}
 }
 
+func TestICCProfilesNeedTheirContainer(t *testing.T) {
+	if got := DetectImageType([]byte("ODICC\n\x00\x00\x01\x00")); got != "application/x-opendesigner-icc" {
+		t.Errorf("wrapped profile: got %q", got)
+	}
+	// a bare profile (signature at byte 36) is refused: only the wrapper opens the door
+	bare := make([]byte, 128)
+	copy(bare[36:], "acsp")
+	for _, head := range [][]byte{bare, []byte("ODICC no newline")} {
+		if got := DetectImageType(head); got != "" {
+			t.Errorf("%q must not be accepted, got %q", head, got)
+		}
+	}
+}
+
 func TestEffectDataFilesNeedTheirContainer(t *testing.T) {
 	if got := DetectImageType([]byte("ODFX\nTITLE \"x\"\nLUT_3D_SIZE 2\n")); got != "application/x-opendesigner-fx" {
 		t.Errorf("wrapped LUT: got %q", got)

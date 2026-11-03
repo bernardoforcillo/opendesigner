@@ -325,6 +325,9 @@ func validateColorMode(s *opendesignerv1.DocSettings) error {
 	if !plainText(s.GetIccProfile(), maxProfileName) || strings.TrimSpace(s.GetIccProfile()) != s.GetIccProfile() {
 		return fmt.Errorf("%w: icc profile", ErrBadDocSettings)
 	}
+	if a := s.GetIccProfileAsset(); a != "" && !assetHashRe.MatchString(a) {
+		return fmt.Errorf("%w: icc profile asset", ErrBadDocSettings)
+	}
 	return nil
 }
 

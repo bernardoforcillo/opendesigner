@@ -2,6 +2,7 @@ package core
 
 import (
 	"errors"
+	"strings"
 	"testing"
 
 	opendesignerv1 "github.com/bernardoforcillo/opendesigner/gen/opendesigner/v1"
@@ -146,7 +147,10 @@ func TestColorMode(t *testing.T) {
 	if err := set(&opendesignerv1.DocSettings{ColorMode: "cmyk", IccProfile: "FOGRA39"}); err != nil {
 		t.Fatal(err)
 	}
-	for _, s := range []*opendesignerv1.DocSettings{{ColorMode: "lab"}, {IccProfile: " padded "}, {IccProfile: string(make([]byte, 80))}, {IccProfile: "a\nb"}} {
+	if err := set(&opendesignerv1.DocSettings{ColorMode: "cmyk", IccProfileAsset: strings.Repeat("ab", 32)}); err != nil {
+		t.Fatalf("a profile asset hash: %v", err)
+	}
+	for _, s := range []*opendesignerv1.DocSettings{{IccProfileAsset: "nothex"}, {IccProfileAsset: strings.Repeat("AB", 32)}, {ColorMode: "lab"}, {IccProfile: " padded "}, {IccProfile: string(make([]byte, 80))}, {IccProfile: "a\nb"}} {
 		if err := set(s); !errors.Is(err, ErrBadDocSettings) {
 			t.Errorf("%v: got %v", s, err)
 		}

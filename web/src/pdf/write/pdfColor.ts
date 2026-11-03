@@ -1,5 +1,6 @@
 import type { FillLite, NodeLite, SceneState } from "@/store/types";
 import { rgbToCmyk } from "@/color/cmyk";
+import type { IccProfile } from "@/color/icc";
 import { num, pdfName, type PdfFile } from "@/pdf/write/pdfFile";
 
 // COLOUR IN A PDF. Three kinds of paint come out of a document:
@@ -8,8 +9,9 @@ import { num, pdfName, type PdfFile } from "@/pdf/write/pdfFile";
 //     printer gets a real separation plate, with DeviceCMYK as the on-screen alternate;
 //   - anything else                    -> DeviceRGB, or DeviceCMYK through the plain device
 //     conversion when the document's colour mode is CMYK.
-// A swatch is known by the node's binding on the paint slot (`fills.0` / `strokes.0`). There is no ICC
-// profile applied -- the profile is recorded as the output intent's name only.
+// A swatch is known by the node's binding on the paint slot (`fills.0` / `strokes.0`). When the document carries a
+// CMYK ICC profile the RGB -> CMYK step goes through it (`managed`); without one it is the plain device
+// conversion. CMYK numbers the user typed are never converted.
 
 export type PdfPaint =
   | { kind: "rgb"; r: number; g: number; b: number }
@@ -26,7 +28,7 @@ export class PdfColors {
   private spaces = new Map<string, string>(); // spot name -> resource name
   private n = 0;
 
-  constructor(private scene: Pick<SceneState, "variables" | "collections">, readonly cmykDocument: boolean) {}
+  constructor(private scene: Pick<SceneState, "variables" | "collections">, readonly cmykDocument: boolean, private managed?: Pick<IccProfile, "rgbToCmyk">) {}
 
   /** The paint for a node's paint slot whose resolved value is `f`. */
   paintOf(n: NodeLite, slot: string, f: { r: number; g: number; b: number }): PdfPaint {
@@ -39,10 +41,7 @@ export class PdfColors {
       if (base?.spotName && cm) return { kind: "spot", name: base.spotName, alt: [cm.c, cm.m, cm.y, cm.k], tint };
       if (cm) return { kind: "cmyk", c: cm.c * tint, m: cm.m * tint, y: cm.y * tint, k: cm.k * tint };
     }
-    if (this.cmykDocument) {
-      const k = rgbToCmyk(f);
-      return { kind: "cmyk", c: k.c / 100, m: k.m / 100, y: k.y / 100, k: k.k / 100 };
-    }
+    if (this.cmykDocument) return this.plainCmyk(f);
     return { kind: "rgb", r: c01(f.r), g: c01(f.g), b: c01(f.b) };
   }
 
@@ -64,7 +63,7 @@ export class PdfColors {
   }
 
   private plainCmyk(f: { r: number; g: number; b: number }): PdfPaint {
-    const k = rgbToCmyk(f);
+    const k = (this.managed ?? { rgbToCmyk }).rgbToCmyk(f);
     return { kind: "cmyk", c: k.c / 100, m: k.m / 100, y: k.y / 100, k: k.k / 100 };
   }
 

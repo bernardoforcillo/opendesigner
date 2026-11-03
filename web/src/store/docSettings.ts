@@ -35,6 +35,7 @@ export function isValidDocSettings(s: DocSettingsMsg | undefined): boolean {
   const icc = s.iccProfile ?? "";
   // eslint-disable-next-line no-control-regex
   if (icc.length > 64 || icc.trim() !== icc || /[\u0000-\u001f\u007f]/.test(icc)) return false;
+  if (s.iccProfileAsset && !/^[0-9a-f]{64}$/.test(s.iccProfileAsset)) return false;
   return finiteIn(s.baselineIncrement, 0, 1000) && Number.isFinite(s.baselineStart) && s.baselineStart >= 0 && isValidBook(s.book) && isValidLongDocument(s);
 }
 

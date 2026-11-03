@@ -1,7 +1,13 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Dialog, Modal, ModalOverlay } from "react-aria-components";
 import { useScene } from "@/store/store";
-import { cmykToRgb, rgbToCmyk } from "@/color/cmyk";
+import { useCmykConverter } from "@/color/useCmykConverter";
+import { loadProfile, MAX_ICC_BYTES, wrapIccFile } from "@/color/profileAsset";
+import { uploadAsset } from "@/rpc/assets";
+import { useT } from "@/i18n";
+import {
+  applyGradientSwatchOps, createGradientSwatchOps, deleteGradientSwatchOps, gradientCss, gradientSwatchesOf, gradientSwatchFromNodeOps, renameGradientSwatchOps,
+} from "@/tools/gradientSwatches";
 import { swatchCmyk, swatchColor, swatchesOf } from "@/store/graphics";
 import { applySwatchOps, createSwatchOps, deleteSwatchOps, swatchFromColor, updateSwatchOps } from "@/tools/swatches";
 import { makeSetDocSettingsOp } from "@/tools/ops";
@@ -11,9 +17,10 @@ import { NumberField } from "@/ui/fields/NumberField";
 
 // SWATCHES (document menu): the document's palette. A swatch is a named color — RGB, CMYK process, spot, or a tint of
 // another swatch — that fills and strokes can USE: change the swatch and everything that uses it follows. Also the
-// document's colour mode (RGB for screens, CMYK for print) and the output profile it is meant for. The conversions
-// between RGB and CMYK are the plain device ones, not profile-managed: the profile is recorded (as the PDF output
-// intent) but not applied. See docs/graphics-colour.md.
+// document's colour mode (RGB for screens, CMYK for print) and the output profile it is meant for: a name, and an ICC
+// profile file that, once loaded, the RGB <-> CMYK conversions go through and the PDF embeds as its output intent.
+// Without a (readable) profile the conversions are the plain device ones. Gradient swatches are shared paint styles
+// whose paint is a gradient. See docs/color-management.md and docs/graphics-colour.md.
 
 type Ops = Parameters<ReturnType<typeof useScene.getState>["endGesture"]>[0];
 function run(ops: Ops) {
@@ -35,6 +42,13 @@ function describe(v: VariableLite, base?: VariableLite): string {
 }
 
 export function SwatchesDialog({ isOpen, onOpenChange }: { isOpen: boolean; onOpenChange: (open: boolean) => void }) {
+  const { t } = useT();
+  const conv = useCmykConverter();
+  const fileRef = useRef<HTMLInputElement>(null);
+  const [profileError, setProfileError] = useState(false);
+  const [gradFrom, setGradFrom] = useState("");
+  const [gradTo, setGradTo] = useState("");
+  const [gradSel, setGradSel] = useState<string | null>(null);
   const scene = useScene((s) => s.scene);
   const selection = useScene((s) => s.selection);
   const [selected, setSelected] = useState<string | null>(null);
@@ -52,6 +66,29 @@ export function SwatchesDialog({ isOpen, onOpenChange }: { isOpen: boolean; onOp
     if (!made) return;
     run(made.ops);
     setSelected(made.id);
+  }
+  // The profile file: checked as an ICC profile here, stored in the document's assets (wrapped, see color/profileAsset.ts),
+  // and named by the document's settings; the name it carries fills the output condition when that is empty.
+  async function loadFile(file: File | undefined) {
+    if (!file || !scene) return;
+    try {
+      const bytes = new Uint8Array(await file.arrayBuffer());
+      const loaded = bytes.length <= MAX_ICC_BYTES ? loadProfile(bytes) : null;
+      if (!loaded) { setProfileError(true); return; }
+      const ref = await uploadAsset(scene.id, new Blob([wrapIccFile(bytes) as BlobPart]));
+      setProfileError(false);
+      const current = useScene.getState().scene?.settings ?? {};
+      run([makeSetDocSettingsOp({ ...current, iccProfileAsset: ref.hash, ...(!current.iccProfile && loaded.managed?.description ? { iccProfile: loaded.managed.description.slice(0, 64) } : {}) })]);
+    } catch { setProfileError(true); }
+  }
+  const gradients = gradientSwatchesOf(scene);
+  const curGrad = gradients.find((g) => g.id === gradSel) ?? null;
+  const gradStart = gradFrom || swatches[0]?.id || "", gradEnd = gradTo || swatches[1]?.id || swatches[0]?.id || "";
+  const selectedGradientNode = selection.map((id) => scene.nodes.get(id)).find((n) => n?.fills[0]?.gradient);
+  function createGradient(made: { ops: Parameters<typeof run>[0]; id: string } | null) {
+    if (!made) return;
+    run(made.ops);
+    setGradSel(made.id);
   }
   const firstFill = selection.map((id) => scene.nodes.get(id)).find((n) => n && n.fills[0])?.fills[0];
 
@@ -71,8 +108,17 @@ export function SwatchesDialog({ isOpen, onOpenChange }: { isOpen: boolean; onOp
               onBlur={(e) => { const v = e.target.value.trim(); if (v !== (settings.iccProfile ?? "")) run([makeSetDocSettingsOp({ ...settings, iccProfile: v === "" ? undefined : v })]); }} />
             <datalist id="icc-profiles">{PROFILES.map((p) => <option key={p} value={p} />)}</datalist>
           </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <input ref={fileRef} type="file" accept=".icc,.icm" aria-label={t("Load ICC profile")} className="hidden" onChange={(e) => { void loadFile(e.target.files?.[0]); e.target.value = ""; }} />
+            <Button onPress={() => fileRef.current?.click()}>{t("Load ICC profile")}</Button>
+            {settings.iccProfileAsset && <Button onPress={() => { setProfileError(false); run([makeSetDocSettingsOp({ ...settings, iccProfileAsset: undefined })]); }}>{t("Remove ICC profile")}</Button>}
+            {profileError && <span role="alert" className="text-danger">{t("That file is not an ICC profile.")}</span>}
+          </div>
           <p className="text-fg-subtle">
-            {cmykMode ? "New swatches are CMYK. " : ""}The conversion between RGB and CMYK is the plain device one: the profile is recorded as the output condition, not applied.
+            {cmykMode ? "New swatches are CMYK. " : ""}
+            {conv.managed ? t("RGB and CMYK are converted through the document's ICC profile.")
+              : settings.iccProfileAsset ? t("The profile is embedded in the PDF, but its tables cannot be read here: the conversion stays the plain device one.")
+              : t("The conversion between RGB and CMYK is the plain device one: load your printer's ICC profile to apply it.")}
           </p>
 
           <div className="grid grid-cols-[220px_1fr] gap-3">
@@ -95,7 +141,7 @@ export function SwatchesDialog({ isOpen, onOpenChange }: { isOpen: boolean; onOp
               </ul>
               <div className="flex flex-col gap-1.5">
                 <Button onPress={() => create(cmykMode ? { name: "New swatch", cmyk: { c: 0, m: 0, y: 0, k: 100 } } : { name: "New swatch", rgb: { r: 0.2, g: 0.4, b: 0.9 } })}>New swatch</Button>
-                <Button isDisabled={!firstFill} onPress={() => { if (firstFill) create({ ...swatchFromColor(firstFill), ...(cmykMode ? { cmyk: rgbToCmyk(firstFill) } : {}) }); }}>New from the selected fill</Button>
+                <Button isDisabled={!firstFill} onPress={() => { if (firstFill) create({ ...swatchFromColor(firstFill), ...(cmykMode ? { cmyk: conv.rgbToCmyk(firstFill) } : {}) }); }}>New from the selected fill</Button>
                 <Button isDisabled={!cur || isTint} onPress={() => cur && create({ name: `${cur.name} 50%`, tintOf: cur.id, tint: 50 })}>New tint of this swatch</Button>
               </div>
             </div>
@@ -114,10 +160,10 @@ export function SwatchesDialog({ isOpen, onOpenChange }: { isOpen: boolean; onOp
                     <>
                       <div className="flex items-center gap-2">
                         <input type="color" aria-label="Swatch colour" value={hex(curColor)}
-                          onChange={(e) => { const rgb = fromHex(e.target.value); run(updateSwatchOps(scene, cur.id, curCmyk ? { cmyk: rgbToCmyk(rgb) } : { rgb })); }} />
+                          onChange={(e) => { const rgb = fromHex(e.target.value); run(updateSwatchOps(scene, cur.id, curCmyk ? { cmyk: conv.rgbToCmyk(rgb) } : { rgb })); }} />
                         <label className="flex items-center gap-1.5">
                           <input type="checkbox" aria-label="Defined in CMYK" checked={!!curCmyk}
-                            onChange={(e) => run(e.target.checked ? updateSwatchOps(scene, cur.id, { cmyk: rgbToCmyk(curColor) }) : [...updateSwatchOps(scene, cur.id, { rgb: curColor })])} /> Defined in CMYK
+                            onChange={(e) => run(e.target.checked ? updateSwatchOps(scene, cur.id, { cmyk: conv.rgbToCmyk(curColor) }) : [...updateSwatchOps(scene, cur.id, { rgb: curColor })])} /> Defined in CMYK
                         </label>
                       </div>
                       {curCmyk && (
@@ -132,7 +178,7 @@ export function SwatchesDialog({ isOpen, onOpenChange }: { isOpen: boolean; onOp
                         onBlur={(e) => { const v = e.target.value.trim(); if (v !== (cur.spotName ?? "")) run(updateSwatchOps(scene, cur.id, { spotName: v })); }} />
                     </>
                   )}
-                  <p className="text-fg-subtle">{describe(cur, cur.tintOf ? scene.variables[cur.tintOf] : undefined)}{curCmyk && !isTint ? ` · prints as ${hex(cmykToRgb(curCmyk))}` : ""}</p>
+                  <p className="text-fg-subtle">{describe(cur, cur.tintOf ? scene.variables[cur.tintOf] : undefined)}{curCmyk && !isTint ? ` · prints as ${hex(conv.cmykToRgb(curCmyk))}` : ""}</p>
                   <div className="flex flex-wrap gap-2">
                     <Button isDisabled={selection.length === 0} onPress={() => run(applySwatchOps(scene, selection, "fill", cur.id))}>Use for fill</Button>
                     <Button isDisabled={selection.length === 0} onPress={() => run(applySwatchOps(scene, selection, "stroke", cur.id))}>Use for stroke</Button>
@@ -142,6 +188,47 @@ export function SwatchesDialog({ isOpen, onOpenChange }: { isOpen: boolean; onOp
               )}
             </div>
           </div>
+          <section aria-label={t("Gradient swatches")} className="flex flex-col gap-2 border-t border-line pt-3">
+            <h3 className="text-[13px] font-semibold">{t("Gradient swatches")}</h3>
+            {gradients.length === 0 ? <p className="text-fg-subtle">{t("No gradient swatches yet.")}</p> : (
+              <ul aria-label={t("Gradient swatches")} className="flex max-h-[160px] flex-col gap-px overflow-auto">
+                {gradients.map((g) => (
+                  <li key={g.id}>
+                    <button type="button" aria-current={g.id === gradSel ? "true" : undefined}
+                      className={`flex w-full items-center gap-2 rounded-md px-2 py-1 text-left ${g.id === gradSel ? "bg-accent-soft" : "hover:bg-surface-3"}`}
+                      onClick={() => setGradSel(g.id)}>
+                      <span aria-hidden="true" className="h-4 w-10 shrink-0 rounded-sm border border-line-strong" style={{ background: gradientCss(g) }} />
+                      <span className="min-w-0 flex-1 truncate">{g.name}</span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+            <div className="flex flex-wrap items-center gap-2">
+              <select aria-label={t("Gradient start")} className={cls.select} value={gradStart} onChange={(e) => setGradFrom(e.target.value)}>
+                {swatches.map((v) => <option key={v.id} value={v.id}>{v.name}</option>)}
+              </select>
+              <select aria-label={t("Gradient end")} className={cls.select} value={gradEnd} onChange={(e) => setGradTo(e.target.value)}>
+                {swatches.map((v) => <option key={v.id} value={v.id}>{v.name}</option>)}
+              </select>
+              <Button isDisabled={swatches.length === 0}
+                onPress={() => createGradient(createGradientSwatchOps(scene, { name: `${scene.variables[gradStart]?.name ?? ""} → ${scene.variables[gradEnd]?.name ?? ""}`, stops: [{ swatchId: gradStart }, { swatchId: gradEnd }] }))}>
+                {t("New gradient")}
+              </Button>
+              <Button isDisabled={!selectedGradientNode} onPress={() => selectedGradientNode && createGradient(gradientSwatchFromNodeOps(selectedGradientNode, `${t("New gradient")} ${gradients.length + 1}`))}>
+                {t("New gradient from the selected fill")}
+              </Button>
+            </div>
+            {curGrad && (
+              <div className="flex flex-wrap items-center gap-2">
+                <input aria-label={t("Gradient name")} className={cls.input} defaultValue={curGrad.name} key={curGrad.id + ":name"} maxLength={80}
+                  onBlur={(e) => run(renameGradientSwatchOps(scene, curGrad.id, e.target.value))} />
+                <Button isDisabled={selection.length === 0} onPress={() => run(applyGradientSwatchOps(scene, selection, "fill", curGrad.id))}>{t("Use for fill")}</Button>
+                <Button isDisabled={selection.length === 0} onPress={() => run(applyGradientSwatchOps(scene, selection, "stroke", curGrad.id))}>{t("Use for stroke")}</Button>
+                <Button variant="danger" onPress={() => { run(deleteGradientSwatchOps(scene, curGrad.id)); setGradSel(null); }}>{t("Delete")}</Button>
+              </div>
+            )}
+          </section>
           <div className="flex justify-end"><Button onPress={() => onOpenChange(false)}>Done</Button></div>
         </Dialog>
       </Modal>

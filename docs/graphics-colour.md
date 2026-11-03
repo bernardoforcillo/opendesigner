@@ -11,7 +11,7 @@ A **swatch** is a named color of the document's palette — RGB, a CMYK process 
 - **Tint**: *New tint of this swatch* (1–100 % of the base ink). A tint follows its base: editing the base swatch re-derives its tints, and theirs, in the same gesture.
 - **Colour mode** (RGB / CMYK) and the **output profile** (FOGRA39, SWOP v2, …) are document settings. In CMYK mode new swatches are CMYK, and exports will convert to CMYK; the profile is recorded as the PDF output intent.
 
-**Honest scope.** The RGB ↔ CMYK conversion is the plain device one (`web/src/color/cmyk.ts`), not profile-managed: the profile is *recorded*, not applied, so a CMYK value here is a starting point for the print shop's own conversion, not a proof. Spot colors print as their CMYK/RGB equivalent until the print-ready PDF writer (a later block) gives them their own separation. No overprint, no gamut warnings.
+**Honest scope.** The RGB ↔ CMYK conversion is the plain device one (`web/src/color/cmyk.ts`) unless the document carries an ICC profile file, which makes it profile-managed (see [color-management.md](color-management.md)); with only a recorded profile name nothing is applied, so a CMYK value here is a starting point for the print shop's own conversion, not a proof. Spot colors print as their CMYK/RGB equivalent until the print-ready PDF writer (a later block) gives them their own separation. No overprint, no gamut warnings.
 
 ## Object styles
 
@@ -49,4 +49,4 @@ Rules (Go `internal/core/graphics.go` is the authority, `web/src/store/graphics.
 
 ## Not yet
 
-Profile-managed conversion and soft proofing, overprint, separations of spot colors in output (Block 5), swatch groups, gradient swatches, layer stacking order across pages, image fitting inside a frame (an image node *is* its box; fill an ordinary frame with an image to crop it), watching a file on disk for changes, and anchored objects that sit above the line or beside it.
+Soft proofing (profile-managed conversion and gradient swatches are in [color-management.md](color-management.md)), overprint, separations of spot colors in output (Block 5), swatch groups, layer stacking order across pages, image fitting inside a frame (an image node *is* its box; fill an ordinary frame with an image to crop it), watching a file on disk for changes, and anchored objects that sit above the line or beside it.

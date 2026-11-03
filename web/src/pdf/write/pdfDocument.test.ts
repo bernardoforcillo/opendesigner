@@ -169,6 +169,18 @@ describe("buildPdf — print", () => {
     await read(bytes);
   });
 
+  it("embeds the ICC profile as the output intent's DestOutputProfile and converts RGB paints through it", async () => {
+    const profile = new Uint8Array(200).fill(7);
+    const managed = { colorSpace: "CMYK" as const, description: "Test", cmykToRgb: () => ({ r: 0, g: 0, b: 0 }), rgbToCmyk: () => ({ c: 10, m: 20, y: 30, k: 40 }) };
+    const pages = [page([node({ id: "a", fills: [{ r: 0.2, g: 0.4, b: 0.6, a: 1 }] })])];
+    const { bytes } = await build(pages, { pdfx: "x4", cmyk: true, condition: "Test", profile: { bytes: profile, components: 4, managed } });
+    expect(new TextDecoder("latin1").decode(bytes)).toMatch(/\/DestOutputProfile \d+ 0 R/);
+    expect(await contentOf(bytes)).toContain("0.1 0.2 0.3 0.4 k");
+    await read(bytes);
+    const plain = await build(pages, { pdfx: "x4", cmyk: true, condition: "Test" });
+    expect(new TextDecoder("latin1").decode(plain.bytes)).not.toContain("DestOutputProfile");
+  });
+
   it("bookmarks nest by level and links become annotations", async () => {
     const { bytes } = await build(
       [page([], { links: [{ rect: { x: 0, y: 0, width: 50, height: 10 }, url: "https://example.com" }] }), page([], { name: "P2", links: [{ rect: { x: 0, y: 0, width: 50, height: 10 }, page: 0 }] })],

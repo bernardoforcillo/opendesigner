@@ -545,6 +545,25 @@ const PLAIN = [
   // Panel section headings
   "Size limits", "Variables", "Transitions", "Stroke", "Sizing", "Paths", "Override", "Layout", "Instance",
   "Fill", "Export", "Effect style", "Current flow", "Corners", "Constraints", "Component", "Arc", "Appearance",
+  // Output profile and gradient swatches
+  "Load ICC profile",
+  "Remove ICC profile",
+  "That file is not an ICC profile.",
+  "RGB and CMYK are converted through the document's ICC profile.",
+  "The profile is embedded in the PDF, but its tables cannot be read here: the conversion stays the plain device one.",
+  "The conversion between RGB and CMYK is the plain device one: load your printer's ICC profile to apply it.",
+  "Gradient swatches",
+  "Gradient start",
+  "Gradient end",
+  "New gradient",
+  "New gradient from the selected fill",
+  "No gradient swatches yet.",
+  "PDF/X-1a is CMYK only: RGB colours are converted through the document's ICC profile.",
+  "Converted from RGB through the document's ICC profile; the document stays RGB.",
+  "Plain conversion from RGB; the document stays RGB. Load an ICC profile in Swatches to apply your printer's.",
+  "Use for fill",
+  "Use for stroke",
+  "Gradient name",
 ] as const;
 
 const PLURALS = {
