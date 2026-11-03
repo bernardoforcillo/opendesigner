@@ -6,8 +6,8 @@ Menu *Document*; every one is also an MCP tool (they run in the open editor, see
 |---|---|---|---|
 | HTML | export | `export_html` | one file, every page as inline SVG: text stays selectable, images embedded, fonts **not** embedded |
 | HTML (text) | export | `export_html` mode `text` | the stories as reflowable semantic HTML: headings, paragraphs, styles as CSS, a linked contents list, footnotes as `doc-footnote` notes, images inlined as data URIs; page geometry is not kept |
-| PowerPoint (.pptx) | export | `export_pptx` | one slide per page: rectangles (rounded), ellipses, vectors (bezier), text boxes (font, size, weight, italic, colour, alignment), PNG/JPEG images, solid and 2-stop linear gradients, strokes, opacity, rotation |
-| InDesign IDML | export | `export_idml` | one spread per page: rectangles, ovals, polygons (bezier), text frames with their story (font, size, bold/italic, colour, alignment, paragraph styles by name), RGB swatches |
+| PowerPoint (.pptx) | export | `export_pptx` | one slide per page: rectangles (rounded), ellipses, vectors (bezier), text boxes (font, size, weight, italic, colour, alignment), PNG/JPEG images (WebP, GIF and other types the browser can decode are re-encoded as PNG), solid and 2-stop linear gradients, strokes, opacity, rotation |
+| InDesign IDML | export | `export_idml` | one spread per page: rectangles, ovals, polygons (bezier), text frames with their story (font, size, bold/italic, colour, alignment, paragraph styles by name), PNG/JPEG images embedded, RGB swatches |
 | InDesign IDML | import | `import_idml` | pages with their sizes (facing spreads split into pages), rectangles/ovals/polygons/lines (as vectors), text frames with story text, solid fills and strokes (CMYK converted naively), group and item transforms |
 | Word (.docx), RTF | place | `place_document` | one text frame: paragraphs, Heading 1–3 (outline levels, so the contents list them), bold and italic as character styles, tabs and line breaks |
 | Excel (.xlsx) | place | `place_document` | the first sheet as a table (header row = first row); cached values, not formulas |
@@ -24,8 +24,8 @@ Menu *Document*; every one is also an MCP tool (they run in the open editor, see
 
 ## Limits
 - INDD (InDesign's binary format) cannot be opened: it is proprietary and undocumented.
-- IDML export/import: no images or links, effects, master-page items, character styles, tables, gradients, tracking or OpenType; rotation of imported boxes is dropped (they come in upright).
-- PPTX: other image types, effects, masks, auto layout and master pages are not carried; one slide size for the deck (the first page's).
+- IDML export embeds PNG/JPEG images (base64 in the Image, stretched over the frame); IDML import still drops placed pictures. Both: no links, effects, master-page items, character styles, tables, gradients, tracking or OpenType; rotation of imported boxes is dropped (they come in upright).
+- PPTX: effects, masks, auto layout and master pages are not carried; one slide size for the deck (the first page's).
 - Word: images, tables, footnotes, comments, fonts and colours inside the file are not carried; the frame is sized by an estimate and may overflow (thread more frames).
 - Booklet: pages of different sizes are placed side by side as they are; creep is a single distance per sheet that you work out from the paper's thickness (no paper-weight calculation) and applies to page content only, not to marks or bleed boxes; there is no gutter compensation.
 - HTML: page by page as it looks; for reflowing text use the reflowable EPUB.

@@ -5,6 +5,7 @@ import { emptyScene, toPbNode, type NodeLite, type SceneState } from "@/store/ty
 import { makeCreateNodeOp, makeUpdatePageOp } from "@/tools/ops";
 import { orderKeyBetween } from "@/store/orderKey";
 import { zipStore } from "@/export/zip";
+import { openZip, readZipText } from "@/export/zipRead";
 import { buildIdml, idmlOps, parseIdml, IdmlError } from "@/export/idml";
 
 const base = (over: Partial<NodeLite>): NodeLite => ({ id: "x", parentId: "page1", orderKey: orderKeyBetween(null, null), name: "n", visible: true, opacity: 1, x: 10, y: 20, width: 100, height: 50, rotation: 0, fills: [{ r: 1, g: 0, b: 0, a: 1 }], strokes: [], kind: "rect", cornerRadius: 0, clipsContent: false, ...over });
@@ -78,6 +79,21 @@ describe("IDML", () => {
 
   it("reports what it leaves out", () => {
     const s = applyOp(scene(), makeCreateNodeOp(toPbNode(base({ id: "g", orderKey: "zzzz", kind: "image", image: { assetHash: "a".repeat(64), originalName: "", pixelWidth: 1, pixelHeight: 1 } }))));
-    expect(buildIdml(s, "d")!.skipped).toContain("images");
+    expect(buildIdml(s, "d")!.skipped).toContain("missing images");
+    const webp = new Map([["a".repeat(64), { bytes: new Uint8Array([1]), mime: "image/webp" }]]);
+    expect(buildIdml(s, "d", undefined, webp)!.skipped).toContain("image/webp images");
+  });
+
+  it("embeds a PNG image as a placed picture", async () => {
+    const hash = "a".repeat(64);
+    const s = applyOp(scene(), makeCreateNodeOp(toPbNode(base({ id: "g", orderKey: "zzzz", kind: "image", width: 200, height: 100, image: { assetHash: hash, originalName: "p.png", pixelWidth: 100, pixelHeight: 50 } }))));
+    const out = buildIdml(s, "d", undefined, new Map([[hash, { bytes: new Uint8Array([1, 2, 3]), mime: "image/png" }]]))!;
+    expect(out.skipped).not.toContain("missing images");
+    const zip = openZip(out.bytes);
+    const spread = (await Promise.all(zip.names.map(async (n) => (n.startsWith("Spreads/") ? readZipText(zip, n) : "")))).join("");
+    expect(spread).toContain('ContentType="GraphicType"');
+    expect(spread).toContain("<![CDATA[AQID]]>");
+    expect(spread).toContain('LinkResourceURI="file:p.png"');
+    expect(spread).toContain('ItemTransform="1.5 0 0 1.5 0 0"');
   });
 });
