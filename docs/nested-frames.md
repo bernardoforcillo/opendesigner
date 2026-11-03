@@ -14,8 +14,16 @@ Output:
 
 Tests: web/src/export/nestedFrames.test.ts.
 
+## Frame fitting
+`fit_frame` (Object tools dialog, MCP, `fitOps` in web/src/tools/objectTools.ts) gained two modes:
+- `frame-to-children`: the frame wraps its visible children's boxes; the children are shifted back so they do not move on the page. Works for a frame inside a frame.
+- `fit-in-parent`: a childless node is scaled, keeping proportions, to the largest size inside its parent frame and centred.
+
+Tests: `nested frame fitting` in web/src/tools/objectTools.test.ts.
+
 ## Limits
 - The clip is the frame's rectangle: corner radius of a clipping frame is not applied in SVG/PDF.
 - Nodes under a masked group inside a frame keep their own mask on top of the frame clip (not separately tested).
 - No PDF-stream test of the clip operators; verified by the SVG path and the shared geometry only.
-- Frame fitting (fit a frame to its content, fit a child frame into its parent) has no new tool here; existing `fit_frame` is unchanged (docs/object-tools.md).
+- Fit-in-parent does not scale a node's children, so it refuses nodes that have any; frame-to-children refuses rotated and auto layout frames.
+- The Object tools dialog's labels are English literals like the rest of that dialog (not yet through `useT()`).
