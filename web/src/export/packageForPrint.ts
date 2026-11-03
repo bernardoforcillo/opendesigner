@@ -90,6 +90,7 @@ export async function buildPackage(input: PackageInput, deps: PackageDeps): Prom
     "Fonts (uploaded):", ...(fontLines.length ? fontLines : ["  none"]),
     ...(r.substitutedFonts.length ? ["Fonts NOT embedded (standard faces used):", ...r.substitutedFonts.map((s) => `  ${s}`)] : []),
     "",
+    ...validationLines(r),
     "Links (placed images):", ...(linkLines.length ? linkLines : ["  none"]),
     "",
     "Preflight:", ...(input.issues.length ? input.issues.map((i) => `  [${i.severity}] ${i.message}`) : ["  no problems found"]),
@@ -97,4 +98,18 @@ export async function buildPackage(input: PackageInput, deps: PackageDeps): Prom
   ];
   entries.push({ name: `${root}/Report.txt`, data: enc.encode(lines.join("\n")) });
   return { bytes: zipStore(entries), missing };
+}
+
+const MARK = { pass: "ok  ", warn: "warn", fail: "FAIL" } as const;
+
+/** The PDF/X and PDF/UA checks of the writer's report as text lines (not a full validation, see pdfValidate.ts). */
+function validationLines(r: PdfReport): string[] {
+  const out: string[] = [];
+  for (const v of [r.validation.pdfx, r.validation.pdfua]) {
+    if (!v) continue;
+    out.push(`${v.standard} checks (what the writer can verify; ${v.conformant ? "no failures" : "not conformant"}):`);
+    for (const k of v.checks) out.push(`  [${MARK[k.status]}] ${k.id}${k.detail ? ` — ${k.detail}` : ""}`);
+    out.push("");
+  }
+  return out;
 }

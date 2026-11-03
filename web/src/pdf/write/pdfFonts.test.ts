@@ -19,9 +19,10 @@ describe("standard faces", () => {
 
 describe("toUnicode", () => {
   it("lists glyph -> code point pairs, astral ones as surrogates", () => {
-    const cmap = toUnicodeCMap(new Map([[5, 0x41], [9, 0x1f600], [0, 0x20]]));
+    const cmap = toUnicodeCMap(new Map([[5, "A"], [9, "\u{1F600}"], [0, " "], [7, "fi"]]));
     expect(cmap).toContain("<0005> <0041>");
     expect(cmap).toContain("<0009> <d83dde00>");
+    expect(cmap).toContain("<0007> <00660069>");
     expect(cmap).not.toContain("<0000> <0020>");
     expect(cmap).toContain("begincodespacerange");
   });

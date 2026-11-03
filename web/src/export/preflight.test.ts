@@ -47,7 +47,7 @@ describe("preflightScene", () => {
 });
 
 describe("preflightReport", () => {
-  const base: PdfReport = { pages: 1, pdfx: "none", substitutedFonts: [], missingGlyphs: [], embeddedFonts: 0, spots: [], usesRgb: false, usesCmyk: false, transparency: false, transparencyFlattened: false, flattened: [], lowResolution: [] };
+  const base: PdfReport = { pages: 1, pdfx: "none", substitutedFonts: [], missingGlyphs: [], embeddedFonts: 0, spots: [], usesRgb: false, usesCmyk: false, transparency: false, transparencyFlattened: false, flattened: [], lowResolution: [], fontBytesSaved: 0, validation: { pdfx: null, pdfua: { standard: "PDF/UA-1", checks: [], conformant: false } } };
   it("warns that opacity was flattened onto white under X-1a / X-3 only", () => {
     const r = { ...base, transparencyFlattened: true };
     expect(codes(preflightReport(r, { pdfx: "x3" }))).toContain("transparency-flattened");

@@ -7,6 +7,7 @@ import { PdfFonts } from "@/pdf/write/pdfFonts";
 import { effectivePpi, type PreparedImage } from "@/pdf/write/pdfImages";
 import { PdfFile, num, pdfDate, pdfName, pdfText } from "@/pdf/write/pdfFile";
 import { PT, renderPage } from "@/pdf/write/pdfPage";
+import { validatePdfUa, validatePdfX, type Validation } from "@/pdf/write/pdfValidate";
 
 // THE DOCUMENT: pages with their boxes, print marks, the outline (bookmarks), link annotations, the
 // Info dictionary and, for print, the PDF/X identification and an output intent.
@@ -15,7 +16,8 @@ import { PT, renderPage } from "@/pdf/write/pdfPage";
 // version in Info and XMP, TrimBox and BleedBox on every page, an OutputIntent naming the print
 // condition, every font embedded or flagged, CMYK/spot paints kept as such, and -- when the document carries
 // an ICC profile -- that profile embedded as the intent's DestOutputProfile. It is still "PDF/X-ready", not validated PDF/X. A printer's
-// preflight (or Acrobat) remains the judge; the in-app preflight lists what it can see.
+// preflight (Acrobat) remains the judge; the in-app preflight lists what it can see. `report.validation` (pdfValidate.ts)
+// lists the PDF/X and PDF/UA checks the writer can answer about its own output, pass / warn / fail.
 
 export type PdfXMode = "none" | "x1a" | "x3" | "x4";
 
@@ -74,6 +76,9 @@ export interface PdfReport {
   transparencyFlattened: boolean;
   flattened: string[];
   lowResolution: { page: string; hash: string; ppi: number }[];
+  /** Bytes saved by subsetting the embedded fonts. */
+  fontBytesSaved: number;
+  validation: { pdfx: Validation | null; pdfua: Validation };
 }
 
 const PDFX_NAME: Record<Exclude<PdfXMode, "none">, string> = { x1a: "PDF/X-1a:2003", x3: "PDF/X-3:2003", x4: "PDF/X-4" };
@@ -233,6 +238,16 @@ export async function buildPdf(b: PdfBuild): Promise<{ bytes: Uint8Array; report
 
   const header = mode === "x4" ? "%PDF-1.6\n" : mode === "none" ? "%PDF-1.7\n" : "%PDF-1.4\n";
   const bytes = await file.build(root, { info, fileId: b.docId ?? b.title, header });
+  const tags = rendered.flatMap(({ r }) => [...r.tags].sort((a, c) => a.y - c.y || a.x - c.x));
+  const figures = tags.filter((t) => t.role === "Figure");
+  const facts = {
+    pdfx: mode, tagged: b.tagged === true, language: b.tagged ? b.language || "en" : undefined, title: b.title, pages: b.pages.length,
+    hasTrimBox: b.pages.length > 0, hasOutputIntent: mode !== "none", iccEmbedded: false,
+    substitutedFonts: [...fonts.substituted], missingGlyphs: [...fonts.missingGlyphs],
+    usesRgb: colors.usesRgb, transparency, lowResolution: lowResolution.length,
+    headingLevels: tags.filter((t) => /^H[1-6]$/.test(t.role)).map((t) => Number(t.role[1])),
+    figures: figures.length, figuresWithoutAlt: figures.filter((t) => (t.alt ?? "").trim() === "").length, taggedItems: tags.length,
+  };
   return {
     bytes,
     report: {
@@ -240,6 +255,8 @@ export async function buildPdf(b: PdfBuild): Promise<{ bytes: Uint8Array; report
       substitutedFonts: [...fonts.substituted], missingGlyphs: [...fonts.missingGlyphs],
       embeddedFonts: b.faces.length, spots: [...colors.spots],
       usesRgb: colors.usesRgb, usesCmyk: colors.usesCmyk, transparency, transparencyFlattened: baked, flattened: [...new Set(flattened)], lowResolution,
+      fontBytesSaved: fonts.subsetBytes,
+      validation: { pdfx: validatePdfX(facts), pdfua: validatePdfUa(facts) },
     },
   };
 }
