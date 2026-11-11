@@ -1,3 +1,4 @@
+import { uuid } from "@/shared/uuid";
 import { create, type MessageInitShape } from "@bufbuild/protobuf";
 import { NodeSchema, OpSchema } from "@/gen/opendesigner/v1/opendesigner_pb";
 import type { Node, Op } from "@/gen/opendesigner/v1/opendesigner_pb";
@@ -85,7 +86,7 @@ export interface ImportOptions {
   parentId?: string;
   /** Order key of the root group (default: the first key). */
   orderKey?: string | null;
-  /** Id generator (nodes and ops). Default: crypto.randomUUID. */
+  /** Id generator (nodes and ops). Default: uuid() from @/shared/uuid. */
   newId?: () => string;
   /** Fallback name of the root group (e.g. the file name without extension). */
   name?: string;
@@ -1304,7 +1305,7 @@ function applyRules(doc: Document, env: Env): void {
 }
 
 function defaultNewId(): string {
-  return crypto.randomUUID();
+  return uuid();
 }
 
 /**

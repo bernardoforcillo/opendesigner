@@ -1,3 +1,4 @@
+import { uuid } from "@/shared/uuid";
 import { create as createStore } from "zustand";
 import { create } from "@bufbuild/protobuf";
 import { OpSchema } from "@/gen/opendesigner/v1/opendesigner_pb";
@@ -1686,7 +1687,7 @@ export const useScene = createStore<SceneStore>((set, get) => ({
     // An empty story in a chain is not a phantom: its frames are still there to be filled.
     if (scene && isThreaded(scene, id)) return;
     const op: Op = create(OpSchema, {
-      opId: crypto.randomUUID(),
+      opId: uuid(),
       docId: scene?.id ?? "",
       kind: { case: "deleteNode", value: { id } },
     });

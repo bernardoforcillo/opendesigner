@@ -1,3 +1,4 @@
+import { uuid } from "@/shared/uuid";
 import { create } from "@bufbuild/protobuf";
 import { OpSchema } from "@/gen/opendesigner/v1/opendesigner_pb";
 import type { Node as PbNode, Op } from "@/gen/opendesigner/v1/opendesigner_pb";
@@ -25,10 +26,10 @@ import { isValidDocSettings, isValidPageSetup } from "@/store/docSettings";
 //  - the docId of the direct op, not that of the "current" document -- the op
 //    I am inverting may have arrived from the wire.
 function newOpId(): string {
-  // Same generator as tools/ops.ts::uuid, but called directly: history
+  // Same generator as tools/ops.ts::uuid, but imported from @/shared/uuid: history
   // sits under store/ and store.ts will import invertOp (Task 12), while ops.ts
   // imports store.ts. Going through ops.ts would close a module cycle.
-  return crypto.randomUUID();
+  return uuid();
 }
 
 function createNodeOp(docId: string, node: PbNode): Op {
