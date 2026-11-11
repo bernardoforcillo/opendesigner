@@ -12,9 +12,8 @@ import type { MaskPath } from "@/store/maskPaths";
 // are stamped in a single place (in M0 the logic was duplicated inside
 // rectTool). docId comes from the document open in the store.
 
-export function uuid(): string {
-  return crypto.randomUUID();
-}
+export { uuid } from "@/shared/uuid";
+import { uuid } from "@/shared/uuid";
 
 function docId(): string {
   return useScene.getState().scene?.id ?? "";

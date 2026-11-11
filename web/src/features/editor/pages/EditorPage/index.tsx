@@ -1,3 +1,4 @@
+import { uuid } from "@/shared/uuid";
 import { effectiveGuides, isLeftPage } from "@/store/masters";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Code, ConnectError } from "@connectrpc/connect";
@@ -166,7 +167,7 @@ export function toolsForMode(mode: EditorMode, role: Role | null = null): { id: 
   return inMode.filter((t) => allowed.includes(t.id));
 }
 
-const CLIENT_ID = crypto.randomUUID();
+const CLIENT_ID = uuid();
 const DOC_KEY = "opendesigner.docId";
 
 // The document is chosen from the link: `/doc/<id>` (the router hands the id over

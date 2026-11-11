@@ -1,3 +1,4 @@
+import { uuid } from "@/shared/uuid";
 import { create } from "@bufbuild/protobuf";
 import { Code, ConnectError } from "@connectrpc/connect";
 import { NodeSchema, OpSchema } from "@/gen/opendesigner/v1/opendesigner_pb";
@@ -51,7 +52,7 @@ export function selectedDiagram(): { id: string; source: string; kind: string } 
 }
 
 const createOp = (docId: string, node: Node): Op =>
-  create(OpSchema, { opId: crypto.randomUUID(), docId, kind: { case: "createNode", value: { node } } });
+  create(OpSchema, { opId: uuid(), docId, kind: { case: "createNode", value: { node } } });
 
 /**
  * Inserts the nodes of a drawn diagram. `at` is the CENTER (world
@@ -81,7 +82,7 @@ export function insertDiagram(res: Pick<RenderDiagramResponse, "nodes" | "width"
   root.orderKey = nextOrderKey(scene);
 
   const ops: Op[] = [...leading];
-  if (old) ops.push(create(OpSchema, { opId: crypto.randomUUID(), docId: scene.id, kind: { case: "deleteNode", value: { id: old.id } } }));
+  if (old) ops.push(create(OpSchema, { opId: uuid(), docId: scene.id, kind: { case: "deleteNode", value: { id: old.id } } }));
   ops.push(createOp(scene.id, root));
   for (const n of res.nodes.slice(1)) ops.push(createOp(scene.id, create(NodeSchema, n)));
 

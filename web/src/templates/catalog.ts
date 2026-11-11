@@ -1,3 +1,4 @@
+import { uuid } from "@/shared/uuid";
 import type { IconName } from "@/ui/ds/Icon";
 import { builtToOps, DocBuilder, PALETTE, SCREEN_W } from "@/templates/builder";
 import type { BuiltTemplate, IdGen } from "@/templates/builder";
@@ -308,6 +309,6 @@ export function templateById(id: string): Template | undefined {
 }
 
 /** The Ops that bring a just-created document to the template's state. */
-export function templateOps(t: Template, docId: string, pageId: string, newId: IdGen = () => crypto.randomUUID()): Op[] {
+export function templateOps(t: Template, docId: string, pageId: string, newId: IdGen = () => uuid()): Op[] {
   return builtToOps(t.build(pageId, newId), docId);
 }

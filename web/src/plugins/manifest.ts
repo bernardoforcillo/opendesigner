@@ -8,6 +8,7 @@
 // `wasm`, a WebAssembly module in base64 (plugins/wasm.ts says what it may do). Plugins are stored in the browser
 // (like preferences) and never leave it: they are the person's tools, not part of the document.
 
+import { uuid } from "@/shared/uuid";
 import { bytesFromBase64, validateWasm, WasmError } from "@/plugins/wasm";
 
 export type Permission = "read" | "write";
@@ -27,7 +28,7 @@ export const MAX_CODE_BYTES = 200_000;
 const PERMISSIONS: readonly Permission[] = ["read", "write"];
 
 /** A plugin from JSON text, or the reason it is not one. */
-export function parsePlugin(text: string, newId: () => string = () => crypto.randomUUID()): { plugin: Plugin } | { error: string } {
+export function parsePlugin(text: string, newId: () => string = () => uuid()): { plugin: Plugin } | { error: string } {
   let raw: unknown;
   try { raw = JSON.parse(text); } catch { return { error: "That is not valid JSON." }; }
   if (typeof raw !== "object" || raw === null) return { error: "A plugin is a JSON object." };

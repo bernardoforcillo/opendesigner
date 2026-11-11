@@ -1,3 +1,4 @@
+import { uuid } from "@/shared/uuid";
 import { create, type MessageInitShape } from "@bufbuild/protobuf";
 import { Code, ConnectError } from "@connectrpc/connect";
 import { OpSchema } from "@/gen/opendesigner/v1/opendesigner_pb";
@@ -30,7 +31,7 @@ export interface FigClient {
 
 /** The ops creating the imported collections, then the variables. */
 export function variableOps(docId: string, collections: VariableCollection[] = [], variables: Variable[] = []): Op[] {
-  const op = (kind: MessageInitShape<typeof OpSchema>["kind"]) => create(OpSchema, { opId: crypto.randomUUID(), docId, kind });
+  const op = (kind: MessageInitShape<typeof OpSchema>["kind"]) => create(OpSchema, { opId: uuid(), docId, kind });
   return [
     ...collections.map((collection) => op({ case: "setCollection", value: { collection } })),
     ...variables.map((variable) => op({ case: "setVariable", value: { variable } })),
